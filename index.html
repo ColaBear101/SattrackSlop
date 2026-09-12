@@ -88,7 +88,7 @@ select:focus-visible, .btn:focus-visible, input:focus-visible, [tabindex]:focus-
 .combo-list li.note{cursor:default; color:var(--muted); font-size:11.5px; justify-content:flex-start;
   border-top:1px solid var(--rule); border-radius:0; margin-top:3px; padding-top:8px}
 .combo-list li.note:only-child{border-top:0; margin-top:0}
-.combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+.combo-hint{width:290px; max-width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
   letter-spacing:.06em; color:var(--muted)}
 .lede{color:var(--ink2); max-width:68ch; font-size:15.5px}
 .tle{background:var(--sunk); border:1px solid var(--rule); border-radius:4px;
@@ -229,6 +229,7 @@ footer{color:var(--muted); font-size:12px; border-top:1px solid var(--rule); pad
   .elements{grid-template-columns:minmax(0,1fr)}
   .skybox{grid-template-columns:minmax(0,1fr); justify-items:center}
   select{min-width:0; width:100%}
+  .combo, .combo-hint{width:100%}
   .mast-ctl{width:100%}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
@@ -6935,7 +6936,8 @@ const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCD
 const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
 const hmsLocal = d => { const t = new Date(d.getTime()+ICT*3600000);
   return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
-const mmss = s => Math.floor(s/60)+'m '+pad(Math.round(s%60))+'s';
+const mmss = s => { const T = Math.round(s);            // round first, or 59.7 s renders as '60s'
+  return Math.floor(T/60)+'m '+pad(T%60)+'s'; };
 const latStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'N':'S');
 const lonStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'E':'W');
 const compass = az => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
@@ -7264,9 +7266,10 @@ function renderAccess(){
   const total = D.totalS, P = D.passes;
   const big = document.getElementById('totalbig');
   big.innerHTML = (total/60).toFixed(1)+'<span> min</span>';
-  const h = Math.floor(total/3600), m = Math.floor(total%3600/60), s = Math.round(total%60);
+  const T = Math.round(total);                          // same carry trap as mmss()
+  const h = Math.floor(T/3600), m = Math.floor(T%3600/60), s = T%60;
   document.getElementById('totalsub').textContent =
-    (h ? h+' h '+m+' min' : m+' min '+s+' s')+' in view across the day — '+
+    (h ? h+' h '+m+' min' : m+' min '+pad(s)+' s')+' in view across the day — '+
     (total/864).toFixed(2)+'% of 24 hours.';
   document.getElementById('npasses').textContent = String(P.length);
   document.getElementById('longest').textContent = P.length ? mmss(Math.max(...P.map(p=>p.dur))) : '—';
@@ -7465,6 +7468,13 @@ box.addEventListener('keydown', e=>{
     else if(shown.length) choose(shown[0]);
   }
   else if(e.key === 'Escape'){ e.preventDefault(); closeList(true); box.blur(); }
+});
+// mousedown fires before the input blurs; click is the fallback for anything
+// synthetic (assistive tech, automation) that dispatches only a plain click
+listEl.addEventListener('click', e=>{
+  if(!isOpen) return;
+  const li = e.target.closest('li[data-idx]');
+  if(li) choose(+li.dataset.idx);
 });
 listEl.addEventListener('mousedown', e=>{           // mousedown beats the blur
   const li = e.target.closest('li[data-idx]');

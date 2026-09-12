@@ -105,6 +105,10 @@ select:focus-visible, .btn:focus-visible, input:focus-visible, [tabindex]:focus-
   background-size:26px 100%, 26px 100%, 11px 100%, 11px 100%;
   background-attachment:local, local, scroll, scroll}
 .tle pre b{color:var(--ink); font-weight:600}
+.tle-meta{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; line-height:1.6;
+  color:var(--muted); letter-spacing:.02em}
+.tle-meta b{color:var(--ink2); font-weight:600}
+.tle-meta .stale{color:var(--contact); font-weight:600}
 .only-narrow{display:none}
 @media (max-width:900px){.only-narrow{display:inline}}
 
@@ -239,6 +243,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:15px; color:var(--ink); text-shadow:0 0 6px var(--sunk),0 0 6px var(--sunk)}
 .o3-clock .o3-utc{font-size:10px; letter-spacing:.14em; color:var(--muted)}
+.o3-clock.o3-clock2{font-size:12.5px; color:var(--ink2); margin-top:-4px}
 .o3-stat{display:flex; align-items:baseline; gap:8px; font-size:11px;
   font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--muted);
   text-shadow:0 0 6px var(--sunk),0 0 6px var(--sunk)}
@@ -309,6 +314,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
     <div class="tle">
       <p class="eyebrow">Source element set</p>
       <pre id="tleraw">—</pre>
+      <p class="tle-meta" id="tlemeta">—</p>
     </div>
   </header>
 
@@ -326,6 +332,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
       </div>
       <div class="o3-hud">
         <div class="o3-clock"><span id="o3clock">—</span><span class="o3-utc">UTC</span></div>
+        <div class="o3-clock o3-clock2"><span id="o3clocklocal">—</span><span class="o3-utc">ICT · GMT+7</span></div>
         <div class="o3-stat"><span class="k">Elevation at Bangkok</span><span class="o3-el" id="o3el">—</span></div>
       </div>
       <div class="o3-ctrl">
@@ -6956,6 +6963,11 @@ const HOURS = 24, STEP = 10;                     // window length, sample step [
 const N = HOURS*3600/STEP;
 const ICT = 7;                                   // Bangkok is UTC+7, no DST
 
+/* When this catalogue was actually downloaded. Baked in at build time - the page
+   has no network access of its own, so it cannot discover this at runtime. */
+const FETCHED = new Date('2026-09-12T17:09:02.884Z');
+const SOURCE  = 'SatNOGS DB + CelesTrak mirror';
+
 const WORLD = JSON.parse(document.getElementById('worlddata').textContent);
 const RAWTLE = document.getElementById('tledata').textContent;
 
@@ -7013,6 +7025,13 @@ const hmsLocal = d => { const t = new Date(d.getTime()+ICT*3600000);
   return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
 const mmss = s => { const T = Math.round(s);            // round first, or 59.7 s renders as '60s'
   return Math.floor(T/60)+'m '+pad(T%60)+'s'; };
+const ago = ms => {
+  const s = Math.max(0, ms)/1000;
+  if(s < 90) return Math.round(s)+' s';
+  if(s < 5400) return Math.round(s/60)+' min';
+  if(s < 172800) return (s/3600).toFixed(1)+' h';
+  return (s/86400).toFixed(1)+' days';
+};
 const latStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'N':'S');
 const lonStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'E':'W');
 const compass = az => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
@@ -7469,6 +7488,7 @@ function load(entry){
   if(global3D()) Orbit3D.setSat(entry, D.E);
   renderElements();
   renderAccess();
+  paintAges();
   selPass = 0;
   const range = document.getElementById('time');
   range.max = D.pts.length-1; range.value = 0;
@@ -7601,6 +7621,20 @@ for(const re of WANT){ DEFAULT = CAT.findIndex(c=>re.test(c.name)); if(DEFAULT >
 if(DEFAULT < 0) DEFAULT = 0;
 function global3D(){ return window.Orbit3D && Orbit3D.ok(); }
 
+function paintAges(){
+  if(!D) return;
+  const now = Date.now();
+  const epochAgeMs = now - D.E.epoch.getTime();
+  const stale = epochAgeMs > 3*86400000;
+  document.getElementById('tlemeta').innerHTML =
+    'Catalogue fetched <b>' + iso(FETCHED) + '</b> from ' + SOURCE +
+    ' — <b>' + ago(now - FETCHED.getTime()) + '</b> ago.<br>' +
+    'This element set’s epoch is <span class="' + (stale?'stale':'') + '">' +
+    ago(epochAgeMs) + ' old</span>' +
+    (stale ? ' — accuracy degrades with age; re-fetch before quoting pass times.' : '.');
+}
+setInterval(paintAges, 30000);
+
 /* ---- 3D orbit view ------------------------------------------------------- *
  * Optional by design: if WebGL or three.js is missing the page still works,
  * it just says so and leans on the flat map below.                           */
@@ -7608,10 +7642,16 @@ function global3D(){ return window.Orbit3D && Orbit3D.ok(); }
   const canvas = document.getElementById('globe');
   const ok = window.Orbit3D && window.THREE && Orbit3D.init({
     canvas, satellite: satellite,
-    gt: { WORLD, CAT, OBS, MASK, fmtUTC: d => iso(d).replace('Z','') },
+    gt: { WORLD, CAT, OBS, MASK,
+          fmtUTC:  d => iso(d).replace('Z',''),
+          fmtLocal: d => iso(new Date(d.getTime()+ICT*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
-              clock: document.getElementById('o3clock'), el: document.getElementById('o3el') },
-    onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); }
+              clock: document.getElementById('o3clock'),
+              clockLocal: document.getElementById('o3clocklocal'),
+              el: document.getElementById('o3el') },
+    onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); },
+    onFollow: v => { const f = document.getElementById('o3follow');
+                     if(f) f.setAttribute('aria-pressed', v); }
   });
   if(!ok){
     document.getElementById('o3fallback').hidden = false;

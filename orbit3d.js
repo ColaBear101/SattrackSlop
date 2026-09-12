@@ -22,7 +22,7 @@ let curEntry = null, curRec = null, follow = true;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0;
-let onPick = null, started = false;
+let onPick = null, onFollow = null, started = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -281,6 +281,12 @@ function setSat(entry, elements){
   if(labels.name) labels.name.textContent = entry.name;
 }
 
+function setFollowState(v){
+  if(follow === v) return;
+  follow = v;
+  if(onFollow) onFollow(v);                      // the button must track the camera
+}
+
 /* ---- input ---------------------------------------------------------------- */
 function bindInput(canvas){
   const pt = e => ({x: e.touches ? e.touches[0].clientX : e.clientX,
@@ -297,12 +303,13 @@ function bindInput(canvas){
     if(e.touches && e.touches.length === 2 && pinch0){
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                            e.touches[0].clientY-e.touches[1].clientY);
+      setFollowState(false);
       cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * pinch0/d));
       pinch0 = d; e.preventDefault(); return;
     }
     const p = pt(e);
     if(dragging && lastPt){
-      follow = false;
+      setFollowState(false);
       cam0.lon -= (p.x-lastPt.x)*0.32;
       cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
       travel += Math.abs(p.x-lastPt.x) + Math.abs(p.y-lastPt.y);
@@ -429,6 +436,7 @@ function paintLabels(satPos, el){
     } else labels.hover.style.display = 'none';
   }
   if(labels.clock) labels.clock.textContent = GT.fmtUTC(simTime);
+  if(labels.clockLocal) labels.clockLocal.textContent = GT.fmtLocal(simTime);
   if(labels.el){
     const up = el >= GT.MASK;
     labels.el.textContent = (el > -90 ? el.toFixed(1)+'°' : '—');
@@ -459,7 +467,7 @@ global.Orbit3D = {
       build(opts.canvas);
     } catch(e){ return false; }
     labels = opts.labels || {};
-    onPick = opts.onPick;
+    onPick = opts.onPick; onFollow = opts.onFollow;
     started = true;
     requestAnimationFrame(tick);
     return true;
@@ -469,7 +477,7 @@ global.Orbit3D = {
   set time(d){ simTime = new Date(d); },
   setRate(r){ rate = r; },
   setPlaying(p){ playing = p; },
-  setFollow(f){ follow = f; },
+  setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
   showCloud(v){ if(cloudPts) cloudPts.visible = v; },
   showTrack(v){ if(trackLine) trackLine.visible = v; },
@@ -478,7 +486,7 @@ global.Orbit3D = {
   resetView(){
     const g = sat ? sat.gstime(simTime)*DEG : 0;
     cam0 = {lon: GT.OBS.lon + g, lat: GT.OBS.lat + 6, dist: 4.2};
-    follow = false;
+    setFollowState(false);
   },
   ok(){ return started; }
 };

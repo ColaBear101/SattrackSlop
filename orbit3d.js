@@ -15,17 +15,25 @@ const U = 1/RE;                                  // scene units: 1 = Earth radiu
 
 let GT, THREE, sat;
 let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
-let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin;
+let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot;
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let curEntry = null, curRec = null, follow = true;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
-let dragging = false, lastPt = null, pinch0 = 0;
+let dragging = false, lastPt = null, pinch0 = 0, travel = 0;
 let onPick = null, started = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// nudge a theme token toward an earthy target: the flat map's greys read as a
+// grey ball in 3D, where the eye expects a planet
+function mix(hex, target, k){
+  if(!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const a = p(hex), b = p(target);
+  return 'rgb(' + a.map((v,i)=>Math.round(v*(1-k)+b[i]*k)).join(',') + ')';
+}
 const col = n => new THREE.Color(tok(n));
 function ecefToScene(v, s){ return new THREE.Vector3(v.x*s, v.z*s, -v.y*s); }
 function llToScene(lat, lon, r){
@@ -39,7 +47,7 @@ function earthTexture(){
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   const px = lon => (lon+180)/360*W, py = lat => (90-lat)/180*H;
-  g.fillStyle = tok('--ocean'); g.fillRect(0,0,W,H);
+  g.fillStyle = mix(tok('--ocean'), '#0d3552', .30); g.fillRect(0,0,W,H);
   // a touch of depth so the oceans are not a flat slab of one value
   const grad = g.createLinearGradient(0,0,0,H);
   grad.addColorStop(0,'rgba(255,255,255,.07)');
@@ -54,9 +62,10 @@ function earthTexture(){
       g.closePath();
     }
   }
-  g.fillStyle = tok('--land'); g.fill();
-  g.strokeStyle = tok('--landline'); g.lineWidth = 1.6; g.stroke();
-  g.strokeStyle = tok('--grat'); g.lineWidth = 1; g.globalAlpha = .5; g.beginPath();
+  g.fillStyle = mix(tok('--land'), '#4a6247', .34); g.fill();
+  g.strokeStyle = mix(tok('--landline'), '#8aa08c', .30); g.lineWidth = 1.8; g.stroke();
+  // a faint reference cage, not a feature: at full strength it out-shouts the coastlines
+  g.strokeStyle = tok('--grat'); g.lineWidth = 1; g.globalAlpha = .15; g.beginPath();
   for(let lon=-150; lon<=150; lon+=30){ g.moveTo(px(lon),0); g.lineTo(px(lon),H); }
   for(let lat=-60; lat<=60; lat+=30){ g.moveTo(0,py(lat)); g.lineTo(W,py(lat)); }
   g.stroke(); g.globalAlpha = 1;
@@ -118,7 +127,9 @@ function build(canvas){
 
   // ground-bound overlays ride the Earth
   trackLine = mkLine(0, '--track', 1);   earthGroup.add(trackLine);
-  footRing  = mkLine(0, '--observer', 1); earthGroup.add(footRing);
+  footRing = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineDashedMaterial({color: col('--observer'), dashSize:.035, gapSize:.028}));
+  earthGroup.add(footRing);
   bkkPin = new THREE.Group(); earthGroup.add(bkkPin);
   const pinTop = llToScene(GT.OBS.lat, GT.OBS.lon, 1.075);
   bkkPin.add(new THREE.Line(
@@ -126,7 +137,7 @@ function build(canvas){
     new THREE.LineBasicMaterial({color: col('--observer')})));
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 10),
     new THREE.MeshBasicMaterial({color: col('--observer')}));
-  dot.position.copy(pinTop); bkkPin.add(dot);
+  dot.position.copy(pinTop); bkkPin.add(dot); bkkDot = dot;
 
   // inertial overlays
   orbitLine = mkLine(0, '--contact', 2); scene.add(orbitLine);
@@ -163,6 +174,20 @@ function starfield(){
     color: 0xdbe6ee, size: 0.55, sizeAttenuation:false, transparent:true, opacity:.55 })));
 }
 
+// untextured points rasterise as hard squares, which is the single loudest
+// 'this is a WebGL demo' tell
+function discTexture(){
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(S/2,S/2,0, S/2,S/2,S/2);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(.5,'rgba(255,255,255,.95)');
+  gr.addColorStop(.78,'rgba(255,255,255,.35)');
+  gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(S/2,S/2,S/2,0,7); g.fill();
+  return new THREE.CanvasTexture(c);
+}
+
 /* ---- the whole catalogue as a point cloud --------------------------------- */
 function buildCloud(){
   recs = GT.CAT.map(c => { try { const r = sat.twoline2satrec(c.l1, c.l2);
@@ -173,8 +198,8 @@ function buildCloud(){
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(cloudPos,3));
   g.setAttribute('color', new THREE.BufferAttribute(cloudColor,3));
-  cloudMat = new THREE.PointsMaterial({ size: 0.022, vertexColors:true,
-    transparent:true, opacity:.9, sizeAttenuation:true });
+  cloudMat = new THREE.PointsMaterial({ size: 0.030, vertexColors:true, map: discTexture(),
+    transparent:true, opacity:.92, depthWrite:false, sizeAttenuation:true });
   cloudPts = new THREE.Points(g, cloudMat);
   cloudPts.frustumCulled = false;
   scene.add(cloudPts);
@@ -252,6 +277,7 @@ function setSat(entry, elements){
   }
   footRing.geometry.dispose();
   footRing.geometry = new THREE.BufferGeometry().setFromPoints(fp);
+  footRing.computeLineDistances();
   if(labels.name) labels.name.textContent = entry.name;
 }
 
@@ -265,7 +291,7 @@ function bindInput(canvas){
                           e.touches[0].clientY-e.touches[1].clientY);
       return;
     }
-    dragging = true; lastPt = pt(e); canvas.style.cursor = 'grabbing';
+    dragging = true; lastPt = pt(e); travel = 0; canvas.style.cursor = 'grabbing';
   };
   const move = e => {
     if(e.touches && e.touches.length === 2 && pinch0){
@@ -279,6 +305,7 @@ function bindInput(canvas){
       follow = false;
       cam0.lon -= (p.x-lastPt.x)*0.32;
       cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
+      travel += Math.abs(p.x-lastPt.x) + Math.abs(p.y-lastPt.y);
       lastPt = p; e.preventDefault();
     } else if(!e.touches){
       const r = canvas.getBoundingClientRect();
@@ -297,7 +324,10 @@ function bindInput(canvas){
     cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * (1 + Math.sign(e.deltaY)*0.12)));
     e.preventDefault();
   }, {passive:false});
+  // click fires after mouseup however far the pointer travelled, and hoverIdx is
+  // frozen during a drag - so a rotate that began over a point would load it
   canvas.addEventListener('click', () => {
+    if(travel > 5) return;
     if(hoverIdx >= 0 && onPick) onPick(hoverIdx);
   });
 }
@@ -360,6 +390,13 @@ function tick(ts){
                    cam0.dist*Math.sin(la),
                    -cam0.dist*Math.cos(la)*Math.sin(lo));
   cam.lookAt(0,0,0);
+
+  // world-sized markers balloon as you zoom in; scale them with distance so they
+  // stay roughly constant on screen
+  const mk = Math.max(0.30, Math.min(2.4, cam0.dist/4.2));
+  satDot.scale.setScalar(mk); satHalo.scale.setScalar(mk);
+  if(bkkDot) bkkDot.scale.setScalar(mk);
+  if(cloudMat) cloudMat.size = 0.030*Math.max(0.55, Math.min(1.8, mk));
 
   // hover pick against the cloud
   if(mouse && !dragging){
@@ -436,7 +473,13 @@ global.Orbit3D = {
   get follow(){ return follow; },
   showCloud(v){ if(cloudPts) cloudPts.visible = v; },
   showTrack(v){ if(trackLine) trackLine.visible = v; },
-  resetView(){ cam0 = {lon:100, lat:18, dist:4.2}; follow = false; },
+  // the scene is inertial, so a fixed camera longitude is a right ascension and
+  // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
+  resetView(){
+    const g = sat ? sat.gstime(simTime)*DEG : 0;
+    cam0 = {lon: GT.OBS.lon + g, lat: GT.OBS.lat + 6, dist: 4.2};
+    follow = false;
+  },
   ok(){ return started; }
 };
 })(window);

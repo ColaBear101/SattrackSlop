@@ -254,10 +254,12 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   align-items:center; padding:10px 12px;
   background:linear-gradient(0deg,var(--sunk),rgba(0,0,0,0))}
 .o3-ctrl .btn{padding:5px 10px; font-size:11.5px; background:var(--panel); opacity:.94}
-.o3-rates{display:flex; gap:0}
-.o3-rates .btn{border-radius:0; margin-left:-1px}
-.o3-rates .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
-.o3-rates .btn:last-child{border-radius:0 3px 3px 0}
+.o3-rates,.o3-seg{display:flex; gap:0}
+.o3-rates .btn,.o3-seg .btn{border-radius:0; margin-left:-1px}
+.o3-rates .btn:first-child,.o3-seg .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
+.o3-rates .btn:last-child,.o3-seg .btn:last-child{border-radius:0 3px 3px 0}
+.o3-seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted); margin-left:6px}
 .o3-ctrl .btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
 .o3-check{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink2);
   font-family:"IBM Plex Mono",ui-monospace,monospace; background:var(--panel); opacity:.94;
@@ -343,15 +345,18 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
           <button class="btn rate" data-r="600" aria-pressed="false">600×</button>
           <button class="btn rate" data-r="3600" aria-pressed="false">3600×</button>
         </div>
-        <button class="btn" id="o3follow" aria-pressed="true">Follow</button>
-        <button class="btn" id="o3site" aria-pressed="false">Lock on Bangkok</button>
-        <button class="btn" id="o3free">Free camera</button>
         <button class="btn" id="o3epoch">To epoch</button>
+        <span class="o3-seglabel" id="o3camlabel">Camera</span>
+        <div class="o3-seg" role="group" aria-labelledby="o3camlabel">
+          <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
+          <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
+          <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
+        </div>
         <label class="o3-check"><input type="checkbox" id="o3cloud" checked> Whole catalogue</label>
       </div>
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
-    <p class="o3-hint">Drag to orbit the camera, scroll to zoom, hover a point for its name, click it to load it. Follow rides with the spacecraft; Lock on Bangkok holds the ground site centred as the Earth turns. Dragging releases either. Sunlight comes from the real solar direction, so the day/night line is the true terminator.</p>
+    <p class="o3-hint">Drag to orbit the camera, scroll to zoom, hover a point for its name, click it to load it. Camera: Satellite rides with the spacecraft, Bangkok holds the ground site centred while the planet turns beneath it, Free lets you look around. Dragging drops back to Free. Sunlight comes from the real solar direction, so the day/night line is the true terminator.</p>
   </section>
 
   <!-- (a) ------------------------------------------------------------------ -->
@@ -7651,10 +7656,8 @@ setInterval(paintAges, 30000);
               clockLocal: document.getElementById('o3clocklocal'),
               el: document.getElementById('o3el') },
     onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); },
-    onFollow: v => { const f = document.getElementById('o3follow');
-                     if(f) f.setAttribute('aria-pressed', v); },
-    onSite:   v => { const s = document.getElementById('o3site');
-                     if(s) s.setAttribute('aria-pressed', v); }
+    onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },
+    onSite:   () => { if(window.__paintCamMode) window.__paintCamMode(); }
   });
   if(!ok){
     document.getElementById('o3fallback').hidden = false;
@@ -7673,16 +7676,20 @@ setInterval(paintAges, 30000);
     document.querySelectorAll('.o3-rates .rate').forEach(x=>x.setAttribute('aria-pressed', x===b));
     Orbit3D.setRate(+b.dataset.r);
   }));
-  const fol = document.getElementById('o3follow');
-  fol.addEventListener('click', ()=>{
-    const on = !(fol.getAttribute('aria-pressed')==='true');
-    fol.setAttribute('aria-pressed', on); Orbit3D.setFollow(on);
-  });
-  const site = document.getElementById('o3site');
-  site.addEventListener('click', ()=>{
-    Orbit3D.setSite(!(site.getAttribute('aria-pressed')==='true'));
-  });
-  document.getElementById('o3free').addEventListener('click', ()=>Orbit3D.freeCam());
+  // the camera has one mode with three values; the exclusion logic already
+  // enforced that, so the control should say it rather than imply three switches
+  const cams = [...document.querySelectorAll('.o3-seg .cam')];
+  function paintMode(){
+    const m = Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
+    cams.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
+  }
+  cams.forEach(b => b.addEventListener('click', ()=>{
+    if(b.dataset.mode === 'sat')      Orbit3D.setFollow(true);
+    else if(b.dataset.mode === 'site') Orbit3D.setSite(true);
+    else                               Orbit3D.freeCam();
+    paintMode();
+  }));
+  window.__paintCamMode = paintMode;
   document.getElementById('o3epoch').addEventListener('click', ()=>{ Orbit3D.time = D.E.epoch; });
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
 })();

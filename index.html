@@ -8,8 +8,8 @@
   --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
   --muted:#6B7C85; --rule:#CBD6DB;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
-  --ocean:#DFE6E9; --land:#BAC8CF; --landline:#9AACB5; --grat:#CDD8DD;
-  --night:rgba(16,34,44,.20); --day:rgba(255,250,232,.40);
+  --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
+  --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22);
   --swday:#E6ECEE; --swnight:#BCC7CD; --ring:#A9B9C1;
   --shadow:0 1px 2px rgba(14,26,31,.06), 0 10px 26px -18px rgba(14,26,31,.34);
 }
@@ -18,8 +18,8 @@
     --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
     --muted:#748891; --rule:#22313A;
     --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
-    --ocean:#091319; --land:#26353F; --landline:#3D525E; --grat:#1C2933;
-    --night:rgba(0,0,0,.34); --day:rgba(168,214,240,.085);
+    --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
+    --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
     --swday:#17242C; --swnight:#070D11; --ring:#374954;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
   }
@@ -28,8 +28,8 @@
   --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
   --muted:#748891; --rule:#22313A;
   --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
-  --ocean:#091319; --land:#26353F; --landline:#3D525E; --grat:#1C2933;
-  --night:rgba(0,0,0,.34); --day:rgba(168,214,240,.085);
+  --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
+  --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
   --swday:#17242C; --swnight:#070D11; --ring:#374954;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
 }
@@ -71,8 +71,19 @@ select:focus-visible, .btn:focus-visible, input:focus-visible, [tabindex]:focus-
 .tle{background:var(--sunk); border:1px solid var(--rule); border-radius:4px;
   padding:13px 15px; display:flex; flex-direction:column; gap:7px; min-width:0}
 .tle pre{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px;
-  line-height:1.75; color:var(--ink2); white-space:pre; overflow-x:auto; padding-bottom:2px}
+  line-height:1.75; color:var(--ink2); white-space:pre; overflow-x:auto; padding-bottom:2px;
+  background-image:
+    linear-gradient(90deg,var(--sunk),rgba(0,0,0,0)),
+    linear-gradient(270deg,var(--sunk),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.16),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.16),rgba(0,0,0,0));
+  background-position:0 0, 100% 0, 0 0, 100% 0;
+  background-repeat:no-repeat;
+  background-size:26px 100%, 26px 100%, 11px 100%, 11px 100%;
+  background-attachment:local, local, scroll, scroll}
 .tle pre b{color:var(--ink); font-weight:600}
+.only-narrow{display:none}
+@media (max-width:900px){.only-narrow{display:inline}}
 
 /* ---- section shell ------------------------------------------------------- */
 section{display:flex; flex-direction:column; gap:16px}
@@ -297,7 +308,7 @@ footer{color:var(--muted); font-size:12px; border-top:1px solid var(--rule); pad
         </div>
       </div>
     </div>
-    <p class="eyebrow">Access windows — click a row to load it into the sky plot · scroll sideways for more columns</p>
+    <p class="eyebrow">Access windows — click a row to load it into the sky plot<span class="only-narrow"> · scroll sideways for more columns</span></p>
     <div class="tablewrap">
       <table>
         <thead><tr>
@@ -1247,9 +1258,9 @@ function renderAccess(){
   const total = D.totalS, P = D.passes;
   const big = document.getElementById('totalbig');
   big.innerHTML = (total/60).toFixed(1)+'<span> min</span>';
-  const h = Math.floor(total/3600), m = Math.round(total%3600/60);
+  const h = Math.floor(total/3600), m = Math.floor(total%3600/60), s = Math.round(total%60);
   document.getElementById('totalsub').textContent =
-    (h ? h+' h '+m+' min' : Math.round(total)+' seconds')+' in view across the day — '+
+    (h ? h+' h '+m+' min' : m+' min '+s+' s')+' in view across the day — '+
     (total/864).toFixed(2)+'% of 24 hours.';
   document.getElementById('npasses').textContent = String(P.length);
   document.getElementById('longest').textContent = P.length ? mmss(Math.max(...P.map(p=>p.dur))) : '—';
@@ -1312,9 +1323,11 @@ function drawSky(p){
   g.textAlign='center'; g.textBaseline='middle';
   ['N','E','S','W'].forEach((d,i)=>{ const a=i*90*RAD;
     halo(d, cx+(R+12)*Math.sin(a), cy-(R+12)*Math.cos(a), tok('--ink2'), panel); });
+  // ring labels sit on the SW diagonal, clear of the N cardinal where AOS/LOS cluster
   g.font = '500 10px "IBM Plex Mono", monospace';
-  halo('30°', cx+13, cy-R*60/90, tok('--muted'), tok('--sunk'));
-  halo('60°', cx+13, cy-R*30/90, tok('--muted'), tok('--sunk'));
+  const ringLabel = (txt, e) => { const r = R*(90-e)/90, a = 225*RAD;
+    halo(txt, cx + r*Math.sin(a), cy - r*Math.cos(a), tok('--muted'), tok('--sunk')); };
+  ringLabel('30°', 30); ringLabel('60°', 60);
   if(!p) return;
   const pt = s => { const r = R*(90-s.el)/90, a = s.az*RAD;
     return [cx + r*Math.sin(a), cy - r*Math.cos(a)]; };

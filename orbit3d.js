@@ -18,11 +18,11 @@ let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudM
 let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot;
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
-let curEntry = null, curRec = null, follow = true;
+let curEntry = null, curRec = null, follow = true, siteLock = false;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0;
-let onPick = null, onFollow = null, started = false;
+let onPick = null, onFollow = null, onSite = null, started = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -284,7 +284,21 @@ function setSat(entry, elements){
 function setFollowState(v){
   if(follow === v) return;
   follow = v;
+  if(v && siteLock){ siteLock = false; if(onSite) onSite(false); }
   if(onFollow) onFollow(v);                      // the button must track the camera
+}
+// Holding a ground site needs a mode, not a one-shot aim: the scene is inertial,
+// so a fixed camera longitude is a right ascension and the site rotates out of
+// frame within seconds. This re-aims every frame by the current GMST.
+function setSiteState(v){
+  if(siteLock === v) return;
+  siteLock = v;
+  if(v){
+    if(follow){ follow = false; if(onFollow) onFollow(false); }
+    cam0.lat = GT.OBS.lat + 6;
+    cam0.dist = Math.min(cam0.dist, 4.2);
+  }
+  if(onSite) onSite(v);
 }
 
 /* ---- input ---------------------------------------------------------------- */
@@ -303,13 +317,13 @@ function bindInput(canvas){
     if(e.touches && e.touches.length === 2 && pinch0){
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                            e.touches[0].clientY-e.touches[1].clientY);
-      setFollowState(false);
+      setFollowState(false); setSiteState(false);
       cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * pinch0/d));
       pinch0 = d; e.preventDefault(); return;
     }
     const p = pt(e);
     if(dragging && lastPt){
-      setFollowState(false);
+      setFollowState(false); setSiteState(false);
       cam0.lon -= (p.x-lastPt.x)*0.32;
       cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
       travel += Math.abs(p.x-lastPt.x) + Math.abs(p.y-lastPt.y);
@@ -387,7 +401,9 @@ function tick(ts){
   }
 
   // camera
-  if(follow && satPos){
+  if(siteLock){
+    cam0.lon = GT.OBS.lon + gmst*DEG;             // ride the Earth's rotation
+  } else if(follow && satPos){
     const r = satPos.length();
     cam0.lat = Math.asin(satPos.y/r)*DEG;
     cam0.lon = Math.atan2(-satPos.z, satPos.x)*DEG;
@@ -467,7 +483,7 @@ global.Orbit3D = {
       build(opts.canvas);
     } catch(e){ return false; }
     labels = opts.labels || {};
-    onPick = opts.onPick; onFollow = opts.onFollow;
+    onPick = opts.onPick; onFollow = opts.onFollow; onSite = opts.onSite;
     started = true;
     requestAnimationFrame(tick);
     return true;
@@ -483,11 +499,9 @@ global.Orbit3D = {
   showTrack(v){ if(trackLine) trackLine.visible = v; },
   // the scene is inertial, so a fixed camera longitude is a right ascension and
   // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
-  resetView(){
-    const g = sat ? sat.gstime(simTime)*DEG : 0;
-    cam0 = {lon: GT.OBS.lon + g, lat: GT.OBS.lat + 6, dist: 4.2};
-    setFollowState(false);
-  },
+  setSite(v){ setSiteState(!!v); },
+  get site(){ return siteLock; },
+  freeCam(){ setFollowState(false); setSiteState(false); },
   ok(){ return started; }
 };
 })(window);

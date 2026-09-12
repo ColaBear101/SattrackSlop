@@ -344,13 +344,14 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
           <button class="btn rate" data-r="3600" aria-pressed="false">3600×</button>
         </div>
         <button class="btn" id="o3follow" aria-pressed="true">Follow</button>
-        <button class="btn" id="o3reset">Frame Bangkok</button>
+        <button class="btn" id="o3site" aria-pressed="false">Lock on Bangkok</button>
+        <button class="btn" id="o3free">Free camera</button>
         <button class="btn" id="o3epoch">To epoch</button>
         <label class="o3-check"><input type="checkbox" id="o3cloud" checked> Whole catalogue</label>
       </div>
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
-    <p class="o3-hint">Drag to orbit the camera, scroll to zoom, hover a point for its name, click it to load it. Sunlight comes from the real solar direction, so the day/night line is the true terminator.</p>
+    <p class="o3-hint">Drag to orbit the camera, scroll to zoom, hover a point for its name, click it to load it. Follow rides with the spacecraft; Lock on Bangkok holds the ground site centred as the Earth turns. Dragging releases either. Sunlight comes from the real solar direction, so the day/night line is the true terminator.</p>
   </section>
 
   <!-- (a) ------------------------------------------------------------------ -->
@@ -7651,7 +7652,9 @@ setInterval(paintAges, 30000);
               el: document.getElementById('o3el') },
     onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); },
     onFollow: v => { const f = document.getElementById('o3follow');
-                     if(f) f.setAttribute('aria-pressed', v); }
+                     if(f) f.setAttribute('aria-pressed', v); },
+    onSite:   v => { const s = document.getElementById('o3site');
+                     if(s) s.setAttribute('aria-pressed', v); }
   });
   if(!ok){
     document.getElementById('o3fallback').hidden = false;
@@ -7675,9 +7678,11 @@ setInterval(paintAges, 30000);
     const on = !(fol.getAttribute('aria-pressed')==='true');
     fol.setAttribute('aria-pressed', on); Orbit3D.setFollow(on);
   });
-  document.getElementById('o3reset').addEventListener('click', ()=>{
-    Orbit3D.resetView(); fol.setAttribute('aria-pressed','false');
+  const site = document.getElementById('o3site');
+  site.addEventListener('click', ()=>{
+    Orbit3D.setSite(!(site.getAttribute('aria-pressed')==='true'));
   });
+  document.getElementById('o3free').addEventListener('click', ()=>Orbit3D.freeCam());
   document.getElementById('o3epoch').addEventListener('click', ()=>{ Orbit3D.time = D.E.epoch; });
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
 })();

@@ -30,24 +30,43 @@ The picker at the top right searches **2,158 spacecraft** by name or NORAD ID �
 
 | Element | Symbol | Value | Where it comes from |
 |---|---|---|---|
-| Semi-major axis | a | **6741.396 km** | derived from mean motion, line 2 cols 53–63 |
+| Semi-major axis | a | **6741.908 km** | recovered by SGP4 from the mean motion |
 | Eccentricity | e | **0.0007959** | line 2 cols 27–33 (leading decimal implied) |
 | Inclination | i | **51.6258°** | line 2 cols 9–16 |
 | RAAN | Ω | **213.5681°** | line 2 cols 18–25 |
 | Argument of perigee | ω | **152.6345°** | line 2 cols 35–42 |
 | Mean anomaly at epoch | M | **207.5073°** | line 2 cols 44–51 |
 
-Five of the six are stored literally in the TLE. The semi-major axis is not — it is computed
-from the mean motion n = 15.68476422 rev/day:
+Five of the six are stored literally in the TLE. The semi-major axis is not, and getting it right
+takes more than one line of algebra.
+
+The obvious route is Kepler's third law applied to the TLE's mean motion:
 
 ```
 n = 15.68476422 rev/day × 2π / 86400 = 1.140651e-3 rad/s
-a = (μ / n²)^(1/3),  μ = 398600.4418 km³/s²   →   a = 6741.396 km
+a = (μ / n²)^(1/3),  μ = 398600.4418 km³/s²   →   6741.396 km
 ```
 
-Derived: period 91.81 min, altitude 357.9–368.6 km, near-circular. Note the drag term
-`ndot = .00056149` — three orders of magnitude larger than a Landsat's. At 360 km the atmosphere
-is still biting, and this element set goes stale fast.
+**That answer is wrong.** The mean motion in a TLE is the *Kozai* mean motion: it already carries a
+J2 correction, so feeding it to an unperturbed two-body law double-counts the oblateness. SGP4
+un-Kozai's it during initialisation and recovers the Brouwer semi-major axis, which is the real one:
+
+```
+a = 6741.908 km            (SGP4 recovered value, on WGS-72 where the theory is defined)
+error in the naive form:     −512 m
+```
+
+The error depends on inclination through a (3cos²i − 1) term, so it nearly vanishes at 54.7° — which
+is why KNACKSAT-2 at 51.63° is a best case — and is worst for equatorial and polar orbits. Across the
+2158-satellite catalogue the median error is **2.95 km**, the worst **6.38 km**, and LANDSAT 9 below
+is off by 2.9 km.
+
+Derived: nodal period 91.75 min, measured node-to-node rather than as 86400/n, which runs 3.7 s
+long. Altitude 358.0–383.8 km over one revolution, taken from the propagation rather than from
+a(1∓e) − Rₑ: the mean-element form ignores the J2 short-period radial term, understating the real
+swing here by about 15 km, and on a highly eccentric object it returns a perigee altitude *below the
+surface*. Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a
+Landsat's. At 360 km the atmosphere is still biting, and this element set goes stale fast.
 
 ## (b) Ground track
 
@@ -73,16 +92,22 @@ Fewer passes than a polar satellite but much better ones: both climb above 40°,
 manages 31.5° at best. The low orbit is the reason for both — a 14.5° access footprint means the
 spacecraft must pass close overhead to be seen at all, but when it does, it is only ~500 km away.
 
-Elevation is sampled every 10 s; each crossing of the 5° mask is then bracketed and bisected to
-1 ms, so the total is not quantised by the sample step. Geometry only — no refraction, terrain or
-link budget, and no daylight/eclipse condition (this is radio visibility, not naked-eye).
+Elevation is scanned every 4 s and each crossing of the 5° mask is then bracketed and bisected to
+1 ms, so the total is not quantised by the scan. The scan has to be finer than the shortest pass
+worth reporting: bisection only refines a crossing it has already bracketed, so at a 10 s step a
+6-second pass is not merely imprecise, it is invisible.
+
+Geometry only — no refraction, terrain or link budget, and no daylight/eclipse condition (this is
+radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 5° it is about
+9.9 arcminutes, which adds roughly **8.4 s (+0.93 %)** to the total and moves each horizon crossing
+by about 2 s. Worth knowing when reading a figure quoted to 0.1 s.
 
 ## For comparison — LANDSAT 9 (the Earth Resources answer)
 
 Selectable in the picker. NORAD 49260, epoch 2026-09-12 04:49:46.684 UTC, sun-synchronous at
 98.2207°:
 
-- a = 7080.659 km, e = 0.0001484, i = 98.2207°, Ω = 324.2909°, ω = 100.3913°, M = 259.7453°
+- a = 7077.743 km, e = 0.0001484, i = 98.2207°, Ω = 324.2909°, ω = 100.3913°, M = 259.7453°
 - **37.74 minutes over 4 passes**, best elevation 31.50° at 14:47 UTC
 
 ## Verification
@@ -90,9 +115,15 @@ Selectable in the picker. NORAD 49260, epoch 2026-09-12 04:49:46.684 UTC, sun-sy
 An independent second implementation (own WGS-84 ECEF→ENU elevation, own TLE column parsing,
 own Kepler-third-law semi-major axis) was cross-checked against this one:
 
-- All six elements plus period and apsis altitudes agree to better than 1e-12 relative.
+- The five elements read straight from the TLE agree to better than 1e-12 relative. The
+  semi-major axis, the period and the apsis altitudes are now taken from SGP4 rather than from
+  mean-element algebra, for the reasons in section (a), so they deliberately differ from the
+  harness's naive values.
 - Topocentric elevation agrees with `satellite.js` look angles to 2.6e-10 degrees over 200
-  samples across the day — pure floating-point noise, no systematic bias.
+  samples across the day, and with a from-scratch WGS-84 topocentric implementation to 1.1e-9
+  degrees over 24 h — floating-point noise, no systematic bias.
+- The visibility total is stable to 10 milliarcseconds across scan steps of 10 s, 5 s, 1 s and
+  0.25 s, and the culmination solver matches a 200 000-point brute force to 0 ms.
 - A deliberately dumb brute-force check — 86 400 one-second samples, counting those above 5°:
   - KNACKSAT-2: **899 s in 2 runs** vs this program's **899.7 s in 2 passes**
   - LANDSAT 9: **2265 s in 4 runs** vs this program's **2264.5 s in 4 passes**

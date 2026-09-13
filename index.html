@@ -683,8 +683,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div>
         <h3>Propagation</h3>
         <p>SGP4 through <code>satellite.js</code>, the same analytic theory the element set was fitted
-        to — TLEs are only meaningful with SGP4/SDP4. Positions come out in TEME, are rotated to ECEF
-        by Greenwich mean sidereal time, then converted to geodetic sub-satellite points on WGS-84.</p>
+        to — TLEs are only meaningful with SGP4/SDP4. Positions come out in TEME and are rotated by
+        Greenwich mean sidereal time, which is the rotation TEME is defined against; that lands in the
+        pseudo-Earth-fixed frame, about 10 m from true ITRF because polar motion is not applied. Sub-satellite
+        points are then geodetic on WGS-84. SGP4 itself runs in WGS-72, where the theory is defined.</p>
       </div>
       <div>
         <h3>Visibility</h3>
@@ -702,7 +704,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
     <footer>
       <span id="footepoch">—</span>
-      <span>SGP4 · WGS-84 · angles in degrees</span>
+      <span>SGP4 (WGS-72) · geodetic on WGS-84 · angles in degrees</span>
       <span>Element sets degrade with age; re-fetch before quoting pass times far from epoch.</span>
     </footer>
   </section>
@@ -7203,7 +7205,12 @@ const MASK = 5;                                  // deg
    lasts minutes, so 30 s still brackets every crossing. */
 let spanH = 24;                                  // window length, hours
 let winStart = null;                             // window start, ms (null = now)
-const stepFor = hrs => hrs <= 48 ? 10 : 30;      // sample step, seconds
+const stepFor = hrs => hrs <= 48 ? 10 : 30;      // display sample step, seconds
+/* The horizon scan runs finer than the display sampling: bisection only refines
+   a crossing it has already bracketed, so a pass shorter than the step is not
+   merely imprecise, it is invisible. A 6.0 s pass of FENGYUN 3E was being lost
+   at 10 s. */
+const passStepFor = hrs => hrs <= 48 ? 4 : 15;
 const ICT = 7;                                   // Bangkok is UTC+7, no DST
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
@@ -7398,7 +7405,64 @@ function compute(entry, t0ms, hours){
   const N = Math.round(hours*3600/step);
   for(let k=0;k<=N;k++){ const s = sample(satrec,start,k,step); if(s) pts.push(s); }
   if(!pts.length) throw new Error('no propagable samples for '+entry.name);
-  const passes = findPasses(satrec, start.getTime(), end.getTime(), step);
+
+  /* The TLE mean motion is the KOZAI mean motion, so a = (mu/n^2)^(1/3) is not
+     the orbit's semi-major axis - it is short by a few km, and by up to 6.4 km
+     in this catalogue. SGP4 un-Kozai's it during init and leaves the recovered
+     Brouwer value in satrec.a, in Earth radii, on the WGS-72 sphere the theory
+     is defined against. Use that instead of re-deriving it badly. */
+  if(isFinite(satrec.a) && satrec.a > 0.9){
+    E.a = satrec.a * 6378.135;                     // WGS-72 Re: SGP4's own constant set
+    E.aSource = 'sgp4';
+  }
+
+  /* Nodal period, measured rather than assumed: 86400/n is the mean-motion
+     period and runs a few seconds long against the actual node-to-node time. */
+  const nodeCross = ms => {
+    const pv = satellite.propagate(satrec, new Date(ms));
+    if(!pv || !pv.position) return null;
+    return satellite.eciToGeodetic(pv.position, satellite.gstime(new Date(ms))).latitude;
+  };
+  (function(){
+    const approx = 86400/E.n, t0 = start.getTime();
+    const hits = [];
+    let prev = nodeCross(t0);
+    for(let t = t0 + 20000; t < t0 + approx*2200 && hits.length < 2; t += 20000){
+      const cur = nodeCross(t);
+      if(prev !== null && cur !== null && prev < 0 && cur >= 0){   // northbound crossing
+        let lo = t - 20000, hi = t, flo = prev;
+        for(let k=0;k<40 && hi-lo>1;k++){
+          const mid=(lo+hi)/2, fm=nodeCross(mid);
+          if(fm === null) break;
+          if((flo<0) === (fm<0)){ lo=mid; flo=fm; } else hi=mid;
+        }
+        hits.push((lo+hi)/2);
+      }
+      prev = cur;
+    }
+    if(hits.length === 2) E.period = (hits[1]-hits[0])/1000;
+  })();
+
+  /* Apsis altitudes from the propagation, not from a(1 -+ e) - Re. The mean-
+     element form ignores the J2 short-period radial term (several km in LEO)
+     and goes NEGATIVE on eccentric objects: CLUSTER II-FM8 printed a perigee
+     altitude of -142.6 km, below the surface. */
+  (function(){
+    let lo = Infinity, hi = -Infinity;
+    const P = E.period, t0 = start.getTime();
+    // an eccentric orbit sweeps perigee fast; sample harder so the minimum
+    // is not stepped over
+    const N2 = Math.round(720 + 3000*Math.min(0.95, E.ecc));
+    for(let k=0;k<=N2;k++){
+      const d = new Date(t0 + k*P*1000/N2);
+      const pv = satellite.propagate(satrec, d);
+      if(!pv || !pv.position) continue;
+      const g = satellite.eciToGeodetic(pv.position, satellite.gstime(d)).height;
+      if(g < lo) lo = g; if(g > hi) hi = g;
+    }
+    if(isFinite(lo) && isFinite(hi)){ E.perigeeAlt = lo; E.apogeeAlt = hi; E.altMeasured = true; }
+  })();
+  const passes = findPasses(satrec, start.getTime(), end.getTime(), passStepFor(hours));
   const totalS = passes.reduce((s,p)=>s+p.dur, 0);
   const meanAlt = pts.reduce((s,p)=>s+p.alt,0)/pts.length;
   // 5° access footprint: central angle from the observer, at mean altitude
@@ -7416,13 +7480,15 @@ function renderElements(){
   const E = D.E;
   const sunSync = E.inc > 95 && E.inc < 104;
   const cells = [
-    ['a','Semi-major axis', E.a.toFixed(3), 'km',
-      'Mean radius of the orbit — '+(E.a-RE).toFixed(1)+' km above a spherical Earth.',
-      'derived from line 2 cols 53–63 (n)'],
+    ['a','Semi-major axis', E.a.toFixed(1), 'km',
+      E.aSource === 'sgp4'
+        ? 'Recovered by SGP4 from the mean motion. Half the major axis — not a mean radius, which is a(1+e²/2).'
+        : 'From the mean motion as (μ/n²)^⅓.',
+      E.aSource === 'sgp4' ? 'SGP4 Brouwer value, WGS-72' : 'derived from line 2 cols 53–63 (n)'],
     ['e','Eccentricity', E.ecc.toFixed(7), '',
-      E.ecc < 0.002 ? 'Effectively circular: apogee and perigee differ by '
-        +(E.apogeeAlt-E.perigeeAlt).toFixed(1)+' km.'
-        : 'Apogee '+E.apogeeAlt.toFixed(0)+' km, perigee '+E.perigeeAlt.toFixed(0)+' km.',
+      (E.ecc < 0.002 ? 'Effectively circular. Altitude still swings '
+        +(E.apogeeAlt-E.perigeeAlt).toFixed(1)+' km over a revolution, mostly from J2.'
+        : 'Altitude runs '+E.perigeeAlt.toFixed(0)+' to '+E.apogeeAlt.toFixed(0)+' km.'),
       'line 2 cols 27–33, leading decimal implied'],
     ['i','Inclination', E.inc.toFixed(4), '°',
       (E.inc>90?'Retrograde. ':'Prograde. ')+(sunSync?'Sun-synchronous — the node drifts ~0.986°/day to hold a fixed local solar time.':'Ground track reaches ±'+Math.min(90,E.inc>90?180-E.inc:E.inc).toFixed(1)+'° latitude.'),
@@ -7444,10 +7510,10 @@ function renderElements(){
 
   const dv = [
     ['Mean motion', D.E.n.toFixed(8)+' rev/day'],
-    ['Orbital period', (D.E.period/60).toFixed(2)+' min'],
+    ['Nodal period', (D.E.period/60).toFixed(2)+' min'],
     ['Mean altitude', D.meanAlt.toFixed(1)+' km'],
-    ['Perigee alt.', D.E.perigeeAlt.toFixed(1)+' km'],
-    ['Apogee alt.', D.E.apogeeAlt.toFixed(1)+' km'],
+    ['Min altitude', D.E.perigeeAlt.toFixed(1)+' km'],
+    ['Max altitude', D.E.apogeeAlt.toFixed(1)+' km'],
     ['Revs in 24 h', D.E.n.toFixed(2)],
     ['B* drag term', D.E.bstar.toExponential(4)+' 1/ER'],
     ['Rev. no. @ epoch', String(D.E.rev)]

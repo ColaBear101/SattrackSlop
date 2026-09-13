@@ -423,7 +423,11 @@ function updateLive(date){
       // one symbol for the angle either way, with the reference named, rather
       // than switching between nu and u and leaving the reader to notice
       live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from perigee');
-      const eShown = (el && isFinite(el.ecc)) ? el.ecc : eMag;   // matches the elements card
+      /* Print the OSCULATING magnitude: this label sits on the osculating
+         arrow, whose length varies by a factor of two and a half over one
+         revolution, so quoting the TLE's constant mean e beside it described a
+         different quantity. The elements card still carries the mean value. */
+      const eShown = eMag;
       if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
         ? 'e = '+eShown.toFixed(7)+'  (perigee direction unstable)'
         : 'e = '+eShown.toFixed(7));
@@ -431,9 +435,11 @@ function updateLive(date){
   } else {
     live.nu.visible = live.nuLbl.visible = false;
   }
-  /* Velocity, split in the plane. The cross-track component of a Keplerian
-     orbit is identically zero - v always lies in the orbit plane - so the
-     informative split is along the local horizontal and the local vertical:
+  /* Velocity, split in the plane. Note the cross-track component here is zero
+     by construction, not by physics: h is defined as r x v, so v.h vanishes for
+     any pair of vectors whatever. A real cross-track term would have to be
+     measured against the MEAN-element orbit normal, from i and RAAN. What this
+     frame can show is the useful split - local horizontal against local vertical:
        v_t  transverse, perpendicular to r, the direction of travel
        v_n  radial, along r, which is zero exactly at perigee and apogee      */
   const vMag = Math.hypot(V[0],V[1],V[2]);

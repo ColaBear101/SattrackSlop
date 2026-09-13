@@ -222,7 +222,7 @@ function updateCloud(date){
   // huge blob across the view - a high orbit at low zoom does this constantly.
   // Fade anything that close, and take it out of the pick list while faded.
   const camPos = cam.position, camR = camPos.length();
-  const cullR = Math.max(0.40, 0.30*camR), fadeIn = cullR*0.55;
+  const cullR = Math.max(0.40, 0.30*camR);
   for(let i=0;i<recs.length;i++){
     const r = recs[i]; let ok = false;
     if(r){
@@ -238,14 +238,15 @@ function updateCloud(date){
     if(!ok){ cloudPos[i*3] = cloudPos[i*3+1] = cloudPos[i*3+2] = 1e6; }
     cloudValid[i] = ok;
     const c = (curEntry && GT.CAT[i] === curEntry) ? hot : base;
-    let dim = (curEntry && GT.CAT[i] === curEntry) ? 1 : (i===hoverIdx ? 1 : .55);
+    const dim = (curEntry && GT.CAT[i] === curEntry) ? 1 : (i===hoverIdx ? 1 : .55);
     let culled = false;
     if(ok){
       const dxc = cloudPos[i*3]-camPos.x, dyc = cloudPos[i*3+1]-camPos.y, dzc = cloudPos[i*3+2]-camPos.z;
-      const dc = Math.sqrt(dxc*dxc + dyc*dyc + dzc*dzc);
-      if(dc < cullR){
-        const f = Math.max(0, (dc - fadeIn)/(cullR - fadeIn));
-        dim *= f; culled = f < 0.2;
+      if(dxc*dxc + dyc*dyc + dzc*dzc < cullR*cullR){
+        // PointsMaterial carries no per-vertex alpha, so fading the colour just
+        // painted a black disc over a lit Earth. Take the point out instead.
+        cloudPos[i*3] = cloudPos[i*3+1] = cloudPos[i*3+2] = 1e6;
+        culled = true;
       }
     }
     nearCull[i] = culled;

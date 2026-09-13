@@ -1,3 +1,5 @@
+<!doctype html>
+<html lang="en">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Ground Track Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,6 +14,7 @@
   --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
   --muted:#536169; --rule:#CBD6DB;
   --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
+  --chromeedge:#7E868A;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
   --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
   --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22);
@@ -24,6 +27,8 @@
     --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
     --muted:#8096A1; --rule:#22313A;
     --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+  --chromeedge:#536E80;
+    --chromeedge:#536E80;
     --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
     --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
     --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
@@ -36,6 +41,7 @@
   --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
   --muted:#8096A1; --rule:#22313A;
   --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+  --chromeedge:#536E80;
   --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
   --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
   --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
@@ -61,13 +67,19 @@ p{margin:0}
 
 /* ===== the instrument ===================================================== */
 .app{
-  display:grid; grid-template-rows:auto minmax(0,1fr) auto auto;
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto;
   height:100svh; min-height:560px; max-height:1100px;
   background:var(--chrome); color:var(--chromeink);
   border-bottom:1px solid var(--chromerule);
 }
 .bar{display:flex; align-items:center; gap:14px; padding:10px 16px; min-width:0}
 .bar-top{border-bottom:1px solid var(--chromerule); flex-wrap:wrap; row-gap:8px}
+.purpose{font-size:12.5px; color:var(--ink2); margin:0 0 0 2px; flex:0 1 auto;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.findbox{display:flex; flex-direction:column; gap:4px; flex:0 0 auto; margin-left:auto}
+.bar-top{padding-block:8px}
+.ident{flex:0 1 auto; gap:6px 12px}
+.ident h1{font-size:clamp(18px,2.1vw,23px)}
 .ident{display:flex; align-items:baseline; gap:10px 14px; flex-wrap:wrap; min-width:0; flex:1 1 320px}
 .ident h1{font-size:clamp(19px,2.4vw,26px); font-weight:700; letter-spacing:-.025em; line-height:1.1}
 .ident .ids{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline;
@@ -80,7 +92,10 @@ p{margin:0}
 .age-chip .dot{width:5px; height:5px; border-radius:50%; background:currentColor}
 
 /* ---- stage: viewport + rail ---------------------------------------------- */
-.stage{display:grid; grid-template-columns:minmax(0,1fr) 336px; min-height:0}
+/* the globe gets the whole stage: the rail it used to share with was 1311px of
+   content in a 708px column, and four of its six sections duplicated the report */
+.stage{display:block; min-height:0; position:relative}
+.stage > .viewport{height:100%}
 .viewport{position:relative; min-height:0; background:var(--void); overflow:hidden}
 canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   cursor:grab; touch-action:none}
@@ -104,19 +119,21 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .hud .elev .v{font-size:14px; color:#CFDDE4; font-variant-numeric:tabular-nums}
 .hud .elev .v.up{color:#F0A33C; font-weight:600}
 
-.viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
-.viewport .trailseg{position:absolute; top:52px; right:12px; display:flex; align-items:center; gap:8px}
-.viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
-  align-items:flex-end; gap:5px}
-.viewport .layerseg .seglabel{margin-right:2px}
-.layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
+.viewbar{position:absolute; left:14px; bottom:36px; z-index:5;
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px}
+.vb-group{display:flex; flex-direction:column; gap:4px}
+.layerseg{position:relative}
+
+.layerpanel{position:absolute; left:0; bottom:calc(100% + 6px); z-index:6; min-width:236px;
+  display:flex; flex-direction:column; gap:1px; padding:5px;
   background:rgba(10,16,20,.72); border:1px solid rgba(180,200,212,.28); border-radius:3px;
   backdrop-filter:blur(6px)}
-.layerpanel label{display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:2px;
+.layerpanel[hidden]{display:none}
+.layerpanel label{display:flex; align-items:center; gap:9px; padding:8px; border-radius:2px;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:#C6D6DE;
   cursor:pointer; min-height:30px; white-space:nowrap}
 .layerpanel label:hover{background:rgba(180,200,212,.14); color:#EAF2F6}
-.layerpanel input{accent-color:var(--contact); margin:0; width:14px; height:14px}
+.layerpanel input{accent-color:var(--contact); margin:0; width:17px; height:17px; flex:none}
 /* two variants: over the globe it needs a dark casing and a fixed light ink;
    in the chrome bars it must read against a light surface instead */
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
@@ -124,8 +141,8 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .viewport .seglabel{color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
 .btn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--chromeink);
-  background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
-  padding:6px 11px; cursor:pointer; min-height:32px; white-space:nowrap}
+  background:var(--chrome2); border:1px solid var(--chromeedge); border-radius:3px;
+  padding:7px 11px; cursor:pointer; min-height:36px; white-space:nowrap}
 .btn:hover{border-color:var(--muted)}
 .seg .btn{border-radius:0; margin-left:-1px}
 .seg .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
@@ -144,7 +161,14 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 /* ---- rail: the answer, then the passes ----------------------------------- */
 .rail{border-left:1px solid var(--chromerule); background:var(--chrome);
   display:flex; flex-direction:column; min-height:0; overflow-y:auto}
-.answer{padding:16px 18px 14px; border-bottom:1px solid var(--chromerule)}
+.answer{position:absolute; top:14px; right:14px; z-index:5; width:266px; padding:14px 16px 13px;
+  background:rgba(10,16,20,.80); border:1px solid rgba(180,200,212,.26); border-radius:4px;
+  backdrop-filter:blur(7px); color:#EAF2F6}
+.answer .eyebrow{color:#9FB6C2}
+.answer .sub{color:#BACBD4}
+.answer .countdown{border-top-color:rgba(180,200,212,.22)}
+.answer .countdown .k, .answer .countdown .w{color:#9FB6C2}
+.answer .countdown .v{color:#EAF2F6}
 .answer .big{font-family:"Archivo",system-ui,sans-serif; font-variant-numeric:tabular-nums;
   font-size:clamp(34px,4.4vw,44px); font-weight:700; letter-spacing:-.035em; line-height:1;
   color:var(--contact); margin-top:6px}
@@ -193,11 +217,21 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .railfoot a{font-size:11.5px}
 
 /* ---- transport ----------------------------------------------------------- */
-.bar-transport{border-top:1px solid var(--chromerule); background:var(--chrome2);
-  flex-wrap:wrap; row-gap:8px; gap:10px}
-.bar-window{border-top:1px solid var(--chromerule); background:var(--chrome);
-  flex-wrap:wrap; row-gap:8px; gap:8px; padding-block:9px}
-.bar-window input[type=datetime-local]{
+/* One bar, read top to bottom: what the clock is doing, the axis it runs on,
+   and the window that axis spans. The old two bars differed by 1.086:1 and
+   nothing said which one recomputed the answer. */
+.strip{border-top:1px solid var(--chromerule); background:var(--chrome2);
+  display:flex; flex-direction:column; gap:6px; padding:9px 16px 11px}
+.strip-row{display:flex; flex-wrap:wrap; align-items:center; gap:9px; min-width:0}
+.strip-window{padding-top:9px; border-top:1px solid var(--chromerule)}
+.strip-clock{font-size:13px; color:var(--chromeink); font-variant-numeric:tabular-nums}
+.strip-clock .zone{font-size:9.5px; letter-spacing:.12em; color:var(--muted)}
+.strip-clock .sep{color:var(--chromerule); margin:0 4px}
+.strip-sel{margin-left:auto; font-size:11.5px; color:var(--ink2); text-align:right; min-width:0}
+.tp-ends{display:flex; align-items:center; justify-content:space-between; gap:12px;
+  font-size:10px; color:var(--muted)}
+.tp-ends .tp-ticks{display:flex; gap:14px; color:var(--muted)}
+.strip input[type=datetime-local]{
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px; color:var(--chromeink);
   background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
   padding:6px 9px; min-height:32px}
@@ -215,10 +249,10 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .pickconfirm .btn{flex:1; justify-content:center; text-align:center}
 #pcload{background:var(--contact); border-color:var(--contact); color:#fff}
 .tp-rate{display:flex; align-items:center; gap:8px; flex:0 1 210px; min-width:150px}
-.tp-rate input[type=range]{flex:1; min-width:70px; height:24px; accent-color:var(--track); cursor:pointer}
+#tprate{flex:0 1 150px; min-width:80px; height:28px; accent-color:var(--track); cursor:pointer}
 .tp-ratev{font-size:12px; color:var(--chromeink); min-width:52px; text-align:right}
 .tp-scrub{flex:1 1 280px; min-width:180px; display:flex; flex-direction:column; gap:3px}
-.tp-track{position:relative; height:26px}
+.tp-track{position:relative; height:30px}
 .tp-track input[type=range]{position:absolute; inset:0; width:100%; height:26px; margin:0;
   -webkit-appearance:none; appearance:none; background:transparent; z-index:3; cursor:pointer}
 .tp-track input[type=range]::-webkit-slider-runnable-track{height:26px; background:transparent}
@@ -230,8 +264,11 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .tp-track input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--track); outline-offset:2px}
 .tp-win{position:absolute; left:0; right:0; top:11px; height:4px; border-radius:2px;
   background:var(--chrome); border:1px solid var(--chromerule); pointer-events:none}
-.tp-pass{position:absolute; top:9px; height:8px; min-width:3px; border-radius:2px;
-  background:var(--contact); pointer-events:none; z-index:2; box-shadow:0 0 0 1px var(--chrome2)}
+.tp-pass{position:absolute; top:6px; height:18px; min-width:10px; border-radius:2px; padding:0;
+  background:var(--contact); border:0; cursor:pointer; z-index:4;
+  box-shadow:0 0 0 1px var(--chrome2)}
+.tp-pass:hover{outline:1px solid var(--ink); outline-offset:1px}
+.tp-pass[aria-current="true"]{outline:2px solid var(--ink); outline-offset:1px}
 .tp-ticks{display:flex; justify-content:space-between;
   font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--muted)}
 .tp-clock{display:flex; flex-direction:column; line-height:1.25; min-width:150px}
@@ -340,7 +377,7 @@ thead th{font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color
   position:sticky; top:0; background:var(--panel)}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--sunk)}
-tbody tr[aria-selected="true"]{background:var(--sunk); box-shadow:inset 3px 0 0 var(--contact)}
+tbody tr.on{background:var(--sunk); box-shadow:inset 3px 0 0 var(--contact)}
 tbody tr:last-child td{border-bottom:0}
 tfoot td{font-weight:600; color:var(--ink); border-top:1px solid var(--rule)}
 
@@ -354,16 +391,20 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   display:flex; flex-wrap:wrap; gap:6px 18px}
 
 /* ---- searchable spacecraft picker ---------------------------------------- */
-.combo{position:relative; width:290px; max-width:100%; flex:0 1 290px}
+/* flex-basis here is a HEIGHT: .findbox is a column, and 290px of basis
+   made the masthead 327px tall */
+.combo{position:relative; width:290px; max-width:100%; flex:0 0 auto}
 .combo input{width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
-  color:var(--chromeink); background:var(--chrome2); border:1px solid var(--chromerule);
-  border-radius:3px; padding:9px 30px 9px 11px; min-height:38px}
+  color:var(--chromeink); background:var(--chrome2); border:1px solid var(--chromeedge);
+  border-radius:3px; padding:9px 30px 9px 11px; min-height:40px}
 .combo input::placeholder{color:var(--muted); opacity:1}
 .combo-caret{position:absolute; right:1px; top:1px; bottom:1px; width:28px; display:grid;
   place-items:center; background:none; border:0; color:var(--muted); cursor:pointer; font-size:11px}
+.combo-list[hidden]{display:none}
 .combo-list{position:absolute; z-index:40; top:calc(100% + 4px); left:0; right:0; margin:0;
-  padding:4px; list-style:none; max-height:min(52vh,360px); overflow-y:auto; background:var(--panel);
+  padding:4px; list-style:none; max-height:min(52vh,360px); background:var(--panel);
   border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow)}
+.combo-list:not([hidden]){overflow-y:auto}
 .combo-list li{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   padding:8px 9px; border-radius:2px; cursor:pointer; font-size:13px; min-height:36px;
   font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--ink)}
@@ -376,6 +417,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 .combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
   letter-spacing:.06em; color:var(--muted); width:290px; max-width:100%}
 
+.sr-only{position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0}
 .skip{position:absolute; left:-9999px; top:0; background:var(--panel); color:var(--ink);
   padding:10px 14px; border:1px solid var(--rule); border-radius:3px; z-index:100}
 .skip:focus{left:12px; top:12px}
@@ -389,16 +432,33 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .app{display:flex; flex-direction:column; height:auto; max-height:none; min-height:0}
   .stage{display:contents}
   .bar-top{order:0; position:sticky; top:0; z-index:50; background:var(--chrome)}
-  .viewport{order:1; height:52vh; min-height:290px}
-  .bar-transport{order:2; position:sticky; bottom:0; z-index:45}
-  .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
-  .viewport .camseg{top:auto; bottom:10px; right:10px}
-  .viewport .trailseg{top:auto; bottom:48px; right:10px}
-  .viewport .layerseg{top:10px; right:10px}
-  .layerpanel label{font-size:11px; min-height:28px; padding:5px 7px}
+  .viewport{order:1; height:54vh; min-height:290px}
+  .strip{order:2; position:sticky; bottom:0; z-index:45; padding-bottom:calc(11px + env(safe-area-inset-bottom))}
+  /* the scene controls scroll horizontally rather than stacking over the globe */
+  .viewbar{position:static; flex-wrap:nowrap; overflow-x:auto; gap:8px;
+    padding:8px 12px; background:var(--chrome); border-top:1px solid var(--chromerule); order:2}
+  .vb-group{flex-direction:row; align-items:center; gap:6px}
+  .answer{position:static; width:auto; margin:0; border-radius:0; order:3;
+    background:var(--chrome); border:0; border-top:1px solid var(--chromerule);
+    color:var(--ink); backdrop-filter:none}
+  .answer .eyebrow{color:var(--muted)}
+  .answer .sub{color:var(--ink2)}
+  .answer .countdown .k,.answer .countdown .w{color:var(--muted)}
+  .answer .countdown .v{color:var(--ink)}
+  .layerpanel{position:fixed; left:12px; right:12px; bottom:auto; top:auto; min-width:0}
+  .layerpanel label{font-size:12px; min-height:44px; padding:8px}
 
-  .seglabel{display:none}
   .hint-drag{display:none}
+  .strip{gap:8px}
+  .strip-sel{margin-left:0; text-align:left; flex:1 1 100%}
+  .strip-clock{flex:1 1 100%}
+  /* keep every touch target at or above the 24px floor */
+  .btn{min-height:44px}
+  #o3cloud{width:24px; height:24px}
+  .tp-track{height:36px}
+  .tp-pass{height:24px; top:6px; min-width:24px}
+  #tprate{height:36px}
+  #time{height:36px}
   .access{grid-template-columns:minmax(0,1fr)}
   .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -410,10 +470,18 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .minigrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .hint-drag{display:none}
 }
+@media (forced-colors: active){
+  /* the amber pass blocks became black on black, and pressed state stopped
+     being distinguishable from unpressed */
+  .tp-pass{background:Highlight; forced-color-adjust:none; border:1px solid CanvasText}
+  .btn[aria-pressed="true"]{background:Highlight; color:HighlightText; border-color:Highlight}
+  .answer,.layerpanel,.pickconfirm{background:Canvas; color:CanvasText}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
 
 <a class="skip" href="#report">Skip to the written analysis</a>
+<p id="sr" role="status" aria-live="polite" class="sr-only"></p>
 
 <div class="app">
 
@@ -427,15 +495,16 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <span class="age-chip" id="agechip"><span class="dot"></span><span id="agetext">—</span></span>
       </div>
     </div>
-    <div>
+    <p class="purpose">When can Bangkok see it, and why</p>
+    <div class="findbox">
       <div class="combo">
         <input id="satsearch" type="text" role="combobox" aria-expanded="false"
                aria-controls="satlist" aria-autocomplete="list" aria-haspopup="listbox"
                autocomplete="off" autocorrect="off" spellcheck="false"
-               placeholder="Search 2,158 spacecraft or NORAD ID">
+               placeholder="Search 2,158 spacecraft or NORAD ID" aria-label="Spacecraft">
         <button type="button" class="combo-caret" id="satopen" tabindex="-1"
                 aria-label="Show the whole catalogue">▾</button>
-        <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden></ul>
+        <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden inert></ul>
       </div>
       <p class="combo-hint" id="satcount">—</p>
     </div>
@@ -448,33 +517,13 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <span class="o3-label" id="o3name">—</span>
         <span class="o3-label o3-hover" id="o3hover"></span>
       </div>
-      <div class="hud">
-        <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
-        <div class="t2"><span id="o3clocklocal">—</span><span class="zone">ICT</span></div>
 
+      <div class="hud">
+        <div class="elev"><span class="k">Elevation at Bangkok</span><span class="v" id="o3el">—</span></div>
       </div>
-      <div class="camseg">
-        <span class="seglabel" id="camlabel">Camera</span>
-        <div class="seg" role="group" aria-labelledby="camlabel">
-          <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
-          <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
-          <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
-        </div>
-      </div>
-      <div class="trailseg">
-        <span class="seglabel" id="traillabel">Trail</span>
-        <div class="seg" role="group" aria-labelledby="traillabel">
-          <button class="btn trl" data-t="1800000" aria-pressed="false">30 m</button>
-          <button class="btn trl" data-t="orbit" aria-pressed="false">1 orbit</button>
-          <button class="btn trl" data-t="21600000" aria-pressed="true">6 h</button>
-          <button class="btn trl" data-t="all" aria-pressed="false">24 h</button>
-        </div>
-      </div>
-      <div class="layerseg">
-        <span class="seglabel">Layers</span>
-        <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
-      </div>
+
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
+
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
         <p class="pcn" id="pcname">—</p>
         <p class="pcd" id="pcmeta">—</p>
@@ -486,97 +535,96 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
 
-    <aside class="rail" aria-label="Visibility summary">
-      <div class="answer">
-        <p class="eyebrow">Visible from Bangkok · 5° mask</p>
+      <!-- the answer, over the void, where the eye already is -->
+      <section class="answer" aria-label="Visibility summary">
+        <p class="eyebrow">Visible from Bangkok · 5°</p>
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
-        <div class="livel">
-          <span class="k">Elevation at Bangkok now</span>
-          <span class="v" id="o3el">—</span>
-        </div>
         <div class="countdown">
           <span class="k" id="cdlabel">Next pass</span>
           <span class="v" id="cdvalue">—</span>
           <span class="w" id="cdwhen">—</span>
         </div>
-      </div>
+      </section>
 
-      <div class="railsec">
-        <p class="eyebrow">Access windows</p>
-        <div class="passlist" id="passlist"></div>
-      </div>
-
-      <div class="railsec" id="railSky">
-        <p class="eyebrow">Sky track · selected pass</p>
-        <div class="skybox">
-          <canvas id="sky" width="536" height="536"
-                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
-          <div class="skyfacts" id="skyfacts"></div>
+      <!-- every scene control in one place, bottom-left, away from the node
+           labels that live in the upper-right quadrant -->
+      <div class="viewbar">
+        <div class="vb-group">
+          <span class="seglabel" id="camlabel">Camera</span>
+          <div class="seg" role="group" aria-labelledby="camlabel">
+            <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
+            <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
+            <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
+          </div>
         </div>
+        <div class="vb-group">
+          <span class="seglabel" id="traillabel">Trail behind</span>
+          <div class="seg" role="group" aria-labelledby="traillabel">
+            <button class="btn trl" data-t="1800000" aria-pressed="false">30 m</button>
+            <button class="btn trl" data-t="orbit" aria-pressed="false">1 orbit</button>
+            <button class="btn trl" data-t="21600000" aria-pressed="true">6 h</button>
+            <button class="btn trl" data-t="all" aria-pressed="false">All</button>
+          </div>
+        </div>
+        <div class="vb-group layerseg">
+          <button class="btn" id="layersBtn" aria-expanded="false" aria-controls="layersMenu">Layers ▴</button>
+          <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers" hidden></div>
+        </div>
+        <label class="btn" for="o3cloud"><input type="checkbox" id="o3cloud" checked> Catalogue</label>
       </div>
 
-      <div class="railsec">
-        <p class="eyebrow">Orbit at epoch</p>
-        <dl class="minigrid" id="minigrid"></dl>
-      </div>
-
-      <div class="railsec" id="railsrc">
-        <p class="eyebrow">Element set</p>
-        <p class="railprov" id="railprov">—</p>
-      </div>
-
-      <div class="railfoot">
-        <a href="#report">Full analysis, elements and method ↓</a>
-      </div>
-    </aside>
   </main>
 
-  <footer class="bar bar-transport">
-    <button class="btn" id="tpplay" aria-label="Pause">❚❚</button>
-    <div class="tp-rate">
+  <!-- One bar. Playback on top, the axis in the middle, the window it spans
+       underneath - so "move the clock" and "move the window" stop looking alike. -->
+  <footer class="strip">
+    <div class="strip-row">
+      <button class="btn" id="tpplay" aria-label="Pause">❚❚</button>
       <span class="seglabel">Rate</span>
       <input type="range" id="tprate" min="0" max="100" value="0" step="1"
              aria-label="Time rate, 1x to 3600x">
       <span class="tp-ratev mono" id="tpratev">1×</span>
-    </div>
-    <div class="tp-scrub">
-      <div class="tp-track">
-        <div class="tp-win"></div>
-        <div id="tppasses"></div>
-        <input type="range" id="time" min="0" max="8640" value="0" step="1"
-               aria-label="Time within the 24-hour analysis window, in 10-second steps from the element set epoch">
+      <div class="strip-clock mono">
+        <span id="tpclock">—</span> <span class="zone">UTC</span>
+        <span class="sep">·</span>
+        <span id="tpclocklocal">—</span> <span class="zone">ICT</span>
       </div>
-      <div class="tp-ticks" id="tpticks"></div>
+      <p class="strip-sel mono" id="stripsel">—</p>
     </div>
-    <div class="tp-clock">
-      <span class="a"><span id="tpclock">—</span> UTC</span>
-      <span class="b"><span id="tpclocklocal">—</span> ICT</span>
-    </div>
-    <label class="btn" for="o3cloud" style="display:inline-flex;gap:7px;align-items:center">
-      <input type="checkbox" id="o3cloud" checked> Catalogue
-    </label>
-  </footer>
 
-  <div class="bar bar-window">
-    <span class="seglabel">Window</span>
-    <button class="btn" id="winPrevD" aria-label="Back one day">‹‹ 1 d</button>
-    <button class="btn" id="winPrevH" aria-label="Back six hours">‹ 6 h</button>
-    <input type="datetime-local" id="winStartIn" step="60"
-           aria-label="Start of the analysis window, in your local time">
-    <button class="btn" id="winNextH" aria-label="Forward six hours">6 h ›</button>
-    <button class="btn" id="winNextD" aria-label="Forward one day">1 d ››</button>
-    <button class="btn" id="tpnow">Now</button>
-    <button class="btn" id="tpepoch">Epoch</button>
-    <span class="seglabel">Span</span>
-    <div class="seg" role="group" aria-label="Window length">
-      <button class="btn span" data-h="6" aria-pressed="false">6 h</button>
-      <button class="btn span" data-h="24" aria-pressed="true">24 h</button>
-      <button class="btn span" data-h="72" aria-pressed="false">3 d</button>
-      <button class="btn span" data-h="168" aria-pressed="false">7 d</button>
+    <div class="tp-track">
+      <div class="tp-win"></div>
+      <div id="tppasses"></div>
+      <input type="range" id="time" min="0" max="8640" value="0" step="1"
+             aria-label="Clock position within the analysis window">
     </div>
-    <span class="winnote" id="winnote"></span>
-  </div>
+    <div class="tp-ends mono">
+      <span id="winFrom">—</span>
+      <span class="tp-ticks" id="tpticks"></span>
+      <span id="winTo">—</span>
+    </div>
+
+    <div class="strip-row strip-window">
+      <span class="seglabel">Analysis window</span>
+      <button class="btn" id="winPrevD" aria-label="Back one day">‹‹ 1 d</button>
+      <button class="btn" id="winPrevH" aria-label="Back six hours">‹ 6 h</button>
+      <input type="datetime-local" id="winStartIn" step="60"
+             aria-label="Start of the analysis window, in your local time">
+      <button class="btn" id="winNextH" aria-label="Forward six hours">6 h ›</button>
+      <button class="btn" id="winNextD" aria-label="Forward one day">1 d ››</button>
+      <button class="btn" id="tpnow">Now</button>
+      <button class="btn" id="tpepoch">Epoch</button>
+      <span class="seglabel">Length</span>
+      <div class="seg" role="group" aria-label="Window length">
+        <button class="btn span" data-h="6" aria-pressed="false">6 h</button>
+        <button class="btn span" data-h="24" aria-pressed="true">24 h</button>
+        <button class="btn span" data-h="72" aria-pressed="false">3 d</button>
+        <button class="btn span" data-h="168" aria-pressed="false">7 d</button>
+      </div>
+      <span class="winnote" id="winnote"></span>
+    </div>
+  </footer>
 </div>
 
 <div class="wrap" id="report">
@@ -609,7 +657,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <p class="hint" id="trackhint">—</p>
     </div>
     <div class="mapbox">
-      <div class="canvas-hold"><canvas id="map"></canvas></div>
+      <div class="canvas-hold"><canvas id="map"
+        aria-label="Flat ground track for the analysis window. The readout below gives latitude, longitude, altitude, elevation, azimuth and slant range at the shown instant."></canvas></div>
       <div class="legend">
         <span class="key"><span class="sw" style="border-color:var(--track)"></span>Sub-satellite track</span>
         <span class="key"><span class="sw" style="border-color:var(--contact); border-top-width:4px"></span>In view from Bangkok (el ≥ 5°)</span>
@@ -635,9 +684,12 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <p class="hint">13.75°N 100.52°E, sea level, geometric</p>
     </div>
     <div class="access">
+      <div class="skybox">
+        <canvas id="sky" width="536" height="536"
+                aria-label="Sky track of the selected pass: azimuth around, elevation from the rim inward. The facts beside it give the same values as text."></canvas>
+        <div class="skyfacts" id="skyfacts"></div>
+      </div>
       <div>
-        <p style="margin-bottom:12px;color:var(--muted);font-size:12.5px">
-          The sky track for the selected pass is plotted in the panel beside the globe above.</p>
         <dl class="derived" style="margin-bottom:14px">
           <div class="dv"><dt>Passes</dt><dd id="npasses">—</dd></div>
           <div class="dv"><dt>Longest</dt><dd id="longest">—</dd></div>
@@ -7450,7 +7502,8 @@ function renderElements(){
     ['Mean alt.', D.meanAlt.toFixed(0)+' km'],
     ['Revs / day', E.n.toFixed(2)]
   ];
-  document.getElementById('minigrid').innerHTML = mini.map(d=>
+  const mg = document.getElementById('minigrid');
+  if(mg) mg.innerHTML = mini.map(d=>
     '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
 }
 
@@ -7647,7 +7700,7 @@ function paintClock(force){
   const hu = document.getElementById('o3clock'), hl = document.getElementById('o3clocklocal');
   if(hu) hu.textContent = uStr;
   if(hl) hl.textContent = lStr;
-  utc.closest('.tp-clock').classList.toggle('outwin', !inWindow(simMs));
+  const cw = utc.closest('.strip-clock'); if(cw) cw.classList.toggle('outwin', !inWindow(simMs));
   const idx = idxAt(simMs), range = document.getElementById('time');
   if(!scrubbing) range.value = idx;           // only yield while actually dragging
   if(force || idx !== lastIdx){ lastIdx = idx; setTime(idx, force); }
@@ -7727,34 +7780,33 @@ function renderAccess(){
 
   // pass windows drawn onto the transport scrubber, so time and access share one axis
   const t0 = D.start.getTime(), span = D.hours*3600000;
-  document.getElementById('tppasses').innerHTML = P.map(p=>{
+  // the pass blocks ARE the pass list now - clicking a window where it happens
+  // in time beats clicking a row that describes it
+  document.getElementById('tppasses').innerHTML = P.map((p,i)=>{
     const l = (p.t0ms-t0)/span*100, w = Math.max((p.t1ms-p.t0ms)/span*100, .45);
-    return '<div class="tp-pass" style="left:'+l+'%;width:'+w+'%"></div>';
+    return '<button class="tp-pass" data-i="'+i+'" aria-current="'+(i===selPass)+'"'+
+      ' style="left:'+l+'%;width:'+w+'%"'+
+      ' title="Pass '+(i+1)+' — '+hmsD(p.aos)+'Z, '+mmss(p.dur)+', max '+p.maxEl.toFixed(1)+'°"'+
+      ' aria-label="Pass '+(i+1)+' of '+P.length+', acquisition '+hms(p.aos)+' UTC, '+
+      mmss(p.dur)+', maximum elevation '+p.maxEl.toFixed(1)+' degrees"></button>';
   }).join('');
+  document.getElementById('tppasses').querySelectorAll('.tp-pass').forEach(b=>
+    b.addEventListener('click', ()=>selectPass(+b.dataset.i, true)));
   // one unit across the whole axis: mixing '+42h' with '+3.5d' reads as noise
   const useDays = D.hours >= 48;
   const tick = f => { const hh = D.hours*f;
     if(useDays){ const d = hh/24; return '+'+(d % 1 ? d.toFixed(1) : d.toFixed(0))+'d'; }
     return '+'+(hh % 1 ? hh.toFixed(1) : hh.toFixed(0))+'h'; };
   document.getElementById('tpticks').innerHTML =
-    [0,.25,.5,.75,1].map(f=>'<span>'+tick(f)+'</span>').join('');
+    [.25,.5,.75].map(f=>'<span>'+tick(f)+'</span>').join('');
+  document.getElementById('winFrom').textContent = iso(D.start).replace('Z','') + ' UTC';
+  document.getElementById('winTo').textContent   = iso(D.end).replace('Z','') + ' UTC';
 
-  // the rail list is the summary; the table below carries the detail
-  const pl = document.getElementById('passlist');
-  pl.innerHTML = P.map((p,i)=>
-    '<button class="passrow" data-i="'+i+'" aria-current="'+(i===selPass)+'" '+
-    'aria-label="Pass '+(i+1)+', acquisition '+hms(p.aos)+' UTC, '+mmss(p.dur)+
-    ', maximum elevation '+p.maxEl.toFixed(1)+' degrees">'+
-    '<span class="n">'+(i+1)+'</span>'+
-    '<span class="t">'+hmsD(p.aos)+'Z<small>'+hmsLocal(p.aos)+' ICT · '+mmss(p.dur)+'</small></span>'+
-    '<span class="e">'+p.maxEl.toFixed(0)+'°</span></button>').join('') ||
-    '<p style="font-size:12.5px;color:var(--muted)">No pass clears the 5° mask in this window.</p>';
-  pl.querySelectorAll('.passrow').forEach(b=>
-    b.addEventListener('click', ()=>selectPass(+b.dataset.i, true)));
+
 
   // table
   document.getElementById('passbody').innerHTML = P.map((p,i)=>
-    '<tr data-i="'+i+'" aria-selected="'+(i===selPass)+'">'+
+    '<tr data-i="'+i+'" class="'+(i===selPass?'on':'')+'" title="Show this pass in the sky plot">'+
     '<td>'+(i+1)+'</td>'+
     '<td>'+hmsD(p.aos)+(p.clipA?' *':'')+'</td>'+
     '<td>'+hmsD(p.los)+(p.clipL?' *':'')+'</td>'+
@@ -7821,9 +7873,15 @@ function selectPass(i, scrub){
     '<div class="row"><span class="k">Status</span><span class="v">no access</span></div>'; return; }
   selPass = Math.max(0, Math.min(i, D.passes.length-1));
   const p = D.passes[selPass];
-  document.querySelectorAll('#passlist .passrow').forEach(b=>b.setAttribute('aria-current', +b.dataset.i===selPass));
-  document.querySelectorAll('#passbody tr[data-i]').forEach(tr=>tr.setAttribute('aria-selected', +tr.dataset.i===selPass));
+
+  document.querySelectorAll('#passbody tr[data-i]').forEach(tr=>
+    tr.classList.toggle('on', +tr.dataset.i===selPass));
+  document.querySelectorAll('#tppasses .tp-pass').forEach(b=>
+    b.setAttribute('aria-current', +b.dataset.i===selPass));
   drawSky(p);
+  const ss = document.getElementById('stripsel');
+  if(ss) ss.textContent = 'Pass '+(selPass+1)+' of '+D.passes.length+' · '+hmsD(p.aos)+'Z → '+
+    hmsD(p.los)+'Z · '+mmss(p.dur)+' · max '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz);
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
     ['AOS', hmsD(p.aos)+'Z · '+hmsLocal(p.aos)+' ICT'],
@@ -7877,11 +7935,13 @@ const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"'
  * A catalogue of thousands needs a filter, not a dropdown. Names starting with
  * the query rank above names merely containing it, and the NORAD number is
  * searchable too, since that is how a spacecraft is actually identified.      */
+const listHost = document.querySelector('.combo');
 const box = document.getElementById('satsearch'),
       listEl = document.getElementById('satlist'),
       caret = document.getElementById('satopen'),
       countEl = document.getElementById('satcount');
 const SHOWN_MAX = 80;
+listEl.remove();                 // start detached, so it never holds a tab stop
 let curIdx = 0, shown = [], active = -1, isOpen = false, lastQ = '';
 
 function rank(q){
@@ -7907,20 +7967,29 @@ function paint(q){
   else if(hits.length > SHOWN_MAX)
     html += '<li class="note">'+(hits.length-SHOWN_MAX)+' more match — keep typing to narrow</li>';
   listEl.innerHTML = html;
-  box.setAttribute('aria-activedescendant', active>=0 ? 'sopt'+active : '');
+  if(active>=0) box.setAttribute('aria-activedescendant','sopt'+active);
+  else box.removeAttribute('aria-activedescendant');
 }
 function openList(q){
-  isOpen = true; listEl.hidden = false; box.setAttribute('aria-expanded','true'); paint(q);
+  // hidden and inert both still left Chrome a tab stop on the empty listbox;
+  // detaching it is the only thing that provably removed it from the focus order
+  if(!listEl.isConnected) listHost.appendChild(listEl);
+  isOpen = true; listEl.hidden = false; listEl.removeAttribute('inert');
+  box.setAttribute('aria-expanded','true'); paint(q);
 }
 function closeList(restore){
-  isOpen = false; listEl.hidden = true; box.setAttribute('aria-expanded','false');
-  box.setAttribute('aria-activedescendant',''); active = -1;
+  isOpen = false; listEl.hidden = true; listEl.setAttribute('inert','');
+  if(listEl.isConnected) listEl.remove();
+  box.setAttribute('aria-expanded','false');
+  box.removeAttribute('aria-activedescendant'); active = -1;
   if(restore) box.value = CAT[curIdx].name;
 }
 function choose(idx){
   if(idx == null || !CAT[idx]) return;
-  curIdx = idx; closeList(false); box.value = CAT[idx].name; box.blur();
+  curIdx = idx; closeList(false); box.value = CAT[idx].name;
   stop(); load(CAT[idx]);
+  box.focus();                                   // never dump focus to <body>
+  announce(CAT[idx].name + ' loaded.');
 }
 function moveActive(d){
   if(!isOpen){ openList(''); return; }
@@ -7940,7 +8009,7 @@ box.addEventListener('keydown', e=>{
     if(active >= 0) choose(shown[active]);
     else if(shown.length) choose(shown[0]);
   }
-  else if(e.key === 'Escape'){ e.preventDefault(); closeList(true); box.blur(); }
+  else if(e.key === 'Escape'){ e.preventDefault(); closeList(true); }  // keep focus in the input
 });
 // mousedown fires before the input blurs; click is the fallback for anything
 // synthetic (assistive tech, automation) that dispatches only a plain click
@@ -8001,11 +8070,14 @@ function toLocalInput(ms){
   const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000);
   return d.toISOString().slice(0,16);
 }
-function setWindow(ms){ winStart = ms; stop(); load(CAT[curIdx]); }
+function setWindow(ms){
+  winStart = ms; stop(); load(CAT[curIdx]);
+  announce('Window moved. ' + document.getElementById('totalsub').textContent);
+}
 function paintWindow(){
   const inp = document.getElementById('winStartIn');
   if(inp && document.activeElement !== inp) inp.value = toLocalInput(D.start.getTime());
-  document.querySelectorAll('.bar-window .span').forEach(b=>
+  document.querySelectorAll('.strip .span').forEach(b=>
     b.setAttribute('aria-pressed', +b.dataset.h === D.hours));
   // a TLE is only good for a few days either side of its epoch - say so plainly
   const off = (D.start.getTime() - D.E.epoch.getTime())/86400000;
@@ -8026,7 +8098,7 @@ document.getElementById('winStartIn').addEventListener('change', e=>{
   const t = new Date(e.target.value);              // datetime-local reads as local time
   if(!isNaN(t)) setWindow(t.getTime());
 });
-document.querySelectorAll('.bar-window .span').forEach(b=>b.addEventListener('click', ()=>{
+document.querySelectorAll('.strip .span').forEach(b=>b.addEventListener('click', ()=>{
   spanH = +b.dataset.h; stop(); load(CAT[curIdx]);
 }));
 cv.addEventListener('mousemove', e=>{
@@ -8053,6 +8125,17 @@ for(const re of WANT){ DEFAULT = CAT.findIndex(c=>re.test(c.name)); if(DEFAULT >
 if(DEFAULT < 0) DEFAULT = 0;
 function global3D(){ return window.Orbit3D && Orbit3D.ok(); }
 
+/* A single polite region for things the user DID, announced once. The clock and
+   the elevation readout are deliberately left silent - a value that changes
+   every frame inside a live region makes a screen reader unusable. */
+let announceT = null;
+function announce(msg){
+  const el = document.getElementById('sr');
+  if(!el) return;
+  clearTimeout(announceT);
+  announceT = setTimeout(()=>{ el.textContent = msg; }, 250);
+}
+
 /* ---- pick confirmation ---------------------------------------------------- *
  * The cloud is dense enough that a click meant as a camera nudge could swap the
  * spacecraft and reset the clock without the user ever knowing why. Ask first,
@@ -8071,11 +8154,16 @@ function askLoad(i, clientX, clientY){
   x = Math.max(8, Math.min(x, host.width  - w  - 8));
   y = Math.max(8, Math.min(y, host.height - hh - 8));
   card.style.left = x+'px'; card.style.top = y+'px';
+  pickOpener = document.activeElement === document.body ? document.getElementById('satsearch')
+                                                        : document.activeElement;
   document.getElementById('pcload').focus();
 }
+let pickOpener = null;
 function closePick(){
   pendingPick = -1;
   document.getElementById('pickconfirm').hidden = true;
+  if(pickOpener && pickOpener.focus) pickOpener.focus();   // hand focus back
+  pickOpener = null;
 }
 document.getElementById('pcload').addEventListener('click', ()=>{
   const i = pendingPick; closePick();
@@ -8145,7 +8233,7 @@ setInterval(paintAges, 30000);
   }
   // the camera has one mode with three values; the exclusion logic already
   // enforced that, so the control should say it rather than imply three switches
-  const cams = [...document.querySelectorAll('.camseg .cam')];
+  const cams = [...document.querySelectorAll('.viewbar .cam')];
   function paintMode(){
     const m = Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
     cams.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
@@ -8169,6 +8257,18 @@ setInterval(paintAges, 30000);
         const k = e.target.dataset.layer;
         if(k) OrbitViz.show(k, e.target.checked);
       });
+      const lb = document.getElementById('layersBtn');
+      lb.addEventListener('click', ()=>{
+        const open = menu.hidden;
+        menu.hidden = !open;
+        lb.setAttribute('aria-expanded', open);
+        lb.textContent = open ? 'Layers ▾' : 'Layers ▴';
+      });
+      document.addEventListener('mousedown', e=>{
+        if(!menu.hidden && !e.target.closest('.layerseg')){
+          menu.hidden = true; lb.setAttribute('aria-expanded','false'); lb.textContent = 'Layers ▴';
+        }
+      });
       window.__viz = true;
     } catch(err){
       const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
@@ -8177,9 +8277,11 @@ setInterval(paintAges, 30000);
     const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
   }
 
-  const trls = [...document.querySelectorAll('.trailseg .trl')];
+
+  const trls = [...document.querySelectorAll('.viewbar .trl')];
   function applyTrail(){
-    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[2];
+    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[2] || trls[0];
+    if(!b) return;
     const v = b.dataset.t;
     Orbit3D.setTrail(v === 'all' ? Infinity
                    : v === 'orbit' ? D.E.period*1000      // one revolution
@@ -8219,3 +8321,4 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{
 });
 })();
 </script>
+</html>

@@ -244,7 +244,15 @@ function updateCloud(date){
 function setSat(entry, elements){
   curEntry = entry;
   try { curRec = sat.twoline2satrec(entry.l1, entry.l2); } catch(e){ curRec = null; }
-  if(!curRec || curRec.error) { curRec = null; return; }
+  if(!curRec || curRec.error){
+    // do not leave the last spacecraft's geometry standing under a new name
+    curRec = null; trackPts = []; trackMs = []; ringMs = null;
+    [orbitLine, trackLine, footRing].forEach(o=>{ if(o) o.visible = false; });
+    satDot.visible = satHalo.visible = contactLine.visible = false;
+    if(labels.name){ labels.name.textContent = entry.name; labels.name.style.display = 'none'; }
+    return;
+  }
+  [orbitLine, trackLine, footRing].forEach(o=>{ if(o) o.visible = true; });
   const periodS = elements && elements.period ? elements.period : 5400;
   if(!(GT && GT.now))                              // only self-clocked scenes reset time
     simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
@@ -435,6 +443,8 @@ function tick(ts){
 
   const canvas = renderer.domElement;
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  const wantDpr = Math.min(window.devicePixelRatio||1, 2);
+  if(renderer.getPixelRatio() !== wantDpr) renderer.setPixelRatio(wantDpr);  // moved screens
   if(canvas.width !== Math.floor(w*renderer.getPixelRatio()) ||
      canvas.height !== Math.floor(h*renderer.getPixelRatio())){
     renderer.setSize(w, h, false);

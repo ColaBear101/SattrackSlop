@@ -263,7 +263,7 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
 .access{display:grid; grid-template-columns:minmax(0,1fr); gap:22px; align-items:start}
 .skybox{display:grid; grid-template-columns:auto minmax(0,1fr); gap:22px; align-items:center;
   background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
-canvas#sky{width:268px; height:268px; max-width:100%; display:block}
+canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:block}
 .skyfacts{display:flex; flex-direction:column; gap:7px; min-width:0}
 .skyfacts .row{display:flex; justify-content:space-between; gap:20px; font-size:13px; flex-wrap:wrap;
   border-bottom:1px dotted var(--rule); padding-bottom:5px}
@@ -7153,8 +7153,15 @@ const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCD
 const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
 const hmsLocal = d => { const t = new Date(d.getTime()+ICT*3600000);
   return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
-const mmss = s => { const T = Math.round(s);            // round first, or 59.7 s renders as '60s'
-  return Math.floor(T/60)+'m '+pad(T%60)+'s'; };
+// the analysis window starts at the epoch, so it usually crosses midnight
+const dayOff = d => Math.floor((d.getTime() - D.start.getTime())/86400000);
+const hmsD = d => hms(d) + (dayOff(d) > 0 ? ' +'+dayOff(d)+'d' : '');
+const mmss = s => {
+  const T = Math.round(s);                  // round first, or 59.7 s renders as '60s'
+  const hh = Math.floor(T/3600);
+  return hh ? hh+'h '+pad(Math.floor(T%3600/60))+'m'
+            : Math.floor(T/60)+'m '+pad(T%60)+'s';
+};
 const ago = ms => {
   const s = Math.max(0, ms)/1000;
   if(s < 90) return Math.round(s)+' s';
@@ -7162,12 +7169,27 @@ const ago = ms => {
   if(s < 172800) return (s/3600).toFixed(1)+' h';
   return (s/86400).toFixed(1)+' days';
 };
-const latStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'N':'S');
+const latStr = v => Math.abs(v).toFixed(2)+'°'+(Math.abs(v) < 0.005 ? '' : ' '+(v>0?'N':'S'));
 const lonStr = v => Math.abs(v).toFixed(2)+'° '+(v>=0?'E':'W');
 const compass = az => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
   [Math.round(((az%360)+360)%360/22.5)%16];
 
 /* ---- propagation --------------------------------------------------------- */
+// the same state as sample(), but at an arbitrary instant - used when the clock
+// sits outside the 24 h window, where there is no stored sample to read
+function sampleMs(satrec, ms){
+  const t = new Date(ms);
+  const pv = satellite.propagate(satrec, t);
+  if(!pv || !pv.position) return null;
+  const gmst = satellite.gstime(t);
+  const gd   = satellite.eciToGeodetic(pv.position, gmst);
+  const look = satellite.ecfToLookAngles(
+      {longitude:OBS.lon*RAD, latitude:OBS.lat*RAD, height:OBS.altKm},
+      satellite.eciToEcf(pv.position, gmst));
+  let lon = gd.longitude*DEG; while(lon>180) lon-=360; while(lon<-180) lon+=360;
+  return { t, lat: gd.latitude*DEG, lon, alt: gd.height,
+           el: look.elevation*DEG, az: ((look.azimuth*DEG)%360+360)%360, rng: look.rangeSat };
+}
 function sample(satrec, start, k){
   const t = new Date(start.getTime()+k*STEP*1000);
   const pv = satellite.propagate(satrec, t);
@@ -7233,11 +7255,15 @@ function build(satrec, aos, los, clipA, clipL){
   }
   let w = (los-aos)/n;                       // refine the culmination
   for(let i=0;i<40 && w>1;i++){
-    const a = stateAt(satrec,best.ms-w), b = stateAt(satrec,best.ms+w);
-    if(a && a.el > best.el) best = {el:a.el, ms:best.ms-w, az:a.az, rng:a.rng};
-    else if(b && b.el > best.el) best = {el:b.el, ms:best.ms+w, az:b.az, rng:b.rng};
+    // stay inside the pass: an unclamped climb walks past AOS/LOS on a window-
+    // clipped pass and reports a peak that never happens while in view
+    const ta = Math.max(aos, best.ms - w), tb = Math.min(los, best.ms + w);
+    const a = stateAt(satrec, ta), b = stateAt(satrec, tb);
+    if(a && a.el > best.el) best = {el:a.el, ms:ta, az:a.az, rng:a.rng};
+    else if(b && b.el > best.el) best = {el:b.el, ms:tb, az:b.az, rng:b.rng};
     else w /= 2;
   }
+  best.ms = Math.min(los, Math.max(aos, best.ms));
   const A = stateAt(satrec,aos), L = stateAt(satrec,los);
   const arc = [];
   for(let i=0;i<=90;i++){ const s = stateAt(satrec, aos+(los-aos)*i/90); if(s) arc.push(s); }
@@ -7256,6 +7282,7 @@ function compute(entry){
   const start = E.epoch, end = new Date(start.getTime()+HOURS*3600000);
   const pts = [];
   for(let k=0;k<=N;k++){ const s = sample(satrec,start,k); if(s) pts.push(s); }
+  if(!pts.length) throw new Error('no propagable samples for '+entry.name);
   const passes = findPasses(satrec, start.getTime(), end.getTime());
   const totalS = passes.reduce((s,p)=>s+p.dur, 0);
   const meanAlt = pts.reduce((s,p)=>s+p.alt,0)/pts.length;
@@ -7456,9 +7483,9 @@ function drawMarkers(cur){
     haloText(hms(cur.t)+'Z', sx + (sx > W-90 ? -12 : 12), sy - 12, ink, sea);
   }
 }
-function drawMap(idx){
+function drawMap(cur){
   if(!W) fitCanvas();
-  const cur = D.pts[Math.min(idx, D.pts.length-1)];
+  if(!cur) return;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle = tok('--ocean'); ctx.fillRect(0,0,W,H);
   drawLand();
@@ -7484,7 +7511,7 @@ function drawMap(idx){
  * The globe and the flat map used to run independent clocks, so they never
  * agreed. Now the page owns sim time, the 3D scene reads it through GT.now(),
  * and the flat map redraws only when the 10 s sample index actually changes.  */
-let simMs = 0, rate = 60, playing = true, rafPrev = 0, lastIdx = -1;
+let simMs = 0, rate = 60, playing = true, rafPrev = 0, lastIdx = -1, scrubbing = false;
 const winT0 = () => D.start.getTime(), winT1 = () => D.end.getTime();
 const inWindow = ms => ms >= winT0()-1 && ms <= winT1()+1;
 const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/STEP)));
@@ -7513,7 +7540,7 @@ function paintClock(force){
   if(hl) hl.textContent = lStr;
   utc.closest('.tp-clock').classList.toggle('outwin', !inWindow(simMs));
   const idx = idxAt(simMs), range = document.getElementById('time');
-  if(document.activeElement !== range) range.value = idx;
+  if(!scrubbing) range.value = idx;           // only yield while actually dragging
   if(force || idx !== lastIdx){ lastIdx = idx; setTime(idx, force); }
   paintCountdown();
 }
@@ -7530,6 +7557,12 @@ function clockTick(ts){
 function paintCountdown(){
   const P = D.passes, k = document.getElementById('cdlabel'),
         v = document.getElementById('cdvalue'), w = document.getElementById('cdwhen');
+  if(!inWindow(simMs)){
+    k.textContent = 'Outside the window';
+    v.textContent = '—'; v.className = 'v';
+    w.textContent = 'The 24 h analysis runs from the element set epoch. Press Epoch to return.';
+    return;
+  }
   if(!P.length){ k.textContent = 'Next pass'; v.textContent = 'none'; v.className = 'v';
     w.textContent = 'Nothing clears the 5° mask in this window.'; return; }
   const now = P.find(p => simMs >= p.t0ms && simMs <= p.t1ms);
@@ -7550,7 +7583,11 @@ function paintCountdown(){
 
 let mapVisible = false, lastMapDraw = 0;
 function setTime(idx, force){
-  const p = D.pts[Math.min(idx, D.pts.length-1)];
+  // inside the window read the stored sample; outside it, propagate the real
+  // instant so every panel reports the same moment
+  const p = inWindow(simMs) ? D.pts[Math.min(idx, D.pts.length-1)]
+                            : (sampleMs(D.satrec, simMs) || D.pts[Math.min(idx, D.pts.length-1)]);
+  if(!p) return;
   document.getElementById('r-lat').textContent = latStr(p.lat);
   document.getElementById('r-lon').textContent = lonStr(p.lon);
   document.getElementById('r-alt').textContent = p.alt.toFixed(1)+' km';
@@ -7561,7 +7598,7 @@ function setTime(idx, force){
   document.getElementById('r-rng').textContent = p.rng.toFixed(0)+' km';
   // the readout above is cheap text; the canvas is not
   const t = performance.now();
-  if(force || (mapVisible && t - lastMapDraw > 80)){ lastMapDraw = t; drawMap(idx); }
+  if(force || (mapVisible && t - lastMapDraw > 80)){ lastMapDraw = t; drawMap(p); }
 }
 
 /* ---- (c) passes, timeline, sky plot -------------------------------------- */
@@ -7594,7 +7631,7 @@ function renderAccess(){
     'aria-label="Pass '+(i+1)+', acquisition '+hms(p.aos)+' UTC, '+mmss(p.dur)+
     ', maximum elevation '+p.maxEl.toFixed(1)+' degrees">'+
     '<span class="n">'+(i+1)+'</span>'+
-    '<span class="t">'+hms(p.aos)+'Z<small>'+hmsLocal(p.aos)+' ICT · '+mmss(p.dur)+'</small></span>'+
+    '<span class="t">'+hmsD(p.aos)+'Z<small>'+hmsLocal(p.aos)+' ICT · '+mmss(p.dur)+'</small></span>'+
     '<span class="e">'+p.maxEl.toFixed(0)+'°</span></button>').join('') ||
     '<p style="font-size:12.5px;color:var(--muted)">No pass clears the 5° mask in this window.</p>';
   pl.querySelectorAll('.passrow').forEach(b=>
@@ -7604,8 +7641,8 @@ function renderAccess(){
   document.getElementById('passbody').innerHTML = P.map((p,i)=>
     '<tr data-i="'+i+'" aria-selected="'+(i===selPass)+'">'+
     '<td>'+(i+1)+'</td>'+
-    '<td>'+hms(p.aos)+(p.clipA?' *':'')+'</td>'+
-    '<td>'+hms(p.los)+(p.clipL?' *':'')+'</td>'+
+    '<td>'+hmsD(p.aos)+(p.clipA?' *':'')+'</td>'+
+    '<td>'+hmsD(p.los)+(p.clipL?' *':'')+'</td>'+
     '<td>'+mmss(p.dur)+'</td>'+
     '<td>'+p.maxEl.toFixed(1)+'°</td>'+
     '<td>'+p.maxAz.toFixed(0)+'° '+compass(p.maxAz)+'</td>'+
@@ -7674,9 +7711,9 @@ function selectPass(i, scrub){
   drawSky(p);
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
-    ['AOS', hms(p.aos)+'Z · '+hmsLocal(p.aos)+' ICT'],
-    ['Culmination', hms(p.maxAt)+'Z at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
-    ['LOS', hms(p.los)+'Z · '+hmsLocal(p.los)+' ICT'],
+    ['AOS', hmsD(p.aos)+'Z · '+hmsLocal(p.aos)+' ICT'],
+    ['Culmination', hmsD(p.maxAt)+'Z at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
+    ['LOS', hmsD(p.los)+'Z · '+hmsLocal(p.los)+' ICT'],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
   ].map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
@@ -7721,7 +7758,7 @@ const box = document.getElementById('satsearch'),
       caret = document.getElementById('satopen'),
       countEl = document.getElementById('satcount');
 const SHOWN_MAX = 80;
-let curIdx = 0, shown = [], active = -1, isOpen = false;
+let curIdx = 0, shown = [], active = -1, isOpen = false, lastQ = '';
 
 function rank(q){
   q = q.trim().toLowerCase();
@@ -7735,6 +7772,7 @@ function rank(q){
   return starts.concat(has);
 }
 function paint(q){
+  lastQ = q;                                  // remember what built this list
   const hits = rank(q);
   shown = hits.slice(0, SHOWN_MAX);
   let html = shown.map((idx,k)=>
@@ -7764,7 +7802,7 @@ function moveActive(d){
   if(!isOpen){ openList(''); return; }
   if(!shown.length) return;
   active = (active + d + shown.length) % shown.length;
-  paint(box.value === CAT[curIdx].name ? '' : box.value);
+  paint(lastQ);                               // repaint the SAME list, not a new one
   const el = listEl.querySelector('.on');
   if(el) el.scrollIntoView({block:'nearest'});
 }
@@ -7800,9 +7838,19 @@ document.addEventListener('mousedown', e=>{
 });
 box.addEventListener('blur', ()=>{ if(isOpen) closeList(true); });
 /* ---- transport ----------------------------------------------------------- */
-document.getElementById('time').addEventListener('input', e=>{
-  setSim(winT0() + (+e.target.value)*STEP*1000, true);
-});
+(function(){
+  const range = document.getElementById('time');
+  range.addEventListener('input', e=>{
+    setSim(winT0() + (+e.target.value)*STEP*1000, true);
+  });
+  const hold = ()=>{ scrubbing = true; }, release = ()=>{ scrubbing = false; };
+  range.addEventListener('pointerdown', hold);
+  range.addEventListener('keydown', hold);
+  range.addEventListener('keyup', release);
+  range.addEventListener('blur', release);
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
+})();
 function stop(){ /* playback lives on the transport now */ }
 document.getElementById('tpplay').addEventListener('click', ()=>{
   playing = !playing; paintPlay();
@@ -7884,6 +7932,10 @@ setInterval(paintAges, 30000);
     canvas.style.display = 'none';
     document.querySelector('.camseg').style.display = 'none';
     document.querySelector('.hint-drag').style.display = 'none';
+    const ts = document.querySelector('.trailseg');
+    if(ts) ts.style.display = 'none';           // trail has nothing to draw on
+    const cl = document.querySelector('label[for="o3cloud"]');
+    if(cl) cl.style.display = 'none';           // and no cloud to toggle
     return;
   }
   // the camera has one mode with three values; the exclusion logic already

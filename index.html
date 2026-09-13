@@ -7514,7 +7514,7 @@ function paintClock(force){
   utc.closest('.tp-clock').classList.toggle('outwin', !inWindow(simMs));
   const idx = idxAt(simMs), range = document.getElementById('time');
   if(document.activeElement !== range) range.value = idx;
-  if(force || idx !== lastIdx){ lastIdx = idx; setTime(idx); }
+  if(force || idx !== lastIdx){ lastIdx = idx; setTime(idx, force); }
   paintCountdown();
 }
 function clockTick(ts){
@@ -7548,7 +7548,8 @@ function paintCountdown(){
                   nxt.maxEl.toFixed(1) + '°' + (wrapped ? ' (next cycle)' : '');
 }
 
-function setTime(idx){
+let mapVisible = false, lastMapDraw = 0;
+function setTime(idx, force){
   const p = D.pts[Math.min(idx, D.pts.length-1)];
   document.getElementById('r-lat').textContent = latStr(p.lat);
   document.getElementById('r-lon').textContent = lonStr(p.lon);
@@ -7558,7 +7559,9 @@ function setTime(idx){
   el.className = p.el >= MASK ? 'hot' : '';
   document.getElementById('r-az').textContent = p.az.toFixed(1)+'° '+compass(p.az);
   document.getElementById('r-rng').textContent = p.rng.toFixed(0)+' km';
-  drawMap(idx);
+  // the readout above is cheap text; the canvas is not
+  const t = performance.now();
+  if(force || (mapVisible && t - lastMapDraw > 80)){ lastMapDraw = t; drawMap(idx); }
 }
 
 /* ---- (c) passes, timeline, sky plot -------------------------------------- */
@@ -7918,6 +7921,12 @@ curIdx = DEFAULT;
 box.value = CAT[curIdx].name;
 countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type to search';
 load(CAT[curIdx]);
+if('IntersectionObserver' in window){
+  new IntersectionObserver(es => {
+    mapVisible = es[0].isIntersecting;
+    if(mapVisible) paintClock(true);          // catch up the moment it appears
+  }, {rootMargin:'120px'}).observe(document.getElementById('map'));
+} else mapVisible = true;
 requestAnimationFrame(clockTick);
 // canvas labels are painted, not laid out: repaint once the webfonts land
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{

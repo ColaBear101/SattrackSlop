@@ -19,6 +19,7 @@ let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
+let curPeriodS = 5400, ringMs = null, ringWall = 0;
 let curEntry = null, curRec = null, follow = true, siteLock = false;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
@@ -249,15 +250,8 @@ function setSat(entry, elements){
     simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
   const anchor = elements && elements.epoch ? elements.epoch : simTime;
 
-  // one full revolution, in inertial space
-  const N = 360, pts = [];
-  for(let k=0;k<=N;k++){
-    const t = new Date(anchor.getTime() + k*periodS*1000/N);
-    let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
-    if(pv && pv.position) pts.push(new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U));
-  }
-  orbitLine.geometry.dispose();
-  orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  curPeriodS = periodS;
+  buildRing(simTime.getTime());
 
   // 24 h of sub-satellite points, sampled fine enough that a short trail still
   // reads as a curve rather than a polygon
@@ -321,6 +315,22 @@ function setSiteState(v){
     cam0.dist = Math.min(cam0.dist, 4.2);
   }
   if(onSite) onSite(v);
+}
+
+// One revolution centred on the given instant, in inertial space.
+function buildRing(centreMs){
+  if(!curRec) return;
+  const N = 360, half = curPeriodS*1000/2, pts = [];
+  for(let k=0;k<=N;k++){
+    const t = new Date(centreMs - half + k*curPeriodS*1000/N);
+    let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
+    if(pv && pv.position)
+      pts.push(new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U));
+  }
+  if(!pts.length) return;
+  orbitLine.geometry.dispose();
+  orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  ringMs = centreMs;
 }
 
 // first index whose time is >= ms (times are monotonic)
@@ -435,7 +445,13 @@ function tick(ts){
   earthGroup.rotation.y = gmst;
   sunLight.position.copy(sunVec(simTime)).multiplyScalar(50);
 
-  updateTrail(simTime.getTime());
+  const nowMs = simTime.getTime();
+  updateTrail(nowMs);
+  // at 3600x the clock crosses two simulated minutes every ~33 ms, so throttle
+  // the rebuild on wall time too rather than spending 30 rebuilds a second
+  if(curRec && (ringMs === null || (Math.abs(nowMs - ringMs) > 120000 && ts - ringWall > 120))){
+    buildRing(nowMs); ringWall = ts;
+  }
 
   // focused spacecraft
   let satPos = null, el = -90;

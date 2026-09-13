@@ -425,10 +425,10 @@ function bindInput(canvas){
   }, {passive:false});
   // click fires after mouseup however far the pointer travelled, and hoverIdx is
   // frozen during a drag - so a rotate that began over a point would load it
-  canvas.addEventListener('click', () => {
+  canvas.addEventListener('click', (e) => {
     if(travel > 5) return;                          // that was a drag, not a click
     if(!cloudPts || !cloudPts.visible) return;      // nothing on screen to pick
-    if(hoverIdx >= 0 && onPick) onPick(hoverIdx);
+    if(hoverIdx >= 0 && onPick) onPick(hoverIdx, e.clientX, e.clientY);
   });
 }
 

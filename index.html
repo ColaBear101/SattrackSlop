@@ -60,7 +60,7 @@ p{margin:0}
 
 /* ===== the instrument ===================================================== */
 .app{
-  display:grid; grid-template-rows:auto minmax(0,1fr) auto;
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto auto;
   height:100svh; min-height:560px; max-height:1100px;
   background:var(--chrome); color:var(--chromeink);
   border-bottom:1px solid var(--chromerule);
@@ -171,6 +171,25 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 /* ---- transport ----------------------------------------------------------- */
 .bar-transport{border-top:1px solid var(--chromerule); background:var(--chrome2);
   flex-wrap:wrap; row-gap:8px; gap:10px}
+.bar-window{border-top:1px solid var(--chromerule); background:var(--chrome);
+  flex-wrap:wrap; row-gap:8px; gap:8px; padding-block:9px}
+.bar-window input[type=datetime-local]{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px; color:var(--chromeink);
+  background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
+  padding:6px 9px; min-height:32px}
+.winnote{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+  letter-spacing:.06em; color:var(--muted); margin-left:auto}
+.winnote.warn{color:var(--contact)}
+.pickconfirm{position:absolute; z-index:60; min-width:212px; padding:11px 12px 10px;
+  background:rgba(10,16,20,.94); border:1px solid rgba(180,200,212,.32); border-radius:4px;
+  backdrop-filter:blur(7px); box-shadow:0 10px 30px -12px rgba(0,0,0,.9)}
+.pickconfirm .pcn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+  font-weight:600; color:#EAF2F6; letter-spacing:.02em}
+.pickconfirm .pcd{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  color:#8AA0AC; margin-top:2px}
+.pickconfirm .pcb{display:flex; gap:6px; margin-top:9px}
+.pickconfirm .btn{flex:1; justify-content:center; text-align:center}
+#pcload{background:var(--contact); border-color:var(--contact); color:#fff}
 .tp-scrub{flex:1 1 280px; min-width:180px; display:flex; flex-direction:column; gap:3px}
 .tp-track{position:relative; height:26px}
 .tp-track input[type=range]{position:absolute; inset:0; width:100%; height:26px; margin:0;
@@ -418,6 +437,14 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         </div>
       </div>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
+      <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
+        <p class="pcn" id="pcname">—</p>
+        <p class="pcd" id="pcmeta">—</p>
+        <div class="pcb">
+          <button class="btn" id="pcload">Load</button>
+          <button class="btn" id="pccancel">Cancel</button>
+        </div>
+      </div>
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
 
@@ -475,12 +502,30 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <span class="a"><span id="tpclock">—</span> UTC</span>
       <span class="b"><span id="tpclocklocal">—</span> ICT</span>
     </div>
-    <button class="btn" id="tpepoch">Epoch</button>
-    <button class="btn" id="tpnow">Now</button>
     <label class="btn" for="o3cloud" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3cloud" checked> Catalogue
     </label>
   </footer>
+
+  <div class="bar bar-window">
+    <span class="seglabel">Window</span>
+    <button class="btn" id="winPrevD" aria-label="Back one day">‹‹ 1 d</button>
+    <button class="btn" id="winPrevH" aria-label="Back six hours">‹ 6 h</button>
+    <input type="datetime-local" id="winStartIn" step="60"
+           aria-label="Start of the analysis window, in your local time">
+    <button class="btn" id="winNextH" aria-label="Forward six hours">6 h ›</button>
+    <button class="btn" id="winNextD" aria-label="Forward one day">1 d ››</button>
+    <button class="btn" id="tpnow">Now</button>
+    <button class="btn" id="tpepoch">Epoch</button>
+    <span class="seglabel">Span</span>
+    <div class="seg" role="group" aria-label="Window length">
+      <button class="btn span" data-h="6" aria-pressed="false">6 h</button>
+      <button class="btn span" data-h="24" aria-pressed="true">24 h</button>
+      <button class="btn span" data-h="72" aria-pressed="false">3 d</button>
+      <button class="btn span" data-h="168" aria-pressed="false">7 d</button>
+    </div>
+    <span class="winnote" id="winnote"></span>
+  </div>
 </div>
 
 <div class="wrap" id="report">
@@ -7089,8 +7134,14 @@ const RAD = Math.PI/180, DEG = 180/Math.PI;
 const MU = 398600.4418, RE = 6378.137;          // km^3/s^2, km
 const OBS  = { lat: 13.75, lon: 100.52, altKm: 0 };   // Bangkok
 const MASK = 5;                                  // deg
-const HOURS = 24, STEP = 10;                     // window length, sample step [s]
-const N = HOURS*3600/STEP;
+/* The analysis window used to be nailed to "24 h from the element set epoch".
+   It is now an arbitrary span the user places anywhere - defaulting to their own
+   clock rather than the epoch, since "when can I see it tonight" is the question
+   people actually arrive with. Sample step relaxes on long spans: a 5 deg pass
+   lasts minutes, so 30 s still brackets every crossing. */
+let spanH = 24;                                  // window length, hours
+let winStart = null;                             // window start, ms (null = now)
+const stepFor = hrs => hrs <= 48 ? 10 : 30;      // sample step, seconds
 const ICT = 7;                                   // Bangkok is UTC+7, no DST
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
@@ -7190,8 +7241,8 @@ function sampleMs(satrec, ms){
   return { t, lat: gd.latitude*DEG, lon, alt: gd.height,
            el: look.elevation*DEG, az: ((look.azimuth*DEG)%360+360)%360, rng: look.rangeSat };
 }
-function sample(satrec, start, k){
-  const t = new Date(start.getTime()+k*STEP*1000);
+function sample(satrec, start, k, step){
+  const t = new Date(start.getTime()+k*step*1000);
   const pv = satellite.propagate(satrec, t);
   if(!pv || !pv.position) return null;
   const gmst = satellite.gstime(t);
@@ -7223,7 +7274,7 @@ function stateAt(satrec, ms){
 }
 
 /* (c) access windows: coarse scan, then bisect each horizon crossing */
-function findPasses(satrec, t0, t1){
+function findPasses(satrec, t0, t1, step){
   const f = ms => elevationAt(satrec, ms) - MASK;
   const bisect = (lo,hi) => {
     let flo = f(lo);
@@ -7233,9 +7284,9 @@ function findPasses(satrec, t0, t1){
     }
     return (lo+hi)/2;
   };
-  const step = STEP*1000, passes = [];
+  const stepMs = step*1000, passes = [];
   let prev = t0, prevF = f(t0), open = prevF >= 0 ? t0 : null, clipStart = prevF >= 0;
-  for(let t = t0+step; t <= t1; t += step){
+  for(let t = t0+stepMs; t <= t1; t += stepMs){
     const cur = f(t);
     if(prevF < 0 && cur >= 0) open = bisect(prev, t);
     else if(prevF >= 0 && cur < 0 && open !== null){
@@ -7276,20 +7327,26 @@ function build(satrec, aos, los, clipA, clipL){
 const CAT = parseCatalog(RAWTLE);
 let D = null, selPass = 0, timer = null;
 
-function compute(entry){
+function compute(entry, t0ms, hours){
   const satrec = satellite.twoline2satrec(entry.l1, entry.l2);
   const E = elements(entry.l1, entry.l2);
-  const start = E.epoch, end = new Date(start.getTime()+HOURS*3600000);
+  const step = stepFor(hours);
+  const start = new Date(t0ms), end = new Date(t0ms + hours*3600000);
   const pts = [];
-  for(let k=0;k<=N;k++){ const s = sample(satrec,start,k); if(s) pts.push(s); }
+  const N = Math.round(hours*3600/step);
+  for(let k=0;k<=N;k++){ const s = sample(satrec,start,k,step); if(s) pts.push(s); }
   if(!pts.length) throw new Error('no propagable samples for '+entry.name);
-  const passes = findPasses(satrec, start.getTime(), end.getTime());
+  const passes = findPasses(satrec, start.getTime(), end.getTime(), step);
   const totalS = passes.reduce((s,p)=>s+p.dur, 0);
   const meanAlt = pts.reduce((s,p)=>s+p.alt,0)/pts.length;
   // 5° access footprint: central angle from the observer, at mean altitude
   const eps = MASK*RAD;
   const lambda = Math.acos(RE*Math.cos(eps)/(RE+meanAlt)) - eps;
-  return {entry, satrec, E, start, end, pts, passes, totalS, meanAlt, lambda};
+  // a long window can hold tens of thousands of samples; the flat map only needs
+  // enough to draw a smooth line
+  const drawStride = Math.max(1, Math.ceil(pts.length/8640));
+  return {entry, satrec, E, start, end, pts, passes, totalS, meanAlt, lambda,
+          step, hours, drawStride};
 }
 
 /* ---- (a) render elements ------------------------------------------------- */
@@ -7492,7 +7549,8 @@ function drawMap(cur){
   drawTerminator(cur.t);
   drawGraticule();
   drawFootprint();
-  strokeTrack(D.pts, tok('--track'), 1.5);
+  strokeTrack(D.drawStride > 1 ? D.pts.filter((_,i)=>i % D.drawStride === 0) : D.pts,
+              tok('--track'), 1.5);
   // in-view arcs on top, thicker: identity is carried by width as well as hue
   let run = [];
   for(let i=0;i<D.pts.length;i++){
@@ -7514,7 +7572,8 @@ function drawMap(cur){
 let simMs = 0, rate = 60, playing = true, rafPrev = 0, lastIdx = -1, scrubbing = false;
 const winT0 = () => D.start.getTime(), winT1 = () => D.end.getTime();
 const inWindow = ms => ms >= winT0()-1 && ms <= winT1()+1;
-const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/STEP)));
+const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/D.step)));
+const spanLabel = hrs => hrs >= 48 ? (hrs/24)+' d' : hrs+' h';
 const hhmmss = ms => { const t = Math.max(0,Math.round(ms/1000));
   return pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(t%60); };
 
@@ -7609,20 +7668,25 @@ function renderAccess(){
   const T = Math.round(total);                          // same carry trap as mmss()
   const h = Math.floor(T/3600), m = Math.floor(T%3600/60), s = T%60;
   document.getElementById('totalsub').textContent =
-    (h ? h+' h '+m+' min' : m+' min '+pad(s)+' s')+' in view across the day — '+
-    (total/864).toFixed(2)+'% of 24 hours.';
+    (h ? h+' h '+m+' min' : m+' min '+pad(s)+' s')+' in view over '+spanLabel(D.hours)+
+    ' — '+(total/(D.hours*36)).toFixed(2)+'% of the window.';
   document.getElementById('npasses').textContent = String(P.length);
   document.getElementById('longest').textContent = P.length ? mmss(Math.max(...P.map(p=>p.dur))) : '—';
   document.getElementById('bestel').textContent = P.length ? Math.max(...P.map(p=>p.maxEl)).toFixed(1)+'°' : '—';
 
   // pass windows drawn onto the transport scrubber, so time and access share one axis
-  const t0 = D.start.getTime(), span = HOURS*3600000;
+  const t0 = D.start.getTime(), span = D.hours*3600000;
   document.getElementById('tppasses').innerHTML = P.map(p=>{
     const l = (p.t0ms-t0)/span*100, w = Math.max((p.t1ms-p.t0ms)/span*100, .45);
     return '<div class="tp-pass" style="left:'+l+'%;width:'+w+'%"></div>';
   }).join('');
+  // one unit across the whole axis: mixing '+42h' with '+3.5d' reads as noise
+  const useDays = D.hours >= 48;
+  const tick = f => { const hh = D.hours*f;
+    if(useDays){ const d = hh/24; return '+'+(d % 1 ? d.toFixed(1) : d.toFixed(0))+'d'; }
+    return '+'+(hh % 1 ? hh.toFixed(1) : hh.toFixed(0))+'h'; };
   document.getElementById('tpticks').innerHTML =
-    [0,6,12,18,24].map(x=>'<span>+'+x+' h</span>').join('');
+    [0,.25,.5,.75,1].map(f=>'<span>'+tick(f)+'</span>').join('');
 
   // the rail list is the summary; the table below carries the detail
   const pl = document.getElementById('passlist');
@@ -7721,7 +7785,8 @@ function selectPass(i, scrub){
 
 /* ---- boot ---------------------------------------------------------------- */
 function load(entry){
-  D = compute(entry);
+  if(winStart === null) winStart = Date.now();
+  D = compute(entry, winStart, spanH);
   document.getElementById('satname').textContent = entry.name;
   document.getElementById('idnorad').textContent = D.E.satnum;
   document.getElementById('idcospar').textContent = D.E.cospar;
@@ -7729,9 +7794,14 @@ function load(entry){
   document.getElementById('tleraw').innerHTML =
     '<b>'+entry.name+'</b>\n'+entry.l1+'\n'+entry.l2;
   document.getElementById('trackhint').textContent =
-    iso(D.start)+'  →  '+iso(D.end)+'  ·  '+D.E.n.toFixed(2)+' revolutions';
+    iso(D.start)+'  →  '+iso(D.end)+'  ·  '+(D.E.n*D.hours/24).toFixed(1)+' revolutions';
+  const hd = document.querySelector('#sec-track h2');
+  if(hd) hd.textContent = 'Ground track · ' + spanLabel(D.hours) + ' from window start';
+  const ha = document.querySelector('#sec-access h2');
+  if(ha) ha.textContent = 'Visibility from Bangkok · 5° elevation mask';
   document.getElementById('footepoch').textContent =
-    'Element set epoch '+iso(D.E.epoch)+' · window '+HOURS+' h · sample '+STEP+' s';
+    'Element set epoch '+iso(D.E.epoch)+' · window '+spanLabel(D.hours)+
+    ' from '+iso(D.start)+' · sample '+D.step+' s';
   if(global3D()){
     Orbit3D.setSat(entry, D.E);
     if(window.__applyTrail) window.__applyTrail();   // "1 orbit" is per-spacecraft
@@ -7739,11 +7809,12 @@ function load(entry){
   renderElements();
   renderAccess();
   paintAges();
+  paintWindow();
   selPass = 0;
   const range = document.getElementById('time');
   range.max = D.pts.length-1; range.value = 0;
   fitCanvas();
-  simMs = D.E.epoch.getTime();          // every spacecraft starts at its own epoch
+  simMs = D.start.getTime();            // start of the window being analysed
   lastIdx = -1; paintClock(true); paintPlay();
   selectPass(0, false);
 }
@@ -7841,7 +7912,7 @@ box.addEventListener('blur', ()=>{ if(isOpen) closeList(true); });
 (function(){
   const range = document.getElementById('time');
   range.addEventListener('input', e=>{
-    setSim(winT0() + (+e.target.value)*STEP*1000, true);
+      setSim(winT0() + (+e.target.value)*D.step*1000, true);
   });
   const hold = ()=>{ scrubbing = true; }, release = ()=>{ scrubbing = false; };
   range.addEventListener('pointerdown', hold);
@@ -7859,8 +7930,41 @@ document.querySelectorAll('.bar-transport .rate').forEach(b=>b.addEventListener(
   document.querySelectorAll('.bar-transport .rate').forEach(x=>x.setAttribute('aria-pressed', x===b));
   rate = +b.dataset.r;
 }));
-document.getElementById('tpepoch').addEventListener('click', ()=>setSim(D.E.epoch.getTime(), true));
-document.getElementById('tpnow').addEventListener('click', ()=>setSim(Date.now(), true));
+/* ---- the analysis window -------------------------------------------------- *
+ * Moving the window changes the pass solution, so every control here funnels
+ * through one reload rather than trying to patch the existing result.          */
+function toLocalInput(ms){
+  const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000);
+  return d.toISOString().slice(0,16);
+}
+function setWindow(ms){ winStart = ms; stop(); load(CAT[curIdx]); }
+function paintWindow(){
+  const inp = document.getElementById('winStartIn');
+  if(inp && document.activeElement !== inp) inp.value = toLocalInput(D.start.getTime());
+  document.querySelectorAll('.bar-window .span').forEach(b=>
+    b.setAttribute('aria-pressed', +b.dataset.h === D.hours));
+  // a TLE is only good for a few days either side of its epoch - say so plainly
+  const off = (D.start.getTime() - D.E.epoch.getTime())/86400000;
+  const note = document.getElementById('winnote');
+  const far = Math.abs(off) > 3;
+  note.classList.toggle('warn', far);
+  note.textContent = (Math.abs(off) < 0.05 ? 'window starts at the epoch'
+    : (off > 0 ? '+' : '') + off.toFixed(1) + ' d from epoch')
+    + (far ? ' — SGP4 drifts this far out' : '');
+}
+document.getElementById('tpepoch').addEventListener('click', ()=>setWindow(D.E.epoch.getTime()));
+document.getElementById('tpnow').addEventListener('click', ()=>setWindow(Date.now()));
+document.getElementById('winPrevD').addEventListener('click', ()=>setWindow(D.start.getTime()-86400000));
+document.getElementById('winNextD').addEventListener('click', ()=>setWindow(D.start.getTime()+86400000));
+document.getElementById('winPrevH').addEventListener('click', ()=>setWindow(D.start.getTime()-21600000));
+document.getElementById('winNextH').addEventListener('click', ()=>setWindow(D.start.getTime()+21600000));
+document.getElementById('winStartIn').addEventListener('change', e=>{
+  const t = new Date(e.target.value);              // datetime-local reads as local time
+  if(!isNaN(t)) setWindow(t.getTime());
+});
+document.querySelectorAll('.bar-window .span').forEach(b=>b.addEventListener('click', ()=>{
+  spanH = +b.dataset.h; stop(); load(CAT[curIdx]);
+}));
 cv.addEventListener('mousemove', e=>{
   const r = cv.getBoundingClientRect();
   const lon = (e.clientX-r.left)/r.width*360-180, lat = 90-(e.clientY-r.top)/r.height*180;
@@ -7884,6 +7988,41 @@ let DEFAULT = -1;
 for(const re of WANT){ DEFAULT = CAT.findIndex(c=>re.test(c.name)); if(DEFAULT >= 0) break; }
 if(DEFAULT < 0) DEFAULT = 0;
 function global3D(){ return window.Orbit3D && Orbit3D.ok(); }
+
+/* ---- pick confirmation ---------------------------------------------------- *
+ * The cloud is dense enough that a click meant as a camera nudge could swap the
+ * spacecraft and reset the clock without the user ever knowing why. Ask first,
+ * and name what was picked so the answer is informed.                          */
+let pendingPick = -1;
+function askLoad(i, clientX, clientY){
+  const c = CAT[i]; if(!c) return;
+  pendingPick = i;
+  const card = document.getElementById('pickconfirm');
+  const host = document.querySelector('.viewport').getBoundingClientRect();
+  document.getElementById('pcname').textContent = c.name;
+  document.getElementById('pcmeta').textContent = 'NORAD ' + c.satnum;
+  card.hidden = false;
+  const w = card.offsetWidth || 212, hh = card.offsetHeight || 96;
+  let x = clientX - host.left + 14, y = clientY - host.top + 14;
+  x = Math.max(8, Math.min(x, host.width  - w  - 8));
+  y = Math.max(8, Math.min(y, host.height - hh - 8));
+  card.style.left = x+'px'; card.style.top = y+'px';
+  document.getElementById('pcload').focus();
+}
+function closePick(){
+  pendingPick = -1;
+  document.getElementById('pickconfirm').hidden = true;
+}
+document.getElementById('pcload').addEventListener('click', ()=>{
+  const i = pendingPick; closePick();
+  if(i < 0) return;
+  curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]);
+});
+document.getElementById('pccancel').addEventListener('click', closePick);
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closePick(); });
+document.querySelector('.viewport').addEventListener('mousedown', e=>{
+  if(!e.target.closest('.pickconfirm')) closePick();
+});
 
 function paintAges(){
   if(!D) return;
@@ -7923,7 +8062,7 @@ setInterval(paintAges, 30000);
           fmtLocal: d => iso(new Date(d.getTime()+ICT*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
               el: document.getElementById('o3el') },
-    onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); },
+    onPick: (i, x, y) => askLoad(i, x, y),     // 2158 points is a lot to misclick
     onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },
     onSite:   () => { if(window.__paintCamMode) window.__paintCamMode(); }
   });

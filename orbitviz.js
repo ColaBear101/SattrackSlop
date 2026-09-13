@@ -21,6 +21,7 @@ const SPACE = {
   track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
   ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
   aries:'#F0C24B',                               // the direction everything is measured from
+  hvec:'#9FD3E3', evec:'#F0A03C', rvec:'#E8EFF2',
   pole:'#9FD3E3', star:'#DCE7EE'
 };
 
@@ -28,6 +29,9 @@ let THREE, sat, scene, U = 1/RE;
 let root = null, sky = null, started = false;
 let el = null;                                   // normalised elements of the current orbit
 let simTime = new Date(), planetMs = null, precMs = null, dpr = 1;
+const MU = 398600.4418;                          // km^3/s^2, for the e vector
+let satrecRef = null;                            // needed for the live state vector
+let live = null, liveMs = null, nuShown = null;  // the parts that follow the spacecraft
 
 /* The layer table is the single source of truth: layers() hands it to the UI,
    and show() builds a layer the first time it is switched on rather than at
@@ -98,6 +102,42 @@ function makeLabel(text, colour, opt){
   s.scale.set(h*cv.width/cv.height, h, 1);
   s.renderOrder = opt.order || 12;
   return s;
+}
+
+/* makeLabel bakes its text into a texture, which is right for a label that never
+   changes and wrong for one that counts. This one keeps its own canvas so the
+   value can be repainted in place. */
+function liveLabel(colour, opt){
+  opt = opt || {};
+  const px = 56, pad = 24, h = px + pad*2;
+  const cv = document.createElement('canvas');
+  // size to the longest string this label will ever hold, or it clips
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = '600 '+px+'px "IBM Plex Mono", ui-monospace, monospace';
+  const w = Math.ceil(probe.measureText(opt.sample || '000000000000000000000000').width) + pad*2;
+  cv.width = w; cv.height = h;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  if(THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+  else if(THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true,
+    depthWrite:false, depthTest:false, sizeAttenuation:false }));
+  const hh = (opt.h || 0.019) * 1.75;
+  sp.scale.set(hh*w/h, hh, 1);
+  sp.renderOrder = 14;
+  sp.userData.paint = function(text){
+    const g = cv.getContext('2d');
+    g.clearRect(0,0,w,h);
+    g.font = '600 '+px+'px "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace';
+    g.textBaseline = 'top'; g.textAlign = 'left';
+    g.lineJoin = 'round'; g.miterLimit = 2;
+    g.lineWidth = Math.max(4, px*0.30); g.strokeStyle = 'rgba(3,8,11,0.97)';
+    g.strokeText(text, pad, pad); g.fillStyle = C(colour).getStyle();
+    g.fillText(text, pad, pad);
+    tex.needsUpdate = true;
+  };
+  return sp;
 }
 
 function lineFrom(pts, colour, opacity){
@@ -225,6 +265,155 @@ function basis(e){
 }
 function radiusAt(e, nu){ return e.a*(1-e.ecc*e.ecc)/(1+e.ecc*cos(nu)); }
 
+/* h, e, r and the true anomaly are the parts that MOVE. They are computed from
+   the live state vector rather than from the mean elements, so they follow the
+   spacecraft exactly and carry the orbit's precession for free:
+     h = r x v          e = (v x h)/mu - r_hat          nu = angle(e, r)        */
+function buildLive(parent){
+  const seg = 96;
+  const mk = (colour) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(2*3), 3));
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({
+      color:C(colour), transparent:true, opacity:.95 }));
+  };
+  const arcGeo = new THREE.BufferGeometry();
+  arcGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((seg+1)*3), 3));
+  live = {
+    seg,
+    h: mk(SPACE.hvec), e: mk(SPACE.evec), r: mk(SPACE.rvec),
+    hTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.085, SPACE.hvec, .95),
+    eTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.evec, .95),
+    nu: new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
+          color:C(SPACE.contact), transparent:true, opacity:.9 })),
+    hLbl: liveLabel(SPACE.hvec, {h:0.017, sample:'h = 000000000 km2/s'}),
+    eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (near-circular)'}),
+    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'u = 000.00 deg from node'})
+  };
+  [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
+   live.hLbl, live.eLbl, live.nuLbl].forEach(o=>parent.add(o));
+  liveMs = null; nuShown = null;
+}
+
+/* Set a two-point line from the origin, park the arrow head on its tip. */
+function setRay(line, tip, vec, headBack){
+  const a = line.geometry.attributes.position.array;
+  a[0]=0; a[1]=0; a[2]=0; a[3]=vec.x; a[4]=vec.y; a[5]=vec.z;
+  line.geometry.attributes.position.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+  if(tip){
+    const d = vec.clone().normalize();
+    tip.position.copy(vec).addScaledVector(d, -(headBack||0.042));
+    tip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), d);
+  }
+}
+
+function updateLive(date){
+  if(!live || !satrecRef || !sat) return;
+  const ms = date.getTime();
+  if(liveMs !== null && Math.abs(ms - liveMs) < 120) return;   // ~8 Hz is plenty
+  liveMs = ms;
+  let pv = null;
+  try { pv = sat.propagate(satrecRef, date); } catch(e){ pv = null; }
+  const vis = !!(pv && pv.position && pv.velocity && isFinite(pv.position.x));
+  [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
+   live.hLbl, live.eLbl, live.nuLbl].forEach(o=>o.visible = vis);
+  if(!vis) return;
+
+  const R = [pv.position.x, pv.position.y, pv.position.z];
+  const V = [pv.velocity.x, pv.velocity.y, pv.velocity.z];
+  const rMag = Math.hypot(R[0],R[1],R[2]);
+  const H = [R[1]*V[2]-R[2]*V[1], R[2]*V[0]-R[0]*V[2], R[0]*V[1]-R[1]*V[0]];
+  const hMag = Math.hypot(H[0],H[1],H[2]);
+  const VxH = [V[1]*H[2]-V[2]*H[1], V[2]*H[0]-V[0]*H[2], V[0]*H[1]-V[1]*H[0]];
+  const E = [VxH[0]/MU - R[0]/rMag, VxH[1]/MU - R[1]/rMag, VxH[2]/MU - R[2]/rMag];
+  const eMag = Math.hypot(E[0],E[1],E[2]);
+
+  // scene vectors
+  const rS = eci(R[0],R[1],R[2]).multiplyScalar(U);
+  const hDir = eci(H[0],H[1],H[2]).normalize();
+  const eDir = eMag > 1e-9 ? eci(E[0],E[1],E[2]).normalize() : null;
+  const rLen = rS.length();
+
+  setRay(live.r, null, rS);
+  setRay(live.h, live.hTip, hDir.clone().multiplyScalar(Math.max(1.55, rLen*1.12)));
+  live.hLbl.position.copy(hDir).multiplyScalar(Math.max(1.55, rLen*1.12) + 0.16);
+
+  /* True anomaly is measured from perigee, and on a near-circular orbit perigee
+     is not a real place: at e = 1.5e-4 it sits about a kilometre below apogee and
+     the eccentricity vector's DIRECTION is mostly perturbation noise, so nu
+     jitters and can point anywhere. Checked against radius over a full
+     revolution, LANDSAT 9 put its minimum radius at nu = 180.7 deg. Below the
+     threshold the honest angle is the argument of latitude, measured from the
+     ascending node, which stays well conditioned as e goes to zero. */
+  /* Decide this ONCE from the published eccentricity, not from the osculating
+     value: the osculating e wobbles across any fixed threshold mid-orbit, which
+     flipped the reference direction between perigee and node and made the angle
+     jump by omega - measured at 108 degrees on KNACKSAT-2. */
+  const nearCircular = (el && isFinite(el.ecc) ? el.ecc : eMag) < 1.5e-3;
+  const rHat = rS.clone().normalize();
+  const rdotv = R[0]*V[0] + R[1]*V[1] + R[2]*V[2];
+
+  // the e arrow still points somewhere, but say so when it cannot be trusted
+  if(eDir){
+    const eLen = Math.max(1.30, rLen*0.92);
+    setRay(live.e, live.eTip, eDir.clone().multiplyScalar(eLen));
+    live.eLbl.position.copy(eDir).multiplyScalar(eLen + 0.16);
+    live.e.visible = live.eTip.visible = live.eLbl.visible = true;
+    live.e.material.opacity = nearCircular ? .38 : .95;
+    live.eTip.material.opacity = nearCircular ? .38 : .95;
+  } else {
+    live.e.visible = live.eTip.visible = live.eLbl.visible = false;
+  }
+
+  // the angle actually drawn: from perigee, or from the node when perigee is not
+  // a meaningful direction
+  const nodeDir = eci(-H[1], H[0], 0);                 // z x h, toward the ascending node
+  const fromDir = nearCircular
+    ? (nodeDir.lengthSq() > 1e-12 ? nodeDir.normalize() : (eDir || rHat))
+    : eDir;
+  if(fromDir){
+    let ang = Math.acos(Math.max(-1, Math.min(1, fromDir.dot(rHat))))*DEG;
+    if(nearCircular){
+      // signed about h, so it runs 0..360 the way the spacecraft does
+      const cr = new THREE.Vector3().crossVectors(fromDir, rHat);
+      if(cr.dot(hDir) < 0) ang = 360 - ang;
+    } else if(rdotv < 0){
+      ang = 360 - ang;
+    }
+    const inPlane = new THREE.Vector3().crossVectors(hDir, fromDir).normalize();
+    const Rnu = Math.max(0.62, rLen*0.42);
+    const arr = live.nu.geometry.attributes.position.array;
+    for(let k=0;k<=live.seg;k++){
+      const t = ang*k/live.seg;
+      const p = fromDir.clone().multiplyScalar(Rnu*cos(t)).addScaledVector(inPlane, Rnu*sin(t));
+      arr[k*3]=p.x; arr[k*3+1]=p.y; arr[k*3+2]=p.z;
+    }
+    live.nu.geometry.attributes.position.needsUpdate = true;
+    live.nu.geometry.computeBoundingSphere();
+    live.nu.visible = live.nuLbl.visible = true;
+    const mid = ang/2;
+    live.nuLbl.position.copy(fromDir).multiplyScalar(Rnu*cos(mid)*1.12)
+      .addScaledVector(inPlane, Rnu*sin(mid)*1.12);
+    if(nuShown === null || Math.abs(ang - nuShown) > 0.05){
+      nuShown = ang;
+      live.nuLbl.userData.paint(nearCircular
+        ? 'u = '+ang.toFixed(2)+'\u00b0 from node'
+        : '\u03bd = '+ang.toFixed(2)+'\u00b0');
+      const eShown = (el && isFinite(el.ecc)) ? el.ecc : eMag;   // matches the elements card
+      if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
+        ? 'e = '+eShown.toFixed(7)+'  (near-circular)'
+        : 'e = '+eShown.toFixed(7));
+    }
+  } else {
+    live.nu.visible = live.nuLbl.visible = false;
+  }
+  if(!live.hLbl.userData.painted){
+    live.hLbl.userData.painted = true;
+  }
+  live.hLbl.userData.paint('h = '+(hMag).toFixed(0)+' km\u00b2/s');
+}
+
 function buildElements(){
   const g = new THREE.Group();
   if(!el) return g;
@@ -318,6 +507,7 @@ function buildElements(){
 
   // the orbit normal, so the sense of the inclination arc reads at a glance
   g.add(lineFrom([O, b.w.clone().multiplyScalar(Rn*0.85)], 'track', 0.35));
+  buildLive(g);                                  // the parts that move with the spacecraft
   return g;
 }
 
@@ -649,6 +839,7 @@ function killLayer(key){
   if(g.parent) g.parent.remove(g);
   disposeObj(g);
   G[key] = null;
+  if(key === 'elements'){ live = null; liveMs = null; nuShown = null; }
   if(key === 'planets') bodyNodes = null;
   if(key === 'stars') starMat = null;
 }
@@ -720,6 +911,7 @@ global.OrbitViz = {
     if(!started) return false;
     o = o || {};
     el = normElements(o.satrec, o.elements);
+    satrecRef = o.satrec || null;
     killLayer('elements');                        // a switch of spacecraft must not leak the last one
     if(el && layerOn('elements')) ensure('elements');
     return !!el;
@@ -732,6 +924,7 @@ global.OrbitViz = {
     if(precMs === null || Math.abs(ms - precMs) > 2.6e9){   // ~30 days; precession is 50"/yr
       precess(simTime); precMs = ms;
     }
+    if(G.elements && live) updateLive(simTime);
     if(G.planets) updatePlanets(simTime, false);
     if(starMat){
       // the window can be dragged to a screen with a different pixel ratio, and

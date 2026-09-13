@@ -14,7 +14,7 @@
   --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
   --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
-  --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22);
+  --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22); --fov:#4C6270;
   --swday:#E6ECEE; --swnight:#BCC7CD; --ring:#A9B9C1;
   --shadow:0 1px 2px rgba(14,26,31,.06), 0 10px 26px -18px rgba(14,26,31,.34);
   --void:#0B1116;
@@ -26,7 +26,7 @@
     --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
     --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
     --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
-    --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
+    --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055); --fov:#E9F2F7; --fov:#E9F2F7;
     --swday:#17242C; --swnight:#070D11; --ring:#374954;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
     --void:#05090C;
@@ -38,7 +38,7 @@
   --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
   --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
   --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
-  --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
+  --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055); --fov:#E9F2F7;
   --swday:#17242C; --swnight:#070D11; --ring:#374954;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
   --void:#05090C;
@@ -296,6 +296,7 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
 .key .sw{width:22px; border-top:3px solid; border-radius:2px}
 .key .dot{width:11px; height:11px; border-radius:50%; border:2px solid var(--observer); background:var(--panel)}
 .key .ring{width:13px; height:13px; border-radius:50%; border:1.5px dashed var(--observer)}
+.key .fovkey{width:13px; height:13px; border-radius:50%; border:1.5px solid var(--fov)}
 .key .nightsw{width:22px; height:11px; border-radius:2px; border:1px solid var(--rule);
   background:linear-gradient(90deg,var(--swday) 0 50%,var(--swnight) 50% 100%)}
 .readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:10px 18px;
@@ -553,6 +554,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <span class="a"><span id="tpclock">—</span> UTC</span>
       <span class="b"><span id="tpclocklocal">—</span> ICT</span>
     </div>
+    <label class="btn" for="o3fov" style="display:inline-flex;gap:7px;align-items:center">
+      <input type="checkbox" id="o3fov" checked> Footprint
+    </label>
     <label class="btn" for="o3cloud" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3cloud" checked> Catalogue
     </label>
@@ -614,7 +618,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <span class="key"><span class="sw" style="border-color:var(--track)"></span>Sub-satellite track</span>
         <span class="key"><span class="sw" style="border-color:var(--contact); border-top-width:4px"></span>In view from Bangkok (el ≥ 5°)</span>
         <span class="key"><span class="dot"></span>Bangkok 13.75°N 100.52°E</span>
-        <span class="key"><span class="ring"></span>5° access footprint</span>
+        <span class="key"><span class="ring"></span>Bangkok 5° access circle</span>
+        <span class="key"><span class="fovkey"></span>Spacecraft footprint (ground above 5°)</span>
         <span class="key"><span class="nightsw"></span>Sunlit / night side at the shown instant</span>
       </div>
       <dl class="readout">
@@ -7546,6 +7551,29 @@ function strokeTrack(points, color, width){
   }
   ctx.stroke();
 }
+/* The ground the spacecraft currently holds above the mask. Same geometry as the
+   observer circle, but centred on the sub-satellite point and sized by its
+   actual altitude, so it grows and shrinks as the orbit does. */
+function drawSatFootprint(cur){
+  if(!fovOn || !cur) return;
+  const eps = MASK*RAD;
+  const inner = RE*Math.cos(eps)/(RE + cur.alt);
+  if(!(inner <= 1)) return;
+  const lam = Math.acos(inner) - eps;
+  const lat1 = cur.lat*RAD, lon1 = cur.lon*RAD, pts = [];
+  for(let b=0;b<=360;b+=2){
+    const th = b*RAD;
+    const la = Math.asin(Math.sin(lat1)*Math.cos(lam) + Math.cos(lat1)*Math.sin(lam)*Math.cos(th));
+    const lo = lon1 + Math.atan2(Math.sin(th)*Math.sin(lam)*Math.cos(lat1),
+                                 Math.cos(lam) - Math.sin(lat1)*Math.sin(la));
+    let d = lo*DEG; while(d>180) d-=360; while(d<-180) d+=360;
+    pts.push({lat:la*DEG, lon:d});
+  }
+  ctx.save();
+  ctx.globalAlpha = .85;
+  strokeTrack(pts, tok('--fov'), 1.4);
+  ctx.restore();
+}
 function drawFootprint(){
   const lat1 = OBS.lat*RAD, lon1 = OBS.lon*RAD, d = D.lambda;
   const pts = [];
@@ -7599,6 +7627,7 @@ function drawMap(cur){
   drawTerminator(cur.t);
   drawGraticule();
   drawFootprint();
+  drawSatFootprint(cur);
   strokeTrack(D.drawStride > 1 ? D.pts.filter((_,i)=>i % D.drawStride === 0) : D.pts,
               tok('--track'), 1.5);
   // in-view arcs on top, thicker: identity is carried by width as well as hue
@@ -7620,6 +7649,7 @@ function drawMap(cur){
  * agreed. Now the page owns sim time, the 3D scene reads it through GT.now(),
  * and the flat map redraws only when the 10 s sample index actually changes.  */
 let simMs = 0, rate = 1, playing = true, rafPrev = 0, lastIdx = -1, scrubbing = false;
+let fovOn = true;                                 // satellite footprint, both views
 const winT0 = () => D.start.getTime(), winT1 = () => D.end.getTime();
 const inWindow = ms => ms >= winT0()-1 && ms <= winT1()+1;
 const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/D.step)));
@@ -8199,6 +8229,11 @@ setInterval(paintAges, 30000);
   }));
   window.__paintCamMode = paintMode;
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
+  document.getElementById('o3fov').addEventListener('change', e=>{
+    fovOn = e.target.checked;
+    if(global3D()) Orbit3D.showFov(fovOn);
+    paintClock(true);                             // repaint the flat map too
+  });
 })();
 
 curIdx = DEFAULT;

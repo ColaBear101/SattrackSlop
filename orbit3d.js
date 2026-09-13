@@ -12,10 +12,11 @@
 
 const RAD = Math.PI/180, DEG = 180/Math.PI, RE = 6378.137;
 const U = 1/RE;                                  // scene units: 1 = Earth radius
+const FOV_SEG = 144;                             // segments around the footprint
 
 let GT, THREE, sat;
 let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
-let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot;
+let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot, fovRing;
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
@@ -25,13 +26,13 @@ let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
-let onPick = null, onFollow = null, onSite = null, started = false;
+let onPick = null, onFollow = null, onSite = null, started = false, fovOn = true;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 // Space does not have a light mode. Fixed palette, independent of the page theme.
 const SPACE = {
-  ocean:'#0B2033', land:'#2C4437', landline:'#496B56', grat:'#27455A',
+  ocean:'#0B2033', land:'#2C4437', landline:'#496B56', grat:'#27455A', fov:'#E9F2F7',
   track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
   sunk:'#101A22', panel:'#0A1116', ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1'
 };
@@ -151,6 +152,15 @@ function build(canvas){
   footRing = new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({color: col('--observer'), dashSize:.035, gapSize:.028}));
   earthGroup.add(footRing);
+
+  // What the spacecraft can see right now: the ground it holds above 5 degrees.
+  // Pale rather than another hue - the three data colours are already as far
+  // apart as they can get under deuteranopia, so a fourth channel is lightness.
+  const fovGeo = new THREE.BufferGeometry();
+  fovGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((FOV_SEG+1)*3), 3));
+  fovRing = new THREE.Line(fovGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.fov), transparent:true, opacity:.72 }));
+  earthGroup.add(fovRing);
   bkkPin = new THREE.Group(); earthGroup.add(bkkPin);
   const pinTop = llToScene(GT.OBS.lat, GT.OBS.lon, 1.075);
   bkkPin.add(new THREE.Line(
@@ -406,6 +416,32 @@ function col3(hex){
   const c = new THREE.Color(hex); return [c.r, c.g, c.b];
 }
 
+/* The ground circle inside which the spacecraft sits above MASK degrees. The
+   central angle comes straight from the geometry: cos of the Earth-centre angle
+   is (Re/(Re+h))·cos(eps), less the mask itself. */
+function updateFov(pv, gmst){
+  if(!fovRing) return;
+  if(!pv || !pv.position){ fovRing.visible = false; return; }
+  const gd = sat.eciToGeodetic(pv.position, gmst);
+  const lat = gd.latitude, lon = gd.longitude, h = gd.height;
+  const eps = GT.MASK*RAD;
+  const inner = RE*Math.cos(eps)/(RE+h);
+  if(!(inner <= 1)){ fovRing.visible = false; return; }     // below the horizon everywhere
+  const lam = Math.acos(inner) - eps;
+  const arr = fovRing.geometry.attributes.position.array;
+  const sinLat = Math.sin(lat), cosLat = Math.cos(lat), cosL = Math.cos(lam), sinL = Math.sin(lam);
+  for(let k=0;k<=FOV_SEG;k++){
+    const th = k/FOV_SEG*Math.PI*2;
+    const la = Math.asin(sinLat*cosL + cosLat*sinL*Math.cos(th));
+    const lo = lon + Math.atan2(Math.sin(th)*sinL*cosLat, cosL - sinLat*Math.sin(la));
+    const v = llToScene(la*DEG, lo*DEG, 1.003);
+    arr[k*3] = v.x; arr[k*3+1] = v.y; arr[k*3+2] = v.z;
+  }
+  fovRing.geometry.attributes.position.needsUpdate = true;
+  fovRing.geometry.computeBoundingSphere();
+  fovRing.visible = fovOn;
+}
+
 /* ---- input ---------------------------------------------------------------- */
 function bindInput(canvas){
   const pt = e => ({x: e.touches ? e.touches[0].clientX : e.clientX,
@@ -513,6 +549,7 @@ function tick(ts){
   let satPos = null, el = -90;
   if(curRec){
     let pv = null; try { pv = sat.propagate(curRec, simTime); } catch(e){}
+    updateFov(pv, gmst);
     if(pv && pv.position){
       satPos = new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U);
       satDot.position.copy(satPos);
@@ -633,6 +670,8 @@ global.Orbit3D = {
   setPlaying(p){ playing = p; },
   setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
+  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn; },
+  get fov(){ return fovOn; },
   showCloud(v){
     if(!cloudPts) return;
     cloudPts.visible = v;

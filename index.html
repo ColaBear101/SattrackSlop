@@ -1,3 +1,4 @@
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Ground Track Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -9,7 +10,7 @@
    below it reads as paper.                                                   */
 :root{
   --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
-  --muted:#6B7C85; --rule:#CBD6DB;
+  --muted:#536169; --rule:#CBD6DB;
   --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
   --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
@@ -116,8 +117,11 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   cursor:pointer; min-height:30px; white-space:nowrap}
 .layerpanel label:hover{background:rgba(180,200,212,.14); color:#EAF2F6}
 .layerpanel input{accent-color:var(--contact); margin:0; width:14px; height:14px}
+/* two variants: over the globe it needs a dark casing and a fixed light ink;
+   in the chrome bars it must read against a light surface instead */
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
-  text-transform:uppercase; color:#8AA0AC; text-shadow:0 0 6px #05090C}
+  text-transform:uppercase; color:var(--muted)}
+.viewport .seglabel{color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
 .btn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--chromeink);
   background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
@@ -126,10 +130,12 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .seg .btn{border-radius:0; margin-left:-1px}
 .seg .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
 .seg .btn:last-child{border-radius:0 3px 3px 0}
-.btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
+/* selected state is achromatic on purpose: contact-orange belongs to the data
+   (in view from Bangkok) and must not also mean "this button is on" */
+.btn[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
 .viewport .btn{background:rgba(10,16,20,.72); border-color:rgba(180,200,212,.28); color:#DCE8EE;
   backdrop-filter:blur(6px)}
-.viewport .btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
+.viewport .btn[aria-pressed="true"]{background:#E8EFF2; border-color:#E8EFF2; color:#0A1016}
 .o3-fallback{position:absolute; inset:auto 16px 16px 16px; color:#AFC3CE; font-size:13px}
 .hint-drag{position:absolute; left:14px; bottom:12px; font-family:"IBM Plex Mono",monospace;
   font-size:10.5px; letter-spacing:.08em; color:#7E94A0; text-shadow:0 0 6px #05090C;

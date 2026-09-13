@@ -3,35 +3,44 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* ---- tokens: light is the base; both dark paths redefine only these ------- */
+/* ---- tokens: light is the base; both dark paths redefine only these -------
+   An instrument, not a document. The chrome tokens are a rung darker/lighter
+   than the page surface so the app shell reads as apparatus and the analysis
+   below it reads as paper.                                                   */
 :root{
   --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
   --muted:#6B7C85; --rule:#CBD6DB;
+  --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
   --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
   --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22);
   --swday:#E6ECEE; --swnight:#BCC7CD; --ring:#A9B9C1;
   --shadow:0 1px 2px rgba(14,26,31,.06), 0 10px 26px -18px rgba(14,26,31,.34);
+  --void:#0B1116;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
-    --muted:#748891; --rule:#22313A;
+    --muted:#8096A1; --rule:#22313A;
+    --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
     --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
     --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
     --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
     --swday:#17242C; --swnight:#070D11; --ring:#374954;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+    --void:#05090C;
   }
 }
 :root[data-theme="dark"]{
   --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
-  --muted:#748891; --rule:#22313A;
+  --muted:#8096A1; --rule:#22313A;
+  --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
   --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
   --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
   --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055);
   --swday:#17242C; --swnight:#070D11; --ring:#374954;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+  --void:#05090C;
 }
 
 *{box-sizing:border-box}
@@ -40,57 +49,159 @@ body{
   font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1180px; margin:0 auto; padding-inline:20px; padding-block:34px 72px;
-      display:flex; flex-direction:column; gap:38px}
 h1,h2{font-family:"Archivo",system-ui,sans-serif; text-wrap:balance; margin:0}
-h1{font-size:clamp(30px,5.3vw,46px); font-weight:700; letter-spacing:-.028em; line-height:1.05}
 h2{font-size:19px; font-weight:600; letter-spacing:-.012em}
 p{margin:0}
 .eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; font-weight:500;
   letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin:0}
 .mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+:where(a){color:var(--track)}
+:focus-visible{outline:2px solid var(--track); outline-offset:2px}
 
-/* ---- masthead ------------------------------------------------------------ */
-.mast{display:flex; flex-direction:column; gap:20px}
-.mast-top{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:18px 28px}
-.mast-id{display:flex; flex-direction:column; gap:8px; min-width:0}
-.idline{display:flex; flex-wrap:wrap; gap:5px 13px; align-items:baseline; font-size:12.5px; color:var(--ink2)}
-.idline .sep{color:var(--rule)}
-.mast-ctl{display:flex; flex-direction:column; gap:6px}
-.ctl-label{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; font-weight:500;
-  letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
-select, .btn{
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px; color:var(--ink);
-  background:var(--panel); border:1px solid var(--rule); border-radius:3px;
-  padding:8px 11px; cursor:pointer;
+/* ===== the instrument ===================================================== */
+.app{
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto;
+  height:100svh; min-height:560px; max-height:1100px;
+  background:var(--chrome); color:var(--chromeink);
+  border-bottom:1px solid var(--chromerule);
 }
-select{min-width:250px}
-select:focus-visible, .btn:focus-visible, input:focus-visible, [tabindex]:focus-visible{
-  outline:2px solid var(--track); outline-offset:2px}
+.bar{display:flex; align-items:center; gap:14px; padding:10px 16px; min-width:0}
+.bar-top{border-bottom:1px solid var(--chromerule); flex-wrap:wrap; row-gap:8px}
+.ident{display:flex; align-items:baseline; gap:10px 14px; flex-wrap:wrap; min-width:0; flex:1 1 320px}
+.ident h1{font-size:clamp(19px,2.4vw,26px); font-weight:700; letter-spacing:-.025em; line-height:1.1}
+.ident .ids{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--muted)}
+.ident .ids .sep{opacity:.5}
+.ident .ids b{color:var(--ink2); font-weight:500}
+.age-chip{display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:20px;
+  border:1px solid var(--chromerule); font-size:10.5px; letter-spacing:.06em; color:var(--muted)}
+.age-chip.stale{border-color:var(--contact); color:var(--contact)}
+.age-chip .dot{width:5px; height:5px; border-radius:50%; background:currentColor}
 
-/* searchable spacecraft picker ---------------------------------------------- */
-.combo{position:relative; width:290px; max-width:100%}
-.combo input{width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
-  color:var(--ink); background:var(--panel); border:1px solid var(--rule); border-radius:3px;
-  padding:8px 30px 8px 11px}
-.combo input::placeholder{color:var(--muted); opacity:1}
-.combo-caret{position:absolute; right:1px; top:1px; bottom:1px; width:27px; display:grid;
-  place-items:center; background:none; border:0; color:var(--muted); cursor:pointer; font-size:11px}
-.combo-list{position:absolute; z-index:30; top:calc(100% + 4px); left:0; right:0; margin:0;
-  padding:4px; list-style:none; max-height:322px; overflow-y:auto; background:var(--panel);
-  border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow)}
-.combo-list li{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
-  padding:6px 9px; border-radius:2px; cursor:pointer; font-size:13px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace}
-.combo-list li .id{color:var(--muted); font-size:11px; flex:none}
-.combo-list li[aria-selected="true"] .nm{color:var(--contact); font-weight:600}
-.combo-list li.on{background:var(--sunk); outline:1px solid var(--rule)}
-.combo-list li.note{cursor:default; color:var(--muted); font-size:11.5px; justify-content:flex-start;
-  border-top:1px solid var(--rule); border-radius:0; margin-top:3px; padding-top:8px}
-.combo-list li.note:only-child{border-top:0; margin-top:0}
-.combo-hint{width:290px; max-width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
-  letter-spacing:.06em; color:var(--muted)}
-.lede{color:var(--ink2); max-width:68ch; font-size:15.5px}
+/* ---- stage: viewport + rail ---------------------------------------------- */
+.stage{display:grid; grid-template-columns:minmax(0,1fr) 336px; min-height:0}
+.viewport{position:relative; min-height:0; background:var(--void); overflow:hidden}
+canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
+  cursor:grab; touch-action:none}
+.o3-layer{position:absolute; inset:0; pointer-events:none; overflow:hidden}
+.o3-label{position:absolute; display:none; transform:translate(12px,-50%);
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; font-weight:600;
+  letter-spacing:.06em; color:#EAF2F6; white-space:nowrap;
+  text-shadow:0 0 4px #05090C,0 0 4px #05090C,0 0 9px #05090C}
+.o3-label.o3-hover{color:#AFC3CE; font-weight:500}
+
+.hud{position:absolute; top:12px; left:14px; display:flex; flex-direction:column; gap:2px;
+  pointer-events:none; color:#EAF2F6; text-shadow:0 0 6px #05090C,0 0 6px #05090C}
+.hud .t1{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
+  font-size:16px; letter-spacing:-.01em}
+.hud .t2{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
+  font-size:12px; color:#AFC3CE}
+.hud .zone{font-size:9.5px; letter-spacing:.14em; color:#8AA0AC; margin-left:6px}
+.hud .elev{margin-top:7px; display:flex; align-items:baseline; gap:7px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:#8AA0AC}
+.hud .elev .k{letter-spacing:.1em; text-transform:uppercase}
+.hud .elev .v{font-size:14px; color:#CFDDE4; font-variant-numeric:tabular-nums}
+.hud .elev .v.up{color:#F0A33C; font-weight:600}
+
+.viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
+.seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:#8AA0AC; text-shadow:0 0 6px #05090C}
+.seg{display:flex}
+.btn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--chromeink);
+  background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
+  padding:6px 11px; cursor:pointer; min-height:32px; white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.seg .btn{border-radius:0; margin-left:-1px}
+.seg .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
+.seg .btn:last-child{border-radius:0 3px 3px 0}
+.btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
+.viewport .btn{background:rgba(10,16,20,.72); border-color:rgba(180,200,212,.28); color:#DCE8EE;
+  backdrop-filter:blur(6px)}
+.viewport .btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
+.o3-fallback{position:absolute; inset:auto 16px 16px 16px; color:#AFC3CE; font-size:13px}
+.hint-drag{position:absolute; left:14px; bottom:12px; font-family:"IBM Plex Mono",monospace;
+  font-size:10.5px; letter-spacing:.08em; color:#7E94A0; text-shadow:0 0 6px #05090C;
+  pointer-events:none}
+
+/* ---- rail: the answer, then the passes ----------------------------------- */
+.rail{border-left:1px solid var(--chromerule); background:var(--chrome);
+  display:flex; flex-direction:column; min-height:0; overflow-y:auto}
+.answer{padding:16px 18px 14px; border-bottom:1px solid var(--chromerule)}
+.answer .big{font-family:"Archivo",system-ui,sans-serif; font-variant-numeric:tabular-nums;
+  font-size:clamp(34px,4.4vw,44px); font-weight:700; letter-spacing:-.035em; line-height:1;
+  color:var(--contact); margin-top:6px}
+.answer .big span{font-size:18px; font-weight:600; letter-spacing:-.01em}
+.answer .sub{font-size:12.5px; color:var(--ink2); margin-top:5px; line-height:1.5}
+.countdown{margin-top:12px; padding-top:11px; border-top:1px solid var(--chromerule);
+  display:flex; flex-direction:column; gap:2px}
+.countdown .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted)}
+.countdown .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:21px; color:var(--ink); letter-spacing:-.01em}
+.countdown .v.live{color:var(--contact); font-weight:600}
+.countdown .w{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted)}
+
+.railsec{padding:14px 18px; border-bottom:1px solid var(--chromerule)}
+.railsec > .eyebrow{margin-bottom:9px}
+.passlist{display:flex; flex-direction:column; gap:1px}
+.passrow{display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px;
+  width:100%; text-align:left; padding:8px 9px; border:1px solid transparent; border-radius:3px;
+  background:none; cursor:pointer; color:inherit;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;
+  font-variant-numeric:tabular-nums; min-height:40px}
+.passrow:hover{background:var(--chrome2)}
+.passrow[aria-current="true"]{background:var(--chrome2); border-color:var(--contact)}
+.passrow .n{color:var(--muted); font-size:10.5px}
+.passrow .t{color:var(--ink)}
+.passrow .t small{color:var(--muted); display:block; font-size:10px; letter-spacing:.04em}
+.passrow .e{color:var(--contact); font-weight:600}
+.minigrid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px}
+.minigrid .dv dt{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted)}
+.minigrid .dv dd{margin:0; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:13.5px; color:var(--ink)}
+.railprov{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; line-height:1.65;
+  color:var(--ink2)}
+.railprov b{color:var(--ink); font-weight:600}
+.railprov .stale{color:var(--contact); font-weight:600}
+.railfoot{margin-top:auto; padding:12px 18px; display:flex; flex-direction:column; gap:4px}
+.railfoot a{font-size:11.5px}
+
+/* ---- transport ----------------------------------------------------------- */
+.bar-transport{border-top:1px solid var(--chromerule); background:var(--chrome2);
+  flex-wrap:wrap; row-gap:8px; gap:10px}
+.tp-scrub{flex:1 1 280px; min-width:180px; display:flex; flex-direction:column; gap:3px}
+.tp-track{position:relative; height:26px}
+.tp-track input[type=range]{position:absolute; inset:0; width:100%; height:26px; margin:0;
+  -webkit-appearance:none; appearance:none; background:transparent; z-index:3; cursor:pointer}
+.tp-track input[type=range]::-webkit-slider-runnable-track{height:26px; background:transparent}
+.tp-track input[type=range]::-moz-range-track{height:26px; background:transparent}
+.tp-track input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:11px; height:22px;
+  border-radius:2px; background:var(--ink); border:2px solid var(--chrome2); margin-top:2px}
+.tp-track input[type=range]::-moz-range-thumb{width:11px; height:22px; border-radius:2px;
+  background:var(--ink); border:2px solid var(--chrome2)}
+.tp-track input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--track); outline-offset:2px}
+.tp-win{position:absolute; left:0; right:0; top:11px; height:4px; border-radius:2px;
+  background:var(--chrome); border:1px solid var(--chromerule); pointer-events:none}
+.tp-pass{position:absolute; top:9px; height:8px; min-width:3px; border-radius:2px;
+  background:var(--contact); pointer-events:none; z-index:2; box-shadow:0 0 0 1px var(--chrome2)}
+.tp-ticks{display:flex; justify-content:space-between;
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--muted)}
+.tp-clock{display:flex; flex-direction:column; line-height:1.25; min-width:150px}
+.tp-clock .a{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:14px; color:var(--chromeink)}
+.tp-clock .b{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:11px; color:var(--muted)}
+.outwin{color:var(--contact)}
+
+/* ===== the report ========================================================= */
+.wrap{max-width:1180px; margin:0 auto; padding-inline:20px; padding-block:40px 72px;
+      display:flex; flex-direction:column; gap:38px}
+section{display:flex; flex-direction:column; gap:16px}
+.shead{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
+  border-bottom:1px solid var(--rule); padding-bottom:10px}
+.shead .hint{color:var(--muted); font-size:12.5px; margin-left:auto}
+
 .tle{background:var(--sunk); border:1px solid var(--rule); border-radius:4px;
   padding:13px 15px; display:flex; flex-direction:column; gap:7px; min-width:0}
 .tle pre{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px;
@@ -100,46 +211,35 @@ select:focus-visible, .btn:focus-visible, input:focus-visible, [tabindex]:focus-
     linear-gradient(270deg,var(--sunk),rgba(0,0,0,0)),
     radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.16),rgba(0,0,0,0)),
     radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.16),rgba(0,0,0,0));
-  background-position:0 0, 100% 0, 0 0, 100% 0;
-  background-repeat:no-repeat;
+  background-position:0 0, 100% 0, 0 0, 100% 0; background-repeat:no-repeat;
   background-size:26px 100%, 26px 100%, 11px 100%, 11px 100%;
   background-attachment:local, local, scroll, scroll}
 .tle pre b{color:var(--ink); font-weight:600}
 .tle-meta{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; line-height:1.6;
-  color:var(--muted); letter-spacing:.02em}
-.tle-meta b{color:var(--ink2); font-weight:600}
+  color:var(--ink2); letter-spacing:.02em}
+.tle-meta b{color:var(--ink); font-weight:600}
 .tle-meta .stale{color:var(--contact); font-weight:600}
-.only-narrow{display:none}
-@media (max-width:900px){.only-narrow{display:inline}}
 
-/* ---- section shell ------------------------------------------------------- */
-section{display:flex; flex-direction:column; gap:16px}
-.shead{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
-  border-bottom:1px solid var(--rule); padding-bottom:10px}
-.shead .hint{color:var(--muted); font-size:12.5px; margin-left:auto}
-
-/* ---- (a) element grid ---------------------------------------------------- */
 .elements{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px;
   background:var(--rule); border:1px solid var(--rule); border-radius:4px; overflow:hidden}
 .el{background:var(--panel); padding:15px 16px 14px; display:flex; flex-direction:column; gap:4px; min-width:0}
 .el .sym{display:flex; align-items:baseline; gap:8px; font-size:12px; font-weight:500;
-  letter-spacing:.09em; text-transform:uppercase; color:var(--muted)}
+  letter-spacing:.09em; text-transform:uppercase; color:var(--ink2)}
 .el .sym i{font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif; font-style:italic;
   font-size:19px; font-weight:500; color:var(--track); line-height:1; letter-spacing:0; text-transform:none}
 .el .val{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:23px; font-weight:500; letter-spacing:-.025em; line-height:1.22; word-break:break-word}
 .el .val span{font-size:13px; font-weight:400; color:var(--ink2); letter-spacing:0}
-.el .note{font-size:12px; color:var(--muted); line-height:1.45}
-.el .src{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; color:var(--muted);
-  letter-spacing:.05em; opacity:.8; margin-top:auto; padding-top:6px}
+.el .note{font-size:12px; color:var(--ink2); line-height:1.45}
+.el .src{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; color:var(--muted);
+  letter-spacing:.05em; margin-top:auto; padding-top:6px}
 .derived{display:grid; grid-template-columns:repeat(auto-fit,minmax(146px,1fr)); gap:13px 22px; margin:0}
 .dv{display:flex; flex-direction:column; gap:1px; min-width:0}
-.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.12em;
+.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:14.5px; color:var(--ink)}
 
-/* ---- (b) map ------------------------------------------------------------- */
 .mapbox{background:var(--panel); border:1px solid var(--rule); border-radius:4px;
   padding:12px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow)}
 .canvas-hold{width:100%; aspect-ratio:2/1; max-width:100%}
@@ -151,212 +251,238 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
 .key .ring{width:13px; height:13px; border-radius:50%; border:1.5px dashed var(--observer)}
 .key .nightsw{width:22px; height:11px; border-radius:2px; border:1px solid var(--rule);
   background:linear-gradient(90deg,var(--swday) 0 50%,var(--swnight) 50% 100%)}
-.scrub{display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px}
-.scrub input[type=range]{flex:1 1 240px; min-width:160px; accent-color:var(--track); height:24px}
-.scrub .stamp{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
-  font-size:13px; color:var(--ink)}
 .readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:10px 18px;
   background:var(--sunk); border:1px solid var(--rule); border-radius:3px; padding:11px 14px; margin:0}
-.ro dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.12em;
+.ro dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .ro dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:14.5px; color:var(--ink)}
 .ro dd.hot{color:var(--contact); font-weight:600}
 
-/* ---- (c) access ---------------------------------------------------------- */
-.access{display:grid; grid-template-columns:minmax(230px,300px) minmax(0,1fr); gap:20px 26px; align-items:start}
-.total{background:var(--panel); border:1px solid var(--rule); border-left:3px solid var(--contact);
-  border-radius:4px; padding:18px 20px; display:flex; flex-direction:column; gap:5px; box-shadow:var(--shadow)}
-.total .big{font-family:"Archivo",system-ui,sans-serif; font-variant-numeric:tabular-nums;
-  font-size:clamp(38px,7vw,54px); font-weight:700; letter-spacing:-.035em; line-height:1; color:var(--contact)}
-.total .big span{font-size:20px; font-weight:600; letter-spacing:-.01em}
-.total .sub{font-size:13px; color:var(--ink2); line-height:1.5}
-.total .split{display:flex; gap:18px; margin-top:8px; padding-top:11px; border-top:1px solid var(--rule)}
-.tl{display:flex; flex-direction:column; gap:9px}
-.strip{position:relative; height:46px; background:var(--sunk); border:1px solid var(--rule);
-  border-radius:3px; overflow:hidden}
-.strip .hour{position:absolute; top:0; bottom:0; width:1px; background:var(--rule)}
-.strip .pass{position:absolute; top:7px; bottom:7px; background:var(--contact); border-radius:2px;
-  border:0; padding:0; cursor:pointer; min-width:3px; box-shadow:0 0 0 2px var(--sunk)}
-.strip .pass[aria-pressed="true"]{outline:2px solid var(--ink); outline-offset:1px}
-.ticks{display:flex; justify-content:space-between; font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:10.5px; color:var(--muted)}
-/* scroll shadows: the two local gradients ride the content, the two scroll ones
-   sit on the edges, so the shadow only shows on the side that still has table */
+.access{display:grid; grid-template-columns:minmax(0,1fr); gap:22px; align-items:start}
+.skybox{display:grid; grid-template-columns:auto minmax(0,1fr); gap:22px; align-items:center;
+  background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+canvas#sky{width:268px; height:268px; max-width:100%; display:block}
+.skyfacts{display:flex; flex-direction:column; gap:7px; min-width:0}
+.skyfacts .row{display:flex; justify-content:space-between; gap:20px; font-size:13px; flex-wrap:wrap;
+  border-bottom:1px dotted var(--rule); padding-bottom:5px}
+.skyfacts .row:last-child{border-bottom:0}
+.skyfacts .k{color:var(--muted); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  font-family:"IBM Plex Mono",ui-monospace,monospace}
+.skyfacts .v{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--ink)}
 .tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:4px; background:var(--panel);
   background-image:
     linear-gradient(90deg,var(--panel),rgba(0,0,0,0)),
     linear-gradient(270deg,var(--panel),rgba(0,0,0,0)),
     radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.17),rgba(0,0,0,0)),
     radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.17),rgba(0,0,0,0));
-  background-position:0 0, 100% 0, 0 0, 100% 0;
-  background-repeat:no-repeat;
+  background-position:0 0, 100% 0, 0 0, 100% 0; background-repeat:no-repeat;
   background-size:34px 100%, 34px 100%, 13px 100%, 13px 100%;
   background-attachment:local, local, scroll, scroll}
 table{border-collapse:collapse; width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace;
   font-variant-numeric:tabular-nums; font-size:13px}
 th,td{padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--rule)}
 th:first-child,td:first-child{text-align:left}
-thead th{font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); font-weight:500;
+thead th{font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink2); font-weight:500;
   position:sticky; top:0; background:var(--panel)}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--sunk)}
 tbody tr[aria-selected="true"]{background:var(--sunk); box-shadow:inset 3px 0 0 var(--contact)}
 tbody tr:last-child td{border-bottom:0}
 tfoot td{font-weight:600; color:var(--ink); border-top:1px solid var(--rule)}
-.skybox{display:grid; grid-template-columns:auto minmax(0,1fr); gap:22px; align-items:center;
-  background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
-canvas#sky{width:268px; height:268px; max-width:100%; display:block}
-.skyfacts{display:flex; flex-direction:column; gap:7px; min-width:0}
-.skyfacts .row{display:flex; justify-content:space-between; gap:14px; font-size:13px;
-  border-bottom:1px dotted var(--rule); padding-bottom:5px}
-.skyfacts .row:last-child{border-bottom:0}
-.skyfacts .k{color:var(--muted); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
-  font-family:"IBM Plex Mono",ui-monospace,monospace}
-.skyfacts .v{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--ink)}
 
-/* ---- method -------------------------------------------------------------- */
 .method{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:20px 28px}
 .method h3{font-family:"Archivo",system-ui,sans-serif; font-size:13px; font-weight:600;
   letter-spacing:.03em; margin:0 0 5px}
 .method p{font-size:13.5px; color:var(--ink2); line-height:1.6}
 .method code{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px;
   background:var(--sunk); padding:1px 5px; border-radius:2px; color:var(--ink)}
-footer{color:var(--muted); font-size:12px; border-top:1px solid var(--rule); padding-top:16px;
+footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padding-top:16px;
   display:flex; flex-wrap:wrap; gap:6px 18px}
 
-/* ---- 3D orbit view ------------------------------------------------------- */
-.o3-wrap{position:relative; width:100%; aspect-ratio:16/9; min-height:340px; max-height:72vh;
-  border:1px solid var(--rule); border-radius:4px; overflow:hidden; background:var(--sunk);
-  box-shadow:var(--shadow)}
-canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab;
-  touch-action:none}
-.o3-layer{position:absolute; inset:0; pointer-events:none; overflow:hidden}
-.o3-label{position:absolute; display:none; transform:translate(12px,-50%);
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; font-weight:600;
-  letter-spacing:.06em; color:var(--ink); white-space:nowrap;
-  text-shadow:0 0 4px var(--sunk),0 0 4px var(--sunk),0 0 8px var(--sunk)}
-.o3-label.o3-hover{color:var(--ink2); font-weight:500}
-.o3-hud{position:absolute; top:12px; left:14px; display:flex; flex-direction:column; gap:9px;
-  pointer-events:none}
-.o3-clock{display:flex; align-items:baseline; gap:7px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
-  font-size:15px; color:var(--ink); text-shadow:0 0 6px var(--sunk),0 0 6px var(--sunk)}
-.o3-clock .o3-utc{font-size:10px; letter-spacing:.14em; color:var(--muted)}
-.o3-clock.o3-clock2{font-size:12.5px; color:var(--ink2); margin-top:-4px}
-.o3-stat{display:flex; align-items:baseline; gap:8px; font-size:11px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--muted);
-  text-shadow:0 0 6px var(--sunk),0 0 6px var(--sunk)}
-.o3-stat .k{letter-spacing:.1em; text-transform:uppercase}
-.o3-el{font-size:14px; font-variant-numeric:tabular-nums; color:var(--ink2)}
-.o3-el.up{color:var(--contact); font-weight:600}
-.o3-ctrl{position:absolute; left:0; right:0; bottom:0; display:flex; flex-wrap:wrap; gap:7px;
-  align-items:center; padding:10px 12px;
-  background:linear-gradient(0deg,var(--sunk),rgba(0,0,0,0))}
-.o3-ctrl .btn{padding:5px 10px; font-size:11.5px; background:var(--panel); opacity:.94}
-.o3-rates,.o3-seg{display:flex; gap:0}
-.o3-rates .btn,.o3-seg .btn{border-radius:0; margin-left:-1px}
-.o3-rates .btn:first-child,.o3-seg .btn:first-child{border-radius:3px 0 0 3px; margin-left:0}
-.o3-rates .btn:last-child,.o3-seg .btn:last-child{border-radius:0 3px 3px 0}
-.o3-seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.13em;
-  text-transform:uppercase; color:var(--muted); margin-left:6px}
-.o3-ctrl .btn[aria-pressed="true"]{background:var(--contact); border-color:var(--contact); color:#fff}
-.o3-check{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink2);
-  font-family:"IBM Plex Mono",ui-monospace,monospace; background:var(--panel); opacity:.94;
-  border:1px solid var(--rule); border-radius:3px; padding:5px 10px; cursor:pointer}
-.o3-check input{accent-color:var(--contact); margin:0}
-.o3-fallback{position:absolute; inset:auto 12px 54px 12px; color:var(--ink2); font-size:13px}
-.o3-hint{color:var(--muted); font-size:12px}
-@media (max-width:880px){
-  .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* ---- searchable spacecraft picker ---------------------------------------- */
+.combo{position:relative; width:290px; max-width:100%; flex:0 1 290px}
+.combo input{width:100%; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+  color:var(--chromeink); background:var(--chrome2); border:1px solid var(--chromerule);
+  border-radius:3px; padding:9px 30px 9px 11px; min-height:38px}
+.combo input::placeholder{color:var(--muted); opacity:1}
+.combo-caret{position:absolute; right:1px; top:1px; bottom:1px; width:28px; display:grid;
+  place-items:center; background:none; border:0; color:var(--muted); cursor:pointer; font-size:11px}
+.combo-list{position:absolute; z-index:40; top:calc(100% + 4px); left:0; right:0; margin:0;
+  padding:4px; list-style:none; max-height:min(52vh,360px); overflow-y:auto; background:var(--panel);
+  border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow)}
+.combo-list li{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  padding:8px 9px; border-radius:2px; cursor:pointer; font-size:13px; min-height:36px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--ink)}
+.combo-list li .id{color:var(--muted); font-size:11px; flex:none}
+.combo-list li[aria-selected="true"] .nm{color:var(--contact); font-weight:600}
+.combo-list li.on{background:var(--sunk); outline:1px solid var(--rule)}
+.combo-list li.note{cursor:default; color:var(--muted); font-size:11.5px; justify-content:flex-start;
+  border-top:1px solid var(--rule); border-radius:0; margin-top:3px; padding-top:8px}
+.combo-list li.note:only-child{border-top:0; margin-top:0}
+.combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+  letter-spacing:.06em; color:var(--muted); width:290px; max-width:100%}
+
+.skip{position:absolute; left:-9999px; top:0; background:var(--panel); color:var(--ink);
+  padding:10px 14px; border:1px solid var(--rule); border-radius:3px; z-index:100}
+.skip:focus{left:12px; top:12px}
+
+/* ---- responsive ---------------------------------------------------------- */
+@media (max-width:1080px){
+  .stage{grid-template-columns:minmax(0,1fr) 300px}
+  .combo, .combo-hint{width:240px}
+}
+@media (max-width:900px){
+  .app{display:flex; flex-direction:column; height:auto; max-height:none; min-height:0}
+  .stage{display:contents}
+  .bar-top{order:0; position:sticky; top:0; z-index:50; background:var(--chrome)}
+  .viewport{order:1; height:52vh; min-height:290px}
+  .bar-transport{order:2; position:sticky; bottom:0; z-index:45}
+  .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
+  .viewport .camseg{top:auto; bottom:10px; right:10px}
+  .seglabel{display:none}
+  .hint-drag{display:none}
   .access{grid-template-columns:minmax(0,1fr)}
+  .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:560px){
   .elements{grid-template-columns:minmax(0,1fr)}
   .skybox{grid-template-columns:minmax(0,1fr); justify-items:center}
-  select{min-width:0; width:100%}
-  .combo, .combo-hint{width:100%}
-  .mast-ctl{width:100%}
+  .combo, .combo-hint{width:100%; flex:1 1 100%}
+  .ident{flex:1 1 100%}
+  .minigrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hint-drag{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
 
-<div class="wrap">
+<a class="skip" href="#report">Skip to the written analysis</a>
 
-  <header class="mast">
-    <div class="mast-top">
-      <div class="mast-id">
-        <p class="eyebrow">SatNOGS DB · Space-Track · CelesTrak · GP element set</p>
-        <h1 id="satname">—</h1>
-        <div class="idline mono">
-          <span id="idnorad">NORAD —</span><span class="sep">/</span>
-          <span id="idcospar">COSPAR —</span><span class="sep">/</span>
-          <span id="idepoch">Epoch —</span><span class="sep">/</span>
-          <span id="idrev">Rev —</span>
-        </div>
-      </div>
-      <div class="mast-ctl">
-        <label class="ctl-label" for="satsearch">Spacecraft</label>
-        <div class="combo">
-          <input id="satsearch" type="text" role="combobox" aria-expanded="false"
-                 aria-controls="satlist" aria-autocomplete="list" aria-haspopup="listbox"
-                 autocomplete="off" autocorrect="off" spellcheck="false"
-                 placeholder="Search name or NORAD ID">
-          <button type="button" class="combo-caret" id="satopen" tabindex="-1"
-                  aria-label="Show the whole catalogue">▾</button>
-          <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden></ul>
-        </div>
-        <p class="combo-hint" id="satcount">—</p>
+<div class="app">
+
+  <header class="bar bar-top">
+    <div class="ident">
+      <h1 id="satname">—</h1>
+      <div class="ids">
+        <span>NORAD <b id="idnorad">—</b></span><span class="sep">·</span>
+        <span>COSPAR <b id="idcospar">—</b></span><span class="sep">·</span>
+        <span>Epoch <b id="idepoch">—</b></span>
+        <span class="age-chip" id="agechip"><span class="dot"></span><span id="agetext">—</span></span>
       </div>
     </div>
-    <p class="lede" id="lede">
-      Keplerian elements read straight out of the two-line element set, one day of ground track
-      propagated with SGP4, and every minute Bangkok can see the spacecraft above a 5° horizon mask.
-    </p>
-    <div class="tle">
-      <p class="eyebrow">Source element set</p>
-      <pre id="tleraw">—</pre>
-      <p class="tle-meta" id="tlemeta">—</p>
+    <div>
+      <div class="combo">
+        <input id="satsearch" type="text" role="combobox" aria-expanded="false"
+               aria-controls="satlist" aria-autocomplete="list" aria-haspopup="listbox"
+               autocomplete="off" autocorrect="off" spellcheck="false"
+               placeholder="Search 2,158 spacecraft or NORAD ID">
+        <button type="button" class="combo-caret" id="satopen" tabindex="-1"
+                aria-label="Show the whole catalogue">▾</button>
+        <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden></ul>
+      </div>
+      <p class="combo-hint" id="satcount">—</p>
     </div>
   </header>
 
-  <!-- 3D ------------------------------------------------------------------- -->
-  <section id="sec-3d">
-    <div class="shead">
-      <h2>Orbit view</h2>
-      <p class="hint">inertial frame — the orbit holds still and the Earth turns beneath it</p>
-    </div>
-    <div class="o3-wrap">
-      <canvas id="globe"></canvas>
+  <main class="stage">
+    <div class="viewport">
+      <canvas id="globe" aria-label="Interactive 3D orbit view. The written analysis below contains the same data."></canvas>
       <div class="o3-layer">
         <span class="o3-label" id="o3name">—</span>
         <span class="o3-label o3-hover" id="o3hover"></span>
       </div>
-      <div class="o3-hud">
-        <div class="o3-clock"><span id="o3clock">—</span><span class="o3-utc">UTC</span></div>
-        <div class="o3-clock o3-clock2"><span id="o3clocklocal">—</span><span class="o3-utc">ICT · GMT+7</span></div>
-        <div class="o3-stat"><span class="k">Elevation at Bangkok</span><span class="o3-el" id="o3el">—</span></div>
-      </div>
-      <div class="o3-ctrl">
-        <button class="btn" id="o3play" aria-label="Pause">❚❚</button>
-        <div class="o3-rates" role="group" aria-label="Time rate">
-          <button class="btn rate" data-r="1" aria-pressed="false">1×</button>
-          <button class="btn rate" data-r="60" aria-pressed="true">60×</button>
-          <button class="btn rate" data-r="600" aria-pressed="false">600×</button>
-          <button class="btn rate" data-r="3600" aria-pressed="false">3600×</button>
+      <div class="hud">
+        <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
+        <div class="t2"><span id="o3clocklocal">—</span><span class="zone">ICT</span></div>
+        <div class="elev">
+          <span class="k">Elev. Bangkok</span><span class="v" id="o3el">—</span>
         </div>
-        <button class="btn" id="o3epoch">To epoch</button>
-        <span class="o3-seglabel" id="o3camlabel">Camera</span>
-        <div class="o3-seg" role="group" aria-labelledby="o3camlabel">
+      </div>
+      <div class="camseg">
+        <span class="seglabel" id="camlabel">Camera</span>
+        <div class="seg" role="group" aria-labelledby="camlabel">
           <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
           <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
           <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
         </div>
-        <label class="o3-check"><input type="checkbox" id="o3cloud" checked> Whole catalogue</label>
       </div>
+      <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
-    <p class="o3-hint">Drag to orbit the camera, scroll to zoom, hover a point for its name, click it to load it. Camera: Satellite rides with the spacecraft, Bangkok holds the ground site centred while the planet turns beneath it, Free lets you look around. Dragging drops back to Free. Sunlight comes from the real solar direction, so the day/night line is the true terminator.</p>
+
+    <aside class="rail" aria-label="Visibility summary">
+      <div class="answer">
+        <p class="eyebrow">Visible from Bangkok · 5° mask</p>
+        <p class="big" id="totalbig">—</p>
+        <p class="sub" id="totalsub">—</p>
+        <div class="countdown">
+          <span class="k" id="cdlabel">Next pass</span>
+          <span class="v" id="cdvalue">—</span>
+          <span class="w" id="cdwhen">—</span>
+        </div>
+      </div>
+
+      <div class="railsec">
+        <p class="eyebrow">Access windows</p>
+        <div class="passlist" id="passlist"></div>
+      </div>
+
+      <div class="railsec">
+        <p class="eyebrow">Orbit at epoch</p>
+        <dl class="minigrid" id="minigrid"></dl>
+      </div>
+
+      <div class="railsec" id="railsrc">
+        <p class="eyebrow">Element set</p>
+        <p class="railprov" id="railprov">—</p>
+      </div>
+
+      <div class="railfoot">
+        <a href="#report">Full analysis, elements and method ↓</a>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="bar bar-transport">
+    <button class="btn" id="tpplay" aria-label="Pause">❚❚</button>
+    <div class="seg" role="group" aria-label="Time rate">
+      <button class="btn rate" data-r="1" aria-pressed="false">1×</button>
+      <button class="btn rate" data-r="60" aria-pressed="true">60×</button>
+      <button class="btn rate" data-r="600" aria-pressed="false">600×</button>
+      <button class="btn rate" data-r="3600" aria-pressed="false">3600×</button>
+    </div>
+    <div class="tp-scrub">
+      <div class="tp-track">
+        <div class="tp-win"></div>
+        <div id="tppasses"></div>
+        <input type="range" id="time" min="0" max="8640" value="0" step="1"
+               aria-label="Time within the 24-hour analysis window, in 10-second steps from the element set epoch">
+      </div>
+      <div class="tp-ticks" id="tpticks"></div>
+    </div>
+    <div class="tp-clock">
+      <span class="a"><span id="tpclock">—</span> UTC</span>
+      <span class="b"><span id="tpclocklocal">—</span> ICT</span>
+    </div>
+    <button class="btn" id="tpepoch">Epoch</button>
+    <button class="btn" id="tpnow">Now</button>
+    <label class="btn" for="o3cloud" style="display:inline-flex;gap:7px;align-items:center">
+      <input type="checkbox" id="o3cloud" checked> Catalogue
+    </label>
+  </footer>
+</div>
+
+<div class="wrap" id="report">
+
+  <section id="sec-source">
+    <div class="shead">
+      <h2>Element set</h2>
+      <p class="eyebrow" id="srcline">SatNOGS DB · Space-Track · CelesTrak</p>
+    </div>
+    <div class="tle">
+      <pre id="tleraw">—</pre>
+      <p class="tle-meta" id="tlemeta">—</p>
+    </div>
   </section>
 
   <!-- (a) ------------------------------------------------------------------ -->
@@ -384,12 +510,6 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
         <span class="key"><span class="ring"></span>5° access footprint</span>
         <span class="key"><span class="nightsw"></span>Sunlit / night side at the shown instant</span>
       </div>
-      <div class="scrub">
-        <span class="ctl-label">Epoch + </span>
-        <input type="range" id="time" min="0" max="8640" value="0" step="1" aria-label="Minutes since TLE epoch">
-        <span class="stamp" id="stamp">—</span>
-        <button class="btn" id="play" aria-label="Animate the orbit">▶ Play</button>
-      </div>
       <dl class="readout">
         <div class="ro"><dt>Latitude</dt><dd id="r-lat">—</dd></div>
         <div class="ro"><dt>Longitude</dt><dd id="r-lon">—</dd></div>
@@ -405,38 +525,31 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   <section id="sec-access">
     <div class="shead">
       <h2>Visibility from Bangkok · 5° elevation mask</h2>
-      <p class="hint">within the same 24 h window, 13.75°N 100.52°E, sea level</p>
+      <p class="hint">13.75°N 100.52°E, sea level, geometric</p>
     </div>
     <div class="access">
-      <div class="total">
-        <p class="eyebrow">Cumulative time in view</p>
-        <p class="big" id="totalbig">—</p>
-        <p class="sub" id="totalsub">—</p>
-        <div class="split">
+      <div class="skybox">
+        <canvas id="sky" width="536" height="536" aria-label="Sky track of the selected pass"></canvas>
+        <div class="skyfacts" id="skyfacts"></div>
+      </div>
+      <div>
+        <dl class="derived" style="margin-bottom:14px">
           <div class="dv"><dt>Passes</dt><dd id="npasses">—</dd></div>
           <div class="dv"><dt>Longest</dt><dd id="longest">—</dd></div>
-          <div class="dv"><dt>Best elev.</dt><dd id="bestel">—</dd></div>
+          <div class="dv"><dt>Best elevation</dt><dd id="bestel">—</dd></div>
+        </dl>
+        <p class="eyebrow" style="margin-bottom:8px">Access windows — click a row for its sky track<span class="only-narrow"> · scroll sideways for more columns</span></p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>#</th><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Duration</th>
+              <th>Max elev.</th><th>Az at max</th><th>Min range</th><th>AOS→LOS az</th>
+            </tr></thead>
+            <tbody id="passbody"></tbody>
+            <tfoot id="passfoot"></tfoot>
+          </table>
         </div>
       </div>
-      <div class="tl">
-        <div class="strip" id="strip"></div>
-        <div class="ticks" id="ticks"></div>
-        <div class="skybox">
-          <canvas id="sky" width="336" height="336" aria-label="Sky track of the selected pass"></canvas>
-          <div class="skyfacts" id="skyfacts"></div>
-        </div>
-      </div>
-    </div>
-    <p class="eyebrow">Access windows — click a row to load it into the sky plot<span class="only-narrow"> · scroll sideways for more columns</span></p>
-    <div class="tablewrap">
-      <table>
-        <thead><tr>
-          <th>#</th><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Duration</th>
-          <th>Max elev.</th><th>Az at max</th><th>Min range</th><th>AOS→LOS az</th>
-        </tr></thead>
-        <tbody id="passbody"></tbody>
-        <tfoot id="passfoot"></tfoot>
-      </table>
     </div>
   </section>
 
@@ -464,16 +577,16 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
         refraction or link budget.</p>
       </div>
       <div>
-        <h3>Reading the map</h3>
-        <p>Equirectangular plate carrée, coastlines from Natural Earth 110 m. The track breaks where
-        it crosses the antimeridian, not where the pass ends. The dashed circle is the locus of
-        sub-satellite points that put the spacecraft 5° above Bangkok's horizon at mean altitude.</p>
+        <h3>The two views</h3>
+        <p>The globe is drawn in the inertial frame, where the orbit stands still and the Earth
+        turns beneath it. The flat map is the rotating frame, where the Earth is fixed and the track
+        walks west each revolution. Same propagation, two frames — one clock drives both.</p>
       </div>
     </div>
     <footer>
       <span id="footepoch">—</span>
-      <span>Ephemeris: SGP4 · WGS-84 · angles in degrees</span>
-      <span>Element sets degrade a few km per day away from epoch.</span>
+      <span>SGP4 · WGS-84 · angles in degrees</span>
+      <span>Element sets degrade with age; re-fetch before quoting pass times far from epoch.</span>
     </footer>
   </section>
 </div>
@@ -7184,6 +7297,16 @@ function renderElements(){
   ];
   document.getElementById('derived').innerHTML = dv.map(d=>
     '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
+
+  // the rail carries only what frames the visibility answer
+  const mini = [
+    ['Inclination', E.inc.toFixed(2)+'°'],
+    ['Period', (E.period/60).toFixed(1)+' min'],
+    ['Mean alt.', D.meanAlt.toFixed(0)+' km'],
+    ['Revs / day', E.n.toFixed(2)]
+  ];
+  document.getElementById('minigrid').innerHTML = mini.map(d=>
+    '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
 }
 
 /* ---- (b) map ------------------------------------------------------------- */
@@ -7346,10 +7469,76 @@ function drawMap(idx){
 }
 
 /* ---- readout + scrubber -------------------------------------------------- */
+/* ---- one clock ----------------------------------------------------------- *
+ * The globe and the flat map used to run independent clocks, so they never
+ * agreed. Now the page owns sim time, the 3D scene reads it through GT.now(),
+ * and the flat map redraws only when the 10 s sample index actually changes.  */
+let simMs = 0, rate = 60, playing = true, rafPrev = 0, lastIdx = -1;
+const winT0 = () => D.start.getTime(), winT1 = () => D.end.getTime();
+const inWindow = ms => ms >= winT0()-1 && ms <= winT1()+1;
+const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/STEP)));
+const hhmmss = ms => { const t = Math.max(0,Math.round(ms/1000));
+  return pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(t%60); };
+
+function paintPlay(){
+  const b = document.getElementById('tpplay');
+  b.textContent = playing ? '❚❚' : '▶';
+  b.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+}
+function setSim(ms, pause){
+  simMs = ms;
+  if(pause){ playing = false; paintPlay(); }
+  paintClock(true);
+}
+function paintClock(force){
+  if(!D) return;
+  const utc = document.getElementById('tpclock');
+  const uStr = iso(new Date(simMs)).replace('Z',''),
+        lStr = iso(new Date(simMs + ICT*3600000)).replace('Z','');
+  utc.textContent = uStr;
+  document.getElementById('tpclocklocal').textContent = lStr;
+  const hu = document.getElementById('o3clock'), hl = document.getElementById('o3clocklocal');
+  if(hu) hu.textContent = uStr;
+  if(hl) hl.textContent = lStr;
+  utc.closest('.tp-clock').classList.toggle('outwin', !inWindow(simMs));
+  const idx = idxAt(simMs), range = document.getElementById('time');
+  if(document.activeElement !== range) range.value = idx;
+  if(force || idx !== lastIdx){ lastIdx = idx; setTime(idx); }
+  paintCountdown();
+}
+function clockTick(ts){
+  requestAnimationFrame(clockTick);
+  const dt = rafPrev ? Math.min((ts-rafPrev)/1000, .25) : 0; rafPrev = ts;
+  if(playing && D){
+    simMs += dt*rate*1000;
+    const span = winT1()-winT0();
+    if(simMs > winT1()) simMs = winT0() + (simMs - winT1()) % span;   // loop the day
+  }
+  paintClock(false);
+}
+function paintCountdown(){
+  const P = D.passes, k = document.getElementById('cdlabel'),
+        v = document.getElementById('cdvalue'), w = document.getElementById('cdwhen');
+  if(!P.length){ k.textContent = 'Next pass'; v.textContent = 'none'; v.className = 'v';
+    w.textContent = 'Nothing clears the 5° mask in this window.'; return; }
+  const now = P.find(p => simMs >= p.t0ms && simMs <= p.t1ms);
+  if(now){
+    k.textContent = 'In view now — sets in';
+    v.textContent = hhmmss(now.t1ms - simMs); v.className = 'v live';
+    w.textContent = 'LOS ' + hms(now.los) + 'Z · culminates ' + now.maxEl.toFixed(1) + '°';
+    return;
+  }
+  let nxt = P.find(p => p.t0ms > simMs), wrapped = false;
+  if(!nxt){ nxt = P[0]; wrapped = true; }
+  const dt = wrapped ? (winT1()-simMs) + (nxt.t0ms-winT0()) : nxt.t0ms - simMs;
+  k.textContent = 'Next pass in';
+  v.textContent = hhmmss(dt); v.className = 'v';
+  w.textContent = 'AOS ' + hms(nxt.aos) + 'Z · ' + hmsLocal(nxt.aos) + ' ICT · max ' +
+                  nxt.maxEl.toFixed(1) + '°' + (wrapped ? ' (next cycle)' : '');
+}
+
 function setTime(idx){
   const p = D.pts[Math.min(idx, D.pts.length-1)];
-  document.getElementById('stamp').textContent =
-    hms(p.t)+'Z  ·  '+hmsLocal(p.t)+' ICT  ·  +'+(idx*STEP/60).toFixed(0)+' min';
   document.getElementById('r-lat').textContent = latStr(p.lat);
   document.getElementById('r-lon').textContent = lonStr(p.lon);
   document.getElementById('r-alt').textContent = p.alt.toFixed(1)+' km';
@@ -7375,21 +7564,27 @@ function renderAccess(){
   document.getElementById('longest').textContent = P.length ? mmss(Math.max(...P.map(p=>p.dur))) : '—';
   document.getElementById('bestel').textContent = P.length ? Math.max(...P.map(p=>p.maxEl)).toFixed(1)+'°' : '—';
 
-  // timeline strip
-  const strip = document.getElementById('strip');
+  // pass windows drawn onto the transport scrubber, so time and access share one axis
   const t0 = D.start.getTime(), span = HOURS*3600000;
-  let html = '';
-  for(let h=1;h<HOURS;h++) html += '<div class="hour" style="left:'+(h/HOURS*100)+'%"></div>';
-  P.forEach((p,i)=>{
-    const l = (p.t0ms-t0)/span*100, w = Math.max((p.t1ms-p.t0ms)/span*100, .28);
-    html += '<button class="pass" data-i="'+i+'" aria-pressed="'+(i===selPass)+'" style="left:'+l+'%;width:'+w+'%" '+
-      'title="Pass '+(i+1)+' — '+hms(p.aos)+'Z, '+mmss(p.dur)+', max '+p.maxEl.toFixed(1)+'°" '+
-      'aria-label="Pass '+(i+1)+' at '+hms(p.aos)+' UTC, '+mmss(p.dur)+', maximum elevation '+p.maxEl.toFixed(1)+' degrees"></button>';
-  });
-  strip.innerHTML = html;
-  strip.querySelectorAll('.pass').forEach(b=>b.addEventListener('click',()=>selectPass(+b.dataset.i,true)));
-  document.getElementById('ticks').innerHTML =
-    [0,6,12,18,24].map(h=>'<span>+'+h+' h</span>').join('');
+  document.getElementById('tppasses').innerHTML = P.map(p=>{
+    const l = (p.t0ms-t0)/span*100, w = Math.max((p.t1ms-p.t0ms)/span*100, .45);
+    return '<div class="tp-pass" style="left:'+l+'%;width:'+w+'%"></div>';
+  }).join('');
+  document.getElementById('tpticks').innerHTML =
+    [0,6,12,18,24].map(x=>'<span>+'+x+' h</span>').join('');
+
+  // the rail list is the summary; the table below carries the detail
+  const pl = document.getElementById('passlist');
+  pl.innerHTML = P.map((p,i)=>
+    '<button class="passrow" data-i="'+i+'" aria-current="'+(i===selPass)+'" '+
+    'aria-label="Pass '+(i+1)+', acquisition '+hms(p.aos)+' UTC, '+mmss(p.dur)+
+    ', maximum elevation '+p.maxEl.toFixed(1)+' degrees">'+
+    '<span class="n">'+(i+1)+'</span>'+
+    '<span class="t">'+hms(p.aos)+'Z<small>'+hmsLocal(p.aos)+' ICT · '+mmss(p.dur)+'</small></span>'+
+    '<span class="e">'+p.maxEl.toFixed(0)+'°</span></button>').join('') ||
+    '<p style="font-size:12.5px;color:var(--muted)">No pass clears the 5° mask in this window.</p>';
+  pl.querySelectorAll('.passrow').forEach(b=>
+    b.addEventListener('click', ()=>selectPass(+b.dataset.i, true)));
 
   // table
   document.getElementById('passbody').innerHTML = P.map((p,i)=>
@@ -7460,7 +7655,7 @@ function selectPass(i, scrub){
     '<div class="row"><span class="k">Status</span><span class="v">no access</span></div>'; return; }
   selPass = Math.max(0, Math.min(i, D.passes.length-1));
   const p = D.passes[selPass];
-  document.querySelectorAll('.strip .pass').forEach(b=>b.setAttribute('aria-pressed', +b.dataset.i===selPass));
+  document.querySelectorAll('#passlist .passrow').forEach(b=>b.setAttribute('aria-current', +b.dataset.i===selPass));
   document.querySelectorAll('#passbody tr[data-i]').forEach(tr=>tr.setAttribute('aria-selected', +tr.dataset.i===selPass));
   drawSky(p);
   document.getElementById('skyfacts').innerHTML = [
@@ -7470,21 +7665,16 @@ function selectPass(i, scrub){
     ['LOS', hms(p.los)+'Z · '+hmsLocal(p.los)+' ICT'],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
   ].map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
-  if(scrub){
-    const idx = Math.round((p.maxAt.getTime()-D.start.getTime())/1000/STEP);
-    const range = document.getElementById('time');
-    range.value = idx; setTime(idx);
-  }
+  if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
 }
 
 /* ---- boot ---------------------------------------------------------------- */
 function load(entry){
   D = compute(entry);
   document.getElementById('satname').textContent = entry.name;
-  document.getElementById('idnorad').textContent = 'NORAD '+D.E.satnum;
-  document.getElementById('idcospar').textContent = 'COSPAR '+D.E.cospar;
-  document.getElementById('idepoch').textContent = 'Epoch '+iso(D.E.epoch);
-  document.getElementById('idrev').textContent = 'Rev '+D.E.rev;
+  document.getElementById('idnorad').textContent = D.E.satnum;
+  document.getElementById('idcospar').textContent = D.E.cospar;
+  document.getElementById('idepoch').textContent = iso(D.E.epoch);
   document.getElementById('tleraw').innerHTML =
     '<b>'+entry.name+'</b>\n'+entry.l1+'\n'+entry.l2;
   document.getElementById('trackhint').textContent =
@@ -7498,7 +7688,9 @@ function load(entry){
   selPass = 0;
   const range = document.getElementById('time');
   range.max = D.pts.length-1; range.value = 0;
-  fitCanvas(); setTime(0);
+  fitCanvas();
+  simMs = D.E.epoch.getTime();          // every spacecraft starts at its own epoch
+  lastIdx = -1; paintClock(true); paintPlay();
   selectPass(0, false);
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -7590,19 +7782,20 @@ document.addEventListener('mousedown', e=>{
   if(isOpen && !e.target.closest('.combo')) closeList(true);
 });
 box.addEventListener('blur', ()=>{ if(isOpen) closeList(true); });
-document.getElementById('time').addEventListener('input', e=>{ stop(); setTime(+e.target.value); });
-
-function stop(){ if(timer){ clearInterval(timer); timer = null;
-  document.getElementById('play').textContent = '▶ Play'; } }
-document.getElementById('play').addEventListener('click', function(){
-  const range = document.getElementById('time');
-  if(timer){ stop(); return; }
-  this.textContent = '❚❚ Pause';
-  timer = setInterval(()=>{
-    let v = (+range.value + 6) % (+range.max);      // 1 min of orbit per frame
-    range.value = v; setTime(v);
-  }, 60);
+/* ---- transport ----------------------------------------------------------- */
+document.getElementById('time').addEventListener('input', e=>{
+  setSim(winT0() + (+e.target.value)*STEP*1000, true);
 });
+function stop(){ /* playback lives on the transport now */ }
+document.getElementById('tpplay').addEventListener('click', ()=>{
+  playing = !playing; paintPlay();
+});
+document.querySelectorAll('.bar-transport .rate').forEach(b=>b.addEventListener('click', ()=>{
+  document.querySelectorAll('.bar-transport .rate').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  rate = +b.dataset.r;
+}));
+document.getElementById('tpepoch').addEventListener('click', ()=>setSim(D.E.epoch.getTime(), true));
+document.getElementById('tpnow').addEventListener('click', ()=>setSim(Date.now(), true));
 cv.addEventListener('mousemove', e=>{
   const r = cv.getBoundingClientRect();
   const lon = (e.clientX-r.left)/r.width*360-180, lat = 90-(e.clientY-r.top)/r.height*180;
@@ -7610,11 +7803,11 @@ cv.addEventListener('mousemove', e=>{
 });
 let rt = null;
 window.addEventListener('resize', ()=>{ clearTimeout(rt);
-  rt = setTimeout(()=>{ fitCanvas(); setTime(+document.getElementById('time').value);
+  rt = setTimeout(()=>{ fitCanvas(); paintClock(true);
     if(D.passes.length) drawSky(D.passes[selPass]); }, 120); });
 const mq = window.matchMedia('(prefers-color-scheme: dark)');
 mq.addEventListener && mq.addEventListener('change', ()=>{
-  setTime(+document.getElementById('time').value);
+  paintClock(true);
   if(D.passes.length) drawSky(D.passes[selPass]);
   if(global3D()) Orbit3D.retheme();
 });
@@ -7632,6 +7825,17 @@ function paintAges(){
   const now = Date.now();
   const epochAgeMs = now - D.E.epoch.getTime();
   const stale = epochAgeMs > 3*86400000;
+  const chip = document.getElementById('agechip');
+  document.getElementById('agetext').textContent = 'epoch ' + ago(epochAgeMs) + ' old';
+  chip.classList.toggle('stale', stale);
+  chip.title = stale
+    ? 'This element set is over three days old; SGP4 accuracy degrades with age.'
+    : 'Age of this element set relative to now.';
+  const rp = document.getElementById('railprov');
+  if(rp) rp.innerHTML =
+    'Epoch <b>' + iso(D.E.epoch).replace('Z','') + '</b><br>' +
+    'Fetched <b>' + ago(now - FETCHED.getTime()) + '</b> ago · ' + SOURCE + '<br>' +
+    'Element set <span class="' + (stale?'stale':'') + '">' + ago(epochAgeMs) + ' old</span>';
   document.getElementById('tlemeta').innerHTML =
     'Catalogue fetched <b>' + iso(FETCHED) + '</b> from ' + SOURCE +
     ' — <b>' + ago(now - FETCHED.getTime()) + '</b> ago.<br>' +
@@ -7649,11 +7853,10 @@ setInterval(paintAges, 30000);
   const ok = window.Orbit3D && window.THREE && Orbit3D.init({
     canvas, satellite: satellite,
     gt: { WORLD, CAT, OBS, MASK,
+          now: () => new Date(simMs),          // one clock, shared
           fmtUTC:  d => iso(d).replace('Z',''),
           fmtLocal: d => iso(new Date(d.getTime()+ICT*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
-              clock: document.getElementById('o3clock'),
-              clockLocal: document.getElementById('o3clocklocal'),
               el: document.getElementById('o3el') },
     onPick: i => { curIdx = i; box.value = CAT[i].name; stop(); load(CAT[i]); },
     onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },
@@ -7662,23 +7865,13 @@ setInterval(paintAges, 30000);
   if(!ok){
     document.getElementById('o3fallback').hidden = false;
     canvas.style.display = 'none';
-    document.querySelector('.o3-ctrl').style.display = 'none';
+    document.querySelector('.camseg').style.display = 'none';
+    document.querySelector('.hint-drag').style.display = 'none';
     return;
   }
-  const play = document.getElementById('o3play');
-  let running = true;
-  play.addEventListener('click', ()=>{
-    running = !running; Orbit3D.setPlaying(running);
-    play.textContent = running ? '❚❚' : '▶';
-    play.setAttribute('aria-label', running ? 'Pause' : 'Play');
-  });
-  document.querySelectorAll('.o3-rates .rate').forEach(b=>b.addEventListener('click', ()=>{
-    document.querySelectorAll('.o3-rates .rate').forEach(x=>x.setAttribute('aria-pressed', x===b));
-    Orbit3D.setRate(+b.dataset.r);
-  }));
   // the camera has one mode with three values; the exclusion logic already
   // enforced that, so the control should say it rather than imply three switches
-  const cams = [...document.querySelectorAll('.o3-seg .cam')];
+  const cams = [...document.querySelectorAll('.camseg .cam')];
   function paintMode(){
     const m = Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
     cams.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
@@ -7690,17 +7883,17 @@ setInterval(paintAges, 30000);
     paintMode();
   }));
   window.__paintCamMode = paintMode;
-  document.getElementById('o3epoch').addEventListener('click', ()=>{ Orbit3D.time = D.E.epoch; });
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
 })();
 
 curIdx = DEFAULT;
 box.value = CAT[curIdx].name;
-countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft in catalogue — type to search';
+countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type to search';
 load(CAT[curIdx]);
+requestAnimationFrame(clockTick);
 // canvas labels are painted, not laid out: repaint once the webfonts land
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{
-  setTime(+document.getElementById('time').value);
+  paintClock(true);
   if(D.passes.length) drawSky(D.passes[selPass]);
 });
 })();

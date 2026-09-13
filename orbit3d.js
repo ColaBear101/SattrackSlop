@@ -26,6 +26,12 @@ let onPick = null, onFollow = null, onSite = null, started = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Space does not have a light mode. Fixed palette, independent of the page theme.
+const SPACE = {
+  ocean:'#0B2033', land:'#2C4437', landline:'#496B56', grat:'#27455A',
+  track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
+  sunk:'#101A22', panel:'#0A1116', ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1'
+};
 // nudge a theme token toward an earthy target: the flat map's greys read as a
 // grey ball in 3D, where the eye expects a planet
 function mix(hex, target, k){
@@ -34,7 +40,7 @@ function mix(hex, target, k){
   const a = p(hex), b = p(target);
   return 'rgb(' + a.map((v,i)=>Math.round(v*(1-k)+b[i]*k)).join(',') + ')';
 }
-const col = n => new THREE.Color(tok(n));
+const col = n => new THREE.Color(SPACE[n.replace('--','')] || tok(n));
 function ecefToScene(v, s){ return new THREE.Vector3(v.x*s, v.z*s, -v.y*s); }
 function llToScene(lat, lon, r){
   const a = lat*RAD, b = lon*RAD;
@@ -47,7 +53,7 @@ function earthTexture(){
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   const px = lon => (lon+180)/360*W, py = lat => (90-lat)/180*H;
-  g.fillStyle = mix(tok('--ocean'), '#0d3552', .30); g.fillRect(0,0,W,H);
+  g.fillStyle = SPACE.ocean; g.fillRect(0,0,W,H);
   // a touch of depth so the oceans are not a flat slab of one value
   const grad = g.createLinearGradient(0,0,0,H);
   grad.addColorStop(0,'rgba(255,255,255,.07)');
@@ -62,10 +68,10 @@ function earthTexture(){
       g.closePath();
     }
   }
-  g.fillStyle = mix(tok('--land'), '#4a6247', .34); g.fill();
-  g.strokeStyle = mix(tok('--landline'), '#8aa08c', .30); g.lineWidth = 1.8; g.stroke();
+  g.fillStyle = SPACE.land; g.fill();
+  g.strokeStyle = SPACE.landline; g.lineWidth = 1.8; g.stroke();
   // a faint reference cage, not a feature: at full strength it out-shouts the coastlines
-  g.strokeStyle = tok('--grat'); g.lineWidth = 1; g.globalAlpha = .15; g.beginPath();
+  g.strokeStyle = SPACE.grat; g.lineWidth = 1; g.globalAlpha = .22; g.beginPath();
   for(let lon=-150; lon<=150; lon+=30){ g.moveTo(px(lon),0); g.lineTo(px(lon),H); }
   for(let lat=-60; lat<=60; lat+=30){ g.moveTo(0,py(lat)); g.lineTo(W,py(lat)); }
   g.stroke(); g.globalAlpha = 1;
@@ -126,7 +132,9 @@ function build(canvas){
   starfield();
 
   // ground-bound overlays ride the Earth
-  trackLine = mkLine(0, '--track', 1);   earthGroup.add(trackLine);
+  trackLine = mkLine(0, '--track', 1);
+  trackLine.material.opacity = 0.30;
+  earthGroup.add(trackLine);
   footRing = new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({color: col('--observer'), dashSize:.035, gapSize:.028}));
   earthGroup.add(footRing);
@@ -236,12 +244,14 @@ function setSat(entry, elements){
   try { curRec = sat.twoline2satrec(entry.l1, entry.l2); } catch(e){ curRec = null; }
   if(!curRec || curRec.error) { curRec = null; return; }
   const periodS = elements && elements.period ? elements.period : 5400;
-  simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
+  if(!(GT && GT.now))                              // only self-clocked scenes reset time
+    simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
+  const anchor = elements && elements.epoch ? elements.epoch : simTime;
 
   // one full revolution, in inertial space
   const N = 360, pts = [];
   for(let k=0;k<=N;k++){
-    const t = new Date(simTime.getTime() + k*periodS*1000/N);
+    const t = new Date(anchor.getTime() + k*periodS*1000/N);
     let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
     if(pv && pv.position) pts.push(new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U));
   }
@@ -252,7 +262,7 @@ function setSat(entry, elements){
   const tp = [];
   const steps = 1440;
   for(let k=0;k<=steps;k++){
-    const t = new Date(simTime.getTime() + k*86400000/steps);
+    const t = new Date(anchor.getTime() + k*86400000/steps);
     let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
     if(!pv || !pv.position) continue;
     const gd = sat.eciToGeodetic(pv.position, sat.gstime(t));
@@ -263,8 +273,8 @@ function setSat(entry, elements){
 
   // 5-degree access footprint around the observer, at mean altitude
   let alt = 500;
-  { let pv=null; try{ pv = sat.propagate(curRec, simTime); }catch(e){}
-    if(pv && pv.position) alt = sat.eciToGeodetic(pv.position, sat.gstime(simTime)).height; }
+  { let pv=null; try{ pv = sat.propagate(curRec, anchor); }catch(e){}
+    if(pv && pv.position) alt = sat.eciToGeodetic(pv.position, sat.gstime(anchor)).height; }
   const eps = GT.MASK*RAD;
   const lam = Math.acos(RE*Math.cos(eps)/(RE+alt)) - eps;
   const lat1 = GT.OBS.lat*RAD, lon1 = GT.OBS.lon*RAD, fp = [];
@@ -358,7 +368,9 @@ function tick(ts){
   requestAnimationFrame(tick);
   const dt = lastFrame ? Math.min((ts-lastFrame)/1000, .25) : 0;
   lastFrame = ts; frameNo++;
-  if(playing) simTime = new Date(simTime.getTime() + dt*rate*1000);
+  // the page owns sim time; the scene follows it so the globe and the flat map
+  // can never drift apart
+  simTime = (GT && GT.now) ? GT.now() : new Date(simTime.getTime() + dt*rate*1000);
 
   const canvas = renderer.domElement;
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -462,16 +474,8 @@ function paintLabels(satPos, el){
 
 /* ---- theme ---------------------------------------------------------------- */
 function retheme(){
-  if(!earth) return;
-  earth.material.map.dispose();
-  earth.material.map = earthTexture();
-  earth.material.needsUpdate = true;
-  trackLine.material.color = col('--track');
-  footRing.material.color = col('--observer');
-  orbitLine.material.color = col('--contact');
-  contactLine.material.color = col('--contact');
-  satDot.material.color = col('--contact');
-  satHalo.material.color = col('--contact');
+  /* The globe keeps its own palette - space has no light mode - so a theme flip
+     needs no repaint here. Kept as a no-op so callers need not care. */
 }
 
 /* ---- public --------------------------------------------------------------- */

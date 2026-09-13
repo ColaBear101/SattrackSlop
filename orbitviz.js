@@ -377,6 +377,7 @@ function updateLive(date){
      value: the osculating e wobbles across any fixed threshold mid-orbit, which
      flipped the reference direction between perigee and node and made the angle
      jump by omega - measured at 108 degrees on KNACKSAT-2. */
+  // only used to warn on the e label now: the angle is always the true anomaly
   const nearCircular = (el && isFinite(el.ecc) ? el.ecc : eMag) < 1.5e-3;
   const rHat = rS.clone().normalize();
   const rdotv = R[0]*V[0] + R[1]*V[1] + R[2]*V[2];
@@ -393,21 +394,16 @@ function updateLive(date){
     live.e.visible = live.eTip.visible = live.eLbl.visible = false;
   }
 
-  // the angle actually drawn: from perigee, or from the node when perigee is not
-  // a meaningful direction
-  const nodeDir = eci(-H[1], H[0], 0);                 // z x h, toward the ascending node
-  const fromDir = nearCircular
-    ? (nodeDir.lengthSq() > 1e-12 ? nodeDir.normalize() : (eDir || rHat))
-    : eDir;
+  /* True anomaly, measured from the eccentricity vector, which is the
+     definition. On a near-circular orbit that reference is genuinely unstable -
+     KNACKSAT-2's perigee direction wanders 64 degrees in one revolution - so the
+     value will jitter there. That is a property of the orbit, not of the
+     drawing, and the e label says so rather than the angle quietly switching to
+     a different quantity. */
+  const fromDir = eDir;
   if(fromDir){
     let ang = Math.acos(Math.max(-1, Math.min(1, fromDir.dot(rHat))))*DEG;
-    if(nearCircular){
-      // signed about h, so it runs 0..360 the way the spacecraft does
-      const cr = new THREE.Vector3().crossVectors(fromDir, rHat);
-      if(cr.dot(hDir) < 0) ang = 360 - ang;
-    } else if(rdotv < 0){
-      ang = 360 - ang;
-    }
+    if(rdotv < 0) ang = 360 - ang;
     const inPlane = new THREE.Vector3().crossVectors(hDir, fromDir).normalize();
     const Rnu = Math.max(0.62, rLen*0.42);
     const arr = live.nu.geometry.attributes.position.array;
@@ -426,8 +422,7 @@ function updateLive(date){
       nuShown = ang;
       // one symbol for the angle either way, with the reference named, rather
       // than switching between nu and u and leaving the reader to notice
-      live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from '+
-        (nearCircular ? 'node' : 'perigee'));
+      live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from perigee');
       const eShown = (el && isFinite(el.ecc)) ? el.ecc : eMag;   // matches the elements card
       if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
         ? 'e = '+eShown.toFixed(7)+'  (perigee direction unstable)'

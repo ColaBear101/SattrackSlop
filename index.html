@@ -487,6 +487,15 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
 
     <aside class="rail" aria-label="Visibility summary">
+      <div class="railsec" id="railSky">
+        <p class="eyebrow">Sky track · selected pass</p>
+        <div class="skybox">
+          <canvas id="sky" width="536" height="536"
+                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
+          <div class="skyfacts" id="skyfacts"></div>
+        </div>
+      </div>
+
       <div class="answer">
         <p class="eyebrow">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
@@ -505,15 +514,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="railsec">
         <p class="eyebrow">Access windows</p>
         <div class="passlist" id="passlist"></div>
-      </div>
-
-      <div class="railsec" id="railSky">
-        <p class="eyebrow">Sky track · selected pass</p>
-        <div class="skybox">
-          <canvas id="sky" width="536" height="536"
-                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
-          <div class="skyfacts" id="skyfacts"></div>
-        </div>
       </div>
 
       <div class="railsec">

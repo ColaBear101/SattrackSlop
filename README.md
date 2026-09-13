@@ -157,6 +157,123 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+## Orbital decay and remaining life
+
+KNACKSAT-2 is falling. The drag term in its TLE is three orders of magnitude larger than a
+Landsat's, and CelesTrak's record shows the mean altitude going **418.6 km → 362.9 km between
+5 Feb and 13 Sep 2026** — 55.7 km in 220 days, and accelerating. The page estimates when it runs
+out of altitude.
+
+### Where the history comes from
+
+`celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=<id>` returns an HTML page with the whole
+run of mean elements embedded in one `plotData` string — date, RAAN, inclination, argument of
+perigee, SMA, eccentricity, for every element set CelesTrak has held. For KNACKSAT-2 that is 534
+rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major axis. It sends
+`Access-Control-Allow-Origin: *`, so the browser can read it without a backend.
+
+It is also **slow — about 35 seconds per object**, measured, because the archive is rebuilt on each
+request. So the fetch does not fire when you pick a spacecraft: clicking through the catalogue
+would queue a dozen half-minute requests against someone else's server. There is a button, one
+shared request per object, and a 12-hour cache.
+
+### Why not just extrapolate the line
+
+A straight line through the observed drop always over-estimates the remaining life, because decay
+accelerates: the object falls into denser air, so it falls faster. For a near-circular orbit
+
+```
+da/dt = -rho(h) * B * sqrt(mu*a),    B = Cd*A/m
+```
+
+The **shape** of rho(h) comes from the standard piecewise-exponential atmosphere (US Standard 1976
++ CIRA-72, Vallado Table 8-4); the **amplitude** and the unknown ballistic coefficient are
+calibrated from the object's own history. Only the ratio rho(h)/rho(h_now) is taken from the model,
+and that ratio is far better known than absolute density — which matters, because density at 400 km
+swings by an order of magnitude over a solar cycle.
+
+That has a consequence worth stating plainly: **the absolute density scale cancels out.** Multiply
+rho by *k* and the calibration divides B by *k*, leaving the forecast identical. An "uncertainty
+band" built by scaling density up and down is therefore exactly zero wide. The first version of
+this printed such a band — 85 to 341 days — before that was checked. It was meaningless.
+
+Three implementation details that each changed the answer:
+
+- **Integrate in altitude, not time.** The last 40 km are covered at hundreds of km/day, so a fixed
+  time step overshoots the surface and the integration blows up mid-plunge. Marching down in
+  altitude is unconditionally stable and lands exactly on the threshold. It also needs a floor
+  guard: once the remaining gap falls below the ULP of the radius (~1e-12 km in LEO), subtracting
+  the step is absorbed by floating point and the loop spins forever.
+- **Calibrate exactly, not by a mean-altitude rate.** Time is inversely proportional to B, so one
+  integration at B = 1 and a divide reproduces the observed drop with its curvature intact. Pinning
+  a straight-line rate to the window's mean altitude is fine while the curve is flat and wrong once
+  it steepens — which is exactly when the forecast matters. This cut the 30-day-out mean error from
+  **108 days to 3**.
+- **Fit the solar trend.** A second parameter, a log-linear density trend standing in for the solar
+  cycle, read off the object's own record. KNACKSAT-2's fit says the atmosphere is thinning at
+  0.24 %/day — cycle 25 is past maximum — which is why its observed decay rate has risen only
+  ×1.21 over 220 days where a fixed atmosphere predicts ×2.15.
+
+Re-entry is called at 120 km. The exact threshold barely matters: 100 km and 150 km move a 170-day
+answer by 0.16 days, because by then the object has hours left.
+
+### How well it works
+
+Validated against objects that **actually re-entered**, with decay dates from the CelesTrak SATCAT.
+The history is truncated at a fixed lead time, the predictor is run on what remains, and the answer
+is compared with what really happened:
+
+| Lead time | n | Median error | Half-IQR |
+|---|---|---|---|
+| 30 d | 21 | +12 d | 6 d |
+| 60 d | 22 | +12 d | 8 d |
+| 90 d | 23 | +5 d | 13 d |
+| 120 d | 21 | −20 d | 11 d |
+| 180 d | 20 | **−63 d** | 12 d |
+| 270 d | 17 | **−144 d** | 5 d |
+| 365 d | 17 | +56 d | 166 d |
+
+Usable to about four months. Beyond that it runs **months early**, and past a year it is not a
+forecast at all. The page says which of those regimes it is in rather than printing one number and
+leaving the reader to assume it means the same thing at every range.
+
+**The validation set's own limitation, since it bounds everything above:** all 24 objects re-entered
+between 28 Aug and 12 Sep 2026, so they met the same solar weather on the way down. Their errors are
+correlated, the tight half-IQR at 270 days is an artefact of that rather than evidence of precision,
+and the measured bias partly reflects one phase of one solar cycle. A fair test needs decays spread
+over years; at 35 seconds a request, that was not built here.
+
+One thing the table deliberately does not show, because it would flatter the method: running the
+predictor on each object's **full** history reproduces its real decay date to ±1 day. That is not a
+forecast — those histories run to within a day of re-entry, when the object is already near 150 km
+and falling fast. It confirms the endgame integration, nothing more.
+
+### What it refuses to answer
+
+A drag model applied to a spacecraft under thrust produces fiction, so the estimator checks first:
+
+- **Boosted** — sustained rises in the record. PROGRESS-MS 33 climbed 271 → 420 km before its
+  deorbit burn and is declined outright: its re-entry was a decision, not a deadline.
+- **No measurable decay** — station-kept, or simply too high for drag to bite.
+- **Too little history** — under ~25 element sets or 45 days, TLE scatter swamps the trend.
+
+### KNACKSAT-2
+
+| | |
+|---|---|
+| Mean altitude | 362.9 km |
+| Decay rate | −0.289 km/day |
+| Fitted density trend | −0.24 %/day (halving every 289 days) |
+| Fit residual | 2.7 km rms over 220 days |
+| Fixed-atmosphere estimate | 2027-02-11 |
+| **With the solar trend** | **2027-04-16** |
+
+Roughly seven months. An independent check: propagating the TLE forward with SGP4's own B* drag
+term until it reaches 120 km gives **2027-06-09** — a different method, from a different input,
+landing within a day of the trend model's figure when both were run on the same element set. And
+since the backtest says this range runs about two months early, the true date is more likely after
+April than before it.
+
 ## Staying current
 
 A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with

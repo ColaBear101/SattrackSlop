@@ -303,6 +303,12 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
 .access{display:grid; grid-template-columns:minmax(0,1fr); gap:22px; align-items:start}
 .skybox{display:grid; grid-template-columns:auto minmax(0,1fr); gap:22px; align-items:center;
   background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+.rail .skybox{grid-template-columns:minmax(0,1fr); gap:10px; padding:0;
+  background:none; border:0; justify-items:center}
+.rail canvas#sky{width:min(200px,100%)}
+.rail .skyfacts{width:100%}
+.rail .skyfacts .row{font-size:12px}
+.rail .skyfacts .k{font-size:10px}
 canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:block}
 .skyfacts{display:flex; flex-direction:column; gap:7px; min-width:0}
 .skyfacts .row{display:flex; justify-content:space-between; gap:20px; font-size:13px; flex-wrap:wrap;
@@ -495,6 +501,15 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="passlist" id="passlist"></div>
       </div>
 
+      <div class="railsec" id="railSky">
+        <p class="eyebrow">Sky track · selected pass</p>
+        <div class="skybox">
+          <canvas id="sky" width="536" height="536"
+                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
+          <div class="skyfacts" id="skyfacts"></div>
+        </div>
+      </div>
+
       <div class="railsec">
         <p class="eyebrow">Orbit at epoch</p>
         <dl class="minigrid" id="minigrid"></dl>
@@ -614,11 +629,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <p class="hint">13.75°N 100.52°E, sea level, geometric</p>
     </div>
     <div class="access">
-      <div class="skybox">
-        <canvas id="sky" width="536" height="536" aria-label="Sky track of the selected pass"></canvas>
-        <div class="skyfacts" id="skyfacts"></div>
-      </div>
       <div>
+        <p style="margin-bottom:12px;color:var(--muted);font-size:12.5px">
+          The sky track for the selected pass is plotted in the panel beside the globe above.</p>
         <dl class="derived" style="margin-bottom:14px">
           <div class="dv"><dt>Passes</dt><dd id="npasses">—</dd></div>
           <div class="dv"><dt>Longest</dt><dd id="longest">—</dd></div>

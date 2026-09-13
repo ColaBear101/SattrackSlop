@@ -23,7 +23,8 @@ let curPeriodS = 5400, ringMs = null, ringWall = 0;
 let curEntry = null, curRec = null, follow = true, siteLock = false;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
-let dragging = false, lastPt = null, pinch0 = 0, travel = 0;
+let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
+let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, started = false;
 
 /* ---- small helpers -------------------------------------------------------- */
@@ -217,6 +218,11 @@ function buildCloud(){
 function updateCloud(date){
   const base = col('--track'), hot = col('--contact');
   const gmst = sat.gstime(date);
+  // A satellite that happens to sit between the eye and the Earth renders as a
+  // huge blob across the view - a high orbit at low zoom does this constantly.
+  // Fade anything that close, and take it out of the pick list while faded.
+  const camPos = cam.position, camR = camPos.length();
+  const cullR = Math.max(0.40, 0.30*camR), fadeIn = cullR*0.55;
   for(let i=0;i<recs.length;i++){
     const r = recs[i]; let ok = false;
     if(r){
@@ -232,7 +238,17 @@ function updateCloud(date){
     if(!ok){ cloudPos[i*3] = cloudPos[i*3+1] = cloudPos[i*3+2] = 1e6; }
     cloudValid[i] = ok;
     const c = (curEntry && GT.CAT[i] === curEntry) ? hot : base;
-    const dim = (curEntry && GT.CAT[i] === curEntry) ? 1 : (i===hoverIdx ? 1 : .55);
+    let dim = (curEntry && GT.CAT[i] === curEntry) ? 1 : (i===hoverIdx ? 1 : .55);
+    let culled = false;
+    if(ok){
+      const dxc = cloudPos[i*3]-camPos.x, dyc = cloudPos[i*3+1]-camPos.y, dzc = cloudPos[i*3+2]-camPos.z;
+      const dc = Math.sqrt(dxc*dxc + dyc*dyc + dzc*dzc);
+      if(dc < cullR){
+        const f = Math.max(0, (dc - fadeIn)/(cullR - fadeIn));
+        dim *= f; culled = f < 0.2;
+      }
+    }
+    nearCull[i] = culled;
     cloudColor[i*3] = c.r*dim; cloudColor[i*3+1] = c.g*dim; cloudColor[i*3+2] = c.b*dim;
   }
   cloudPts.geometry.attributes.position.needsUpdate = true;
@@ -389,7 +405,8 @@ function bindInput(canvas){
                           e.touches[0].clientY-e.touches[1].clientY);
       return;
     }
-    dragging = true; lastPt = pt(e); travel = 0; canvas.style.cursor = 'grabbing';
+    dragging = true; lastPt = pt(e); downPt = pt(e); travel = 0;
+    canvas.style.cursor = 'grabbing';
   };
   const move = e => {
     if(e.touches && e.touches.length === 2 && pinch0){
@@ -426,9 +443,26 @@ function bindInput(canvas){
   // click fires after mouseup however far the pointer travelled, and hoverIdx is
   // frozen during a drag - so a rotate that began over a point would load it
   canvas.addEventListener('click', (e) => {
-    if(travel > 5) return;                          // that was a drag, not a click
     if(!cloudPts || !cloudPts.visible) return;      // nothing on screen to pick
-    if(hoverIdx >= 0 && onPick) onPick(hoverIdx, e.clientX, e.clientY);
+    // Measure how far the pointer actually MOVED, not the length of the path it
+    // wandered: summing every delta made ordinary hand jitter look like a drag,
+    // so real clicks were being thrown away.
+    if(downPt){
+      const dx = e.clientX - downPt.x, dy = e.clientY - downPt.y;
+      if(Math.hypot(dx, dy) > 6) return;
+    }
+    // re-pick under the cursor rather than trusting hoverIdx, which may be stale
+    const r = canvas.getBoundingClientRect();
+    const m = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,
+                                -((e.clientY-r.top)/r.height)*2+1);
+    raycaster.setFromCamera(m, cam);
+    const hit = raycaster.intersectObject(cloudPts, false);
+    for(const x of hit){
+      if(cloudValid[x.index] && !nearCull[x.index]){
+        if(onPick) onPick(x.index, e.clientX, e.clientY);
+        return;
+      }
+    }
   });
 }
 
@@ -523,7 +557,7 @@ function tick(ts){
     raycaster.setFromCamera(mouse, cam);
     const hit = raycaster.intersectObject(cloudPts, false);
     let idx = -1;
-    for(const x of hit){ if(cloudValid[x.index]){ idx = x.index; break; } }
+    for(const x of hit){ if(cloudValid[x.index] && !nearCull[x.index]){ idx = x.index; break; } }
     if(idx !== hoverIdx){ hoverIdx = idx; canvas.style.cursor = idx>=0 ? 'pointer' : 'grab'; }
   } else if(hoverIdx !== -1 && (dragging || !cloudPts.visible)){
     hoverIdx = -1;                                  // drop a stale hover

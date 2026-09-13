@@ -58,7 +58,9 @@ function raDec(ra, dec, r){
 function makeLabel(text, colour, opt){
   opt = opt || {};
   const lines = Array.isArray(text) ? text : [text];
-  const px = opt.px || 40, pad = Math.round(px*0.42), lh = Math.round(px*1.25);
+  // these were rendering around 12 screen pixels tall over a star field, which
+  // is legible in a screenshot and not in use
+  const px = opt.px || 56, pad = Math.round(px*0.42), lh = Math.round(px*1.28);
   const cv = document.createElement('canvas');
   let g = cv.getContext('2d');
   const font = (opt.weight || 600)+' '+px+'px "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace';
@@ -72,7 +74,7 @@ function makeLabel(text, colour, opt){
   // a dark casing, not a box: text over a star field needs separation from
   // whatever is behind it without stamping a rectangle on the sky
   g.lineJoin = 'round'; g.miterLimit = 2;
-  g.strokeStyle = 'rgba(4,10,14,0.92)'; g.lineWidth = Math.max(3, px*0.22);
+  g.strokeStyle = 'rgba(3,8,11,0.97)'; g.lineWidth = Math.max(4, px*0.30);
   g.fillStyle = colour;
   for(let i=0;i<lines.length;i++){
     g.strokeText(lines[i], pad, pad + i*lh);
@@ -88,7 +90,10 @@ function makeLabel(text, colour, opt){
     depthTest: opt.depthTest !== false, sizeAttenuation:false,
     opacity: opt.opacity === undefined ? 1 : opt.opacity });
   const s = new THREE.Sprite(m);
-  const h = opt.h || 0.020;                      // roughly a fraction of viewport height at fov 42
+  // a fraction of viewport height at fov 42; 1.75x over the first pass, which
+  // was sized for a screenshot rather than for reading. h covers the WHOLE
+  // sprite, so a two-line label would otherwise set each line at half size.
+  const h = (opt.h || 0.020) * 1.75 * (lines.length > 1 ? 1 + 0.6*(lines.length-1) : 1);
   s.scale.set(h*cv.width/cv.height, h, 1);
   s.renderOrder = opt.order || 12;
   return s;

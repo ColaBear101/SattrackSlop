@@ -105,17 +105,12 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 
 .viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
 .viewport .trailseg{position:absolute; top:52px; right:12px; display:flex; align-items:center; gap:8px}
-.viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
-  align-items:flex-end; gap:6px}
-.layermenu[hidden]{display:none}
-.layermenu{display:flex; flex-direction:column; gap:2px; padding:6px;
-  background:rgba(10,16,20,.94); border:1px solid rgba(180,200,212,.32); border-radius:4px;
-  backdrop-filter:blur(7px); min-width:210px}
-.layermenu label{display:flex; align-items:center; gap:8px; padding:6px 7px; border-radius:3px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:#DCE8EE;
-  cursor:pointer; min-height:32px}
-.layermenu label:hover{background:rgba(180,200,212,.12)}
-.layermenu input{accent-color:var(--contact); margin:0}
+.layerpanel{display:flex; flex-direction:column; gap:1px}
+.layerpanel label{display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:3px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--ink2);
+  cursor:pointer; min-height:34px}
+.layerpanel label:hover{background:var(--chrome2); color:var(--ink)}
+.layerpanel input{accent-color:var(--contact); margin:0; width:15px; height:15px}
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
   text-transform:uppercase; color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
@@ -144,6 +139,13 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   color:var(--contact); margin-top:6px}
 .answer .big span{font-size:18px; font-weight:600; letter-spacing:-.01em}
 .answer .sub{font-size:12.5px; color:var(--ink2); margin-top:5px; line-height:1.5}
+.livel{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  margin-top:11px; padding-top:10px; border-top:1px solid var(--chromerule)}
+.livel .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted)}
+.livel .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:16px; color:var(--ink)}
+.livel .v.up{color:var(--contact); font-weight:600}
 .countdown{margin-top:12px; padding-top:11px; border-top:1px solid var(--chromerule);
   display:flex; flex-direction:column; gap:2px}
 .countdown .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.13em;
@@ -201,6 +203,9 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .pickconfirm .pcb{display:flex; gap:6px; margin-top:9px}
 .pickconfirm .btn{flex:1; justify-content:center; text-align:center}
 #pcload{background:var(--contact); border-color:var(--contact); color:#fff}
+.tp-rate{display:flex; align-items:center; gap:8px; flex:0 1 210px; min-width:150px}
+.tp-rate input[type=range]{flex:1; min-width:70px; height:24px; accent-color:var(--track); cursor:pointer}
+.tp-ratev{font-size:12px; color:var(--chromeink); min-width:52px; text-align:right}
 .tp-scrub{flex:1 1 280px; min-width:180px; display:flex; flex-direction:column; gap:3px}
 .tp-track{position:relative; height:26px}
 .tp-track input[type=range]{position:absolute; inset:0; width:100%; height:26px; margin:0;
@@ -372,7 +377,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
   .viewport .camseg{top:auto; bottom:10px; right:10px}
   .viewport .trailseg{top:auto; bottom:48px; right:10px}
-  .viewport .layerseg{top:10px; bottom:auto; right:10px}
+
   .seglabel{display:none}
   .hint-drag{display:none}
   .access{grid-template-columns:minmax(0,1fr)}
@@ -427,9 +432,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="hud">
         <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
         <div class="t2"><span id="o3clocklocal">—</span><span class="zone">ICT</span></div>
-        <div class="elev">
-          <span class="k">Elev. Bangkok</span><span class="v" id="o3el">—</span>
-        </div>
+
       </div>
       <div class="camseg">
         <span class="seglabel" id="camlabel">Camera</span>
@@ -443,14 +446,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <span class="seglabel" id="traillabel">Trail</span>
         <div class="seg" role="group" aria-labelledby="traillabel">
           <button class="btn trl" data-t="1800000" aria-pressed="false">30 m</button>
-          <button class="btn trl" data-t="orbit" aria-pressed="true">1 orbit</button>
-          <button class="btn trl" data-t="21600000" aria-pressed="false">6 h</button>
+          <button class="btn trl" data-t="orbit" aria-pressed="false">1 orbit</button>
+          <button class="btn trl" data-t="21600000" aria-pressed="true">6 h</button>
           <button class="btn trl" data-t="all" aria-pressed="false">24 h</button>
         </div>
-      </div>
-      <div class="layerseg">
-        <button class="btn" id="layersBtn" aria-expanded="false" aria-controls="layersMenu">Layers ▾</button>
-        <div class="layermenu" id="layersMenu" hidden role="group" aria-label="Scene layers"></div>
       </div>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
@@ -469,6 +468,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <p class="eyebrow">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
+        <div class="livel">
+          <span class="k">Elevation at Bangkok now</span>
+          <span class="v" id="o3el">—</span>
+        </div>
         <div class="countdown">
           <span class="k" id="cdlabel">Next pass</span>
           <span class="v" id="cdvalue">—</span>
@@ -479,6 +482,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="railsec">
         <p class="eyebrow">Access windows</p>
         <div class="passlist" id="passlist"></div>
+      </div>
+
+      <div class="railsec" id="railLayers">
+        <p class="eyebrow">Scene layers</p>
+        <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
       </div>
 
       <div class="railsec">
@@ -499,11 +507,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 
   <footer class="bar bar-transport">
     <button class="btn" id="tpplay" aria-label="Pause">❚❚</button>
-    <div class="seg" role="group" aria-label="Time rate">
-      <button class="btn rate" data-r="1" aria-pressed="false">1×</button>
-      <button class="btn rate" data-r="60" aria-pressed="true">60×</button>
-      <button class="btn rate" data-r="600" aria-pressed="false">600×</button>
-      <button class="btn rate" data-r="3600" aria-pressed="false">3600×</button>
+    <div class="tp-rate">
+      <span class="seglabel">Rate</span>
+      <input type="range" id="tprate" min="0" max="100" value="0" step="1"
+             aria-label="Time rate, 1x to 3600x">
+      <span class="tp-ratev mono" id="tpratev">1×</span>
     </div>
     <div class="tp-scrub">
       <div class="tp-track">
@@ -7586,7 +7594,7 @@ function drawMap(cur){
  * The globe and the flat map used to run independent clocks, so they never
  * agreed. Now the page owns sim time, the 3D scene reads it through GT.now(),
  * and the flat map redraws only when the 10 s sample index actually changes.  */
-let simMs = 0, rate = 60, playing = true, rafPrev = 0, lastIdx = -1, scrubbing = false;
+let simMs = 0, rate = 1, playing = true, rafPrev = 0, lastIdx = -1, scrubbing = false;
 const winT0 = () => D.start.getTime(), winT1 = () => D.end.getTime();
 const inWindow = ms => ms >= winT0()-1 && ms <= winT1()+1;
 const idxAt = ms => Math.max(0, Math.min(D.pts.length-1, Math.round((ms-winT0())/1000/D.step)));
@@ -7836,6 +7844,7 @@ function load(entry){
   simMs = D.start.getTime();            // start of the window being analysed
   lastIdx = -1; paintClock(true); paintPlay();
   selectPass(0, false);
+  paintRate();
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -7945,10 +7954,21 @@ function stop(){ /* playback lives on the transport now */ }
 document.getElementById('tpplay').addEventListener('click', ()=>{
   playing = !playing; paintPlay();
 });
-document.querySelectorAll('.bar-transport .rate').forEach(b=>b.addEventListener('click', ()=>{
-  document.querySelectorAll('.bar-transport .rate').forEach(x=>x.setAttribute('aria-pressed', x===b));
-  rate = +b.dataset.r;
-}));
+/* Rate is continuous now. It runs on a log scale because the useful span is
+   1x to 3600x and a linear slider would spend nine tenths of its travel above
+   500x, where everything looks the same. */
+const RATE_MAX = 3600;
+const rateFromSlider = v => Math.pow(RATE_MAX, v/100);
+const sliderFromRate = r => 100*Math.log(r)/Math.log(RATE_MAX);
+function paintRate(){
+  const el = document.getElementById('tpratev');
+  el.textContent = (rate < 10 ? rate.toFixed(1) : Math.round(rate).toLocaleString('en-US'))+'×';
+}
+document.getElementById('tprate').addEventListener('input', e=>{
+  rate = rateFromSlider(+e.target.value);
+  if(rate < 1.05) rate = 1;                    // let the bottom of the travel be exactly real time
+  paintRate();
+});
 /* ---- the analysis window -------------------------------------------------- *
  * Moving the window changes the pass solution, so every control here funnels
  * through one reload rather than trying to patch the existing result.          */
@@ -8092,7 +8112,7 @@ setInterval(paintAges, 30000);
     document.querySelector('.hint-drag').style.display = 'none';
     const ts = document.querySelector('.trailseg');
     if(ts) ts.style.display = 'none';           // trail has nothing to draw on
-    const ls = document.querySelector('.layerseg');
+    const ls = document.getElementById('railLayers');
     if(ls) ls.style.display = 'none';
     const cl = document.querySelector('label[for="o3cloud"]');
     if(cl) cl.style.display = 'none';           // and no cloud to toggle
@@ -8124,29 +8144,17 @@ setInterval(paintAges, 30000);
         const k = e.target.dataset.layer;
         if(k) OrbitViz.show(k, e.target.checked);
       });
-      const lb = document.getElementById('layersBtn');
-      lb.addEventListener('click', ()=>{
-        const open = menu.hidden;
-        menu.hidden = !open;
-        lb.setAttribute('aria-expanded', open);
-        lb.textContent = open ? 'Layers ▴' : 'Layers ▾';
-      });
-      document.addEventListener('mousedown', e=>{
-        if(!menu.hidden && !e.target.closest('.layerseg')){
-          menu.hidden = true; lb.setAttribute('aria-expanded','false'); lb.textContent = 'Layers ▾';
-        }
-      });
       window.__viz = true;
     } catch(err){
-      const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
+      const ls = document.getElementById('railLayers'); if(ls) ls.style.display = 'none';
     }
   } else {
-    const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
+    const ls = document.getElementById('railLayers'); if(ls) ls.style.display = 'none';
   }
 
   const trls = [...document.querySelectorAll('.trailseg .trl')];
   function applyTrail(){
-    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[1];
+    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[2];
     const v = b.dataset.t;
     Orbit3D.setTrail(v === 'all' ? Infinity
                    : v === 'orbit' ? D.E.period*1000      // one revolution

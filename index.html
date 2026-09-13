@@ -90,6 +90,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   letter-spacing:.06em; color:#EAF2F6; white-space:nowrap;
   text-shadow:0 0 4px #05090C,0 0 4px #05090C,0 0 9px #05090C}
 .o3-label.o3-hover{color:#AFC3CE; font-weight:500}
+.o3-label.o3-earth{color:#E8EFF2; display:none}
 
 .hud{position:absolute; top:12px; left:14px; display:flex; flex-direction:column; gap:2px;
   pointer-events:none; color:#EAF2F6; text-shadow:0 0 6px #05090C,0 0 6px #05090C}
@@ -448,6 +449,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="o3-layer">
         <span class="o3-label" id="o3name">—</span>
         <span class="o3-label o3-hover" id="o3hover"></span>
+        <span class="o3-label o3-earth" id="o3earth">R⊕ = 6378.137 km</span>
       </div>
       <div class="hud">
         <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
@@ -554,6 +556,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <span class="a"><span id="tpclock">—</span> UTC</span>
       <span class="b"><span id="tpclocklocal">—</span> ICT</span>
     </div>
+    <label class="btn" for="o3earth2" style="display:inline-flex;gap:7px;align-items:center">
+      <input type="checkbox" id="o3earth2" checked> Earth
+    </label>
     <label class="btn" for="o3fov" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3fov" checked> Footprint
     </label>
@@ -8155,7 +8160,8 @@ setInterval(paintAges, 30000);
           fmtUTC:  d => iso(d).replace('Z',''),
           fmtLocal: d => iso(new Date(d.getTime()+ICT*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
-              el: document.getElementById('o3el') },
+              el: document.getElementById('o3el'),
+              earth: document.getElementById('o3earth') },
     onPick: (i, x, y) => askLoad(i, x, y),     // 2158 points is a lot to misclick
     onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },
     onSite:   () => { if(window.__paintCamMode) window.__paintCamMode(); }
@@ -8229,6 +8235,8 @@ setInterval(paintAges, 30000);
   }));
   window.__paintCamMode = paintMode;
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
+  document.getElementById('o3earth2').addEventListener('change',
+    e=>Orbit3D.showEarth(e.target.checked));
   document.getElementById('o3fov').addEventListener('change', e=>{
     fovOn = e.target.checked;
     if(global3D()) Orbit3D.showFov(fovOn);

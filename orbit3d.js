@@ -17,6 +17,7 @@ const FOV_SEG = 144;                             // segments around the footprin
 let GT, THREE, sat;
 let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
 let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot, fovRing;
+let atmo = null, wire = null, reLine = null, reTip = null;   // the globe, and what stands in for it
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
@@ -27,6 +28,7 @@ let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the o
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, started = false, fovOn = true;
+let earthOn = true;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -130,7 +132,7 @@ function build(canvas){
   earthGroup.add(earth);
 
   // rim of atmosphere: a back-faced shell brightened at grazing angles
-  const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.022, 64, 48),
+  atmo = new THREE.Mesh(new THREE.SphereGeometry(1.022, 64, 48),
     new THREE.ShaderMaterial({
       transparent:true, side:THREE.BackSide, depthWrite:false, blending:THREE.AdditiveBlending,
       uniforms:{ tint:{value: new THREE.Color(0x3fa9d8)} },
@@ -142,6 +144,27 @@ function build(canvas){
         'gl_FragColor=vec4(tint,f*0.85); }'
     }));
   scene.add(atmo);
+
+  /* With the globe hidden the orbit has nothing to be relative to, so leave a
+     wire sphere behind for scale and attitude. It rides the Earth group, so it
+     still turns with the planet. */
+  wire = new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 16, 8)),
+    new THREE.LineBasicMaterial({ color: new THREE.Color(SPACE.grat),
+      transparent:true, opacity:.24 }));
+  wire.visible = false;
+  earthGroup.add(wire);
+
+  // R(+) : from the centre out to the surface, along the radius vector, so the
+  // gap between its tip and the spacecraft is the altitude
+  const reGeo = new THREE.BufferGeometry();
+  reGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  reLine = new THREE.Line(reGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.ink), transparent:true, opacity:.9 }));
+  reTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.ink) }));
+  reLine.visible = reTip.visible = false;
+  scene.add(reLine); scene.add(reTip);
 
   starfield();
 
@@ -571,6 +594,22 @@ function tick(ts){
   }
   satDot.visible = satHalo.visible = !!satPos;
 
+  // R(+) rides the radius vector, so the remaining gap to the marker reads as altitude
+  if(reLine.visible && satPos){
+    const dir = satPos.clone().normalize();
+    const tip = dir.clone().multiplyScalar(1);
+    const arr = reLine.geometry.attributes.position.array;
+    arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
+    reLine.geometry.attributes.position.needsUpdate = true;
+    reLine.geometry.computeBoundingSphere();
+    reTip.position.copy(dir).multiplyScalar(1 - 0.036);
+    reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    if(labels.earth){
+      const mid = dir.clone().multiplyScalar(0.40);
+      labels.earth.__vec = mid;
+    }
+  } else if(labels.earth){ labels.earth.__vec = null; }
+
   // line of sight, drawn only while the pass is actually up
   const seen = satPos && el >= GT.MASK;
   contactLine.visible = !!seen;
@@ -636,6 +675,7 @@ function paintLabels(satPos, el){
     node.style.top  = ((-v.y*0.5+0.5)*box.height) + 'px';
   };
   place(labels.name, satPos);
+  place(labels.earth, labels.earth ? labels.earth.__vec : null);
   if(labels.hover){
     if(hoverIdx >= 0){
       labels.hover.textContent = GT.CAT[hoverIdx].name;
@@ -680,6 +720,18 @@ global.Orbit3D = {
   setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
   showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn; },
+  /* Hiding the planet is how you actually look at an orbit: the geometry stops
+     being occluded by the thing it goes around. */
+  showEarth(v){
+    earthOn = !!v;
+    if(earth) earth.visible = earthOn;
+    if(atmo) atmo.visible = earthOn;
+    if(wire) wire.visible = !earthOn;
+    if(reLine) reLine.visible = !earthOn;
+    if(reTip) reTip.visible = !earthOn;
+    if(labels.earth) labels.earth.style.display = earthOn ? 'none' : 'block';
+  },
+  get earth(){ return earthOn; },
   get fov(){ return fovOn; },
   showCloud(v){
     if(!cloudPts) return;

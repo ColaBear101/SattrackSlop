@@ -22,6 +22,7 @@ const SPACE = {
   ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
   aries:'#F0C24B',                               // the direction everything is measured from
   hvec:'#9FD3E3', evec:'#F0A03C', rvec:'#E8EFF2',
+  vvec:'#7FE0B0', vtvec:'#6FC79C', vnvec:'#D6A0E0',
   pole:'#9FD3E3', star:'#DCE7EE'
 };
 
@@ -31,7 +32,7 @@ let el = null;                                   // normalised elements of the c
 let simTime = new Date(), planetMs = null, precMs = null, dpr = 1;
 const MU = 398600.4418;                          // km^3/s^2, for the e vector
 let satrecRef = null;                            // needed for the live state vector
-let live = null, liveMs = null, nuShown = null;  // the parts that follow the spacecraft
+let live = null, liveMs = null, nuShown = null, vShown = null;  // the parts that follow the spacecraft
 
 /* The layer table is the single source of truth: layers() hands it to the UI,
    and show() builds a layer the first time it is switched on rather than at
@@ -286,13 +287,37 @@ function buildLive(parent){
     eTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.evec, .95),
     nu: new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
           color:C(SPACE.contact), transparent:true, opacity:.9 })),
+    v:  mk(SPACE.vvec), vt: mk(SPACE.vtvec), vn: mk(SPACE.vnvec),
+    vTip:  cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.vvec, .95),
+    vtTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.060, SPACE.vtvec, .9),
+    vnTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.060, SPACE.vnvec, .9),
+    vLbl:  liveLabel(SPACE.vvec,  {h:0.017, sample:'v = 00.000 km/s'}),
+    vtLbl: liveLabel(SPACE.vtvec, {h:0.015, sample:'vt = 00.000 km/s (transverse)'}),
+    vnLbl: liveLabel(SPACE.vnvec, {h:0.015, sample:'vn = 00.000 km/s (radial)'}),
     hLbl: liveLabel(SPACE.hvec, {h:0.017, sample:'h = 000000000 km2/s'}),
     eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (near-circular)'}),
     nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'\u03b8 = 000.00\u00b0 from perigee'})
   };
   [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
-   live.hLbl, live.eLbl, live.nuLbl].forEach(o=>parent.add(o));
+   live.hLbl, live.eLbl, live.nuLbl,
+   live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
+   live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>parent.add(o));
   liveMs = null; nuShown = null;
+}
+
+/* A segment between two arbitrary points, with the head on the far end. */
+function setSeg(line, tip, from, to){
+  const a = line.geometry.attributes.position.array;
+  a[0]=from.x; a[1]=from.y; a[2]=from.z; a[3]=to.x; a[4]=to.y; a[5]=to.z;
+  line.geometry.attributes.position.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+  if(tip){
+    const d = to.clone().sub(from);
+    if(d.lengthSq() < 1e-12){ tip.visible = false; return; }
+    d.normalize();
+    tip.position.copy(to).addScaledVector(d, -0.030);
+    tip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), d);
+  }
 }
 
 /* Set a two-point line from the origin, park the arrow head on its tip. */
@@ -317,7 +342,9 @@ function updateLive(date){
   try { pv = sat.propagate(satrecRef, date); } catch(e){ pv = null; }
   const vis = !!(pv && pv.position && pv.velocity && isFinite(pv.position.x));
   [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
-   live.hLbl, live.eLbl, live.nuLbl].forEach(o=>o.visible = vis);
+   live.hLbl, live.eLbl, live.nuLbl,
+   live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
+   live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>o.visible = vis);
   if(!vis) return;
 
   const R = [pv.position.x, pv.position.y, pv.position.z];
@@ -409,8 +436,37 @@ function updateLive(date){
   } else {
     live.nu.visible = live.nuLbl.visible = false;
   }
-  if(!live.hLbl.userData.painted){
-    live.hLbl.userData.painted = true;
+  /* Velocity, split in the plane. The cross-track component of a Keplerian
+     orbit is identically zero - v always lies in the orbit plane - so the
+     informative split is along the local horizontal and the local vertical:
+       v_t  transverse, perpendicular to r, the direction of travel
+       v_n  radial, along r, which is zero exactly at perigee and apogee      */
+  const vMag = Math.hypot(V[0],V[1],V[2]);
+  const VS = eci(V[0],V[1],V[2]);
+  const rHatS = rS.clone().normalize();
+  const tHat = new THREE.Vector3().crossVectors(hDir, rHatS).normalize();
+  const vRad = VS.dot(rHatS), vTan = VS.dot(tHat);
+  const K = 0.085;                                  // scene units per km/s
+  const vEnd  = rS.clone().addScaledVector(VS.clone().normalize(), vMag*K);
+  const vtEnd = rS.clone().addScaledVector(tHat, vTan*K);
+  const vnEnd = rS.clone().addScaledVector(rHatS, vRad*K);
+  setSeg(live.v,  live.vTip,  rS, vEnd);
+  setSeg(live.vt, live.vtTip, rS, vtEnd);
+  setSeg(live.vn, live.vnTip, rS, vnEnd);
+  live.vLbl.position.copy(vEnd).addScaledVector(VS.clone().normalize(), 0.10);
+  live.vtLbl.position.copy(vtEnd).addScaledVector(tHat, Math.sign(vTan)*0.10);
+  live.vnLbl.position.copy(vnEnd).addScaledVector(rHatS, Math.sign(vRad || 1)*0.10);
+  /* On a near-circular orbit v_t IS v to three decimals and v_n is nothing, so
+     drawing all three stacks three arrows and three labels on one another.
+     Show the split only where there is a split to show. */
+  const tiny = Math.abs(vRad) < 0.02;
+  live.vn.visible = live.vnTip.visible = live.vnLbl.visible = !tiny;
+  live.vt.visible = live.vtTip.visible = live.vtLbl.visible = !tiny;
+  if(vShown === null || Math.abs(vMag - vShown) > 0.0005){
+    vShown = vMag;
+    live.vLbl.userData.paint('v = '+vMag.toFixed(3)+' km/s');
+    live.vtLbl.userData.paint('vt = '+vTan.toFixed(3)+' km/s (transverse)');
+    live.vnLbl.userData.paint('vn = '+vRad.toFixed(3)+' km/s (radial)');
   }
   live.hLbl.userData.paint('h = '+(hMag).toFixed(0)+' km\u00b2/s');
 }
@@ -840,7 +896,7 @@ function killLayer(key){
   if(g.parent) g.parent.remove(g);
   disposeObj(g);
   G[key] = null;
-  if(key === 'elements'){ live = null; liveMs = null; nuShown = null; }
+  if(key === 'elements'){ live = null; liveMs = null; nuShown = null; vShown = null; }
   if(key === 'planets') bodyNodes = null;
   if(key === 'stars') starMat = null;
 }

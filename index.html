@@ -191,6 +191,8 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   color:var(--ink2)}
 .railprov b{color:var(--ink); font-weight:600}
 .railprov .stale{color:var(--contact); font-weight:600}
+.railprov .prov-live{color:var(--track)} .railprov .prov-snap{color:var(--contact)}
+.railprov .prov-checking{color:var(--ink2); opacity:.75}
 .railfoot{margin-top:auto; padding:12px 18px; display:flex; flex-direction:column; gap:4px}
 .railfoot a{font-size:11.5px}
 
@@ -268,6 +270,11 @@ section{display:flex; flex-direction:column; gap:16px}
   color:var(--ink2); letter-spacing:.02em}
 .tle-meta b{color:var(--ink); font-weight:600}
 .tle-meta .stale{color:var(--contact); font-weight:600}
+.tle-meta .prov-live{color:var(--track); font-weight:600}
+.tle-meta .prov-live b{color:var(--track)}
+.tle-meta .prov-snap{color:var(--contact); font-weight:600}
+.tle-meta .prov-snap b{color:var(--contact)}
+.tle-meta .prov-checking{color:var(--ink2); opacity:.75}
 
 .elements{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px;
   background:var(--rule); border:1px solid var(--rule); border-radius:4px; overflow:hidden}
@@ -7965,6 +7972,7 @@ function load(entry){
   renderAccess();
   paintAges();
   paintWindow();
+  refreshTLE(entry);            // fire and forget; reloads if a newer set exists
   selPass = 0;
   const range = document.getElementById('time');
   range.max = D.pts.length-1; range.value = 0;
@@ -8154,6 +8162,98 @@ const WANT = [/^KNACKSAT[- ]?2\b/i, /^KNACKSAT\b/i, /^LANDSAT 9\b/i, /^LANDSAT 8
 let DEFAULT = -1;
 for(const re of WANT){ DEFAULT = CAT.findIndex(c=>re.test(c.name)); if(DEFAULT >= 0) break; }
 if(DEFAULT < 0) DEFAULT = 0;
+/* ---- keeping the element set current ------------------------------------- *
+ * The embedded catalogue is a snapshot, and a TLE is only good for a few days
+ * either side of its epoch - at 360 km with KNACKSAT-2's drag term, less. So
+ * the page fetches the CURRENT element set for whichever spacecraft is on
+ * screen, rather than re-downloading all 2158: a couple of hundred bytes, for
+ * the one object actually being analysed.
+ *
+ * Both sources send Access-Control-Allow-Origin: *, which is the only reason
+ * this can happen in the browser at all. CelesTrak is authoritative and goes
+ * first. If every source fails the snapshot still works - and the page says
+ * which one it is showing, rather than quietly implying the numbers are fresh.
+ */
+const TLE_TTL   = 3*3600*1000;   // don't ask a source twice inside three hours
+const TLE_RETRY = 5*60*1000;     // after a failure, wait this long before retry
+let tleLive = null;              // provenance of the element set now on screen
+
+function tleFromText(t){
+  const L = String(t).trim().split(/\r?\n/).map(x => x.replace(/\s+$/,''));
+  for(let i=0;i<L.length-1;i++)
+    if(L[i].startsWith('1 ') && L[i+1].startsWith('2 '))
+      return {l1:L[i], l2:L[i+1]};
+  return null;
+}
+const TLE_SOURCES = [
+  { name:'CelesTrak',
+    url: id => 'https://celestrak.org/NORAD/elements/gp.php?CATNR='+id+'&FORMAT=tle',
+    parse: tleFromText },
+  { name:'TLE API',
+    url: id => 'https://tle.ivanstanojevic.me/api/tle/'+id,
+    parse: t => { try { const j = JSON.parse(t);
+      return (j && j.line1 && j.line2) ? {l1:j.line1, l2:j.line2} : null;
+    } catch(e){ return null; } } }
+];
+
+async function fetchTLE(satnum){
+  const key = 'tle:'+satnum;
+  try {
+    const c = JSON.parse(localStorage.getItem(key) || 'null');
+    if(c && c.l1 && (Date.now() - c.at) < TLE_TTL) return c;
+  } catch(e){}
+  for(const s of TLE_SOURCES){
+    try {
+      const ctl = new AbortController();
+      const bail = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(s.url(satnum), {signal: ctl.signal, cache:'no-store'});
+      clearTimeout(bail);
+      if(!r.ok) continue;
+      const got = s.parse(await r.text());
+      /* A source that is up but has no such object answers 200 with an error
+         page, so validate the shape before believing it. */
+      if(!got || got.l1.length < 69 || got.l2.length < 69) continue;
+      if(got.l1.substring(2,7).trim() !== String(satnum)) continue;
+      const rec = {l1:got.l1, l2:got.l2, src:s.name, at:Date.now()};
+      try { localStorage.setItem(key, JSON.stringify(rec)); } catch(e){}
+      return rec;
+    } catch(e){ /* CORS, DNS, timeout, offline - try the next one */ }
+  }
+  return null;
+}
+
+async function refreshTLE(entry){
+  if(entry.__next && Date.now() < entry.__next) return;
+  entry.__next = Date.now() + TLE_RETRY;          // also guards re-entry
+  const got = await fetchTLE(entry.satnum);
+  if(CAT[curIdx] !== entry) return;               // user moved on mid-flight
+
+  if(!got){ tleLive = {src:null}; paintAges(); return; }
+
+  if(got.l1 === entry.l1 && got.l2 === entry.l2){
+    tleLive = {src:got.src, at:got.at};           // snapshot was already current
+    entry.__next = Infinity;
+    paintAges(); return;
+  }
+  /* Only ever move forward. A mirror can legitimately serve an element set
+     older than the one embedded here, and replacing a newer TLE with an older
+     one in the name of freshness would be exactly backwards. */
+  let newer = false;
+  try { newer = elements(got.l1, got.l2).epoch > elements(entry.l1, entry.l2).epoch; }
+  catch(e){ return; }
+  if(!newer){ tleLive = {src:null, older:got.src}; paintAges(); return; }
+
+  entry.l1 = got.l1; entry.l2 = got.l2;
+  entry.__next = Infinity;
+  tleLive = {src:got.src, at:got.at, updated:true};
+
+  /* The window and span have not changed, so the clock stays where the user
+     put it; only the element set underneath it is new. */
+  const keep = simMs, wasPlaying = playing;
+  load(entry);
+  setSim(keep, !wasPlaying);
+}
+
 function global3D(){ return window.Orbit3D && Orbit3D.ok(); }
 
 /* ---- pick confirmation ---------------------------------------------------- *
@@ -8191,6 +8291,15 @@ document.querySelector('.viewport').addEventListener('mousedown', e=>{
   if(!e.target.closest('.pickconfirm')) closePick();
 });
 
+/* One sentence, used in three places, so the page never disagrees with itself
+   about where the numbers on screen came from. */
+function liveLine(now){
+  if(!tleLive) return ['checking', 'Checking for a newer element set…'];
+  if(tleLive.updated) return ['live', 'Updated live from <b>'+tleLive.src+'</b>.'];
+  if(tleLive.src)     return ['live', 'Confirmed current against <b>'+tleLive.src+'</b>.'];
+  if(tleLive.older)   return ['snap', '<b>'+tleLive.older+'</b> offered an older set — keeping the embedded one.'];
+  return ['snap', 'No live source reachable — showing the embedded snapshot.'];
+}
 function paintAges(){
   if(!D) return;
   const now = Date.now();
@@ -8202,13 +8311,15 @@ function paintAges(){
   chip.title = stale
     ? 'This element set is over three days old; SGP4 accuracy degrades with age.'
     : 'Age of this element set relative to now.';
+  const [lstate, ltext] = liveLine(now);
   const rp = document.getElementById('railprov');
   if(rp) rp.innerHTML =
     'Epoch <b>' + iso(D.E.epoch).replace('Z','') + '</b><br>' +
-    'Fetched <b>' + ago(now - FETCHED.getTime()) + '</b> ago · ' + SOURCE + '<br>' +
+    '<span class="prov-' + lstate + '">' + ltext.split('<b>').join('').split('</b>').join('') + '</span><br>' +
     'Element set <span class="' + (stale?'stale':'') + '">' + ago(epochAgeMs) + ' old</span>';
   document.getElementById('tlemeta').innerHTML =
-    'Catalogue fetched <b>' + iso(FETCHED) + '</b> from ' + SOURCE +
+    '<span class="prov-' + lstate + '">' + ltext + '</span><br>' +
+    'Embedded snapshot built <b>' + iso(FETCHED) + '</b> from ' + SOURCE +
     ' — <b>' + ago(now - FETCHED.getTime()) + '</b> ago.<br>' +
     'This element set’s epoch is <span class="' + (stale?'stale':'') + '">' +
     ago(epochAgeMs) + ' old</span>' +

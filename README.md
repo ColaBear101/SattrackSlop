@@ -23,6 +23,10 @@ KNACKSAT-2
 
 Epoch: **2026-09-12 07:29:09.993 UTC** (day 255.31192122 of 2026).
 
+Every figure quoted in this README is computed from *that* element set, so the numbers stay
+checkable. The live page fetches a newer one on load (see **Staying current** below), so what it
+shows will differ — and should.
+
 The picker at the top right searches **2,158 spacecraft** by name or NORAD ID — type `knack`,
 `landsat`, `iss`, or `43722`. Everything on the page recomputes on selection.
 
@@ -140,9 +144,10 @@ The embedded catalogue is **2,158 satellites, 319 KB**, built from:
    (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
    `tle_source` for that object as **Space-Track.org**.
 2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
-   via a GitHub Actions mirror, because celestrak.org is unreachable from the build machine
-   (both :80 and :443 time out, likely their anti-abuse firewall). Starlink and OneWeb were
-   deliberately excluded: thousands of near-identical objects would swamp the picker.
+   via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
+   both :80 and :443 at the time (it answers now — the block appears to have been transient or
+   rate-limit related). Starlink and OneWeb were deliberately excluded: thousands of
+   near-identical objects would swamp the picker.
 
 Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
 and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
@@ -152,6 +157,39 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
-To refresh, rebuild `catalog.txt` and re-inject it into the `<script id="tledata">` block.
-Element sets degrade with time, and a 360 km orbit with this drag term degrades quickly — re-fetch
-before quoting pass times for any date far from 12 Sep 2026.
+## Staying current
+
+A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with
+`ndot = .00056` the KNACKSAT-2 element set is worth about a day; quoting pass times from a
+week-old set is quoting fiction. So the page does not rely on what is baked into it.
+
+**On load, and on every change of spacecraft, it fetches the current element set for that one
+object** — not the whole catalogue. A few hundred bytes, for the object actually being analysed:
+
+1. `celestrak.org/NORAD/elements/gp.php?CATNR=<id>&FORMAT=tle` — authoritative, ~170 bytes.
+2. `tle.ivanstanojevic.me/api/tle/<id>` — fallback, JSON.
+3. The embedded snapshot, if neither answers.
+
+Both live sources send `Access-Control-Allow-Origin: *`, which is the only reason a static page
+with no backend can do this at all. (CelesTrak emits the header only when the request carries an
+`Origin`, so a bare `curl` appears to show no CORS support; a browser sees it.)
+
+Four details that matter more than the fetch itself:
+
+- **It only ever moves forward.** A mirror can legitimately serve an element set *older* than the
+  embedded one. Epochs are compared and an older set is refused — replacing a newer TLE with an
+  older one in the name of freshness would be exactly backwards.
+- **It validates before believing.** A source that is up but has no such object answers **200**
+  with an HTML error page. Line lengths and the NORAD ID on line 1 are checked against the
+  requested object before anything is swapped in.
+- **It says which set is on screen.** "Updated live from CelesTrak", "Confirmed current against…",
+  or "No live source reachable — showing the embedded snapshot." Failing silently and letting the
+  page imply the numbers are fresh is the one outcome worth engineering against.
+- **The clock stays where you put it.** The window and span are unchanged, so a swap re-runs the
+  analysis underneath the scrubber without throwing away the time you were looking at. Results are
+  cached per NORAD ID in `localStorage` for three hours, so switching back and forth costs nothing.
+
+The embedded catalogue remains the offline fallback and what paints on first frame, and the
+other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not
+analysis. To refresh that baseline, rebuild `catalog.txt` and re-inject it into the
+`<script id="tledata">` block.

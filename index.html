@@ -104,6 +104,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .hud .elev .v.up{color:#F0A33C; font-weight:600}
 
 .viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
+.viewport .trailseg{position:absolute; top:52px; right:12px; display:flex; align-items:center; gap:8px}
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
   text-transform:uppercase; color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
@@ -340,6 +341,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .bar-transport{order:2; position:sticky; bottom:0; z-index:45}
   .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
   .viewport .camseg{top:auto; bottom:10px; right:10px}
+  .viewport .trailseg{top:auto; bottom:48px; right:10px}
   .seglabel{display:none}
   .hint-drag{display:none}
   .access{grid-template-columns:minmax(0,1fr)}
@@ -404,6 +406,15 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
           <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
           <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
           <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
+        </div>
+      </div>
+      <div class="trailseg">
+        <span class="seglabel" id="traillabel">Trail</span>
+        <div class="seg" role="group" aria-labelledby="traillabel">
+          <button class="btn trl" data-t="1800000" aria-pressed="false">30 m</button>
+          <button class="btn trl" data-t="orbit" aria-pressed="true">1 orbit</button>
+          <button class="btn trl" data-t="21600000" aria-pressed="false">6 h</button>
+          <button class="btn trl" data-t="all" aria-pressed="false">24 h</button>
         </div>
       </div>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
@@ -7681,7 +7692,10 @@ function load(entry){
     iso(D.start)+'  →  '+iso(D.end)+'  ·  '+D.E.n.toFixed(2)+' revolutions';
   document.getElementById('footepoch').textContent =
     'Element set epoch '+iso(D.E.epoch)+' · window '+HOURS+' h · sample '+STEP+' s';
-  if(global3D()) Orbit3D.setSat(entry, D.E);
+  if(global3D()){
+    Orbit3D.setSat(entry, D.E);
+    if(window.__applyTrail) window.__applyTrail();   // "1 orbit" is per-spacecraft
+  }
   renderElements();
   renderAccess();
   paintAges();
@@ -7876,6 +7890,20 @@ setInterval(paintAges, 30000);
     const m = Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
     cams.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
   }
+  const trls = [...document.querySelectorAll('.trailseg .trl')];
+  function applyTrail(){
+    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[1];
+    const v = b.dataset.t;
+    Orbit3D.setTrail(v === 'all' ? Infinity
+                   : v === 'orbit' ? D.E.period*1000      // one revolution
+                   : +v);
+  }
+  trls.forEach(b => b.addEventListener('click', ()=>{
+    trls.forEach(x => x.setAttribute('aria-pressed', x===b));
+    applyTrail();
+  }));
+  window.__applyTrail = applyTrail;
+
   cams.forEach(b => b.addEventListener('click', ()=>{
     if(b.dataset.mode === 'sat')      Orbit3D.setFollow(true);
     else if(b.dataset.mode === 'site') Orbit3D.setSite(true);

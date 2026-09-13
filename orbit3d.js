@@ -18,6 +18,7 @@ let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudM
 let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot;
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
+let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
 let curEntry = null, curRec = null, follow = true, siteLock = false;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
@@ -258,18 +259,29 @@ function setSat(entry, elements){
   orbitLine.geometry.dispose();
   orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
 
-  // 24 h of sub-satellite points, on the globe
-  const tp = [];
-  const steps = 1440;
+  // 24 h of sub-satellite points, sampled fine enough that a short trail still
+  // reads as a curve rather than a polygon
+  trackPts = []; trackMs = [];
+  const steps = 4320, dtms = 86400000/steps;          // 20 s apart
   for(let k=0;k<=steps;k++){
-    const t = new Date(anchor.getTime() + k*86400000/steps);
-    let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
+    const ms = anchor.getTime() + k*dtms;
+    let pv = null; try { pv = sat.propagate(curRec, new Date(ms)); } catch(e){}
     if(!pv || !pv.position) continue;
-    const gd = sat.eciToGeodetic(pv.position, sat.gstime(t));
-    tp.push(llToScene(gd.latitude*DEG, gd.longitude*DEG, 1.004));
+    const gd = sat.eciToGeodetic(pv.position, sat.gstime(new Date(ms)));
+    trackPts.push(llToScene(gd.latitude*DEG, gd.longitude*DEG, 1.004));
+    trackMs.push(ms);
   }
   trackLine.geometry.dispose();
-  trackLine.geometry = new THREE.BufferGeometry().setFromPoints(tp);
+  const cap = trackPts.length;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap*3), 3));
+  g.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(cap*3), 3));
+  trackLine.geometry = g;
+  trackLine.material.vertexColors = true;
+  trackLine.material.opacity = 1;
+  trackLine.material.needsUpdate = true;
+  if(trailSpan === null) trailSpan = periodS*1000;     // default: one revolution
+  updateTrail(simTime.getTime());
 
   // 5-degree access footprint around the observer, at mean altitude
   let alt = 500;
@@ -309,6 +321,44 @@ function setSiteState(v){
     cam0.dist = Math.min(cam0.dist, 4.2);
   }
   if(onSite) onSite(v);
+}
+
+// first index whose time is >= ms (times are monotonic)
+function seek(ms){
+  let lo = 0, hi = trackMs.length - 1;
+  if(!trackMs.length || ms <= trackMs[0]) return 0;
+  if(ms >= trackMs[hi]) return hi;
+  while(lo < hi){ const mid = (lo+hi) >> 1;
+    if(trackMs[mid] < ms) lo = mid+1; else hi = mid; }
+  return lo;
+}
+/* Draw only the slice of track inside the trail window, fading the tail out so
+   the line reads as motion rather than as a static wire cage. */
+function updateTrail(nowMs){
+  if(!trackPts.length || !trackLine.geometry.attributes.color) return;
+  let i0, i1;
+  if(trailSpan === Infinity){ i0 = 0; i1 = trackPts.length-1; }
+  else { i0 = seek(nowMs - trailSpan); i1 = seek(nowMs + trailLead); }
+  const geo = trackLine.geometry;
+  if(i1 <= i0){ geo.setDrawRange(0,0); return; }
+  const pos = geo.attributes.position.array, col = geo.attributes.color.array;
+  const c = col3(SPACE.track), span = Math.max(1, i1-i0);
+  let m = 0;
+  for(let i=i0;i<=i1;i++){
+    const p = trackPts[i];
+    pos[m*3] = p.x; pos[m*3+1] = p.y; pos[m*3+2] = p.z;
+    const f = (i-i0)/span;                       // 0 at the tail, 1 at the head
+    const k = trailSpan === Infinity ? 0.55 : 0.10 + 0.90*f*f;
+    col[m*3] = c[0]*k; col[m*3+1] = c[1]*k; col[m*3+2] = c[2]*k;
+    m++;
+  }
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.setDrawRange(0, m);
+  geo.computeBoundingSphere();
+}
+function col3(hex){
+  const c = new THREE.Color(hex); return [c.r, c.g, c.b];
 }
 
 /* ---- input ---------------------------------------------------------------- */
@@ -384,6 +434,8 @@ function tick(ts){
   const gmst = (frameNo % 3 === 1) ? updateCloud(simTime) : sat.gstime(simTime);
   earthGroup.rotation.y = gmst;
   sunLight.position.copy(sunVec(simTime)).multiplyScalar(50);
+
+  updateTrail(simTime.getTime());
 
   // focused spacecraft
   let satPos = null, el = -90;
@@ -504,6 +556,11 @@ global.Orbit3D = {
   // the scene is inertial, so a fixed camera longitude is a right ascension and
   // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
   setSite(v){ setSiteState(!!v); },
+  setTrail(ms){                                   // a number of ms, or Infinity
+    trailSpan = ms;
+    if(trackPts.length) updateTrail(simTime.getTime());
+  },
+  get trail(){ return trailSpan; },
   get site(){ return siteLock; },
   freeCam(){ setFollowState(false); setSiteState(false); },
   ok(){ return started; }

@@ -430,7 +430,7 @@ function updateLive(date){
         (nearCircular ? 'node' : 'perigee'));
       const eShown = (el && isFinite(el.ecc)) ? el.ecc : eMag;   // matches the elements card
       if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
-        ? 'e = '+eShown.toFixed(7)+'  (near-circular)'
+        ? 'e = '+eShown.toFixed(7)+'  (perigee direction unstable)'
         : 'e = '+eShown.toFixed(7));
     }
   } else {

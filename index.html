@@ -105,12 +105,17 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 
 .viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
 .viewport .trailseg{position:absolute; top:52px; right:12px; display:flex; align-items:center; gap:8px}
-.layerpanel{display:flex; flex-direction:column; gap:1px}
-.layerpanel label{display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:3px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--ink2);
-  cursor:pointer; min-height:34px}
-.layerpanel label:hover{background:var(--chrome2); color:var(--ink)}
-.layerpanel input{accent-color:var(--contact); margin:0; width:15px; height:15px}
+.viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
+  align-items:flex-end; gap:5px}
+.viewport .layerseg .seglabel{margin-right:2px}
+.layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
+  background:rgba(10,16,20,.72); border:1px solid rgba(180,200,212,.28); border-radius:3px;
+  backdrop-filter:blur(6px)}
+.layerpanel label{display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:2px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:#C6D6DE;
+  cursor:pointer; min-height:30px; white-space:nowrap}
+.layerpanel label:hover{background:rgba(180,200,212,.14); color:#EAF2F6}
+.layerpanel input{accent-color:var(--contact); margin:0; width:14px; height:14px}
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
   text-transform:uppercase; color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
@@ -377,6 +382,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
   .viewport .camseg{top:auto; bottom:10px; right:10px}
   .viewport .trailseg{top:auto; bottom:48px; right:10px}
+  .viewport .layerseg{top:10px; right:10px}
+  .layerpanel label{font-size:11px; min-height:28px; padding:5px 7px}
 
   .seglabel{display:none}
   .hint-drag{display:none}
@@ -451,6 +458,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
           <button class="btn trl" data-t="all" aria-pressed="false">24 h</button>
         </div>
       </div>
+      <div class="layerseg">
+        <span class="seglabel">Layers</span>
+        <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
+      </div>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
         <p class="pcn" id="pcname">—</p>
@@ -482,11 +493,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="railsec">
         <p class="eyebrow">Access windows</p>
         <div class="passlist" id="passlist"></div>
-      </div>
-
-      <div class="railsec" id="railLayers">
-        <p class="eyebrow">Scene layers</p>
-        <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
       </div>
 
       <div class="railsec">
@@ -8112,7 +8118,7 @@ setInterval(paintAges, 30000);
     document.querySelector('.hint-drag').style.display = 'none';
     const ts = document.querySelector('.trailseg');
     if(ts) ts.style.display = 'none';           // trail has nothing to draw on
-    const ls = document.getElementById('railLayers');
+    const ls = document.querySelector('.layerseg');
     if(ls) ls.style.display = 'none';
     const cl = document.querySelector('label[for="o3cloud"]');
     if(cl) cl.style.display = 'none';           // and no cloud to toggle
@@ -8146,10 +8152,10 @@ setInterval(paintAges, 30000);
       });
       window.__viz = true;
     } catch(err){
-      const ls = document.getElementById('railLayers'); if(ls) ls.style.display = 'none';
+      const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
     }
   } else {
-    const ls = document.getElementById('railLayers'); if(ls) ls.style.display = 'none';
+    const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
   }
 
   const trls = [...document.querySelectorAll('.trailseg .trl')];

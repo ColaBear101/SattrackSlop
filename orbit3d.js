@@ -80,6 +80,14 @@ function earthTexture(){
   g.stroke(); g.globalAlpha = 1;
   const t = THREE.CanvasTexture ? new THREE.CanvasTexture(c) : new THREE.Texture(c);
   t.needsUpdate = true;
+  // An equirectangular map converges every texel row to a point at the poles, so
+  // the texture is sampled along a hugely stretched footprint there. Without
+  // anisotropic filtering that reads as smeared polar caps at any grazing angle.
+  if(renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
   if(THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
   else if(THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
   return t;
@@ -113,7 +121,9 @@ function build(canvas){
 
   earthGroup = new THREE.Group(); scene.add(earthGroup);
   earth = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 96, 64),
+    // more rings toward the poles: at 64 height segments the polar triangle fan
+    // is coarse enough to visibly kink the coastline of Antarctica
+    new THREE.SphereGeometry(1, 160, 96),
     new THREE.MeshPhongMaterial({map: earthTexture(), shininess: 6, specular: 0x0a1014})
   );
   earthGroup.add(earth);

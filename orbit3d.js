@@ -581,6 +581,7 @@ global.Orbit3D = {
     return true;
   },
   setSat, retheme,
+  get scene(){ return scene; },        // the sky layers hang off the same scene
   get time(){ return simTime; },
   set time(d){ simTime = new Date(d); },
   setRate(r){ rate = r; },

@@ -418,7 +418,8 @@ function bindInput(canvas){
   // click fires after mouseup however far the pointer travelled, and hoverIdx is
   // frozen during a drag - so a rotate that began over a point would load it
   canvas.addEventListener('click', () => {
-    if(travel > 5) return;
+    if(travel > 5) return;                          // that was a drag, not a click
+    if(!cloudPts || !cloudPts.visible) return;      // nothing on screen to pick
     if(hoverIdx >= 0 && onPick) onPick(hoverIdx);
   });
 }
@@ -501,13 +502,22 @@ function tick(ts){
   if(bkkDot) bkkDot.scale.setScalar(mk);
   if(cloudMat) cloudMat.size = 0.030*Math.max(0.55, Math.min(1.8, mk));
 
-  // hover pick against the cloud
-  if(mouse && !dragging){
+  // project() below needs this frame's camera, not last frame's
+  cam.updateMatrixWorld();
+  cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+
+  // hover pick against the cloud. Hidden is not the same as absent: three.js
+  // will happily raycast an invisible object, which left the whole catalogue
+  // clickable after the checkbox was cleared.
+  if(mouse && !dragging && cloudPts.visible){
     raycaster.setFromCamera(mouse, cam);
     const hit = raycaster.intersectObject(cloudPts, false);
     let idx = -1;
     for(const x of hit){ if(cloudValid[x.index]){ idx = x.index; break; } }
     if(idx !== hoverIdx){ hoverIdx = idx; canvas.style.cursor = idx>=0 ? 'pointer' : 'grab'; }
+  } else if(hoverIdx !== -1 && (dragging || !cloudPts.visible)){
+    hoverIdx = -1;                                  // drop a stale hover
+    canvas.style.cursor = dragging ? 'grabbing' : 'grab';
   }
   paintLabels(satPos, el);
   renderer.render(scene, cam);
@@ -567,7 +577,11 @@ global.Orbit3D = {
   setPlaying(p){ playing = p; },
   setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
-  showCloud(v){ if(cloudPts) cloudPts.visible = v; },
+  showCloud(v){
+    if(!cloudPts) return;
+    cloudPts.visible = v;
+    if(!v){ hoverIdx = -1; if(labels.hover) labels.hover.style.display = 'none'; }
+  },
   showTrack(v){ if(trackLine) trackLine.visible = v; },
   // the scene is inertial, so a fixed camera longitude is a right ascension and
   // drifts across the ground as the clock runs. Aim at where Bangkok actually is.

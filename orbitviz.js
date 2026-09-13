@@ -63,7 +63,8 @@ function makeLabel(text, colour, opt){
   const px = opt.px || 56, pad = Math.round(px*0.42), lh = Math.round(px*1.28);
   const cv = document.createElement('canvas');
   let g = cv.getContext('2d');
-  const font = (opt.weight || 600)+' '+px+'px "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace';
+  const font = (opt.weight || 600)+' '+px+'px "IBM Plex Mono", ui-monospace, '+
+    '"Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", "DejaVu Sans Mono", monospace';
   g.font = font;
   let w = 0;
   for(let i=0;i<lines.length;i++) w = Math.max(w, g.measureText(lines[i]).width);
@@ -168,7 +169,7 @@ function buildFrame(){
   g.add(cone(Z.clone().multiplyScalar(L), Z, 0.10, 'pole'));
 
   // the whole point of the layer: this direction, and the fact that it never moves
-  const ariesLbl = makeLabel(['♈ FIRST POINT OF ARIES',
+  const ariesLbl = makeLabel(['♈︎ FIRST POINT OF ARIES',
                               'ECI +X · vernal equinox · RA 0h'],
                              SPACE.aries, { h:0.023, depthTest:false });
   ariesLbl.position.copy(X.clone().multiplyScalar(L+0.34)).add(new THREE.Vector3(0,0.14,0));

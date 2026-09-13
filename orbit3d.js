@@ -278,7 +278,7 @@ function updateCloud(date){
 }
 
 /* ---- focused satellite: orbit loop, ground track, footprint ---------------- */
-function setSat(entry, elements){
+function setSat(entry, elements, win){
   curEntry = entry;
   try { curRec = sat.twoline2satrec(entry.l1, entry.l2); } catch(e){ curRec = null; }
   if(!curRec || curRec.error){
@@ -293,7 +293,16 @@ function setSat(entry, elements){
   const periodS = elements && elements.period ? elements.period : 5400;
   if(!(GT && GT.now))                              // only self-clocked scenes reset time
     simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
-  const anchor = elements && elements.epoch ? elements.epoch : simTime;
+  // sample across the ANALYSIS WINDOW, not from the epoch: the clock runs
+  // inside the window, and a track that does not cover it draws nothing
+  // Sample a little BEFORE the window too: the clock starts at the window's
+  // first instant, so without some history the trail has nothing to draw on
+  // arrival. PAD covers the longest fixed trail setting.
+  const PAD = 6*3600000;
+  const winStartMs = (win && win.start) ? win.start
+                   : (elements && elements.epoch ? elements.epoch.getTime() : simTime.getTime());
+  const anchor = new Date(winStartMs - PAD);
+  const spanMs = ((win && win.hours) ? win.hours*3600000 : 86400000) + PAD;
 
   curPeriodS = periodS;
   buildRing(simTime.getTime());
@@ -301,7 +310,7 @@ function setSat(entry, elements){
   // 24 h of sub-satellite points, sampled fine enough that a short trail still
   // reads as a curve rather than a polygon
   trackPts = []; trackMs = [];
-  const steps = 4320, dtms = 86400000/steps;          // 20 s apart
+  const steps = 5040, dtms = spanMs/steps;            // span/5040, ~20 s over a day + pad
   for(let k=0;k<=steps;k++){
     const ms = anchor.getTime() + k*dtms;
     let pv = null; try { pv = sat.propagate(curRec, new Date(ms)); } catch(e){}

@@ -7884,7 +7884,7 @@ function load(entry){
     'Element set epoch '+iso(D.E.epoch)+' · window '+spanLabel(D.hours)+
     ' from '+iso(D.start)+' · sample '+D.step+' s';
   if(global3D()){
-    Orbit3D.setSat(entry, D.E);
+    Orbit3D.setSat(entry, D.E, {start: D.start.getTime(), hours: D.hours});
     if(window.__applyTrail) window.__applyTrail();   // "1 orbit" is per-spacecraft
     if(window.__viz && window.OrbitViz) OrbitViz.setOrbit({satrec: D.satrec, elements: D.E});
   }

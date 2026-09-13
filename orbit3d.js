@@ -18,6 +18,7 @@ let GT, THREE, sat;
 let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
 let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot, fovRing;
 let atmo = null, wire = null, reLine = null, reTip = null;   // the globe, and what stands in for it
+let altLine = null, altTip = null;                           // surface -> spacecraft
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
@@ -165,6 +166,17 @@ function build(canvas){
     new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.ink) }));
   reLine.visible = reTip.visible = false;
   scene.add(reLine); scene.add(reTip);
+
+  // the remainder of r: from the surface to the spacecraft. Drawn in the track
+  // colour because altitude is the quantity the ground track is a shadow of.
+  const altGeo = new THREE.BufferGeometry();
+  altGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  altLine = new THREE.Line(altGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.track), transparent:true, opacity:.95 }));
+  altTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.track) }));
+  altLine.visible = altTip.visible = false;
+  scene.add(altLine); scene.add(altTip);
 
   starfield();
 
@@ -604,11 +616,32 @@ function tick(ts){
     reLine.geometry.computeBoundingSphere();
     reTip.position.copy(dir).multiplyScalar(1 - 0.036);
     reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
-    if(labels.earth){
-      const mid = dir.clone().multiplyScalar(0.40);
-      labels.earth.__vec = mid;
+    if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
+
+    // and the rest of the way: surface -> spacecraft is the altitude
+    const arr2 = altLine.geometry.attributes.position.array;
+    arr2[0]=tip.x; arr2[1]=tip.y; arr2[2]=tip.z;
+    arr2[3]=satPos.x; arr2[4]=satPos.y; arr2[5]=satPos.z;
+    altLine.geometry.attributes.position.needsUpdate = true;
+    altLine.geometry.computeBoundingSphere();
+    const rLen = satPos.length();
+    altTip.position.copy(dir).multiplyScalar(Math.max(1.0, rLen - 0.036));
+    altTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    if(labels.alt){
+      labels.alt.__vec = dir.clone().multiplyScalar((1 + rLen)/2);
+      const km = (rLen - 1)/U;
+      /* This is |r| - R(+), measured from the SPHERE that is actually drawn.
+         The panel's altitude is geodetic, above the WGS-84 ellipsoid, whose
+         radius at mid latitudes is ~10 km less - so the two legitimately differ
+         and the label has to say which one it is. */
+      const txt = '|r| − R⊕ = ' + (km >= 10000 ? Math.round(km).toLocaleString('en-US')
+                                          : km.toFixed(0)) + ' km';
+      if(labels.alt.textContent !== txt) labels.alt.textContent = txt;
     }
-  } else if(labels.earth){ labels.earth.__vec = null; }
+  } else {
+    if(labels.earth) labels.earth.__vec = null;
+    if(labels.alt) labels.alt.__vec = null;
+  }
 
   // line of sight, drawn only while the pass is actually up
   const seen = satPos && el >= GT.MASK;
@@ -676,6 +709,7 @@ function paintLabels(satPos, el){
   };
   place(labels.name, satPos);
   place(labels.earth, labels.earth ? labels.earth.__vec : null);
+  place(labels.alt, labels.alt ? labels.alt.__vec : null);
   if(labels.hover){
     if(hoverIdx >= 0){
       labels.hover.textContent = GT.CAT[hoverIdx].name;
@@ -729,7 +763,10 @@ global.Orbit3D = {
     if(wire) wire.visible = !earthOn;
     if(reLine) reLine.visible = !earthOn;
     if(reTip) reTip.visible = !earthOn;
+    if(altLine) altLine.visible = !earthOn;
+    if(altTip) altTip.visible = !earthOn;
     if(labels.earth) labels.earth.style.display = earthOn ? 'none' : 'block';
+    if(labels.alt) labels.alt.style.display = earthOn ? 'none' : 'block';
   },
   get earth(){ return earthOn; },
   get fov(){ return fovOn; },

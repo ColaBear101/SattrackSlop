@@ -288,7 +288,7 @@ function buildLive(parent){
           color:C(SPACE.contact), transparent:true, opacity:.9 })),
     hLbl: liveLabel(SPACE.hvec, {h:0.017, sample:'h = 000000000 km2/s'}),
     eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (near-circular)'}),
-    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'u = 000.00 deg from node'})
+    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'\u03b8 = 000.00\u00b0 from perigee'})
   };
   [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
    live.hLbl, live.eLbl, live.nuLbl].forEach(o=>parent.add(o));
@@ -397,9 +397,10 @@ function updateLive(date){
       .addScaledVector(inPlane, Rnu*sin(mid)*1.12);
     if(nuShown === null || Math.abs(ang - nuShown) > 0.05){
       nuShown = ang;
-      live.nuLbl.userData.paint(nearCircular
-        ? 'u = '+ang.toFixed(2)+'\u00b0 from node'
-        : '\u03bd = '+ang.toFixed(2)+'\u00b0');
+      // one symbol for the angle either way, with the reference named, rather
+      // than switching between nu and u and leaving the reader to notice
+      live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from '+
+        (nearCircular ? 'node' : 'perigee'));
       const eShown = (el && isFinite(el.ecc)) ? el.ecc : eMag;   // matches the elements card
       if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
         ? 'e = '+eShown.toFixed(7)+'  (near-circular)'

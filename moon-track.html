@@ -79,6 +79,20 @@ h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; letter-spacing:-.01
 .mapwrap{position:relative; padding:14px 16px; min-width:0; align-self:center}
 canvas#map{display:block; width:100%; border-radius:4px; background:var(--sunk);
   border:1px solid var(--rule)}
+canvas#map[hidden]{display:none}
+.viewtabs{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:9px}
+.globewrap{position:relative; width:100%; aspect-ratio:16/10; border-radius:4px;
+  background:#05090C; border:1px solid var(--rule); overflow:hidden}
+.globewrap[hidden]{display:none}
+.globewrap canvas{display:block; width:100%; height:100%; position:absolute; inset:0}
+.g-layer{position:absolute; inset:0; pointer-events:none}
+.g-lbl{position:absolute; transform:translate(8px,-50%); white-space:nowrap; display:none;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.02em;
+  text-shadow:0 0 3px #000,0 0 7px #000}
+.g-lbl.site{color:#E2557E} .g-lbl.crash{color:#CE801A}
+.g-lbl.sat{color:#E8F4F9} .g-lbl.earth{color:#F0C674}
+.hint-drag{position:absolute; left:12px; bottom:9px; margin:0;
+  font-family:"IBM Plex Mono",monospace; font-size:10px; color:#7C8A93}
 .maphint{display:flex; flex-wrap:wrap; gap:4px 14px; margin:7px 2px 0;
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted)}
 .maphint i{display:inline-block; width:14px; height:2px; vertical-align:middle;
@@ -152,7 +166,18 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
 
 <main class="stage">
   <div class="mapwrap">
-    <canvas id="map" aria-label="Lunar map with the selected spacecraft's ground track, landing sites and named features. The same numbers are in the tables below."></canvas>
+    <div class="viewtabs">
+      <button class="btn" id="v3d" aria-pressed="true">Globe</button>
+      <button class="btn" id="v2d" aria-pressed="false">Flat map</button>
+      <button class="btn" id="vreset">Reset view</button>
+      <span class="mono" id="texnote" style="font-size:10.5px;color:var(--muted)"></span>
+    </div>
+    <div class="globewrap" id="globewrap">
+      <canvas id="globe" aria-label="Three-dimensional view of the Moon with the selected spacecraft's orbit and ground track, the landing sites and the sub-Earth point. The same numbers are in the tables below."></canvas>
+      <div class="g-layer" id="glayer"></div>
+      <p class="hint-drag">drag to orbit · scroll to zoom</p>
+    </div>
+    <canvas id="map" hidden aria-label="Lunar map with the selected spacecraft's ground track, landing sites and named features. The same numbers are in the tables below."></canvas>
     <p class="maphint" id="maplegend"></p>
   </div>
 
@@ -363,9 +388,11 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
   <a href="index.html">Earth console</a> · <a href="moon.html">Lagrange points</a>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="core/body.js"></script>
 <script src="core/propagator.js"></script>
 <script src="moon/moondata.js"></script>
+<script src="moon/moon3d.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -597,6 +624,57 @@ function drawMap(){
     '<span>sub-solar ' + ss.lat.toFixed(1) + '°, ' + lonE(ss.lon).toFixed(1) + '°E</span>';
 }
 
+/* ---- the globe -----------------------------------------------------------
+ * The scene is BODY-FIXED, so everything handed to it is a lat/lon: the Moon
+ * holds still and the orbit sweeps around it. That matches how a tidally
+ * locked body is actually pictured, and it keeps the near/far side — which is
+ * what decides whether a lander can call home — fixed on screen.
+ */
+let viz3d = false, mode3d = true;
+
+function bodyFixedDir(vec, o){
+  const f = MOON.toFixed(vec, o), m = Math.hypot(f.x, f.y, f.z);
+  return { x: f.x/m, y: f.y/m, z: f.z/m };
+}
+
+function feed3d(){
+  if(!viz3d || !mode3d) return;
+  const date = new Date(simMs), o = MOON.spin(date);
+  const st = { sunDir: bodyFixedDir(sunFromMoon(date), o),
+               earthDir: bodyFixedDir(earthFromMoon(date), o),
+               subEarth: subPoint(earthFromMoon(date), o) };
+
+  if(cur.track && cur.track.ok){
+    const s = cur.track.at(simMs);
+    if(s){
+      const g = MOON.toGeodetic(s.r, o);
+      st.sat = { lat: g.latitude*DEG, lon: g.longitude*DEG, alt: g.height };
+    }
+    const per = orbitPeriod();
+    const spanMs = TRAILS[trailMode].f === 'orbit' ? per*1000 : TRAILS[trailMode].f;
+    st.trackPts = [];
+    for(let k=0;k<=360;k++){
+      const ms = simMs - spanMs + spanMs*k/360;
+      const p = cur.track.at(ms);
+      if(!p) continue;
+      const g = MOON.toGeodetic(p.r, MOON.spin(new Date(ms)));
+      st.trackPts.push({lat: g.latitude*DEG, lon: g.longitude*DEG});
+    }
+    /* The orbit ring is one period taken at THIS instant's rotation, so it is
+       the path through space rather than the path over the ground - the two
+       differ by the Moon's rotation, which is the whole reason a ground track
+       walks westward. */
+    st.orbitPts = [];
+    for(let k=0;k<=240;k++){
+      const p = cur.track.at(simMs + per*1000*k/240);
+      if(!p) continue;
+      const g = MOON.toGeodetic(p.r, o);
+      st.orbitPts.push({lat: g.latitude*DEG, lon: g.longitude*DEG, alt: g.height});
+    }
+  }
+  Moon3D.frame(st);
+}
+
 function orbitPeriod(){
   const el = cur.track && cur.track.kind === 'anchored'
     ? cur.track.anchorAt(simMs) : (cur.track ? cur.track.elements : null);
@@ -728,7 +806,7 @@ function paint(){
         + '“somewhere on this path”.';
     }
   }
-  drawMap();
+  if(mode3d) feed3d(); else drawMap();
 }
 
 /* ---- tables -------------------------------------------------------------- */
@@ -770,7 +848,8 @@ function buildSites(){
 
 /* ---- controls ------------------------------------------------------------ */
 $('pick').innerHTML = FLEET.map((f,i)=>'<option value="'+i+'">'+f.name+' — '+f.agency+'</option>').join('');
-$('pick').addEventListener('change', e => { cur = FLEET[+e.target.value]; paint(); });
+$('pick').addEventListener('change', e => { cur = FLEET[+e.target.value];
+  if(typeof satNode !== 'undefined') satNode.textContent = cur.name; paint(); });
 $('play').addEventListener('click', () => {
   playing = !playing;
   $('play').textContent = playing ? '❚❚' : '▶';
@@ -780,6 +859,19 @@ $('now').addEventListener('click', () => { simMs = Date.now(); paint(); buildSit
 $('rate').addEventListener('input', () => {
   rate = rateFrom(+$('rate').value); $('ratev').textContent = fmtRate(rate);
 });
+$('v3d').addEventListener('click', () => setMode(true));
+$('v2d').addEventListener('click', () => setMode(false));
+$('vreset').addEventListener('click', () => { if(viz3d) Moon3D.resetView(); });
+function setMode(on){
+  mode3d = on && viz3d;
+  $('v3d').setAttribute('aria-pressed', String(mode3d));
+  $('v2d').setAttribute('aria-pressed', String(!mode3d));
+  $('globewrap').hidden = !mode3d;
+  $('map').hidden = mode3d;
+  $('vreset').style.display = mode3d ? '' : 'none';
+  if(!mode3d) fit();
+  paint();
+}
 $('trail').addEventListener('click', () => {
   trailMode = (trailMode+1) % TRAILS.length;
   $('trail').textContent = 'Trail: ' + TRAILS[trailMode].n;
@@ -809,6 +901,36 @@ $('epochnote').innerHTML = 'coverage <b>' + iso(new Date(span.from)).slice(0,10)
 simMs = Math.min(Math.max(Date.now(), span.from), span.to);
 rate = rateFrom(+$('rate').value);
 $('ratev').textContent = fmtRate(rate);
+/* Site labels live in the HTML overlay, not the canvas, so they stay crisp and
+   selectable. One node per site, created once. */
+const glayer = $('glayer');
+const siteNodes = MD.sites.map(s => {
+  const n = document.createElement('span');
+  n.className = 'g-lbl ' + (s.ok ? 'site' : 'crash');
+  n.textContent = s.name;
+  glayer.appendChild(n); return n;
+});
+const satNode = document.createElement('span');
+satNode.className = 'g-lbl sat'; glayer.appendChild(satNode);
+const seNode = document.createElement('span');
+seNode.className = 'g-lbl earth'; seNode.textContent = 'sub-Earth'; glayer.appendChild(seNode);
+
+viz3d = !!(window.Moon3D && window.THREE && Moon3D.init({
+  canvas: $('globe'), layer: glayer, features: MD.features,
+  labels: { sat: satNode, subEarth: seNode },
+  onTexture: t => { $('texnote').textContent = t; }
+}));
+if(viz3d){
+  Moon3D.setSites(MD.sites, siteNodes);
+  $('texnote').textContent = 'painted (tiles loading…)';
+} else {
+  /* No WebGL is a normal outcome, not an error. The flat map carries every
+     number the globe does. */
+  $('v3d').disabled = true;
+  $('v3d').textContent = 'Globe (no WebGL)';
+}
+setMode(viz3d);
+satNode.textContent = cur.name;
 fit(); buildFleet(); buildSites(); paint();
 requestAnimationFrame(tick);
 </script>

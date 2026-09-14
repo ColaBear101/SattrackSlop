@@ -589,6 +589,29 @@ A fourth, about the API rather than the physics: **date parameters must not be q
 The first validation run returned a year of defaults instead of the range asked for, and looked
 entirely plausible.
 
+### The globe
+
+A 3D view, in `moon/moon3d.js`, with the flat map kept as a toggle.
+
+It differs from `earth/orbit3d.js` in one deliberate way: the Earth globe draws the
+**inertial** frame and spins the planet under a fixed orbit, while this one is **body-fixed** —
+the Moon holds still and the orbit sweeps around it. That is the right choice for a tidally
+locked body. The near side permanently faces the Earth, so holding it still is how anyone
+actually pictures the Moon, and it keeps the near/far boundary — the thing that decides whether
+a lander can call home — fixed on screen instead of rotating away. The cost is that the orbit
+plane visibly turns over a month, which is true and worth seeing.
+
+The surface is the real **LRO Wide Angle Camera global mosaic**, pulled from NASA Moon Trek's
+WMTS tiles. Level 1 is a 4×2 grid of 256 px tiles — 1024×512 for about 400 KB — and it is the
+one imagery source that sends `Access-Control-Allow-Origin: *`, which is the only reason a page
+with no backend can use it at all.
+
+Tiles are painted to a **second** canvas rather than the live one. Drawing a cross-origin image
+taints a canvas, and a tainted canvas throws at texture-upload time rather than at draw time —
+which would take out the whole scene rather than just the imagery. Painting elsewhere and testing
+readability first means a blocked tile costs nothing: the procedurally painted fallback, where
+the maria are drawn from the feature list, simply stays.
+
 ### Engineering readouts
 
 Sub-point, altitude and altitude rate, inertial and ground speed, the radial/transverse velocity

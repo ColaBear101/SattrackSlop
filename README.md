@@ -752,23 +752,45 @@ analysis. To refresh that baseline, rebuild `catalog.txt` and re-inject it into 
 
 ## Running it
 
+**The pages need nothing.** No build, no server, no install — open them:
+
 ```
-# the pages: no build, no server — open them
 index.html   moon-track.html   moon.html
-
-# the Earth regression gate — must print BIT-IDENTICAL
-node verification/snapshot.js        # (re)write verification/baseline.json
-node verification/regress.js         # compare the live code against it
-
-# the independent second implementation
-node verification/verify.js
-node verification/report.js
-
-# the lunar checks (these fetch from JPL Horizons)
-node verification/verify-moon.js         # rotation vs Horizons sub-observer point
-node verification/verify-lunar-chain.js  # baked elements -> sub-point, end to end
-node verification/fetch-lunar-ephem.js   # re-bake moon/moondata.js from Horizons
 ```
+
+The `package.json` in the root is for the *checks*, not the pages. Several of them drive a real
+browser through Playwright, which was previously required with nothing declaring it — so running
+the gate on a fresh clone meant setting `NODE_PATH` by hand. Now:
+
+```
+npm install          # Playwright, once
+npm test             # the offline suite; must end BIT-IDENTICAL
+```
+
+`npm test` runs the second implementation, the element-vector geometry, the regression gate and the
+live-refresh check, in that order. Individually:
+
+```
+npm run verify       # independent second implementation of elements/elevation/visibility
+npm run report       # the LANDSAT 9 answer, printed
+npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
+npm run refresh      # the live TLE refresh, against mocked sources
+npm run snapshot     # (re)write verification/baseline.json
+npm run gate         # compare the live code against it — must print BIT-IDENTICAL
+```
+
+The lunar checks are kept **out** of `npm test`, because they fetch from JPL Horizons and a clean
+run should not depend on someone else's uptime:
+
+```
+npm run moon         # rotation vs Horizons sub-observer point
+npm run moon:chain   # baked elements -> sub-point, end to end
+npm run moon:bake    # re-bake moon/moondata.js from Horizons
+```
+
+`.github/workflows/verify.yml` runs the offline suite on every push, and again weekly — the
+scheduled run is the useful one, since the embedded catalogue ages on its own and the pages pin
+CDN versions of `satellite.js` and `three.js` that could be pulled.
 
 Playwright is used for the browser-driven checks. The lunar scripts cache their Horizons responses
 next to themselves, so a re-run is free.

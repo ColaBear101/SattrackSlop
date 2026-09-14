@@ -1,0 +1,40 @@
+{
+  "name": "satellite-ground-track",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ground track console: TLE to Keplerian elements, a day of SGP4 ground track, and Bangkok visibility above a 5 degree mask. Plus a Moon-centred console and an Earth-Moon libration-point view over the same body-agnostic core.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ColaBear101/SattrackSlop.git"
+  },
+  "//": [
+    "The pages themselves have NO build step and NO dependencies - index.html,",
+    "moon-track.html and moon.html open straight from the filesystem. This",
+    "manifest exists only so the verification scripts can resolve playwright,",
+    "which they previously required with nothing declaring it: running the gate",
+    "on a fresh clone meant setting NODE_PATH by hand.",
+    "",
+    "'test' is the offline suite. The lunar checks fetch from JPL Horizons, so",
+    "they are kept out of it - a clean `npm test` should not depend on someone",
+    "else's uptime."
+  ],
+  "scripts": {
+    "verify": "node verification/verify.js",
+    "report": "node verification/report.js",
+    "evec": "node verification/verify-evec.js",
+    "refresh": "node verification/verify-refresh.js",
+    "snapshot": "node verification/snapshot.js",
+    "gate": "node verification/regress.js",
+    "test": "npm run verify && npm run evec && npm run gate && npm run refresh",
+    "moon": "node verification/verify-moon.js",
+    "moon:chain": "node verification/verify-lunar-chain.js",
+    "moon:bake": "node verification/fetch-lunar-ephem.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

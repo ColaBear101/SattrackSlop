@@ -34,7 +34,7 @@ let BODYRE = RE;
 let root = null, sky = null, started = false;
 let el = null;                                   // normalised elements of the current orbit
 let simTime = new Date(), planetMs = null, precMs = null, dpr = 1;
-let MU = 398600.4418;                          // km^3/s^2, for the e vector
+let MU = 398600.4418;                          // km^3/s^2, for the SMA fallback
 let satrecRef = null;                            // needed for the live state vector
 let live = null, liveMs = null, nuShown = null, vShown = null;  // the parts that follow the spacecraft
 
@@ -270,10 +270,12 @@ function basis(e){
 }
 function radiusAt(e, nu){ return e.a*(1-e.ecc*e.ecc)/(1+e.ecc*cos(nu)); }
 
-/* h, e, r and the true anomaly are the parts that MOVE. They are computed from
+/* h, r and the velocity split are the parts that MOVE. They are computed from
    the live state vector rather than from the mean elements, so they follow the
    spacecraft exactly and carry the orbit's precession for free:
-     h = r x v          e = (v x h)/mu - r_hat          nu = angle(e, r)        */
+     h = r x v
+   The eccentricity vector is the exception - it is drawn from the MEAN
+   elements, for the reason given at the e arrow below.                        */
 function buildLive(parent){
   const seg = 96;
   const mk = (colour) => {
@@ -299,8 +301,8 @@ function buildLive(parent){
     vtLbl: liveLabel(SPACE.vtvec, {h:0.015, sample:'vt = 00.000 km/s (transverse)'}),
     vnLbl: liveLabel(SPACE.vnvec, {h:0.015, sample:'vn = 00.000 km/s (radial)'}),
     hLbl: liveLabel(SPACE.hvec, {h:0.017, sample:'h = 000000000 km2/s'}),
-    eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (near-circular)'}),
-    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'\u03b8 = 000.00\u00b0 from perigee'})
+    eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (mean; perigee barely defined)'}),
+    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'\u03b8 = 000.00\u00b0 from mean perigee'})
   };
   [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
    live.hLbl, live.eLbl, live.nuLbl,
@@ -356,37 +358,39 @@ function updateLive(date){
   const rMag = Math.hypot(R[0],R[1],R[2]);
   const H = [R[1]*V[2]-R[2]*V[1], R[2]*V[0]-R[0]*V[2], R[0]*V[1]-R[1]*V[0]];
   const hMag = Math.hypot(H[0],H[1],H[2]);
-  const VxH = [V[1]*H[2]-V[2]*H[1], V[2]*H[0]-V[0]*H[2], V[0]*H[1]-V[1]*H[0]];
-  const E = [VxH[0]/MU - R[0]/rMag, VxH[1]/MU - R[1]/rMag, VxH[2]/MU - R[2]/rMag];
-  const eMag = Math.hypot(E[0],E[1],E[2]);
 
   // scene vectors
   const rS = eci(R[0],R[1],R[2]).multiplyScalar(U);
   const hDir = eci(H[0],H[1],H[2]).normalize();
-  const eDir = eMag > 1e-9 ? eci(E[0],E[1],E[2]).normalize() : null;
+  /* The eccentricity vector, from the MEAN elements rather than from the state
+     vector. The osculating form (v x h)/mu - r_hat is the textbook definition
+     and is what this drew first, but as a DRAWN ARROW it misleads. Measured
+     over one revolution: KNACKSAT-2's osculating |e| runs 0.000816 to 0.002108,
+     a factor of 2.58, while its direction wanders 64.9 deg. LANDSAT 9 is worse
+     and shows why - at e = 1.5e-4 the vector is mostly J2 short-period noise,
+     |e| moves by a factor of 5.76 and the direction sweeps the FULL 180 deg, so
+     the arrow would point anywhere at all. None of that is the orbit changing;
+     it is exactly what the mean elements have already averaged out. The mean
+     vector is what the elements card quotes and what the ellipse and the omega
+     arc are built from, and it holds still long enough to read. */
+  const eDir = (el && isFinite(el.ecc) && isFinite(el.argp)) ? basis(el).p : null;
   const rLen = rS.length();
 
   setRay(live.r, null, rS);
   setRay(live.h, live.hTip, hDir.clone().multiplyScalar(Math.max(1.55, rLen*1.12)));
   live.hLbl.position.copy(hDir).multiplyScalar(Math.max(1.55, rLen*1.12) + 0.16);
 
-  /* True anomaly is measured from perigee, and on a near-circular orbit perigee
-     is not a real place: at e = 1.5e-4 it sits about a kilometre below apogee and
-     the eccentricity vector's DIRECTION is mostly perturbation noise, so nu
-     jitters and can point anywhere. Checked against radius over a full
-     revolution, LANDSAT 9 put its minimum radius at nu = 180.7 deg. Below the
-     threshold the honest angle is the argument of latitude, measured from the
-     ascending node, which stays well conditioned as e goes to zero. */
-  /* Decide this ONCE from the published eccentricity, not from the osculating
-     value: the osculating e wobbles across any fixed threshold mid-orbit, which
-     flipped the reference direction between perigee and node and made the angle
-     jump by omega - measured at 108 degrees on KNACKSAT-2. */
-  // only used to warn on the e label now: the angle is always the true anomaly
-  const nearCircular = (el && isFinite(el.ecc) ? el.ecc : eMag) < 1.5e-3;
+  /* The angle is measured from perigee, and on a near-circular orbit perigee is
+     not a real place: at e = 1.5e-4 it sits about a kilometre below apogee.
+     Checked against radius over a full revolution, LANDSAT 9 put its minimum
+     radius at nu = 180.7 deg. Taking the direction from the mean elements
+     removes the frame-to-frame jitter the osculating vector had, but it cannot
+     manufacture a perigee that the orbit does not really have - so the label
+     still says when the number is describing a nearly round orbit. */
+  const nearCircular = !!(el && isFinite(el.ecc) && el.ecc < 1.5e-3);
   const rHat = rS.clone().normalize();
-  const rdotv = R[0]*V[0] + R[1]*V[1] + R[2]*V[2];
 
-  // the e arrow still points somewhere, but say so when it cannot be trusted
+  // the arrow points at mean perigee; say so when that is not a real place
   if(eDir){
     const eLen = Math.max(1.30, rLen*0.92);
     setRay(live.e, live.eTip, eDir.clone().multiplyScalar(eLen));
@@ -398,17 +402,33 @@ function updateLive(date){
     live.e.visible = live.eTip.visible = live.eLbl.visible = false;
   }
 
-  /* True anomaly, measured from the eccentricity vector, which is the
-     definition. On a near-circular orbit that reference is genuinely unstable -
-     KNACKSAT-2's perigee direction wanders 64 degrees in one revolution - so the
-     value will jitter there. That is a property of the orbit, not of the
-     drawing, and the e label says so rather than the angle quietly switching to
-     a different quantity. */
-  const fromDir = eDir;
+  /* The angle is measured from the arrow that is actually drawn, so the arc
+     starts where the reader can see that it starts. That makes it the angle
+     from MEAN perigee rather than the osculating true anomaly; the two differ
+     by up to 64 degrees on KNACKSAT-2, which is precisely the short-period
+     wander the mean elements remove. The label names its reference rather than
+     leaving a bare theta to be read as the textbook quantity it is no longer. */
+  /* Measure in the OSCULATING plane. The osculating e was perpendicular to
+     h = r x v by construction, so the arc closed on the spacecraft exactly; the
+     mean vector is not, because the mean plane and the instantaneous one differ
+     by the short-period wobble. Projecting first keeps the arc landing on the
+     spacecraft instead of a fraction of a degree beside it. The drawn ARROW
+     stays along the unprojected mean vector, which is the actual quantity. */
+  let fromDir = null;
+  if(eDir){
+    const pIn = eDir.clone().addScaledVector(hDir, -hDir.dot(eDir));
+    if(pIn.lengthSq() > 1e-12) fromDir = pIn.normalize();
+  }
   if(fromDir){
-    let ang = Math.acos(Math.max(-1, Math.min(1, fromDir.dot(rHat))))*DEG;
-    if(rdotv < 0) ang = 360 - ang;
     const inPlane = new THREE.Vector3().crossVectors(hDir, fromDir).normalize();
+    /* Signed, in the direction of motion. The old test - r.v < 0 means past
+       apogee, so take 360 - ang - was pinned to OSCULATING perigee, because
+       that is exactly where r.v changes sign. Carried over to a MEAN reference
+       it breaks: measured against this angle it is wrong by up to 82.0 deg on
+       KNACKSAT-2 and 18.7 deg on LANDSAT 9, over a band as wide as the two
+       perigees are apart. atan2 in the orbit plane has no branch to choose. */
+    let ang = Math.atan2(rHat.dot(inPlane), rHat.dot(fromDir))*DEG;
+    if(ang < 0) ang += 360;
     const Rnu = Math.max(0.62, rLen*0.42);
     const arr = live.nu.geometry.attributes.position.array;
     for(let k=0;k<=live.seg;k++){
@@ -426,15 +446,15 @@ function updateLive(date){
       nuShown = ang;
       // one symbol for the angle either way, with the reference named, rather
       // than switching between nu and u and leaving the reader to notice
-      live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from perigee');
-      /* Print the OSCULATING magnitude: this label sits on the osculating
-         arrow, whose length varies by a factor of two and a half over one
-         revolution, so quoting the TLE's constant mean e beside it described a
-         different quantity. The elements card still carries the mean value. */
-      const eShown = eMag;
+      live.nuLbl.userData.paint('\u03b8 = '+ang.toFixed(2)+'\u00b0 from mean perigee');
+      /* The MEAN magnitude, because that is now what the arrow is: constant
+         across the element set, and the same number the elements card carries.
+         Quoting it beside an osculating arrow would have described a different
+         quantity, which is why this used to print the osculating value. */
+      const eShown = el.ecc;
       if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
-        ? 'e = '+eShown.toFixed(7)+'  (perigee direction unstable)'
-        : 'e = '+eShown.toFixed(7));
+        ? 'e = '+eShown.toFixed(7)+'  (mean; perigee barely defined)'
+        : 'e = '+eShown.toFixed(7)+'  (mean)');
     }
   } else {
     live.nu.visible = live.nuLbl.visible = false;

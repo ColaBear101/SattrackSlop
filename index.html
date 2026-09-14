@@ -368,6 +368,8 @@ canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:blo
   border:1px solid var(--rule); border-radius:4px; padding:3px 5px}
 .siterow{display:flex; gap:7px; margin-top:3px}
 .sitenote{font-size:11px; color:var(--muted); margin:2px 0 0; line-height:1.45}
+.exportbar{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:12px}
+.exphint{font-size:11px; color:var(--muted)}
 .skyfacts .k{color:var(--muted); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
   font-family:"IBM Plex Mono",ui-monospace,monospace}
 .skyfacts .v{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--ink)}
@@ -731,6 +733,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
             <tbody id="passbody"></tbody>
             <tfoot id="passfoot"></tfoot>
           </table>
+        </div>
+        <div class="exportbar">
+          <button class="btn" id="exp-csv">Export CSV</button>
+          <button class="btn" id="exp-ics">Export calendar</button>
+          <span class="exphint" id="exphint"></span>
         </div>
       </div>
     </div>
@@ -7546,7 +7553,7 @@ let D = null, selPass = 0, timer = null;
  * declared above; CAT and D are getters so they read the live bindings.       */
 window.__gt = {
   compute, elements, findPasses, sample, sampleMs, stateAt, elevationAt,
-  rangeRateMs, dopplerHz, C_KMS,
+  rangeRateMs, dopplerHz, C_KMS, passRows,
   sunEci, subsolar, sunElevation, sunlitState, opticalAt, passOptical,
   /* a const declared further down the file, so it has to be deferred the way
      D and CAT are - the object literal itself is evaluated up here. */
@@ -8278,6 +8285,147 @@ function selectPass(i, scrub){
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
 }
 
+/* ---- taking the answer away with you -------------------------------------
+ * Two formats because they answer different questions. The CSV is the whole
+ * pass table at full precision, for anything that wants to compute with it. The
+ * calendar is for turning up: one event per pass, titled with the spacecraft and
+ * its peak elevation, so a phone says "KNACKSAT-2, 68 deg" ten minutes before
+ * AOS rather than nothing at all.
+ *
+ * Both are built in the page and handed over as a Blob. There is no server to
+ * ask, and a data: URL large enough for a week of passes is not reliable across
+ * browsers - a Blob URL is, and it works from file:// where this page mostly
+ * lives.                                                                      */
+/* iso() formats for a reader - a space instead of a T, and a Z already on the
+   end. Appending another produced "...33ZZ", which Date.parse answers with NaN,
+   so the exports use machine forms instead. Found by parsing the files back
+   rather than by looking at them, which is the only way this shows up. */
+const isoZ = d => d.toISOString();                       // RFC 3339, for the CSV
+const icsStamp = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+function csvEscape(v){
+  const t = String(v);
+  return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function passRows(){
+  const out = [], f = dopHz;
+  for(let i = 0; i < D.passes.length; i++){
+    const p = D.passes[i];
+    const o = passOptical(D.track, p);
+    const rrA = rangeRateMs(D.track, p.aos.getTime());
+    const rrL = rangeRateMs(D.track, p.los.getTime());
+    out.push({
+      n: i+1, sat: D.entry.name, norad: D.E.satnum,
+      site: OBS.name, lat: OBS.lat, lon: OBS.lon,
+      aos: p.aos, los: p.los, dur: p.dur,
+      maxEl: p.maxEl, maxAt: p.maxAt, maxAz: p.maxAz,
+      aosAz: p.aosAz, losAz: p.losAz, minRng: p.minRng,
+      rrA, rrL,
+      dopA: f ? dopplerHz(f, rrA)/1000 : null,
+      dopL: f ? dopplerHz(f, rrL)/1000 : null,
+      freqMHz: f ? f/1e6 : null,
+      eye: o ? (o.both ? 'yes' : 'radio only') : '',
+      sunEl: o ? o.sunEl : null, lit: o ? o.litAtMid : ''
+    });
+  }
+  return out;
+}
+function exportCSV(){
+  const rows = passRows();
+  const head = ['pass','satellite','norad','site','site_lat_deg','site_lon_deg',
+    'aos_utc','los_utc','duration_s','max_elevation_deg','culmination_utc',
+    'max_azimuth_deg','aos_azimuth_deg','los_azimuth_deg','min_range_km',
+    'range_rate_aos_kms','range_rate_los_kms','downlink_mhz',
+    'doppler_aos_khz','doppler_los_khz','naked_eye','sun_elevation_deg','spacecraft'];
+  const num = (v, d) => v === null || v === undefined ? '' : v.toFixed(d);
+  const body = rows.map(r => [r.n, r.sat, r.norad, r.site, r.lat, r.lon,
+    isoZ(r.aos), isoZ(r.los), r.dur.toFixed(3), num(r.maxEl,3), isoZ(r.maxAt),
+    num(r.maxAz,1), num(r.aosAz,1), num(r.losAz,1), num(r.minRng,1),
+    num(r.rrA,6), num(r.rrL,6), num(r.freqMHz,3), num(r.dopA,3), num(r.dopL,3),
+    r.eye, num(r.sunEl,1), r.lit].map(csvEscape).join(','));
+  /* A leading comment line would break every CSV reader, so the provenance goes
+     in the filename instead - which is the one piece of metadata that survives
+     being opened in a spreadsheet and saved again. */
+  download(head.join(',') + '\r\n' + body.join('\r\n') + '\r\n',
+    'passes-' + slug(D.entry.name) + '-' + slug(OBS.name) + '-'
+      + iso(D.start).slice(0,10) + '.csv', 'text/csv');
+  hintExport(rows.length + ' pass' + (rows.length === 1 ? '' : 'es') + ' written as CSV');
+}
+function exportICS(){
+  const rows = passRows();
+  /* RFC 5545 wants UTC stamps with no punctuation, and lines folded at 75
+     OCTETS. Folding is not optional - Google Calendar and Outlook both reject an
+     over-long line outright rather than wrapping it themselves.
+
+     Octets, not characters, and the difference is not academic: the summary
+     carries an em dash, which is one JavaScript character and three UTF-8 bytes.
+     Folding on .length let a 74-character line out of the door at 76 octets.
+     Iterating by code point also keeps surrogate pairs whole - splitting one
+     would produce a file that is not valid UTF-8 at all. */
+  const stamp = icsStamp;
+  const enc = new TextEncoder();
+  const fold = l => {
+    if(enc.encode(l).length <= 75) return l;
+    const out = [];
+    let cur = '', bytes = 0;
+    for(const ch of l){
+      const n = enc.encode(ch).length;
+      if(bytes + n > 75){ out.push(cur); cur = ' '; bytes = 1; }   // continuation
+      cur += ch; bytes += n;
+    }
+    out.push(cur);
+    return out.join('\r\n');
+  };
+  const esc = t => String(t).replace(/([\\,;])/g, '\\$1').replace(/\n/g, '\\n');
+  const L = ['BEGIN:VCALENDAR','VERSION:2.0',
+    'PRODID:-//ground track console//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    fold('X-WR-CALNAME:' + esc(D.entry.name + ' from ' + OBS.name))];
+  const now = stamp(new Date());
+  for(const r of rows){
+    const desc = [
+      'Max elevation ' + r.maxEl.toFixed(1) + ' deg ' + compass(r.maxAz)
+        + ' at ' + iso(r.maxAt),
+      'AOS azimuth ' + r.aosAz.toFixed(0) + ' deg, LOS azimuth ' + r.losAz.toFixed(0) + ' deg',
+      'Minimum range ' + r.minRng.toFixed(0) + ' km',
+      r.freqMHz ? 'Doppler ' + r.dopA.toFixed(2) + ' to ' + r.dopL.toFixed(2)
+        + ' kHz at ' + r.freqMHz.toFixed(3) + ' MHz' : null,
+      'Naked eye: ' + r.eye + ' (sun ' + r.sunEl.toFixed(0) + ' deg, spacecraft ' + r.lit + ')',
+      'Site ' + r.site + ' ' + latStr(r.lat) + ' ' + lonStr(r.lon),
+      'Element set epoch ' + iso(D.E.epoch)
+    ].filter(Boolean).join('\\n');
+    L.push('BEGIN:VEVENT',
+      fold('UID:' + r.norad + '-' + r.aos.getTime() + '@ground-track'),
+      'DTSTAMP:' + now, 'DTSTART:' + stamp(r.aos), 'DTEND:' + stamp(r.los),
+      fold('SUMMARY:' + esc(r.sat + ' \u2014 ' + r.maxEl.toFixed(0) + '\u00b0 '
+        + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 visible' : ''))),
+      fold('DESCRIPTION:' + desc),
+      fold('LOCATION:' + esc(r.site)),
+      'BEGIN:VALARM','TRIGGER:-PT10M','ACTION:DISPLAY',
+      fold('DESCRIPTION:' + esc(r.sat + ' AOS in 10 minutes')),
+      'END:VALARM','END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  download(L.join('\r\n') + '\r\n',
+    'passes-' + slug(D.entry.name) + '-' + slug(OBS.name) + '.ics', 'text/calendar');
+  hintExport(rows.length + ' pass' + (rows.length === 1 ? '' : 'es') + ' written as a calendar');
+}
+const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function hintExport(msg){
+  const h = document.getElementById('exphint');
+  if(!h) return;
+  h.textContent = msg;
+  clearTimeout(hintExport.t);
+  hintExport.t = setTimeout(()=>{ h.textContent = ''; }, 6000);
+}
+function download(text, name, mime){
+  const url = URL.createObjectURL(new Blob([text], {type: mime + ';charset=utf-8'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  // revoking immediately can beat the download in some browsers
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
 /* ---- the observer -------------------------------------------------------- *
  * Everything downstream already took the site as an argument - body.lookAngles
  * takes it, the propagation adapters pass it, orbit3d reads GT.OBS - so this is
@@ -8334,6 +8482,15 @@ function siteChanged(){
   load(CAT[curIdx]);            // the whole analysis is site-dependent
   setSim(keep, !wasPlaying);
   if(global3D() && window.Orbit3D && Orbit3D.ok()) Orbit3D.siteMoved();
+}
+function bootExport(){
+  const c = document.getElementById('exp-csv'), i = document.getElementById('exp-ics');
+  const guard = fn => () => {
+    if(!D || !D.passes.length){ hintExport('No passes in this window to export.'); return; }
+    fn();
+  };
+  if(c) c.addEventListener('click', guard(exportCSV));
+  if(i) i.addEventListener('click', guard(exportICS));
 }
 function bootSite(){
   try {
@@ -9163,6 +9320,7 @@ countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type t
    the site, so restoring a saved one afterwards would mean computing twice and
    showing the wrong answer in between. */
 bootSite();
+bootExport();
 load(CAT[curIdx]);
 if('IntersectionObserver' in window){
   new IntersectionObserver(es => {

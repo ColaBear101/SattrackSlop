@@ -747,6 +747,37 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+## Taking the answer away
+
+Two formats, because they answer different questions. The **CSV** is the whole pass table at full
+precision — AOS and LOS as RFC 3339, duration, elevations, azimuths, range, range rate, Doppler,
+and the naked-eye verdict — for anything that wants to compute with it. The **calendar** is for
+turning up: one `VEVENT` per pass with a 10-minute alarm, titled with the spacecraft and its peak
+elevation, so a phone says "KNACKSAT-2 — 68° NE" rather than nothing at all.
+
+Both are built in the page and handed over as a Blob, which works from `file://` where this page
+mostly lives.
+
+Parsing them back, rather than looking at them, found two bugs that look identical to correct
+output on screen:
+
+- **`iso()` formats for a reader** — a space instead of a `T`, and a `Z` already on the end.
+  Appending another gave `...33ZZ`, which `Date.parse` answers with `NaN`. Every timestamp in both
+  files was unparseable.
+- **RFC 5545 folds at 75 *octets*, not characters.** The summary carries an em dash: one JavaScript
+  character, three UTF-8 bytes. Folding on `.length` let a 74-character line out of the door at 76
+  octets — and Google Calendar and Outlook reject an over-long line outright rather than wrapping
+  it. The fold iterates by code point now, which also keeps surrogate pairs whole.
+
+`verification/verify-export.js` drives the real buttons, intercepts the download, and re-parses the
+result: a strict quoted-field CSV parser checking the column count on every row, and an unfolder
+checking every line's octet length, the event count, the UTC stamps and the ordering.
+
+Nothing in the catalogue contains a comma, so CSV quoting was never reached by accident. The site
+name is typed by a user though, and `Bangkok, "KMUTNB" site` is the obvious thing to type — so the
+check sets exactly that and confirms the field round-trips with doubled quotes rather than shifting
+every column after it.
+
 ## The observer is a value now
 
 Bangkok was a constant. `lookAngles(site, rFixed)` had always taken the site as an argument, the
@@ -962,6 +993,7 @@ npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
+npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

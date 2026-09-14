@@ -1,6 +1,7 @@
 # Ground Track Console — KNACKSAT-2
 
 **Live:** https://sattrackslop.vercel.app
+**Earth–Moon page:** https://sattrackslop.vercel.app/moon.html
 
 A single-file web program that reads a Two-Line Element set, reports the Keplerian elements,
 propagates and plots one day of ground track, and totals the time the spacecraft is visible from
@@ -273,6 +274,129 @@ term until it reaches 120 km gives **2027-06-09** — a different method, from a
 landing within a day of the trend model's figure when both were run on the same element set. And
 since the backtest says this range runs about two months early, the true date is more likely after
 April than before it.
+
+## The Earth–Moon page
+
+`moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration points
+marked and moving with it. Linked from the console's rail. `lunar.js` holds the physics,
+`moonviz.js` the three.js scene.
+
+### The Moon's position
+
+Truncated ELP-2000/82B: the standard 60-term longitude and radius tables plus the 60-term
+latitude table, with nutation in longitude and true obliquity for the apparent place. Not a
+circle and not a fixed ellipse — the evection term alone swings the Moon ±1.27° and the
+variation another ±0.66°, so anything simpler is wrong by degrees.
+
+Checked against JPL Horizons over **731 daily samples spanning 2026–2028**:
+
+| | median | p90 | worst |
+|---|---|---|---|
+| Angular separation | 1.9″ | 4.6″ | 9.5″ |
+| Geocentric distance | 27.0 km | — | 44.9 km |
+
+The lunar disc is 1865″ across, so the worst case is about 1/200 of a diameter. Calls cost
+8.5 µs, which matters because the scene asks for a position every frame.
+
+### The libration points
+
+Solved, not approximated. L1, L2 and L3 are roots of a quintic in the circular restricted
+three-body problem, found by bracketed bisection to machine precision — residual gradient
+~10⁻¹⁶. L4 and L5 are the exact equilateral vertices, placed in the Moon's *instantaneous*
+orbit plane from its position and velocity rather than a fixed ecliptic, since the nodes
+regress over 18.6 years.
+
+Cross-checked against an independently written solver: agreement to **0.000 km** on all five
+points, L4/L5 exactly R from both bodies, barycentre at 4 671 km.
+
+At mean separation:
+
+| Point | From Earth | From Moon |
+|---|---|---|
+| L1 | 326 376 km | 58 024 km |
+| L2 | 448 921 km | 64 521 km |
+| L3 | 381 675 km | 766 075 km |
+| L4 / L5 | 384 400 km | 384 400 km |
+
+Two things the numbers settle:
+
+- The familiar `R(μ/3)^⅓` Hill-radius shortcut puts L1 and L2 at 61 279 km from the Moon. The
+  true roots are 58 024 and 64 521 km — **wrong by about 3 250 km in opposite directions**. A
+  decent mnemonic, a poor answer, so it is not used.
+- The points sit at fixed *fractions* of the instantaneous separation, which runs 356 400 –
+  406 700 km. So they breathe: **L1 moves 42 600 km in and out every month**, L2 about 58 600.
+  "Fixed point" is the wrong mental model before you even reach the instability.
+
+### μ comes from GM, not from kilogrammes
+
+Nobody measures the mass of the Earth. Spacecraft tracking measures the *product* GM, and DE440
+carries GM_earth and GM_moon to about one part in 10¹¹. Converting to kilogrammes means dividing
+by G — the worst-known constant in physics at ~2.2×10⁻⁵ relative — so a mass in kg throws away
+six orders of magnitude before you start. The CR3BP only ever wants the ratio, so the division
+is pure loss.
+
+Not merely tidy: μ from kg came out **0.0253 % high**, which moved L2 by 5.7 km and the
+barycentre by 1.2 km — visible at the resolution this page quotes.
+
+### Three defects found while verifying the scene
+
+- **The default camera sat in the orbit plane.** Elevation was measured from the *equator*, but
+  the Moon's orbit is inclined 18.3°–28.6° to the equator depending on where the nodes have
+  regressed to, so the camera could land within a degree of the orbit plane. The orbit collapsed
+  to a sliver and L4/L5 appeared collinear with L1/L2/L3 — the one thing the view exists to
+  disprove. Raised to 58°, which clears the plane by 37°–83° at every azimuth.
+- **A label widened the document.** `place()` allows anchors up to 6 % outside the frustum, and
+  nothing clipped them, so the "to Sun" tag pushed `scrollWidth` to 443 px at a 390 px viewport.
+  Labels are now clamped and the viewport clips.
+- **The barycentre tag landed on the Earth's**, rendering as "Earthcentre" — inevitable at true
+  scale, since the two are 4 671 km apart. It gets its own line.
+
+### Facts that needed correcting
+
+Written from sources rather than memory, and three claims did not survive:
+
+- **Queqiao-2 is not an EML2 spacecraft.** It flies a frozen lunar orbit, ~300 km periselene,
+  inclination ~118°. Only **Queqiao-1** holds a halo about EML2, which it has done since 2018 —
+  the only long-duration operational libration-point spacecraft in the Earth–Moon system.
+  CAPSTONE flew an NRHO *about* EML2, which is an orbit around the point rather than the point,
+  and its mission ended in June 2026.
+- **The "23 days" instability timescale is the Sun–Earth figure**, repeated almost everywhere as
+  if it were universal. Running the CR3BP linearisation
+  (`λ⁴ + (2−c)λ² + (1+c−2c²) = 0`, time unit 1/n = 4.348 d) gives:
+
+  | | L1 | L2 | L3 |
+  |---|---|---|---|
+  | Earth–Moon e-folding | **1.48 d** | **2.01 d** | 24.4 d |
+  | Sun–Earth e-folding | 23.0 d | 23.4 d | — |
+
+  Twelve times faster. It is why ARTEMIS station-kept roughly weekly, for only ~15 m/s total.
+
+- **L4/L5 are stable only in the idealised problem.** The Routh criterion (μ < 0.0385) is
+  satisfied comfortably at μ = 0.0122, and most summaries stop there. But the Sun pulls on the
+  Moon **2.20× harder than the Earth does**, and that perturbation destroys the strict
+  equilibrium: what survives near L4/L5 are a few periodic *substitute* orbits, with test
+  particles wandering chaotically and many escaping. The page says "in theory" and explains why.
+  The Kordylewski dust clouds reported there since 1961 remain unconfirmed.
+
+### Two checkable claims the page makes
+
+Both computed rather than repeated:
+
+- **The Moon's orbit is not a visibly squashed ellipse.** At e = 0.0549 the semi-minor axis is
+  0.99849 of the semi-major — 0.15 % off round, 580 km on 384 400, which no eye will catch. What
+  is visible is that the Earth sits **21 104 km** from the ellipse's centre, 3.3 Earth radii. The
+  shape reads as a circle; the off-centre focus is the part that shows.
+- **The Moon's path around the Sun is always concave toward the Sun.** Integrating the
+  heliocentric path over a year, the minimum of (path acceleration · Sun direction) is **+0.889**
+  — positive everywhere, so it never loops backwards. The reason is the 2.20 : 1 pull ratio above.
+
+### Verified
+
+Zero page errors in light and dark after exercising every control; no horizontal scroll at 390,
+414, 768 and 1400 px; time controls advance the readouts; the scene renders with all nine labels
+placed. The scale toggle defaults to **true scale** and always states which mode is showing —
+enlarging the bodies makes them visible but misrepresents a geometry where the Moon is 60 Earth
+radii away.
 
 ## Staying current
 

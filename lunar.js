@@ -53,10 +53,23 @@ const CKMS  = 299792.458;         // km/s
    mu*R from Earth's centre: at the mean distance 384400 km that is 4671 km —
    INSIDE the Earth, whose mean radius is 6371 km. The Earth does not circle a
    point out in space; it wobbles about one buried 1700 km under its surface. */
-const M_EARTH = 5.97217e24, M_MOON = 7.34767309e22;
-const MU      = M_MOON / (M_EARTH + M_MOON);
-const GCONST  = 6.67430e-11;                                  // m^3 kg^-1 s^-2
-const GM_TOT  = GCONST * (M_EARTH + M_MOON) / 1e9;            // km^3 s^-2
+/* Take mu from GM, not from masses in kilogrammes.
+   Nobody measures the mass of the Earth: what spacecraft tracking measures is
+   the PRODUCT GM, and it measures it superbly - JPL DE440 carries GM_earth and
+   GM_moon to about one part in 1e11. Converting those to kilogrammes means
+   dividing by G, which is the worst-known constant in physics at roughly
+   2.2e-5 relative, so a mass in kg throws away six orders of magnitude of
+   precision before you start. Since the CR3BP only ever wants the RATIO, the
+   division is pure loss.
+   It is not merely tidy: mu from kg came out 0.0253% high, which moved L2 by
+   5.7 km and the barycentre by 1.2 km - visible at the resolution this page
+   quotes. */
+const GM_EARTH = 398600.435507, GM_MOON = 4902.800118;        // km^3 s^-2, DE440
+const GM_TOT   = GM_EARTH + GM_MOON;
+const MU       = GM_MOON / GM_TOT;                            // 0.0121505839
+const GCONST   = 6.67430e-11;                                 // m^3 kg^-1 s^-2, CODATA 2018
+/* Masses, for display only — never fed back into the dynamics. */
+const M_EARTH  = GM_EARTH*1e9 / GCONST, M_MOON = GM_MOON*1e9 / GCONST;
 
 /* ---- dT = TT - UT1 --------------------------------------------------------
    Observed values (IERS / Espenak-Meeus tabulation) at the start of each year.

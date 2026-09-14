@@ -322,11 +322,20 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
           Earth at all.</p>
       </div>
       <div>
-        <h3>The Moon does not orbit the Earth's centre</h3>
-        <p>Both bodies orbit their common barycentre, which lies <b id="baryx">—</b> from Earth's
-          centre. The Earth's radius is 6371 km, so <b>the barycentre is inside the Earth</b> — the
-          Earth wobbles about an interior point rather than swinging around an external one. It is
-          marked in the view.</p>
+        <h3>What the drawn orbit actually shows</h3>
+        <p>Both bodies orbit their common barycentre, which lies <b id="baryx">—</b> from
+          Earth’s centre. The Earth’s radius is 6378 km, so <b>the barycentre is inside
+          the Earth</b> — our planet wobbles about an interior point rather than swinging
+          round an external one. It is marked in the view, just off centre.</p>
+        <p>The orbit is often drawn as an obvious egg. It is not. At e = 0.0549 the semi-minor
+          axis is 0.99849 of the semi-major — the ellipse is <b>0.15% off round</b>, 580 km
+          on 384 400, which no eye will catch. What you <i>can</i> see is that the Earth sits
+          <b>21 104 km</b> from the ellipse’s centre, 3.3 Earth radii. The shape reads as a
+          circle; the off-centre focus is the part that shows.</p>
+        <p>The tilt behaves the same way — 5.145° to the ecliptic, steady, but
+          18.3° to 28.6° to Earth’s equator, because the nodes regress once per
+          18.6 years and the two tilts alternately add and subtract. Those extremes are the
+          major and minor lunar standstills, 9.3 years apart.</p>
       </div>
       <div>
         <h3>The Sun is not a small correction</h3>
@@ -514,21 +523,27 @@ document.querySelectorAll('[data-trace]').forEach(b => {
 (function constants(){
   const mu = Lunar.MU;
   const rows = [
-    ['Mass ratio μ = m☾/(m⊕+m☾)', mu.toFixed(9)],
-    ['Earth mass', Lunar.M_EARTH.toExponential(5) + ' kg'],
-    ['Moon mass', Lunar.M_MOON.toExponential(6) + ' kg'],
+    ['Mass ratio μ = m☾/(m⊕+m☾)', mu.toFixed(9) + '  — from DE440 GM, not from kg'],
+    ['GM Earth / GM Moon', '398 600.4355 / 4 902.8001 km³s⁻²  (DE440)'],
+    ['Earth : Moon mass', '81.30 : 1'],
     ['Mean separation', km(MEAN_R) + ' km'],
-    ['Perigee – apogee', km(PERIGEE) + ' – ' + km(APOGEE) + ' km'],
-    ['Orbital eccentricity', '0.0549 (mean; it varies)'],
-    ['Inclination to the ecliptic', '5.145°'],
-    ['Inclination to Earth’s equator', '18.3° – 28.6°, over 18.6 years'],
-    ['Sidereal month', '27.321662 d'],
+    ['Mean perigee / apogee', '363 300 / 405 500 km'],
+    ['Extreme perigee / apogee', '356 400 / 406 700 km'],
+    ['Orbital eccentricity', '0.0549 mean, wandering 0.026 – 0.077'],
+    ['Semi-minor / semi-major', '0.99849 — the ellipse is 0.15% off round'],
+    ['Focus offset a·e', km(21104) + ' km — 3.3 Earth radii'],
+    ['Inclination to the ecliptic', '5.145° (4.99° – 5.30°)'],
+    ['Inclination to Earth’s equator', '18.28° – 28.58°, over 18.6 years'],
+    ['Sidereal month', '27.321661 d'],
     ['Synodic month', '29.530589 d'],
-    ['Nodal regression', '18.61 years'],
-    ['Apsidal precession', '8.85 years'],
-    ['Barycentre from Earth’s centre', km(mu*MEAN_R) + ' km — inside the Earth (R⊕ 6371 km)'],
-    ['Routh criterion for L4/L5', 'stable if μ < 0.0385 — here μ = ' +
-      mu.toFixed(5) + ', so yes in the ideal problem'],
+    ['Draconic / anomalistic month', '27.212221 / 27.554550 d'],
+    ['Nodal regression', '18.5996 years'],
+    ['Apsidal precession', '8.8504 years'],
+    ['Mean orbital speed', '1.022 km/s (0.970 – 1.082)'],
+    ['Recession from Earth', '3.83 cm/year (lunar laser ranging)'],
+    ['Barycentre from Earth’s centre', km(mu*MEAN_R) + ' km — inside the Earth (R⊕ 6378 km)'],
+    ['Routh criterion for L4/L5', 'stable if μ < 0.0385 — here μ = ' + mu.toFixed(5) +
+      ', so yes in the ideal problem'],
     ['L1 / L2 instability e-folding', '1.48 d / 2.01 d — Sun–Earth is 23 d'],
     ['Sun–Earth L1 / L2, for contrast', '1.50 million km from Earth'],
     ['Sun : Earth pull on the Moon', '2.20 : 1']

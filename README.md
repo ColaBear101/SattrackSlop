@@ -195,6 +195,51 @@ own Kepler-third-law semi-major axis) was cross-checked against this one:
 
 Run it yourself: `node verification/report.js` and `node verification/verify.js`.
 
+## The view from the spacecraft
+
+The camera control has four positions — Free, Satellite, Bangkok, POV — but only two kinds of
+camera. The first three are the *same* camera: a point at a fixed distance from the Earth's centre,
+looking at the Earth's centre, differing only in how the bearing is chosen. "Satellite" therefore
+shows the Earth from the spacecraft's **direction**, which is not the same thing as showing it from
+the spacecraft. At 4.2 Earth radii out, the spacecraft is a dot in the middle of the frame.
+
+**POV** sits on the spacecraft. Nadir by default — straight down, which in scene units is simply
+toward the origin — with the along-track direction as screen-up, so the spacecraft flies toward the
+top of the frame, the orientation nadir imagery is published in. Dragging turns the head instead of
+leaving the mode, and the wheel changes the **lens** rather than the range, because there is no
+range to change from on board: 8° is a long telephoto on the limb, 90° takes in the whole horizon.
+
+From KNACKSAT-2 at 369.8 km the horizon sits **70.94° off nadir**, so pitching up past about 71°
+takes the Earth out of frame entirely and leaves the star field. The catalogue cloud is still drawn,
+which means the other 2,157 objects are visible from orbit as points above the limb — that falls out
+of the existing scene rather than being built.
+
+Four things were not obvious until the view existed:
+
+- **The orientation is rebuilt from the same basis every frame**, not accumulated onto the previous
+  one. Accumulating lets a long drag walk the roll off true, and the error never comes back.
+- **The spacecraft marker is exactly where the camera is.** Drawing it fills the frame with the
+  inside of a sprite, so it is hidden in this mode — as is the halo, which cannot face a camera
+  standing on it.
+- **The marker scale factor read the wrong variable.** Sprite sizes were derived from the free
+  camera's distance from the origin, which is meaningless once the camera is somewhere else
+  entirely: the site pin and the 2,158-point cloud would have rendered at whatever size the free
+  camera happened to be the last time it was used. It comes from the camera's actual distance now.
+- **The atmosphere is a back-faced additive shell at 1.022 Earth radii.** That is 140 km altitude,
+  so a POV camera on a decaying object is *inside* it, where a rim glow becomes a full-frame wash.
+  It is dropped below 1.03.
+
+`cam0` — the free camera's bearing and distance — is never written while POV is on, so leaving the
+mode restores the previous camera exactly rather than stranding it wherever the spacecraft was.
+
+`verification/verify-pov.js` measures the camera rather than the picture, because a camera at 0.9999
+of the right place still renders a plausible one: position against the propagated state vector
+(exact, 0.00 km), view direction against nadir and screen-up against the along-track direction (both
+to 1e-9), then the real wheel and drag handlers for the rest. One trap it documents by working
+around it — the page owns the clock and pushes it into the scene every frame, so setting the scene's
+time is silently overwritten on the next animation frame, and at 7.7 km/s that single frame of drift
+reads exactly like a camera-placement bug.
+
 ## Architecture: the central body is a parameter
 
 The console was written for the Earth, and the Earth had leaked into every layer: `RE` and `MU`
@@ -775,6 +820,7 @@ npm run verify       # independent second implementation of elements/elevation/v
 npm run report       # the LANDSAT 9 answer, printed
 npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources
+npm run pov          # the POV camera, measured against the propagated state
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

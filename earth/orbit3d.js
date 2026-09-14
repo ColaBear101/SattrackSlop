@@ -29,12 +29,18 @@ let labels = {}, raycaster, mouse = null, hoverIdx = -1;
 let recs = [], cloudPos, cloudColor, cloudValid = [];
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
 let curPeriodS = 5400, ringMs = null, ringWall = 0;
-let curEntry = null, curRec = null, follow = true, siteLock = false;
+let curEntry = null, curRec = null, follow = true, siteLock = false, pov = false;
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
+/* POV is a different kind of camera. It has no distance, because it is AT the
+   spacecraft; yaw and pitch are offsets from nadir, and the wheel changes the
+   lens rather than the range. cam0 is deliberately never written while POV is
+   on, so leaving the mode restores the free camera exactly where it was. */
+let pov0 = { yaw: 0, pitch: 0, fov: 42 };
+const BASE_FOV = 42;                             // what the other three modes use
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
-let onPick = null, onFollow = null, onSite = null, started = false, fovOn = true;
+let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
 
 /* ---- small helpers -------------------------------------------------------- */
@@ -399,6 +405,7 @@ function setFollowState(v){
   if(follow === v) return;
   follow = v;
   if(v && siteLock){ siteLock = false; if(onSite) onSite(false); }
+  if(v && pov){ pov = false; if(onPov) onPov(false); }
   if(onFollow) onFollow(v);                      // the button must track the camera
 }
 // Holding a ground site needs a mode, not a one-shot aim: the scene is inertial,
@@ -409,10 +416,56 @@ function setSiteState(v){
   siteLock = v;
   if(v){
     if(follow){ follow = false; if(onFollow) onFollow(false); }
+    if(pov){ pov = false; if(onPov) onPov(false); }
     cam0.lat = GT.OBS.lat + 6;
     cam0.dist = Math.min(cam0.dist, 4.2);
   }
   if(onSite) onSite(v);
+}
+
+/* The other three modes are all the SAME camera: a point at cam0.dist from the
+   origin, looking at the origin. They differ only in how the bearing is chosen.
+   POV is not that camera - it sits on the spacecraft - so it is exclusive with
+   both of the others, and it owns the drag and the wheel while it is on. */
+function setPovState(v){
+  if(pov === v) return;
+  pov = v;
+  if(v){
+    if(follow){ follow = false; if(onFollow) onFollow(false); }
+    if(siteLock){ siteLock = false; if(onSite) onSite(false); }
+    pov0.yaw = 0; pov0.pitch = 0;                // re-entering re-centres on nadir
+  }
+  if(onPov) onPov(v);
+}
+
+/* Aim the POV camera. Nadir is straight down, which in scene units is simply
+   toward the origin. The screen's up is the along-track direction, so the
+   spacecraft flies toward the top of the frame - the orientation nadir imagery
+   is published in. Yaw then turns the head about the local vertical and pitch
+   lifts it from nadir out to the horizon, and past it into the sky.
+
+   Rebuilt from the same basis every frame rather than accumulated onto the
+   previous orientation: a long drag would otherwise walk the roll off true, and
+   the error would never come back. */
+function aimPov(satPos, satVel){
+  const zenith = satPos.clone().normalize();
+  let ahead = (satVel && satVel.lengthSq() > 1e-12)
+    ? satVel.clone() : new THREE.Vector3(0, 1, 0);
+  ahead.addScaledVector(zenith, -ahead.dot(zenith));    // the local-horizontal part
+  if(ahead.lengthSq() < 1e-12){                         // velocity parallel to r: pick anything
+    ahead.set(0, 1, 0).addScaledVector(zenith, -zenith.y);
+    if(ahead.lengthSq() < 1e-12) ahead.set(1, 0, 0).addScaledVector(zenith, -zenith.x);
+  }
+  ahead.normalize();
+  const right = new THREE.Vector3().crossVectors(ahead, zenith).normalize();
+  /* three.js cameras look down their own -Z, so the basis is (right, up, back).
+     With back = zenith the view direction is -zenith, which is nadir. */
+  cam.position.copy(satPos);
+  cam.quaternion.setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(right, ahead, zenith));
+  cam.rotateY(pov0.yaw*RAD);
+  cam.rotateX(pov0.pitch*RAD);
+  if(cam.fov !== pov0.fov){ cam.fov = pov0.fov; cam.updateProjectionMatrix(); }
 }
 
 // One revolution centred on the given instant, in inertial space.
@@ -512,15 +565,27 @@ function bindInput(canvas){
     if(e.touches && e.touches.length === 2 && pinch0){
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                            e.touches[0].clientY-e.touches[1].clientY);
-      setFollowState(false); setSiteState(false);
-      cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * pinch0/d));
+      if(pov){
+        pov0.fov = Math.max(8, Math.min(90, pov0.fov * pinch0/d));
+      } else {
+        setFollowState(false); setSiteState(false);
+        cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * pinch0/d));
+      }
       pinch0 = d; e.preventDefault(); return;
     }
     const p = pt(e);
     if(dragging && lastPt){
-      setFollowState(false); setSiteState(false);
-      cam0.lon -= (p.x-lastPt.x)*0.32;
-      cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
+      /* A drag drops the other camera modes, because moving the camera IS
+         leaving them. In POV it is not: looking around is what the mode is for,
+         so the drag turns the head and stays aboard. */
+      if(pov){
+        pov0.yaw -= (p.x-lastPt.x)*0.22;
+        pov0.pitch = Math.max(-110, Math.min(110, pov0.pitch - (p.y-lastPt.y)*0.22));
+      } else {
+        setFollowState(false); setSiteState(false);
+        cam0.lon -= (p.x-lastPt.x)*0.32;
+        cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
+      }
       travel += Math.abs(p.x-lastPt.x) + Math.abs(p.y-lastPt.y);
       lastPt = p; e.preventDefault();
     } else if(!e.touches){
@@ -537,7 +602,11 @@ function bindInput(canvas){
   window.addEventListener('touchend', up);
   canvas.addEventListener('mouseleave', ()=>{ mouse = null; hoverIdx = -1; });
   canvas.addEventListener('wheel', e => {
-    cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * (1 + Math.sign(e.deltaY)*0.12)));
+    /* There is no range to change from inside the spacecraft, so in POV the
+       wheel is a lens instead: 8 deg is a long telephoto on the limb, 90 deg
+       takes in the whole horizon. */
+    if(pov) pov0.fov = Math.max(8, Math.min(90, pov0.fov * (1 + Math.sign(e.deltaY)*0.09)));
+    else    cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * (1 + Math.sign(e.deltaY)*0.12)));
     e.preventDefault();
   }, {passive:false});
   // click fires after mouseup however far the pointer travelled, and hoverIdx is
@@ -599,19 +668,26 @@ function tick(ts){
   }
 
   // focused spacecraft
-  let satPos = null, el = -90;
+  let satPos = null, satVel = null, el = -90;
   if(curRec){
     const st1 = curRec.at(simTime.getTime()); const pv = st1 ? {position: st1.r, velocity: st1.v} : null;
     updateFov(pv, gmst);
     if(pv && pv.position){
       satPos = new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U);
+      // direction only - the POV basis normalises it - so no scale factor here
+      if(pv.velocity)
+        satVel = new THREE.Vector3(pv.velocity.x, pv.velocity.z, -pv.velocity.y);
       satDot.position.copy(satPos);
-      satHalo.position.copy(satPos); satHalo.lookAt(cam.position);
+      satHalo.position.copy(satPos);
+      // in POV the camera IS the spacecraft, so the halo has nothing to turn to
+      if(!pov) satHalo.lookAt(cam.position);
       const look = BODY.lookAngles(GT.OBS, BODY.toFixed(pv.position, gmst));
       el = look.elevation*DEG;
     }
   }
-  satDot.visible = satHalo.visible = !!satPos;
+  /* The marker sits exactly where the POV camera does, so drawing it fills the
+     frame with the inside of a sprite. */
+  satDot.visible = satHalo.visible = !!satPos && !pov;
 
   // R(+) rides the radius vector, so the remaining gap to the marker reads as altitude
   if(reLine.visible && satPos){
@@ -662,22 +738,36 @@ function tick(ts){
   }
 
   // camera
-  if(siteLock){
-    cam0.lon = GT.OBS.lon + gmst*DEG;             // ride the Earth's rotation
-  } else if(follow && satPos){
-    const r = satPos.length();
-    cam0.lat = Math.asin(satPos.y/r)*DEG;
-    cam0.lon = Math.atan2(-satPos.z, satPos.x)*DEG;
+  if(pov && satPos){
+    aimPov(satPos, satVel);
+  } else {
+    if(siteLock){
+      cam0.lon = GT.OBS.lon + gmst*DEG;           // ride the Earth's rotation
+    } else if(follow && satPos){
+      const r = satPos.length();
+      cam0.lat = Math.asin(satPos.y/r)*DEG;
+      cam0.lon = Math.atan2(-satPos.z, satPos.x)*DEG;
+    }
+    const la = cam0.lat*RAD, lo = cam0.lon*RAD;
+    cam.position.set(cam0.dist*Math.cos(la)*Math.cos(lo),
+                     cam0.dist*Math.sin(la),
+                     -cam0.dist*Math.cos(la)*Math.sin(lo));
+    cam.lookAt(0,0,0);
+    if(cam.fov !== BASE_FOV){ cam.fov = BASE_FOV; cam.updateProjectionMatrix(); }
   }
-  const la = cam0.lat*RAD, lo = cam0.lon*RAD;
-  cam.position.set(cam0.dist*Math.cos(la)*Math.cos(lo),
-                   cam0.dist*Math.sin(la),
-                   -cam0.dist*Math.cos(la)*Math.sin(lo));
-  cam.lookAt(0,0,0);
+  /* The atmosphere is a back-faced additive shell at 1.022: from outside it
+     draws a rim, from inside it washes the whole frame. A POV camera on
+     anything below about 140 km altitude is inside it. */
+  if(atmo) atmo.visible = earthOn && !(pov && cam.position.length() < 1.03);
 
   // world-sized markers balloon as you zoom in; scale them with distance so they
   // stay roughly constant on screen
-  const mk = Math.max(0.30, Math.min(2.4, cam0.dist/4.2));
+  /* cam0.dist is the free camera's range from the origin and means nothing in
+     POV, where the camera is at the spacecraft. Left as it was, the site pin and
+     the 2158-point cloud would render at whatever size the free camera happened
+     to be the last time it was used. */
+  const camR = pov ? cam.position.length() : cam0.dist;
+  const mk = Math.max(0.30, Math.min(2.4, camR/4.2));
   satDot.scale.setScalar(mk); satHalo.scale.setScalar(mk);
   if(bkkDot) bkkDot.scale.setScalar(mk);
   if(cloudMat) cloudMat.size = 0.030*Math.max(0.55, Math.min(1.8, mk));
@@ -750,12 +840,14 @@ global.Orbit3D = {
     } catch(e){ return false; }
     labels = opts.labels || {};
     onPick = opts.onPick; onFollow = opts.onFollow; onSite = opts.onSite;
+    onPov = opts.onPov;
     started = true;
     requestAnimationFrame(tick);
     return true;
   },
   setSat, retheme,
   get scene(){ return scene; },        // the sky layers hang off the same scene
+  get camera(){ return cam; },         // and are projected through the same camera
   get time(){ return simTime; },
   set time(d){ simTime = new Date(d); },
   setRate(r){ rate = r; },
@@ -794,7 +886,10 @@ global.Orbit3D = {
   },
   get trail(){ return trailSpan; },
   get site(){ return siteLock; },
-  freeCam(){ setFollowState(false); setSiteState(false); },
+  // the view FROM the spacecraft, rather than of it
+  setPov(v){ setPovState(!!v); },
+  get pov(){ return pov; },
+  freeCam(){ setFollowState(false); setSiteState(false); setPovState(false); },
   ok(){ return started; }
 };
 })(window);

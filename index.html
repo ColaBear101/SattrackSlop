@@ -492,6 +492,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
           <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
           <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
           <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
+          <button class="btn cam" data-mode="pov" aria-pressed="false">POV</button>
         </div>
       </div>
       <div class="trailseg">
@@ -8729,7 +8730,8 @@ document.addEventListener('visibilitychange', () => {
               alt: document.getElementById('o3alt') },
     onPick: (i, x, y) => askLoad(i, x, y),     // 2158 points is a lot to misclick
     onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },
-    onSite:   () => { if(window.__paintCamMode) window.__paintCamMode(); }
+    onSite:   () => { if(window.__paintCamMode) window.__paintCamMode(); },
+    onPov:    () => { if(window.__paintCamMode) window.__paintCamMode(); }
   });
   if(!ok){
     document.getElementById('o3fallback').hidden = false;
@@ -8748,7 +8750,7 @@ document.addEventListener('visibilitychange', () => {
   // enforced that, so the control should say it rather than imply three switches
   const cams = [...document.querySelectorAll('.camseg .cam')];
   function paintMode(){
-    const m = Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
+    const m = Orbit3D.pov ? 'pov' : Orbit3D.site ? 'site' : (Orbit3D.follow ? 'sat' : 'free');
     cams.forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
   }
   /* ---- sky and frame layers ---------------------------------------------- *
@@ -8793,8 +8795,9 @@ document.addEventListener('visibilitychange', () => {
   window.__applyTrail = applyTrail;
 
   cams.forEach(b => b.addEventListener('click', ()=>{
-    if(b.dataset.mode === 'sat')      Orbit3D.setFollow(true);
+    if(b.dataset.mode === 'sat')       Orbit3D.setFollow(true);
     else if(b.dataset.mode === 'site') Orbit3D.setSite(true);
+    else if(b.dataset.mode === 'pov')  Orbit3D.setPov(true);
     else                               Orbit3D.freeCam();
     paintMode();
   }));

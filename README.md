@@ -747,6 +747,31 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+## The observer is a value now
+
+Bangkok was a constant. `lookAngles(site, rFixed)` had always taken the site as an argument, the
+propagation adapters had always passed it, and `orbit3d` had always read `GT.OBS` — so the seam
+existed; only the value was frozen. It is editable now, with a UTC offset, and it persists.
+
+Two things make that safe rather than merely possible:
+
+- **`OBS` is mutated in place, never replaced.** `earth/orbit3d.js` is handed the object once at
+  init and reads it every frame. Assigning a new object would leave the globe pinned to the old
+  site while every number on the page moved — the worst kind of failure, because it looks fine.
+  The check reads the pin's own geometry back out of the scene and compares it against the new
+  coordinates.
+- **Bangkok stays the default.** `verification/baseline.json` records `obs = Bangkok` in its meta,
+  and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
+  cannot leak into it. Reset restores the assignment's own total to the bit.
+
+The timezone follows the site. An arbitrary lat/lon has no discoverable zone name, so the label
+reads `UTC+7` rather than inventing one, and the offset defaults to the nearest hour of solar time
+while staying editable. A note under the form says which regime the page is in — the assignment's
+site, or moved, in which case the README's own figures no longer describe what is on screen.
+
+Moving to Svalbard (78.23°N) returns **0 passes**, which is the right answer and a useful check:
+KNACKSAT-2's 51.6° orbit never reaches that latitude, so a site there cannot see it at all.
+
 ## Radio visibility is not naked-eye visibility
 
 Every pass figure in this README is **radio** visibility: geometry above a 5° mask, day or night.
@@ -936,6 +961,7 @@ npm run refresh      # the live TLE refresh, against mocked sources
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry and naked-eye passes
+npm run site         # moving the observer, and that Bangkok stays the default
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

@@ -358,6 +358,16 @@ canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:blo
 .dopbar input{width:84px; text-align:right}
 .dopbar .u{color:var(--muted); font-size:11px}
 .dopbar .none{color:var(--muted); font-size:11px; font-style:italic}
+.sitebox{margin-top:10px}
+.siteform{display:flex; flex-direction:column; gap:6px; margin-top:8px;
+  padding:10px; border:1px solid var(--rule); border-radius:6px; background:var(--sunk)}
+.siteform label{display:flex; justify-content:space-between; align-items:center; gap:10px;
+  font-size:11px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase}
+.siteform input{font:inherit; font-size:12px; width:104px; text-align:right; text-transform:none;
+  letter-spacing:0; background:var(--panel); color:var(--ink);
+  border:1px solid var(--rule); border-radius:4px; padding:3px 5px}
+.siterow{display:flex; gap:7px; margin-top:3px}
+.sitenote{font-size:11px; color:var(--muted); margin:2px 0 0; line-height:1.45}
 .skyfacts .k{color:var(--muted); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
   font-family:"IBM Plex Mono",ui-monospace,monospace}
 .skyfacts .v{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; color:var(--ink)}
@@ -490,7 +500,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
       <div class="hud">
         <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
-        <div class="t2"><span id="o3clocklocal">—</span><span class="zone">ICT</span></div>
+        <div class="t2"><span id="o3clocklocal">—</span><span class="zone" id="lbl-tz1">ICT</span></div>
 
       </div>
       <div class="camseg">
@@ -498,7 +508,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="seg" role="group" aria-labelledby="camlabel">
           <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
           <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
-          <button class="btn cam" data-mode="site" aria-pressed="false">Bangkok</button>
+          <button class="btn cam" data-mode="site" aria-pressed="false" id="lbl-camsite">Bangkok</button>
           <button class="btn cam" data-mode="pov" aria-pressed="false">POV</button>
         </div>
       </div>
@@ -539,12 +549,27 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
 
       <div class="answer">
-        <p class="eyebrow">Visible from Bangkok · 5° mask</p>
+        <p class="eyebrow" id="lbl-vis">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
         <div class="livel">
-          <span class="k">Elevation at Bangkok now</span>
+          <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
           <span class="v" id="o3el">—</span>
+        </div>
+        <div class="sitebox">
+          <button class="btn" id="siteopen" aria-expanded="false">Change observer…</button>
+          <div class="siteform" id="siteform" hidden>
+            <label>Name<input id="s-name" type="text" maxlength="24"></label>
+            <label>Latitude<input id="s-lat" type="number" step="0.0001" min="-90" max="90"></label>
+            <label>Longitude<input id="s-lon" type="number" step="0.0001" min="-180" max="180"></label>
+            <label>Altitude km<input id="s-alt" type="number" step="0.001" min="-0.5" max="9"></label>
+            <label>UTC offset<input id="s-tz" type="number" step="0.5" min="-12" max="14"></label>
+            <div class="siterow">
+              <button class="btn" id="siteapply">Apply</button>
+              <button class="btn" id="sitereset">Reset to Bangkok</button>
+            </div>
+            <p class="sitenote" id="sitenote"></p>
+          </div>
         </div>
         <div class="countdown">
           <span class="k" id="cdlabel">Next pass</span>
@@ -597,7 +622,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
     <div class="tp-clock">
       <span class="a"><span id="tpclock">—</span> UTC</span>
-      <span class="b"><span id="tpclocklocal">—</span> ICT</span>
+      <span class="b"><span id="tpclocklocal">—</span> <span id="lbl-tz2">ICT</span></span>
     </div>
     <label class="btn" for="o3earth2" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3earth2" checked> Earth
@@ -664,9 +689,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="canvas-hold"><canvas id="map"></canvas></div>
       <div class="legend">
         <span class="key"><span class="sw" style="border-color:var(--track)"></span>Sub-satellite track</span>
-        <span class="key"><span class="sw" style="border-color:var(--contact); border-top-width:4px"></span>In view from Bangkok (el ≥ 5°)</span>
-        <span class="key"><span class="dot"></span>Bangkok 13.75°N 100.52°E</span>
-        <span class="key"><span class="ring"></span>Bangkok 5° access circle</span>
+        <span class="key"><span class="sw" style="border-color:var(--contact); border-top-width:4px"></span><span id="lbl-inview">In view from Bangkok (el ≥ 5°)</span></span>
+        <span class="key"><span class="dot"></span><span id="lbl-sitepos">Bangkok 13.75°N 100.52°E</span></span>
+        <span class="key"><span class="ring"></span><span id="lbl-sitering">Bangkok 5° access circle</span></span>
         <span class="key"><span class="fovkey"></span>Spacecraft footprint (ground above 5°)</span>
         <span class="key"><span class="nightsw"></span>Sunlit / night side at the shown instant</span>
       </div>
@@ -757,7 +782,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
       <div>
         <h3>Visibility</h3>
-        <p>Topocentric elevation is computed at the Bangkok site every <code>10 s</code>. Each
+        <p>Topocentric elevation is computed at the <span id="lbl-prose">Bangkok</span> site every <code>10 s</code>. Each
         horizon crossing of the 5° mask is then bracketed and bisected to millisecond precision, so
         the cumulative total is not quantised by the sample step. Purely geometric — no terrain,
         refraction or link budget.</p>
@@ -7271,7 +7296,12 @@ const RAD = Math.PI/180, DEG = 180/Math.PI;
    the same; what changed is where they come from. */
 const BODY = Body.Earth(satellite);
 const MU = BODY.mu, RE = BODY.Re;
-const OBS = BODY.defaultSite;
+/* The observer is a value now, not a constant, and it is MUTATED in place
+   rather than reassigned. earth/orbit3d.js is handed this object once at init
+   and reads GT.OBS every frame, so swapping it for a new object would leave the
+   globe pinned to the old site forever while everything else moved. */
+const OBS = Object.assign({}, BODY.defaultSite);
+const HOME = Object.assign({}, BODY.defaultSite);   // what "reset" means
 const MASK = 5;                                  // deg
 /* The analysis window used to be nailed to "24 h from the element set epoch".
    It is now an arbitrary span the user places anywhere - defaulting to their own
@@ -7286,10 +7316,13 @@ const stepFor = hrs => hrs <= 48 ? 10 : 30;      // display sample step, seconds
    merely imprecise, it is invisible. A 6.0 s pass of FENGYUN 3E was being lost
    at 10 s. */
 const passStepFor = hrs => hrs <= 48 ? 4 : 15;
-/* The site carries its own offset now; this stays as an alias because the
-   label text says "ICT" in a dozen places and a site change should rename
-   those deliberately rather than silently. */
-const ICT = OBS.tz;
+/* The site carries its own offset, and the labels follow it. This used to be a
+   const alias with a note that a site change should rename the dozen "ICT"
+   labels deliberately rather than silently - that rename is what paintSite()
+   below is. An arbitrary lat/lon has no discoverable timezone name, so the
+   offset is shown as UTC+7 rather than invented. */
+let TZ = OBS.tz;
+const tzLabel = () => 'UTC' + (TZ < 0 ? '\u2212' : '+') + (Math.abs(TZ) % 1 ? Math.abs(TZ).toFixed(1) : Math.abs(TZ));
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
    has no network access of its own, so it cannot discover this at runtime. */
@@ -7349,7 +7382,7 @@ const pad = (x,n)=>String(x).padStart(n||2,'0');
 const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+
   ' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds())+'Z';
 const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
-const hmsLocal = d => { const t = new Date(d.getTime()+ICT*3600000);
+const hmsLocal = d => { const t = new Date(d.getTime()+TZ*3600000);
   return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
 // the analysis window starts at the epoch, so it usually crosses midnight
 const dayOff = d => Math.floor((d.getTime() - D.start.getTime())/86400000);
@@ -7969,7 +8002,7 @@ function paintClock(force){
   if(!D) return;
   const utc = document.getElementById('tpclock');
   const uStr = iso(new Date(simMs)).replace('Z',''),
-        lStr = iso(new Date(simMs + ICT*3600000)).replace('Z','');
+        lStr = iso(new Date(simMs + TZ*3600000)).replace('Z','');
   utc.textContent = uStr;
   document.getElementById('tpclocklocal').textContent = lStr;
   const hu = document.getElementById('o3clock'), hl = document.getElementById('o3clocklocal');
@@ -8015,7 +8048,7 @@ function paintCountdown(){
   const dt = wrapped ? (winT1()-simMs) + (nxt.t0ms-winT0()) : nxt.t0ms - simMs;
   k.textContent = 'Next pass in';
   v.textContent = hhmmss(dt); v.className = 'v';
-  w.textContent = 'AOS ' + hms(nxt.aos) + 'Z · ' + hmsLocal(nxt.aos) + ' ICT · max ' +
+  w.textContent = 'AOS ' + hms(nxt.aos) + 'Z · ' + hmsLocal(nxt.aos) + ' ' + tzLabel() + ' · max ' +
                   nxt.maxEl.toFixed(1) + '°' + (wrapped ? ' (next cycle)' : '');
 }
 
@@ -8074,7 +8107,7 @@ function renderAccess(){
     'aria-label="Pass '+(i+1)+', acquisition '+hms(p.aos)+' UTC, '+mmss(p.dur)+
     ', maximum elevation '+p.maxEl.toFixed(1)+' degrees">'+
     '<span class="n">'+(i+1)+'</span>'+
-    '<span class="t">'+hmsD(p.aos)+'Z<small>'+hmsLocal(p.aos)+' ICT · '+mmss(p.dur)+'</small></span>'+
+    '<span class="t">'+hmsD(p.aos)+'Z<small>'+hmsLocal(p.aos)+' '+tzLabel()+' · '+mmss(p.dur)+'</small></span>'+
     '<span class="e">'+p.maxEl.toFixed(0)+'°</span></button>').join('') ||
     '<p style="font-size:12.5px;color:var(--muted)">No pass clears the 5° mask in this window.</p>';
   pl.querySelectorAll('.passrow').forEach(b=>
@@ -8236,13 +8269,99 @@ function selectPass(i, scrub){
   paintDop();
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
-    ['AOS', hmsD(p.aos)+'Z · '+hmsLocal(p.aos)+' ICT'],
+    ['AOS', hmsD(p.aos)+'Z · '+hmsLocal(p.aos)+' '+tzLabel()],
     ['Culmination', hmsD(p.maxAt)+'Z at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
-    ['LOS', hmsD(p.los)+'Z · '+hmsLocal(p.los)+' ICT'],
+    ['LOS', hmsD(p.los)+'Z · '+hmsLocal(p.los)+' '+tzLabel()],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
   ].concat(opticalRows(p)).concat(dopRows(p))
    .map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
+}
+
+/* ---- the observer -------------------------------------------------------- *
+ * Everything downstream already took the site as an argument - body.lookAngles
+ * takes it, the propagation adapters pass it, orbit3d reads GT.OBS - so this is
+ * a change of value rather than a change of shape. What it is NOT is a change of
+ * default: the site stays Bangkok unless someone moves it, which is what keeps
+ * the regression baseline meaningful. snapshot.js runs in a fresh browser with
+ * empty localStorage, so it sees Bangkok and nothing below runs at all.        */
+const SITE_KEY = 'obs-site';
+
+function siteValid(o){
+  return o && isFinite(o.lat) && isFinite(o.lon) &&
+    Math.abs(o.lat) <= 90 && Math.abs(o.lon) <= 180;
+}
+function applySite(o, persist){
+  if(!siteValid(o)) return false;
+  OBS.lat = +o.lat; OBS.lon = +o.lon;
+  OBS.altKm = isFinite(o.altKm) ? +o.altKm : 0;
+  OBS.name = String(o.name || '').trim().slice(0, 24) || 'Observer';
+  /* An arbitrary lat/lon has no discoverable timezone, so the nearest hour of
+     solar time is the honest default and the field stays editable. */
+  OBS.tz = isFinite(o.tz) ? +o.tz : Math.round(OBS.lon/15);
+  TZ = OBS.tz;
+  if(persist){
+    try { localStorage.setItem(SITE_KEY, JSON.stringify(
+      {lat:OBS.lat, lon:OBS.lon, altKm:OBS.altKm, name:OBS.name, tz:OBS.tz})); } catch(e){}
+  }
+  return true;
+}
+function paintSite(){
+  const nm = OBS.name, pos = latStr(OBS.lat)+' '+lonStr(OBS.lon);
+  const set = (id, txt) => { const e = document.getElementById(id); if(e) e.textContent = txt; };
+  set('lbl-vis',     'Visible from '+nm+' · '+MASK+'° mask');
+  set('lbl-elnow',   'Elevation at '+nm+' now');
+  set('lbl-inview',  'In view from '+nm+' (el ≥ '+MASK+'°)');
+  set('lbl-sitepos', nm+' '+pos);
+  set('lbl-sitering', nm+' '+MASK+'° access circle');
+  set('lbl-prose',   nm);
+  set('lbl-camsite', nm);
+  set('lbl-tz1',     tzLabel());
+  set('lbl-tz2',     tzLabel());
+  const ha = document.querySelector('#sec-access h2');
+  if(ha) ha.textContent = 'Visibility from '+nm+' · '+MASK+'° elevation mask';
+  const note = document.getElementById('sitenote');
+  if(note) note.textContent = (OBS.lat === HOME.lat && OBS.lon === HOME.lon && OBS.altKm === HOME.altKm)
+    ? 'The assignment site. Every figure in the README is computed here.'
+    : 'Moved from Bangkok — the README’s figures no longer describe this page.';
+  const f = id => document.getElementById(id);
+  if(f('s-name')){ f('s-name').value = OBS.name; f('s-lat').value = OBS.lat;
+    f('s-lon').value = OBS.lon; f('s-alt').value = OBS.altKm; f('s-tz').value = OBS.tz; }
+}
+function siteChanged(){
+  paintSite();
+  const keep = simMs, wasPlaying = playing;
+  load(CAT[curIdx]);            // the whole analysis is site-dependent
+  setSim(keep, !wasPlaying);
+  if(global3D() && window.Orbit3D && Orbit3D.ok()) Orbit3D.siteMoved();
+}
+function bootSite(){
+  try {
+    const j = JSON.parse(localStorage.getItem(SITE_KEY) || 'null');
+    if(siteValid(j)) applySite(j, false);
+  } catch(e){}
+  paintSite();
+  const open = document.getElementById('siteopen'), form = document.getElementById('siteform');
+  if(open) open.addEventListener('click', ()=>{
+    const on = form.hidden;
+    form.hidden = !on; open.setAttribute('aria-expanded', String(on));
+    if(on) paintSite();
+  });
+  const g = id => parseFloat((document.getElementById(id)||{}).value);
+  const apply = document.getElementById('siteapply');
+  if(apply) apply.addEventListener('click', ()=>{
+    const ok = applySite({ name: (document.getElementById('s-name')||{}).value,
+      lat: g('s-lat'), lon: g('s-lon'), altKm: g('s-alt'), tz: g('s-tz') }, true);
+    if(ok) siteChanged();
+    else document.getElementById('sitenote').textContent =
+      'Latitude must be within ±90° and longitude within ±180°.';
+  });
+  const rst = document.getElementById('sitereset');
+  if(rst) rst.addEventListener('click', ()=>{
+    applySite(HOME, false);
+    try { localStorage.removeItem(SITE_KEY); } catch(e){}
+    siteChanged();
+  });
 }
 
 /* ---- boot ---------------------------------------------------------------- */
@@ -8260,7 +8379,7 @@ function load(entry){
   const hd = document.querySelector('#sec-track h2');
   if(hd) hd.textContent = 'Ground track · ' + spanLabel(D.hours) + ' from window start';
   const ha = document.querySelector('#sec-access h2');
-  if(ha) ha.textContent = 'Visibility from Bangkok · 5° elevation mask';
+  if(ha) ha.textContent = 'Visibility from '+OBS.name+' · '+MASK+'° elevation mask';
   document.getElementById('footepoch').textContent =
     'Element set epoch '+iso(D.E.epoch)+' · window '+spanLabel(D.hours)+
     ' from '+iso(D.start)+' · sample '+D.step+' s';
@@ -8948,7 +9067,7 @@ document.addEventListener('visibilitychange', () => {
     gt: { WORLD, CAT, OBS, MASK,
           now: () => new Date(simMs),          // one clock, shared
           fmtUTC:  d => iso(d).replace('Z',''),
-          fmtLocal: d => iso(new Date(d.getTime()+ICT*3600000)).replace('Z','') },
+          fmtLocal: d => iso(new Date(d.getTime()+TZ*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
               el: document.getElementById('o3el'),
               earth: document.getElementById('o3earth'),
@@ -9040,6 +9159,10 @@ document.addEventListener('visibilitychange', () => {
 curIdx = DEFAULT;
 box.value = CAT[curIdx].name;
 countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type to search';
+/* Before the first analysis, not after: every figure on the page is computed at
+   the site, so restoring a saved one afterwards would mean computing twice and
+   showing the wrong answer in between. */
+bootSite();
 load(CAT[curIdx]);
 if('IntersectionObserver' in window){
   new IntersectionObserver(es => {

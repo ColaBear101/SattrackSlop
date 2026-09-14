@@ -209,13 +209,12 @@ function build(canvas){
     color: new THREE.Color(SPACE.fov), transparent:true, opacity:.72 }));
   earthGroup.add(fovRing);
   bkkPin = new THREE.Group(); earthGroup.add(bkkPin);
-  const pinTop = llToScene(GT.OBS.lat, GT.OBS.lon, 1.075);
-  bkkPin.add(new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([llToScene(GT.OBS.lat, GT.OBS.lon, 1.001), pinTop]),
+  bkkPin.add(new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({color: col('--observer')})));
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 10),
     new THREE.MeshBasicMaterial({color: col('--observer')}));
-  dot.position.copy(pinTop); bkkPin.add(dot); bkkDot = dot;
+  bkkPin.add(dot); bkkDot = dot;
+  placeSite();
 
   // inertial overlays
   orbitLine = mkLine(0, '--contact', 2); scene.add(orbitLine);
@@ -399,6 +398,18 @@ function setSat(entry, elements, win){
   footRing.geometry = new THREE.BufferGeometry().setFromPoints(fp);
   footRing.computeLineDistances();
   if(labels.name) labels.name.textContent = entry.name;
+}
+
+/* The site pin, as a function of the site rather than a fixed geometry. It was
+   built inline from GT.OBS once at init, which is correct exactly until the
+   observer moves - and the page can move it now. */
+function placeSite(){
+  if(!bkkPin || !bkkPin.children.length) return;
+  const base = llToScene(GT.OBS.lat, GT.OBS.lon, 1.001);
+  const top  = llToScene(GT.OBS.lat, GT.OBS.lon, 1.075);
+  const line = bkkPin.children[0];
+  if(line && line.geometry) line.geometry.setFromPoints([base, top]);
+  if(bkkDot) bkkDot.position.copy(top);
 }
 
 function setFollowState(v){
@@ -880,6 +891,13 @@ global.Orbit3D = {
   // the scene is inertial, so a fixed camera longitude is a right ascension and
   // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
   setSite(v){ setSiteState(!!v); },
+  /* The observer moved. GT.OBS is mutated in place by the page rather than
+     replaced, so the reference here is still live - only the geometry built
+     from it at init has to be rebuilt, and the site-lock camera re-aimed. */
+  siteMoved(){
+    placeSite();
+    if(siteLock) cam0.lat = GT.OBS.lat + 6;
+  },
   setTrail(ms){                                   // a number of ms, or Infinity
     trailSpan = ms;
     if(trackPts.length) updateTrail(simTime.getTime());

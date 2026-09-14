@@ -26,9 +26,10 @@
     "refresh": "node verification/verify-refresh.js",
     "pov": "node verification/verify-pov.js",
     "doppler": "node verification/verify-doppler.js",
+    "optical": "node verification/verify-optical.js",
     "snapshot": "node verification/snapshot.js",
     "gate": "node verification/regress.js",
-    "test": "npm run verify && npm run evec && npm run gate && npm run refresh && npm run pov && npm run doppler",
+    "test": "npm run verify && npm run evec && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical",
     "moon": "node verification/verify-moon.js",
     "moon:chain": "node verification/verify-lunar-chain.js",
     "moon:bake": "node verification/fetch-lunar-ephem.js"

@@ -747,6 +747,53 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+## Radio visibility is not naked-eye visibility
+
+Every pass figure in this README is **radio** visibility: geometry above a 5° mask, day or night.
+The page used to say so in a disclaimer. It computes the difference now.
+
+Seeing a pass needs two more conditions that pull against each other — the spacecraft lit while the
+observer is not. That is why satellites are watched in the hour after dusk and before dawn, and why
+most radio passes are not watchable at all. Both of KNACKSAT-2's passes on the reference day are
+radio-only, for opposite reasons: the 18:12Z pass has the sun 67° below Bangkok's horizon but the
+spacecraft **in eclipse**; the 07:20Z pass has it sunlit and the sun **55.8° up**.
+
+### The shadow is a cone
+
+The Sun is not a point. At 696,000 km radius and 1.496×10⁸ km away it subtends about half a degree,
+so Earth's shadow tapers and is wrapped in a penumbra that widens with distance. A cylinder is the
+usual shortcut, and it is wrong in the direction that matters: it reports full shadow where there is
+only partial shading.
+
+Measured rather than asserted — walking down the anti-sun axis, the umbra closes at **1.3916×10⁶ km**,
+matching `Re·d/(Rs−Re)` to within 0.000 %. A cylinder never closes at all. At 40,000 km behind the
+Earth the umbra radius is 6194.8 km and the penumbra 6564.9 km, bracketing Earth's own 6378.1 km.
+
+Umbra and penumbra are reported separately rather than collapsed. At LEO the penumbra crossing lasts
+seconds — **0.25 %** of KNACKSAT-2's orbit — but it is a real state, and a satellite in it is dimmed
+rather than dark.
+
+The same code has to produce both extremes, which is the check worth having: a 51.6° LEO orbit is
+sunlit **60.5 %** of the day, a sun-synchronous METOP-B **71.4 %**.
+
+### One bug this found, which was not hypothetical
+
+Solar elevation comes from `asin` of the cosine of the zenith angle. With the site *at* the
+sub-solar point that expression is sin² + cos², which rounds to 1.0000000000000002 and takes `asin`
+straight to **NaN**. Not a corner case: the sub-solar point crosses Bangkok's latitude twice a year.
+It is clamped, and the check that caught it — the Sun must be exactly overhead at its own sub-point
+— is kept.
+
+What survives is 8.54×10⁻⁷ degrees, and that is the formulation, not the code: `asin` has a diverging
+derivative at ±1, which is precisely where that test sits, so a double's 2×10⁻¹⁶ becomes √(4×10⁻¹⁶)
+≈ 1.1×10⁻⁶ degrees. Three milliarcseconds, at the one point on Earth where it is worst.
+
+### One duplication deliberately kept
+
+`earth/orbit3d.js` carries its own copy of the solar position for the directional light. It is a
+standalone renderer that has to work without the page, and the two are used for different things.
+The page's own copy is now stated once, as `sunEci`, with `subsolar` expressed in terms of it.
+
 ## Doppler, and where the frequency comes from
 
 Range rate is what the pass table was missing. It is taken in the **body-fixed frame**, because
@@ -888,6 +935,7 @@ npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
+npm run optical      # shadow cone geometry and naked-eye passes
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

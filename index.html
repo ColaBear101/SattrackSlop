@@ -7514,6 +7514,10 @@ let D = null, selPass = 0, timer = null;
 window.__gt = {
   compute, elements, findPasses, sample, sampleMs, stateAt, elevationAt,
   rangeRateMs, dopplerHz, C_KMS,
+  sunEci, subsolar, sunElevation, sunlitState, opticalAt, passOptical,
+  /* a const declared further down the file, so it has to be deferred the way
+     D and CAT are - the object literal itself is evaluated up here. */
+  get DARK_SUN_EL(){ return DARK_SUN_EL; },
   stepFor, passStepFor, OBS, MASK, RE, MU,
   get D(){ return D; },
   get CAT(){ return CAT; }
@@ -7672,7 +7676,16 @@ function fitCanvas(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 // sub-solar point (NOAA low-precision solar position, good to ~0.01°)
-function subsolar(date){
+/* The Sun, low-precision (NOAA/USNO almanac form): right ascension and
+   declination good to about 0.01 deg, and the distance to about 0.02 %. That is
+   several hundred times finer than anything asked of it here - a terminator
+   drawn at map resolution, and a shadow test whose own hard edge is a
+   simplification worth far more than 0.01 deg.
+
+   earth/orbit3d.js carries its own copy for the directional light. That is
+   deliberate: it is a standalone renderer that has to work without this page,
+   and the two are used for different things. Same model, stated once here. */
+function sunEci(date){
   const jd = date.getTime()/86400000 + 2440587.5;
   const n = jd - 2451545.0;
   const L = (280.460 + 0.9856474*n) % 360;
@@ -7680,10 +7693,96 @@ function subsolar(date){
   const lam = (L + 1.915*Math.sin(g) + 0.020*Math.sin(2*g))*RAD;
   const eps = (23.439 - 0.0000004*n)*RAD;
   const dec = Math.asin(Math.sin(eps)*Math.sin(lam));
+  const ra = Math.atan2(Math.cos(eps)*Math.sin(lam), Math.cos(lam));
+  // astronomical unit varies by +-1.7% over the year; the shadow cone cares
+  const distKm = 1.495979e8*(1.00014 - 0.01671*Math.cos(g) - 0.00014*Math.cos(2*g));
+  return { ra, dec, distKm,
+           x: Math.cos(dec)*Math.cos(ra), y: Math.cos(dec)*Math.sin(ra), z: Math.sin(dec) };
+}
+function subsolar(date){
+  const S = sunEci(date);
   const gmst = satellite.gstime(date)*DEG;
-  let ra = Math.atan2(Math.cos(eps)*Math.sin(lam), Math.cos(lam))*DEG;
-  let lon = ra - gmst; while(lon>180) lon-=360; while(lon<-180) lon+=360;
-  return {lat: dec*DEG, lon};
+  let lon = S.ra*DEG - gmst; while(lon>180) lon-=360; while(lon<-180) lon+=360;
+  return {lat: S.dec*DEG, lon};
+}
+/* Solar elevation at a surface site: the same spherical triangle the look
+   angles use, with the Sun's sub-point standing in for the spacecraft's. */
+function sunElevation(site, date){
+  const ss = subsolar(date);
+  const p = site.lat*RAD, d = ss.lat*RAD, H = (site.lon - ss.lon)*RAD;
+  /* Clamped, and not defensively: with the site AT the sub-solar point the
+     expression is sin^2 + cos^2, which rounds to 1.0000000000000002 and takes
+     asin to NaN. That is not a corner case here - the sub-solar point crosses
+     Bangkok's latitude twice a year. */
+  const c = Math.sin(p)*Math.sin(d) + Math.cos(p)*Math.cos(d)*Math.cos(H);
+  return Math.asin(Math.max(-1, Math.min(1, c)))*DEG;
+}
+
+/* ---- is the spacecraft lit, and is the ground dark? -----------------------
+ * A pass in this program has meant RADIO visibility: geometry above a 5 deg
+ * mask, day or night. Seeing one with the eye needs two more things to be true
+ * at the same time, and they pull in opposite directions - the spacecraft has to
+ * be in sunlight while the observer is not. That is why satellites are watched
+ * in the hour after dusk and before dawn, and why most radio passes are not
+ * watchable at all.
+ *
+ * The shadow is a CONE, not a cylinder. The Sun is not a point: at 696,000 km
+ * radius and 1.496e8 km away it subtends about half a degree, so Earth's shadow
+ * tapers to nothing at 1.4e6 km and is surrounded by a penumbra that widens with
+ * distance. A cylinder is the usual shortcut and it is wrong in the direction
+ * that matters - it reports umbra where there is only partial shading.
+ *
+ * Umbra and penumbra are reported separately rather than collapsed: at LEO the
+ * penumbra crossing takes only seconds, but it is a real state and a satellite
+ * in it is dimmed rather than dark.                                          */
+const SUN_RADIUS_KM = 696000;
+function sunlitState(rEci, date){
+  const S = sunEci(date);
+  const sx = S.x, sy = S.y, sz = S.z;
+  const along = rEci.x*sx + rEci.y*sy + rEci.z*sz;      // + is toward the Sun
+  if(along >= 0) return 'sun';                          // in front of the Earth
+  const behind = -along;                                // distance down the shadow axis
+  const px = rEci.x - along*sx, py = rEci.y - along*sy, pz = rEci.z - along*sz;
+  const off = Math.hypot(px, py, pz);                   // distance off that axis
+  /* Half-angles of the two cones. The umbra converges (Sun bigger than Earth),
+     the penumbra diverges; both are tiny, so tan == the ratio to well past the
+     precision of anything else here. */
+  const tanU = (SUN_RADIUS_KM - RE)/S.distKm;
+  const tanP = (SUN_RADIUS_KM + RE)/S.distKm;
+  if(off < RE - behind*tanU) return 'umbra';
+  if(off < RE + behind*tanP) return 'penumbra';
+  return 'sun';
+}
+/* Civil twilight. Below -6 deg the sky is dark enough that a sunlit satellite
+   reads against it; the often-quoted -18 deg is astronomical twilight, which is
+   what a telescope wants, not an eye looking for a moving point. */
+const DARK_SUN_EL = -6;
+function opticalAt(track, ms){
+  const st = track.at(ms);
+  if(!st) return null;
+  const d = new Date(ms);
+  const lit = sunlitState(st.r, d);
+  const sunEl = sunElevation(OBS, d);
+  return { lit, sunEl, visible: lit !== 'umbra' && sunEl < DARK_SUN_EL };
+}
+/* Scan the pass rather than testing one instant: a pass can begin in shadow and
+   climb into sunlight, which is exactly the terminator-crossing case worth
+   catching. 60 samples puts the resolution near 7 s on a typical LEO pass. */
+function passOptical(track, p){
+  const t0 = p.aos.getTime(), t1 = p.los.getTime();
+  let lit = 0, dark = 0, both = 0, n = 0, first = null, last = null;
+  for(let k = 0; k <= 60; k++){
+    const o = opticalAt(track, t0 + (t1-t0)*k/60);
+    if(!o) continue;
+    n++;
+    if(o.lit !== 'umbra') lit++;
+    if(o.sunEl < DARK_SUN_EL) dark++;
+    if(o.visible){ both++; if(first === null) first = t0 + (t1-t0)*k/60; last = t0 + (t1-t0)*k/60; }
+  }
+  if(!n) return null;
+  const mid = opticalAt(track, (t0+t1)/2);
+  return { n, lit, dark, both, first, last,
+           frac: both/n, sunEl: mid ? mid.sunEl : null, litAtMid: mid ? mid.lit : null };
 }
 // Day/night: the terminator is the locus where the sun sits on the horizon.
 // Both hemispheres are painted — darkening alone is invisible on a black ocean,
@@ -8091,6 +8190,25 @@ function paintDop(){
     selectPass(selPass, false);
   });
 }
+/* Naked-eye visibility, said plainly. A pass that is radio-only is the normal
+   case and should not read like a failure. */
+function opticalRows(p){
+  const o = passOptical(D.track, p);
+  if(!o) return [];
+  const why = o.both ? null
+    : o.lit === 0 ? 'spacecraft in eclipse'
+    : o.dark === 0 ? 'daylight at the site'
+    : 'not lit and dark together';
+  const v = o.both
+    ? 'yes \u2014 ' + Math.round(100*o.frac) + '% of the pass'
+    : 'radio only \u2014 ' + why;
+  return [['Naked eye', v],
+          ['Sun at site', o.sunEl.toFixed(1) + '\u00b0'
+            + (o.litAtMid === 'sun' ? '  ·  spacecraft sunlit'
+             : o.litAtMid === 'penumbra' ? '  ·  spacecraft in penumbra'
+             : '  ·  spacecraft eclipsed')]];
+}
+
 /* Doppler at the three instants that matter, and the total swing - which is what
    a receiver actually has to track across, and roughly twice the AOS figure. */
 function dopRows(p){
@@ -8122,7 +8240,7 @@ function selectPass(i, scrub){
     ['Culmination', hmsD(p.maxAt)+'Z at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
     ['LOS', hmsD(p.los)+'Z · '+hmsLocal(p.los)+' ICT'],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
-  ].concat(dopRows(p))
+  ].concat(opticalRows(p)).concat(dopRows(p))
    .map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
 }

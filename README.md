@@ -747,6 +747,72 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+## Doppler, and where the frequency comes from
+
+Range rate is what the pass table was missing. It is taken in the **body-fixed frame**, because
+that is the one frame where the ground station is at rest: the site is a constant vector there, so
+the closing speed is a projection onto the line of sight and nothing more.
+
+The trap is that the spacecraft's velocity in that frame is *not* the propagated velocity with its
+axes turned. Turning the axes leaves the frame's own rotation unaccounted for, and the transport
+term −ω × r is what actually carries the observer — **0.452 km/s at Bangkok**, which is 0.65 kHz
+at 435 MHz. Small beside a spacecraft's 7.7 km/s, and far too large to drop from a figure quoted in
+kHz. `omega` and `siteFixed` live on the body, so this stays a property of the central body rather
+than another Earth assumption.
+
+Checked against a numerical derivative of the range, which shares only the propagator — no frames,
+no ω, no transport term. Worst disagreement **3.1 cm/s** over 401 samples; dropping the transport
+term breaks it by **0.439 km/s**, 14,000× larger, so the check demonstrably has teeth.
+
+### The floor that check runs into
+
+The agreement cannot be improved by shrinking the step, and finding out why was the useful part.
+The first threshold failed at 2.2e-4 km/s, which looked like a formula error. It was not: moving to
+a 4th-order stencil made the agreement *worse*, and shrinking `h` made it worse still — 6e-4 km/s at
+h = 0.0625 s, flipping sign as it went. That is quantisation, not truncation.
+
+`satellite.js` carries time as a **Julian date**, about 2.46×10⁶ for these epochs, where a double's
+ulp is **4.02×10⁻⁵ s**. At 7.66 km/s that quantises the propagated position at **0.308 m**, so a
+differenced range carries ε/(2h) of noise however exact the propagation is:
+
+| h | predicted ε/(2h) | observed |
+|---|---|---|
+| 0.5 s | 3.08e-4 km/s | 3.2e-4 |
+| 1 s | 1.54e-4 | 1.1e-4 |
+| 8 s | 1.93e-5 | 1.6e-5 |
+
+`h` is chosen where that noise and the stencil's truncation balance, and the script says so rather
+than leaving a tolerance that looks arbitrary.
+
+### The frequency is the one thing that cannot be derived
+
+`earth/transmitters.js` is baked from **SatNOGS DB**'s transmitter endpoint — the same anonymous
+source that supplies most of the embedded catalogue, so this adds a field to a source already
+trusted rather than a new dependency. One request, not 2,158: the whole table is 3.9 MB unpaginated
+in about seven seconds, and asking per object would be 2,158 requests for the same bytes.
+
+Kept: **active** transmitters only, with a published downlink, deduplicated on frequency and mode,
+at most four per object, and only for objects actually in the catalogue.
+
+| | |
+|---|---|
+| Transmitters | **2,037** on **1,213** objects |
+| Coverage | 56.2 % of the catalogue |
+| Dropped | 183 not active, 2 with no downlink, 194 duplicate or over cap |
+| Bands | 685 S-band, 398 UHF 420–450, 76 VHF 144–148, 878 other |
+
+The other 43.8 % have **no published downlink**, which is the normal case for the government and
+commercial half of the catalogue. The panel says so instead of offering a plausible default to tune
+to, and the box stays editable either way — a station knows its own bird better than a database does.
+
+KNACKSAT-2 comes back with 145.825 MHz FSK 9k6 (IARU coordinated, digipeater) and 400.630 MHz for
+telemetry. Over the 68.1° pass those give a swing of **6.77 kHz** and **18.59 kHz**; LANDSAT 9's
+2282.300 MHz S-band downlink swings **83.87 kHz** across its own.
+
+```
+node verification/fetch-transmitters.js   # re-bake earth/transmitters.js
+```
+
 ## Staying current
 
 A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with
@@ -821,6 +887,7 @@ npm run report       # the LANDSAT 9 answer, printed
 npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources
 npm run pov          # the POV camera, measured against the propagated state
+npm run doppler      # range rate, against a numerical derivative of the range
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

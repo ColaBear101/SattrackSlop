@@ -60,6 +60,16 @@ function Earth(sat){
     toFixed:    (r, theta) => sat.eciToEcf(r, theta),
     toGeodetic: (r, theta) => sat.eciToGeodetic(r, theta),
 
+    /* Rotation rate, and the site as a fixed-frame vector. Both exist for range
+       rate: a ground station is NOT at rest in the inertial frame, and Bangkok
+       is carried east at 0.452 km/s. That is 0.65 kHz at 435 MHz - small beside
+       a spacecraft's 7.7 km/s, and far too large to drop from a Doppler figure
+       quoted in kHz. In the body-fixed frame the site is genuinely stationary,
+       so that is where the closing speed is taken. */
+    omega: 7.292115e-5,                          // rad/s, WGS-84 sidereal
+    siteFixed: site => sat.geodeticToEcf({ longitude: site.lon*RAD,
+      latitude: site.lat*RAD, height: site.altKm || 0 }),
+
     /* site is {lat, lon, altKm} in degrees/km — the app's own shape, converted
        here so callers never have to remember which way round satellite.js
        wants it. */
@@ -208,6 +218,19 @@ function Moon(){
       return { azimuth: (Math.atan2(e, n) + 2*Math.PI) % (2*Math.PI),
                elevation: Math.asin(u/rng),
                rangeSat: rng };
+    },
+
+    /* Mean rotation rate, 13.17635815 deg/day sidereal. The real orientation is
+       the IAU polynomial PLUS the libration series, so this is not the
+       instantaneous rate - but it is only ever used for the velocity of a
+       surface site, and the Moon carries one at about 4.6 m/s against an
+       orbiter's 1.56 km/s. The difference is far below anything that reads. */
+    omega: 2.6616995e-6,                         // rad/s
+    siteFixed: site => {
+      const la = site.lat*RAD, lo = site.lon*RAD, rs = 1737.4 + (site.altKm || 0);
+      return { x: rs*Math.cos(la)*Math.cos(lo),
+               y: rs*Math.cos(la)*Math.sin(lo),
+               z: rs*Math.sin(la) };
     },
 
     /* A synodic lunar day, because that is what governs sunlight at a landing

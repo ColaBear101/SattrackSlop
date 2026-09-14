@@ -7402,11 +7402,44 @@ function elevationAt(track, ms){
   if(!s) return -90;
   return look(track, s.r, s.theta).elevation*DEG;
 }
+/* Range rate, and therefore Doppler. Taken in the BODY-FIXED frame, because
+   that is the one frame where the ground station is genuinely at rest: the site
+   is a constant vector there, so the closing speed is just the projection of the
+   spacecraft's fixed-frame velocity onto the line of sight.
+
+   That velocity is NOT the propagated velocity with its axes turned, which is
+   the classic error. Turning the axes leaves the frame's own rotation
+   unaccounted for; the transport term -omega x r is what carries the observer,
+   and dropping it costs 0.452 km/s at Bangkok - about 0.65 kHz at 435 MHz. */
+function rangeRateAt(track, s){
+  const b = track.body;
+  if(!b.omega || !b.siteFixed) return null;      // a body that declares no rotation
+  const rf = b.toFixed(s.r, s.theta);            // spacecraft, body-fixed
+  const vf = b.toFixed(s.v, s.theta);            // its velocity, axes turned only
+  const sf = b.siteFixed(OBS);
+  const w = b.omega;                             // omega is along +z in this frame
+  const vx = vf.x + w*rf.y, vy = vf.y - w*rf.x, vz = vf.z;
+  const dx = rf.x - sf.x, dy = rf.y - sf.y, dz = rf.z - sf.z;
+  const rng = Math.hypot(dx, dy, dz);
+  return rng > 0 ? (dx*vx + dy*vy + dz*vz)/rng : null;   // km/s, + is receding
+}
+function rangeRateMs(track, ms){
+  const s = fix(track, ms);
+  return s ? rangeRateAt(track, s) : null;
+}
+/* Doppler: a receding source is shifted DOWN, hence the sign. c in km/s to match
+   the range rate; the shift comes back in the same unit the frequency went in. */
+const C_KMS = 299792.458;
+function dopplerHz(freqHz, rrKms){
+  return (freqHz === null || rrKms === null) ? null : -freqHz*rrKms/C_KMS;
+}
+
 function stateAt(track, ms){
   const s = fix(track, ms);
   if(!s) return null;
   const la = look(track, s.r, s.theta);
-  return { el: la.elevation*DEG, az: ((la.azimuth*DEG)%360+360)%360, rng: la.rangeSat };
+  return { el: la.elevation*DEG, az: ((la.azimuth*DEG)%360+360)%360, rng: la.rangeSat,
+           rr: rangeRateAt(track, s) };
 }
 
 /* (c) access windows: coarse scan, then bisect each horizon crossing */
@@ -7471,6 +7504,7 @@ let D = null, selPass = 0, timer = null;
  * declared above; CAT and D are getters so they read the live bindings.       */
 window.__gt = {
   compute, elements, findPasses, sample, sampleMs, stateAt, elevationAt,
+  rangeRateMs, dopplerHz, C_KMS,
   stepFor, passStepFor, OBS, MASK, RE, MU,
   get D(){ return D; },
   get CAT(){ return CAT; }

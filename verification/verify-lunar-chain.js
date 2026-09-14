@@ -1,3 +1,4 @@
+const path = require('path');
 /* End-to-end: baked daily elements -> anchoredTrack -> Body.Moon rotation ->
  * sub-spacecraft lat/lon, compared against Horizons' own sub-observer point.
  *
@@ -9,8 +10,8 @@
  */
 const fs = require('fs');
 const TMP = process.env.CLAUDE_JOB_DIR + '/tmp/';
-require('D:/Claude/satellite-ground-track/body.js');
-require('D:/Claude/satellite-ground-track/propagator.js');
+require(path.join(__dirname, '..', 'core/body.js'));
+require(path.join(__dirname, '..', 'core/propagator.js'));
 const M = globalThis.Body.Moon(), P = globalThis.Propagator, DEG = 180/Math.PI;
 
 const orb = JSON.parse(fs.readFileSync(TMP + 'orbiters.json', 'utf8'));

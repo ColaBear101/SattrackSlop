@@ -23,7 +23,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const PAGE = 'file:///D:/Claude/satellite-ground-track/index.html';
+/* Windows path separators have to become forward slashes for a file:// URL. */
+const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
 const OUT  = path.join(__dirname, 'baseline.json');
 
 /* A fixed instant, chosen inside the embedded catalogue's epoch span so every

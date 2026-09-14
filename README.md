@@ -1,14 +1,59 @@
-# Ground Track Console — KNACKSAT-2
+# Ground Track Console
 
-**Live:** https://sattrackslop.vercel.app
-**Earth–Moon page:** https://sattrackslop.vercel.app/moon.html
+Read a Two-Line Element set, report the Keplerian elements, propagate and plot a day of ground
+track, and total the time a spacecraft is visible from Bangkok above a 5° elevation mask.
 
-A single-file web program that reads a Two-Line Element set, reports the Keplerian elements,
-propagates and plots one day of ground track, and totals the time the spacecraft is visible from
-Bangkok above a 5° elevation mask.
+That was the assignment. The program outgrew it: the same engine now runs a Moon-centred console
+and an Earth–Moon libration-point view, because the central body turned out to be the only thing
+that was ever really Earth-specific.
 
-Open `index.html` in any browser. No build step, no server. It needs network access on first
-load for two CDN assets: `satellite.js` (SGP4) from cdnjs and the webfonts from Google Fonts.
+| | |
+|---|---|
+| **Ground track console** | https://sattrackslop.vercel.app |
+| **Lunar track console** | https://sattrackslop.vercel.app/moon-track.html |
+| **Earth–Moon system** | https://sattrackslop.vercel.app/moon.html |
+
+No build step and no server. Open `index.html` in a browser. It needs network access on first
+load for two CDN assets — `satellite.js` (SGP4) from cdnjs and the webfonts from Google Fonts —
+and nothing else; the satellite catalogue, the coastlines and the lunar ephemerides are all
+embedded.
+
+## What's here
+
+Three pages over one shared core. The layout says which is which:
+
+```
+index.html          Earth ground track, elements, Bangkok visibility, decay forecast
+moon-track.html     Moon-centred: lunar orbiters and landing sites
+moon.html           Earth–Moon system and the five libration points
+
+core/               the body-agnostic half
+  body.js             what is a property of the CENTRAL BODY — rotation,
+                      sub-satellite point, look angles, radii, mu
+  propagator.js       what is a property of HOW A THING MOVES — SGP4 for Earth
+                      TLEs, Kepler and daily-anchored for everything else
+
+earth/
+  orbit3d.js          the WebGL globe
+  orbitviz.js         orbital-element vectors, stars, constellations, planets
+  lifetime.js         orbital decay and re-entry forecasting
+
+moon/
+  lunar.js            ELP-2000 lunar ephemeris + CR3BP libration points
+  moonviz.js          the Earth–Moon 3D scene
+  moondata.js         baked lunar orbiter ephemerides, landing sites, features
+
+verification/       an independent second implementation, and the regression gate
+```
+
+The dependency graph is one-way: pages depend on `core/`, `core/` depends on nothing. No file in
+`earth/` is loaded by the Moon pages, and no file in `moon/` is loaded by the Earth page.
+
+## The assignment
+
+Select a satellite from CelesTrak's Earth Resources group and build a web program that reports its
+orbital elements, plots a day of ground track, and totals its visibility from Bangkok above a 5°
+mask. Parts (a), (b) and (c) below are that answer.
 
 ## Satellite
 
@@ -115,7 +160,7 @@ Selectable in the picker. NORAD 49260, epoch 2026-09-12 04:49:46.684 UTC, sun-sy
 - a = 7077.743 km, e = 0.0001484, i = 98.2207°, Ω = 324.2909°, ω = 100.3913°, M = 259.7453°
 - **37.74 minutes over 4 passes**, best elevation 31.50° at 14:47 UTC
 
-## Verification
+## How the Earth numbers are checked
 
 An independent second implementation (own WGS-84 ECEF→ENU elevation, own TLE column parsing,
 own Kepler-third-law semi-major axis) was cross-checked against this one:
@@ -137,26 +182,86 @@ own Kepler-third-law semi-major axis) was cross-checked against this one:
 
 Run it yourself: `node verification/report.js` and `node verification/verify.js`.
 
-## Data provenance
+## Architecture: the central body is a parameter
 
-The embedded catalogue is **2,158 satellites, 319 KB**, built from:
+The console was written for the Earth, and the Earth had leaked into every layer: `RE` and `MU`
+at module scope in three files, every position through `satellite.gstime` → `eciToGeodetic`, and
+SGP4 as the propagator. None of that was wrong; all of it was an assumption rather than a
+parameter. Extending to the Moon meant turning the assumption back into a choice.
 
-1. **SatNOGS DB** — `https://db.satnogs.org/api/tle/?format=json`, which serves anonymously
-   (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
-   `tle_source` for that object as **Space-Track.org**.
-2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
-   via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
-   both :80 and :443 at the time (it answers now — the block appears to have been transient or
-   rate-limit related). Starlink and OneWeb were deliberately excluded: thousands of
-   near-identical objects would swamp the picker.
+### The seam, and why it goes exactly there
 
-Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
-and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
-keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-07-14 → 2026-09-14.
+Two objects, each with one job.
 
-**Space-Track.org direct access needs an account** (username and password, no anonymous API), so
-it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
-data for exactly this reason.
+**`core/body.js`** — what is a property of the *central body*: where the prime meridian is now, how to
+get from inertial to body-fixed, the sub-satellite point, look angles from a surface site, plus
+the constants that used to be globals.
+
+**`core/propagator.js`** — what is a property of *how an object moves*, behind a single interface:
+
+```
+track.at(ms) -> {r, v} | null      body-centred inertial, km and km/s
+```
+
+That split is forced by a hard fact rather than chosen for tidiness. **SGP4 is defined only for
+Earth satellites described by TLEs, and there is no lunar analogue.** Celestrak's own catalogue
+record for LRO settles it:
+
+```
+LRO,2009-031A,35315,PAY,+,US,2009-06-18,AFETR,,,,,,,NEA,MO,ORB
+```
+
+`PERIOD`, `INCLINATION`, `APOGEE` and `PERIGEE` are all blank; `DATA_STATUS_CODE = NEA` is *No
+Elements Available*; `ORBIT_CENTER = MO` is the Moon. Asking for its elements returns `No GP data
+found`. Celestrak's documentation explains why: the SGP4 assumptions "are completely invalid when
+applied to other celestial bodies". The theory hard-wires Earth's μ, Earth's J2/J3/J4 and an
+Earth-fixed frame, and a TLE has no field in which to say what it orbits.
+
+So the propagation half of this program was never going to port, and the interface had to sit
+above it.
+
+Three things fell out of the work:
+
+- The four propagation adapters (`sampleMs`, `sample`, `elevationAt`, `stateAt`) were the same
+  three lines written out four times, each calling `satellite.js` directly and each closing over
+  the observer. They are one place now.
+- Two latent Earth gates would have silently broken the second body: `orbitviz` rejected any orbit
+  with `a < RE*0.9` — a 1829 km lunar orbit fails that by a factor of three, and the whole element
+  panel would have vanished with no error — and carried a *second* hard-coded μ.
+- `earth/orbit3d.js` needed less work than expected. Its scene unit was already one Earth **radius**
+  rather than one kilometre, so every geometry literal in it (sphere 1, atmosphere 1.022, track
+  1.004, footprint 1.006) is body-relative already and survives the swap untouched.
+
+### The gate
+
+A refactor's honest self-assessment is a diff, not an opinion — and the errors this code has
+actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The culmination bug
+hit 15 satellites out of 309. Neither would survive contact with a screenshot, and both would pass
+a "looks the same to me".
+
+`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation,
+and reads full-precision values through a `window.__gt` test surface instead of scraping rounded
+text. 38 satellites spanning LEO, sun-synchronous, GEO, HEO and a decaying object, at two window
+spans: all six elements and every derived quantity, every AOS/LOS to the millisecond, culmination,
+azimuths, range, visibility totals, and 100 fixed sample probes each.
+
+**67,488 values, bit-identical**, across `index.html`, `earth/orbit3d.js` and `earth/orbitviz.js`.
+
+Two reproducibility rules, both learned by getting them wrong first: the window start is a fixed
+instant and never `Date.now()`; and the network is blocked during a run, because `refreshTLE()`
+would otherwise rewrite the element set mid-snapshot and the "baseline" would depend on what
+CelesTrak served that minute.
+
+A gate that has never failed is not a gate, so it was checked against a deliberate fault:
+perturbing Earth's radius by **10 cm** produced 77 differences, down to 1.5e-9 relative in derived
+quantities like the access half-angle. The only diffs during the actual refactor were the observer
+gaining `name` and `tz` fields — which retired a duplicate `ICT` constant — and the baseline was
+re-taken only after confirming no numeric value had moved.
+
+```
+node verification/snapshot.js     # write verification/baseline.json
+node verification/regress.js      # assert bit-identical
+```
 
 ## Orbital decay and remaining life
 
@@ -275,92 +380,11 @@ landing within a day of the trend model's figure when both were run on the same 
 since the backtest says this range runs about two months early, the true date is more likely after
 April than before it.
 
-## Making the central body a parameter
-
-The console was written for the Earth, and the Earth had leaked into every layer: `RE` and `MU`
-at module scope in three files, every position through `satellite.gstime` → `eciToGeodetic`, and
-SGP4 as the propagator. None of that was wrong; all of it was an assumption rather than a
-parameter. Extending to the Moon meant turning the assumption back into a choice.
-
-### The seam, and why it goes exactly there
-
-Two objects, each with one job.
-
-**`body.js`** — what is a property of the *central body*: where the prime meridian is now, how to
-get from inertial to body-fixed, the sub-satellite point, look angles from a surface site, plus
-the constants that used to be globals.
-
-**`propagator.js`** — what is a property of *how an object moves*, behind a single interface:
-
-```
-track.at(ms) -> {r, v} | null      body-centred inertial, km and km/s
-```
-
-That split is forced by a hard fact rather than chosen for tidiness. **SGP4 is defined only for
-Earth satellites described by TLEs, and there is no lunar analogue.** Celestrak's own catalogue
-record for LRO settles it:
-
-```
-LRO,2009-031A,35315,PAY,+,US,2009-06-18,AFETR,,,,,,,NEA,MO,ORB
-```
-
-`PERIOD`, `INCLINATION`, `APOGEE` and `PERIGEE` are all blank; `DATA_STATUS_CODE = NEA` is *No
-Elements Available*; `ORBIT_CENTER = MO` is the Moon. Asking for its elements returns `No GP data
-found`. Celestrak's documentation explains why: the SGP4 assumptions "are completely invalid when
-applied to other celestial bodies". The theory hard-wires Earth's μ, Earth's J2/J3/J4 and an
-Earth-fixed frame, and a TLE has no field in which to say what it orbits.
-
-So the propagation half of this program was never going to port, and the interface had to sit
-above it.
-
-Three things fell out of the work:
-
-- The four propagation adapters (`sampleMs`, `sample`, `elevationAt`, `stateAt`) were the same
-  three lines written out four times, each calling `satellite.js` directly and each closing over
-  the observer. They are one place now.
-- Two latent Earth gates would have silently broken the second body: `orbitviz` rejected any orbit
-  with `a < RE*0.9` — a 1829 km lunar orbit fails that by a factor of three, and the whole element
-  panel would have vanished with no error — and carried a *second* hard-coded μ.
-- `orbit3d.js` needed less work than expected. Its scene unit was already one Earth **radius**
-  rather than one kilometre, so every geometry literal in it (sphere 1, atmosphere 1.022, track
-  1.004, footprint 1.006) is body-relative already and survives the swap untouched.
-
-### The gate
-
-A refactor's honest self-assessment is a diff, not an opinion — and the errors this code has
-actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The culmination bug
-hit 15 satellites out of 309. Neither would survive contact with a screenshot, and both would pass
-a "looks the same to me".
-
-`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation,
-and reads full-precision values through a `window.__gt` test surface instead of scraping rounded
-text. 38 satellites spanning LEO, sun-synchronous, GEO, HEO and a decaying object, at two window
-spans: all six elements and every derived quantity, every AOS/LOS to the millisecond, culmination,
-azimuths, range, visibility totals, and 100 fixed sample probes each.
-
-**67,488 values, bit-identical**, across `index.html`, `orbit3d.js` and `orbitviz.js`.
-
-Two reproducibility rules, both learned by getting them wrong first: the window start is a fixed
-instant and never `Date.now()`; and the network is blocked during a run, because `refreshTLE()`
-would otherwise rewrite the element set mid-snapshot and the "baseline" would depend on what
-CelesTrak served that minute.
-
-A gate that has never failed is not a gate, so it was checked against a deliberate fault:
-perturbing Earth's radius by **10 cm** produced 77 differences, down to 1.5e-9 relative in derived
-quantities like the access half-angle. The only diffs during the actual refactor were the observer
-gaining `name` and `tz` fields — which retired a duplicate `ICT` constant — and the baseline was
-re-taken only after confirming no numeric value had moved.
-
-```
-node verification/snapshot.js     # write verification/baseline.json
-node verification/regress.js      # assert bit-identical
-```
-
-## The Earth–Moon page
+## The Earth–Moon system page
 
 `moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration points
-marked and moving with it. Linked from the console's rail. `lunar.js` holds the physics,
-`moonviz.js` the three.js scene.
+marked and moving with it. Linked from the console's rail. `moon/lunar.js` holds the physics,
+`moon/moonviz.js` the three.js scene.
 
 ### The Moon's position
 
@@ -479,6 +503,139 @@ placed. The scale toggle defaults to **true scale** and always states which mode
 enlarging the bodies makes them visible but misrepresents a geometry where the Moon is 60 Earth
 radii away.
 
+## The lunar track console
+
+`moon-track.html` — the same console pointed at the Moon. Same layout, same transport, same
+palette; different central body, which is the point of the split above.
+
+Five objects, and the page's job is to say **how well each one is actually known**:
+
+| Grade | Objects | What it means |
+|---|---|---|
+| **tracked** | LRO, Chandrayaan-2, Danuri | 740 daily osculating element sets baked from JPL Horizons, which ingests the operating agencies' own navigation solutions |
+| **published** | Queqiao-2 | no ephemeris exists publicly; the orbit is rebuilt from published mission parameters. Size, shape and inclination are right — the **phase** is not knowable |
+| **schematic** | Queqiao-1 | a halo orbit is not a conic and cannot be drawn from orbital elements at all. Listed, not propagated |
+
+That distinction exists because of a real gap. **JPL Horizons carries no Chinese lunar
+spacecraft**: a name search for `Queqiao` returns "No matches found", and `Chang*` matches only
+three spent boosters. CNSA publishes no machine-readable ephemeris. That is why trackers fed from
+Horizons show an empty Moon where those spacecraft are.
+
+Leaving them off would assert that three spacecraft are at the Moon, which is false. Showing them
+as though tracked would be worse than either. So they are on the map with the grade stated on
+every row.
+
+### There are no lunar TLEs
+
+The Earth console runs on SGP4, which exists only for Earth satellites described by two-line
+elements. Celestrak's own catalogue record for LRO settles it:
+
+```
+LRO,2009-031A,35315,PAY,+,US,2009-06-18,AFETR,,,,,,,NEA,MO,ORB
+```
+
+`PERIOD`, `INCLINATION`, `APOGEE` and `PERIGEE` are blank; `DATA_STATUS_CODE = NEA` is *No
+Elements Available*; `ORBIT_CENTER = MO` is the Moon. Requesting its elements returns `No GP data
+found`. Celestrak's documentation explains why: the SGP4 assumptions "are completely invalid when
+applied to other celestial bodies."
+
+### Why daily anchors, not one element set
+
+The Moon's gravity field is dominated by mascons rather than a smooth J2 term, so the quantities a
+Keplerian propagator holds constant do not stay constant. Measured from Horizons, LRO's argument
+of periapsis moves about **3.1°/day** and its period grows about **1.7 s every four hours**.
+Period error integrates into along-track error, so one element set puts the spacecraft on the
+wrong side of the Moon within weeks.
+
+Adding J2 does not rescue it — J2 captures nodal regression and misses the mascon-driven evolution
+of ω and e, which is the part that hurts. A fresh anchor does. Checked against Horizons' own
+sub-observer point, 289 samples over six days:
+
+| Hours from anchor | Median error |
+|---|---|
+| 0 – 2 | 1.0 km |
+| 2 – 4 | 4.0 km |
+| 4 – 6 | 7.5 km |
+| 6 – 8 | 11.0 km |
+| 8 – 10 | 14.2 km |
+| 10 – 12 | 17.9 km |
+
+Against **32–56 km** for a single element set held for days. The panel shows the anchor epoch,
+the hours since it, and the error that implies, rather than printing a position as if it were
+exact.
+
+### The rotation, and why libration is not optional
+
+Earth's GMST is a smooth polynomial. The Moon's orientation is a polynomial **plus a 13-term
+libration series**, applied to the pole's right ascension and declination *and* to the prime
+meridian. Leave it out and the sub-spacecraft point is wrong by **44 km**. With it, **0.15 km**
+against Horizons over 289 epochs — a factor of 300.
+
+Three traps, each found by measurement rather than by reading:
+
+- **The NAIF `NUT_PREC` rates are per Julian *century*** while every other term in the model is
+  per day. The check that settles it: E₁ is the lunar node, and −1935.5364525 / 36525 =
+  −0.052992 °/day, exactly the 18.6-year nodal regression. Read as a daily rate it advances the
+  arguments 36,525× too fast and puts the pole 1.9° out. What identified it was the error's
+  *shape* — latitude depends only on the pole, longitude on W, so a latitude-only error pointed
+  straight at the pole.
+- **Horizons' `VECTORS` defaults to the ecliptic plane** while the IAU rotation wants ICRF
+  equatorial. `REF_PLANE='FRAME'` is required; without it everything tilts by the obliquity.
+- **`VECTORS` epochs are TDB, `OBSERVER` epochs are UT** — 69 s apart, and LRO covers 3.5° of
+  orbit in 69 s, enough to swamp the error being measured.
+
+A fourth, about the API rather than the physics: **date parameters must not be quoted while
+`STEP_SIZE` must be**, and a wrongly-quoted parameter is *silently ignored* rather than rejected.
+The first validation run returned a year of defaults instead of the range asked for, and looked
+entirely plausible.
+
+### Engineering readouts
+
+Sub-point, altitude and altitude rate, inertial and ground speed, the radial/transverse velocity
+split, live osculating elements recovered from the state vector rather than read off the stored
+anchor, period, apsis altitudes, specific orbital energy, specific angular momentum, Earth range
+and one-way light time, Earth elevation from the spacecraft, the sub-Earth point, solar elevation
+and shadow state.
+
+And for every landing site, **whether the Earth is above its horizon at all**. From a far-side
+site the Earth never rises — the elevation is permanently negative, not merely low. Chang'e-4 and
+Chang'e-6 both landed there and neither could have returned a single bit directly, which is the
+entire reason Queqiao exists. The table computes it rather than asserting it.
+
+### Frames, and an accepted error
+
+Landing-site coordinates are published in the **mean Earth / polar axis** frame; the IAU series
+implemented here is closer to the **principal axis** frame. The two differ by about 0.03°, roughly
+**860 m** on the surface — below the anchoring error everywhere except within an hour or two of an
+anchor epoch. It is accepted rather than corrected, and stated rather than buried.
+
+One more difference from Earth worth knowing: the Moon's surface rotates beneath an orbiter at
+only about **4.6 m/s** against roughly **1.56 km/s** of orbital ground speed — 0.3 %, where a LEO
+satellite sees about 6 %. So lunar ground tracks are nearly great circles, LRO's equator crossings
+shift west by only **1.07°** (~32 km) per revolution, and global coverage takes a month rather
+than a day.
+
+## Data provenance
+
+The embedded catalogue is **2,158 satellites, 319 KB**, built from:
+
+1. **SatNOGS DB** — `https://db.satnogs.org/api/tle/?format=json`, which serves anonymously
+   (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
+   `tle_source` for that object as **Space-Track.org**.
+2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
+   via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
+   both :80 and :443 at the time (it answers now — the block appears to have been transient or
+   rate-limit related). Starlink and OneWeb were deliberately excluded: thousands of
+   near-identical objects would swamp the picker.
+
+Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
+and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
+keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-07-14 → 2026-09-14.
+
+**Space-Track.org direct access needs an account** (username and password, no anonymous API), so
+it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
+data for exactly this reason.
+
 ## Staying current
 
 A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with
@@ -515,3 +672,26 @@ The embedded catalogue remains the offline fallback and what paints on first fra
 other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not
 analysis. To refresh that baseline, rebuild `catalog.txt` and re-inject it into the
 `<script id="tledata">` block.
+
+## Running it
+
+```
+# the pages: no build, no server — open them
+index.html   moon-track.html   moon.html
+
+# the Earth regression gate — must print BIT-IDENTICAL
+node verification/snapshot.js        # (re)write verification/baseline.json
+node verification/regress.js         # compare the live code against it
+
+# the independent second implementation
+node verification/verify.js
+node verification/report.js
+
+# the lunar checks (these fetch from JPL Horizons)
+node verification/verify-moon.js         # rotation vs Horizons sub-observer point
+node verification/verify-lunar-chain.js  # baked elements -> sub-point, end to end
+node verification/fetch-lunar-ephem.js   # re-bake moon/moondata.js from Horizons
+```
+
+Playwright is used for the browser-driven checks. The lunar scripts cache their Horizons responses
+next to themselves, so a re-run is free.

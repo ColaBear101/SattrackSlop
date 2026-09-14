@@ -1,3 +1,4 @@
+const path = require('path');
 /* Validate Body.Moon()'s rotation against JPL Horizons.
  *
  * Two requests, deliberately matched in time system:
@@ -13,7 +14,7 @@
  */
 const fs = require('fs');
 const TMP = process.env.CLAUDE_JOB_DIR + '/tmp/';
-require('D:/Claude/satellite-ground-track/body.js');
+require(path.join(__dirname, '..', 'core/body.js'));
 const M = globalThis.Body.Moon();
 const DEG = 180/Math.PI;
 

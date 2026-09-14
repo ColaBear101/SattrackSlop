@@ -7452,6 +7452,19 @@ function build(satrec, aos, los, clipA, clipL){
 const CAT = parseCatalog(RAWTLE);
 let D = null, selPass = 0, timer = null;
 
+/* ---- test surface --------------------------------------------------------
+ * Changes no behaviour and is read by nothing in the page. It exists so the
+ * regression harness can take full-precision values straight from the shipping
+ * code instead of scraping rounded text out of the DOM — the difference between
+ * catching a 512 m error and not. Everything here is hoisted or already
+ * declared above; CAT and D are getters so they read the live bindings.       */
+window.__gt = {
+  compute, elements, findPasses, sample, sampleMs, stateAt, elevationAt,
+  stepFor, passStepFor, OBS, MASK, RE, MU,
+  get D(){ return D; },
+  get CAT(){ return CAT; }
+};
+
 function compute(entry, t0ms, hours){
   const satrec = satellite.twoline2satrec(entry.l1, entry.l2);
   const E = elements(entry.l1, entry.l2);

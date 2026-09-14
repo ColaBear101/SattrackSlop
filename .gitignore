@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 
 .vercel
+verification/.regress-current.json
+verification/.regress-snap.js

@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Earth–Moon System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ---- tokens: same instrument palette as the ground-track console ---------
+   Light is the base; both dark paths redefine only these. The scene itself is
+   deliberately theme-independent — space has no light mode — so only the page
+   chrome around it moves.                                                    */
+:root{
+  --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
+  --muted:#536169; --rule:#CBD6DB;
+  --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
+  --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
+  --ring:#A9B9C1;
+  --shadow:0 1px 2px rgba(14,26,31,.06), 0 10px 26px -18px rgba(14,26,31,.34);
+  --void:#05090C;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
+    --muted:#8096A1; --rule:#22313A;
+    --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+    --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
+    --ring:#374954;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
+  --muted:#8096A1; --rule:#22313A;
+  --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+  --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
+  --ring:#374954;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--surface); color:var(--ink); margin:0;
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--track)}
+h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; letter-spacing:-.01em}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; font-weight:500;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--muted); margin:0}
+
+.bar{display:flex; align-items:center; gap:14px; padding:9px 16px;
+  background:var(--chrome); color:var(--chromeink); border-bottom:1px solid var(--chromerule);
+  flex-wrap:wrap}
+.bar-top h1{font-size:16px}
+.bar-top .ids{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.bar-top .ids b{color:var(--ink2); font-weight:600}
+.spacer{margin-left:auto}
+.btn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px;
+  background:var(--panel); color:var(--ink); border:1px solid var(--chromerule);
+  border-radius:4px; padding:5px 10px; cursor:pointer; line-height:1.3}
+.btn:hover{border-color:var(--ring)}
+.btn[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+.btn:focus-visible, input:focus-visible{outline:2px solid var(--track); outline-offset:2px}
+.seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+
+.stage{display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:66vh}
+@media (max-width:900px){ .stage{grid-template-columns:minmax(0,1fr)} }
+/* overflow:hidden matters — the label layer places tags up to 6% outside the
+   frustum edge, and an escaped label widens the whole document at phone width */
+.viewport{position:relative; background:var(--void); min-height:420px; overflow:hidden}
+.viewport canvas{display:block; width:100%; height:100%; position:absolute; inset:0}
+.o-layer{position:absolute; inset:0; pointer-events:none}
+.o-lbl{position:absolute; transform:translate(9px,-50%); white-space:nowrap;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.02em;
+  color:#DCE8EF; text-shadow:0 0 3px #000,0 0 7px #000; display:none}
+.o-lbl.l{color:#F0C674} .o-lbl.m{color:#CFE3EE} .o-lbl.s{color:#FFD98A}
+/* the barycentre is only 4742 km from Earth's centre — at true scale its tag
+   lands exactly on the Earth's, so it gets its own line underneath */
+.o-lbl.b{color:#E2557E; transform:translate(9px,9px)}
+.novideo{position:absolute; inset:0; display:none; place-items:center; padding:24px; text-align:center;
+  color:#AEBFC8; font-size:13px}
+.hint-drag{position:absolute; left:14px; bottom:12px;
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:#8096A1}
+
+.rail{background:var(--panel); border-left:1px solid var(--rule); display:flex;
+  flex-direction:column; gap:0; overflow:auto}
+@media (max-width:900px){ .rail{border-left:0; border-top:1px solid var(--rule)} }
+.rblock{padding:13px 16px; border-bottom:1px solid var(--rule)}
+.rblock:last-child{border-bottom:0}
+.dv{display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:2.5px 0}
+.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); margin:0}
+.dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink)}
+dl{margin:0}
+.toggles{display:flex; flex-wrap:wrap; gap:6px}
+.toggles label{display:inline-flex; gap:6px; align-items:center; font-family:"IBM Plex Mono",monospace;
+  font-size:11px; color:var(--ink2); border:1px solid var(--rule); border-radius:4px; padding:4px 8px;
+  cursor:pointer}
+
+.bar-transport{border-top:1px solid var(--chromerule); background:var(--chrome2)}
+.rate{display:flex; align-items:center; gap:8px; min-width:220px; flex:1 1 260px}
+.rate input{flex:1; min-width:90px}
+.clock{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;
+  font-variant-numeric:tabular-nums; display:flex; gap:12px; flex-wrap:wrap}
+.clock .b{color:var(--muted)}
+
+.report{max-width:1180px; margin:0 auto; padding:30px 18px 70px;
+  display:flex; flex-direction:column; gap:34px}
+section{display:flex; flex-direction:column; gap:15px}
+.shead{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
+  border-bottom:1px solid var(--rule); padding-bottom:9px}
+.shead h2{font-size:21px}
+.shead .hint{color:var(--muted); font-size:12.5px; margin-left:auto}
+.cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:26px}
+.cols h3{font-size:14px; margin-bottom:6px}
+.cols p{margin:0 0 9px; font-size:13px; line-height:1.68; color:var(--ink2)}
+.cols p:last-child{margin-bottom:0}
+.cols code{font-family:"IBM Plex Mono",monospace; font-size:12px; background:var(--sunk);
+  padding:1px 4px; border-radius:3px}
+.tablewrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-family:"IBM Plex Mono",monospace; font-size:12.5px;
+  font-variant-numeric:tabular-nums}
+th{text-align:right; font-weight:500; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); padding:7px 12px; border-bottom:1px solid var(--rule); white-space:nowrap}
+th:first-child, td:first-child{text-align:left}
+td{padding:7px 12px; border-bottom:1px solid var(--rule); text-align:right; white-space:nowrap}
+tbody tr:hover{background:var(--sunk)}
+.pt{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px;
+  vertical-align:middle}
+footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(--muted);
+  font-size:11.5px; font-family:"IBM Plex Mono",monospace; text-align:center}
+</style>
+
+<header class="bar bar-top">
+  <div>
+    <h1>Earth–Moon system</h1>
+    <div class="ids">
+      <span>Geocentric equatorial, mean equinox of date</span><span>·</span>
+      <span>ELP-2000/82B</span><span>·</span>
+      <span>Libration points <b id="hmu">—</b></span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <a class="btn" href="index.html" style="text-decoration:none">← Ground track console</a>
+</header>
+
+<main class="stage">
+  <div class="viewport">
+    <canvas id="scene" aria-label="Three-dimensional view of the Moon's orbit about the Earth with the five Earth–Moon libration points. The tables below carry the same numbers."></canvas>
+    <div class="o-layer" id="olayer">
+      <span class="o-lbl m" id="lb-earth">Earth</span>
+      <span class="o-lbl m" id="lb-moon">Moon</span>
+      <span class="o-lbl b" id="lb-bary">barycentre</span>
+      <span class="o-lbl l" id="lb-L1">L1</span>
+      <span class="o-lbl l" id="lb-L2">L2</span>
+      <span class="o-lbl l" id="lb-L3">L3</span>
+      <span class="o-lbl l" id="lb-L4">L4</span>
+      <span class="o-lbl l" id="lb-L5">L5</span>
+      <span class="o-lbl s" id="lb-sun">to Sun</span>
+    </div>
+    <p class="hint-drag">drag to orbit · scroll to zoom</p>
+    <div class="novideo" id="novideo">
+      <div>This view needs WebGL, which this browser did not provide.<br>
+      Every number it shows is in the panel and tables below.</div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:7px">Moon</p>
+      <dl>
+        <div class="dv"><dt>Distance</dt><dd id="d-dist">—</dd></div>
+        <div class="dv"><dt>vs mean</dt><dd id="d-vsmean">—</dd></div>
+        <div class="dv"><dt>Angular size</dt><dd id="d-ang">—</dd></div>
+        <div class="dv"><dt>RA / Dec</dt><dd id="d-radec">—</dd></div>
+        <div class="dv"><dt>Ecl. λ / β</dt><dd id="d-ecl">—</dd></div>
+        <div class="dv"><dt>Phase</dt><dd id="d-phase">—</dd></div>
+        <div class="dv"><dt>Illuminated</dt><dd id="d-illum">—</dd></div>
+      </dl>
+    </div>
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:7px">Libration points · from Earth</p>
+      <dl>
+        <div class="dv"><dt><span class="pt" style="background:#F0C674"></span>L1</dt><dd id="d-L1">—</dd></div>
+        <div class="dv"><dt><span class="pt" style="background:#F0C674"></span>L2</dt><dd id="d-L2">—</dd></div>
+        <div class="dv"><dt><span class="pt" style="background:#F0C674"></span>L3</dt><dd id="d-L3">—</dd></div>
+        <div class="dv"><dt><span class="pt" style="background:#F0C674"></span>L4</dt><dd id="d-L4">—</dd></div>
+        <div class="dv"><dt><span class="pt" style="background:#F0C674"></span>L5</dt><dd id="d-L5">—</dd></div>
+        <div class="dv"><dt><span class="pt" style="background:#E2557E"></span>Barycentre</dt><dd id="d-bary">—</dd></div>
+      </dl>
+    </div>
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:8px">Show</p>
+      <div class="toggles">
+        <label><input type="checkbox" id="t-lpts" checked> L-points</label>
+        <label><input type="checkbox" id="t-tri" checked> Triangles</label>
+        <label><input type="checkbox" id="t-sun" checked> Sun line</label>
+        <label><input type="checkbox" id="t-grid" checked> Grid</label>
+      </div>
+    </div>
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:8px">Scale</p>
+      <div class="toggles">
+        <button class="btn" id="b-scale" aria-pressed="false">Bodies ×1 — true scale</button>
+        <button class="btn" id="b-reset">Reset view</button>
+      </div>
+      <p style="margin:9px 0 0; font-size:11.5px; color:var(--muted)">
+        At true scale the Moon is 60 Earth radii away and both look tiny. Enlarging
+        the bodies makes them visible but misrepresents the geometry, so the button
+        always says which you are looking at.</p>
+    </div>
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:8px">Orbit trace</p>
+      <div class="toggles">
+        <button class="btn" data-trace="27.32">1 month</button>
+        <button class="btn" data-trace="180">6 months</button>
+        <button class="btn" data-trace="2000">5.5 years</button>
+        <button class="btn" data-trace="6800">18.6 years</button>
+      </div>
+      <p style="margin:9px 0 0; font-size:11.5px; color:var(--muted)">
+        Trace long enough and the path stops closing: the line of nodes swings all
+        the way round in 18.6 years and the apsides in 8.85, so the orbit is a
+        slowly turning ellipse, not a fixed one.</p>
+    </div>
+  </aside>
+</main>
+
+<footer class="bar bar-transport">
+  <button class="btn" id="play" aria-label="Pause">❚❚</button>
+  <div class="rate">
+    <span class="seglabel">Rate</span>
+    <input type="range" id="rate" min="0" max="100" value="34" step="1"
+           aria-label="Time rate, real time up to one year per second">
+    <span class="mono" id="ratev" style="min-width:76px">—</span>
+  </div>
+  <button class="btn" id="now">Now</button>
+  <div class="clock">
+    <span><span id="clock">—</span> UTC</span>
+    <span class="b"><span id="clockj">—</span> JD</span>
+  </div>
+</footer>
+
+<div class="report" id="report">
+
+  <section>
+    <div class="shead">
+      <h2>The five points</h2>
+      <p class="hint">at this instant · Earth–Moon separation <span id="sep-now" class="mono">—</span></p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>Point</th><th>From Earth</th><th>From Moon</th><th>Where</th>
+          <th>Stable?</th><th>Used by</th>
+        </tr></thead>
+        <tbody id="ltable"></tbody>
+      </table>
+    </div>
+    <p style="margin:0; font-size:12.5px; color:var(--muted)">
+      The collinear points sit at fixed <i>fractions</i> of the Earth–Moon separation, and that
+      separation runs from 356 500 km at perigee to 406 700 km at apogee. So they breathe in and
+      out every month: <b>L1 alone moves about 42 600 km</b>, L2 about 58 600 km. A libration point
+      is not a place you could paint a marker on.</p>
+  </section>
+
+  <section>
+    <div class="shead">
+      <h2>What these numbers are, and are not</h2>
+    </div>
+    <div class="cols">
+      <div>
+        <h3>The Moon's position</h3>
+        <p>From the truncated ELP-2000/82B series — the standard 60-term longitude and radius
+          tables with the 60-term latitude table, in <code>lunar.js</code>. Not a circle and not a
+          fixed ellipse: the evection term alone swings the Moon ±1.27° and the variation another
+          ±0.66°, so anything simpler is wrong by degrees.</p>
+        <p>Checked against JPL Horizons over 731 daily samples across two years: median angular
+          error <b>1.9″</b>, worst <b>9.5″</b>, and distance within <b>27 km</b> typical, 45 km
+          worst. For scale the Moon's disc is 1865″ across, so the worst case is about 1/200 of
+          a lunar diameter.</p>
+      </div>
+      <div>
+        <h3>A libration point is a rotating-frame idea</h3>
+        <p>The five points are the stationary points of the effective potential in the frame that
+          <i>turns with the Moon</i> — where gravity and the centrifugal term cancel. In the
+          inertial frame drawn here they are not stationary at all; they sweep round the Earth once
+          a month, which is exactly what the view shows.</p>
+        <p>They are also solutions of the <i>circular</i> restricted three-body problem. The real
+          lunar orbit has e = 0.055, so the points pulse with the month. Treating them as fixed is
+          the first approximation, not the truth.</p>
+      </div>
+      <div>
+        <h3>Solved, not approximated</h3>
+        <p>L1, L2 and L3 are roots of a quintic and are found here by bracketed bisection to
+          machine precision — residual gradient at each point is ~10⁻¹⁶.</p>
+        <p>The familiar shortcut <code>R(μ/3)^⅓</code>, the Hill radius, puts L1 and L2 at
+          61 279 km from the Moon. The true roots are <b>58 024 km</b> and <b>64 521 km</b>, so
+          that shortcut is wrong by about <b>3 250 km</b> in opposite directions. It is a decent
+          mnemonic and a poor answer.</p>
+      </div>
+      <div>
+        <h3>Not the ones JWST uses</h3>
+        <p>These are the <b>Earth–Moon</b> points, a few hundred thousand kilometres away.
+          JWST sits at <b>Sun–Earth</b> L2 and SOHO at Sun–Earth L1, each about
+          <b>1.50 million km</b> from Earth — roughly four times further out than the Moon.
+          Same mathematics, different pair of bodies, and the two get confused constantly.</p>
+        <p>That confusion has a measurable victim. The instability timescale quoted almost
+          everywhere for libration points is <b>23 days</b> — and that is the Sun–Earth
+          figure. Run the same linearisation on the Earth–Moon pair and L1 e-folds in
+          <b>1.5 days</b>, L2 in <b>2.0</b>. Twelve times faster, which is why ARTEMIS
+          station-kept about weekly rather than monthly.</p>
+        <p>Nothing sits <i>at</i> a collinear point in any case. L1, L2 and L3 are saddles —
+          stable along one axis, unstable along another — so anything placed there slides
+          off. Real missions fly halo or Lissajous orbits <i>around</i> the point: Queqiao-1 has
+          held a halo about EML2 since 2018 to relay for the lunar far side, which never sees
+          Earth at all.</p>
+      </div>
+      <div>
+        <h3>The Moon does not orbit the Earth's centre</h3>
+        <p>Both bodies orbit their common barycentre, which lies <b id="baryx">—</b> from Earth's
+          centre. The Earth's radius is 6371 km, so <b>the barycentre is inside the Earth</b> — the
+          Earth wobbles about an interior point rather than swinging around an external one. It is
+          marked in the view.</p>
+      </div>
+      <div>
+        <h3>The Sun is not a small correction</h3>
+        <p>The Sun pulls on the Moon <b>2.20 times harder</b> than the Earth does:
+          5.93×10⁻⁶ against 2.70×10⁻⁶ km/s². One
+          consequence, easy to check and widely disbelieved — the Moon's path around the
+          Sun is <i>always</i> concave toward the Sun. It never loops backwards.</p>
+        <p>So the three-body picture is itself an idealisation, and it matters most at L4 and L5.
+          The textbook test is the Routh criterion: triangular points are stable when
+          μ &lt; 0.0385, and Earth–Moon's 0.0122 passes comfortably. But that is the
+          verdict for an isolated pair. Add the Sun and the strict equilibrium does not survive
+          — what remains near L4/L5 are a few periodic <i>substitute</i> orbits rather than
+          a stable point, and test particles started there wander chaotically, many escaping.</p>
+        <p>Which is the honest reason the table says “in theory”, and why the
+          Kordylewski dust clouds reported near L4/L5 since 1961 remain unconfirmed rather
+          than established.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shead">
+      <h2>Earth–Moon constants</h2>
+      <p class="hint">values used by this page</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <tbody id="ctable"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<footer class="foot">
+  Geocentric equatorial, mean equinox of date · ELP-2000/82B and the circular restricted
+  three-body problem · <a href="index.html">ground track console</a>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="lunar.js"></script>
+<script src="moonviz.js"></script>
+<script>
+/* ---- the page ------------------------------------------------------------
+ * One clock drives everything: the scene, the rail readouts and the tables all
+ * read the same instant, so nothing on screen can disagree with anything else.
+ */
+'use strict';
+const $ = id => document.getElementById(id);
+const pad = (n,w) => String(n).padStart(w||2,'0');
+const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+
+  ' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
+const km = v => v.toLocaleString('en-US', {maximumFractionDigits:0});
+
+const MEAN_R = 384400;                 // km, mean Earth-Moon distance
+const PERIGEE = 356500, APOGEE = 406700;
+const R_MOON = 1737.4;
+
+let simMs = Date.now(), playing = true, rate = 1, last = performance.now();
+let viz = false;
+
+/* Rate: 1x up to a year per second, logarithmic so the slider is usable across
+   nine orders of magnitude. The interesting speeds are not evenly spaced. */
+const RATE_MIN = 1, RATE_MAX = 31557600;
+function rateFromSlider(v){
+  if(v <= 0) return 1;
+  return Math.round(RATE_MIN * Math.pow(RATE_MAX/RATE_MIN, v/100));
+}
+function fmtRate(r){
+  if(r < 60) return r + '× real';
+  if(r < 3600) return (r/60).toFixed(r<600?1:0) + ' min/s';
+  if(r < 86400) return (r/3600).toFixed(r<36000?1:0) + ' h/s';
+  if(r < 2629800) return (r/86400).toFixed(r<864000?1:0) + ' d/s';
+  if(r < 31557600) return (r/2629800).toFixed(1) + ' mo/s';
+  return (r/31557600).toFixed(2) + ' yr/s';
+}
+
+/* The stability column carries the e-folding time of the unstable mode, from
+   the CR3BP linearisation about each point: lambda solves
+   lam^4 + (2-c)lam^2 + (1+c-2c^2) = 0, with the time unit 1/n = 4.348 d.
+   The "about 23 days" figure repeated all over the web is the SUN-EARTH number.
+   The Earth-Moon points come apart roughly twelve times faster than that.
+   Missions checked: Queqiao-2 is a frozen LUNAR orbit, not EML2 - only
+   Queqiao-1 holds the halo. CAPSTONE flew an NRHO about EML2, which is an orbit
+   around the point rather than the point, and it ended in June 2026. */
+const LROWS = [
+  ['L1', 'between Earth and Moon', 'no — saddle, e-folds in 1.5 d',
+   'ARTEMIS P1 & P2, 2010–11'],
+  ['L2', 'beyond the Moon, far side', 'no — saddle, e-folds in 2.0 d',
+   'ARTEMIS P1; Queqiao-1 halo, 2018–'],
+  ['L3', 'opposite the Moon, past Earth', 'no — saddle, e-folds in 24 d',
+   'nothing; hardest to reach'],
+  ['L4', '60° ahead of the Moon', 'in theory — the Sun spoils it',
+   'none; dust clouds unconfirmed'],
+  ['L5', '60° behind the Moon', 'in theory — the Sun spoils it',
+   'none; dust clouds unconfirmed']
+];
+
+function paint(){
+  const d = new Date(simMs);
+  const m = Lunar.moon(d), g = Lunar.lagrange(d), s = Lunar.sun(d);
+
+  $('clock').textContent = iso(d);
+  $('clockj').textContent = (Lunar.jdFrom(d)).toFixed(4);
+
+  $('d-dist').textContent = km(m.r) + ' km';
+  const rel = (m.r - MEAN_R)/MEAN_R*100;
+  const near = m.r < PERIGEE + 8000 ? ' · near perigee'
+             : m.r > APOGEE - 8000 ? ' · near apogee' : '';
+  $('d-vsmean').textContent = (rel>=0?'+':'') + rel.toFixed(2) + '%' + near;
+  // apparent diameter of a 1737.4 km radius sphere at range r
+  $('d-ang').textContent = (2*Math.asin(R_MOON/m.r)*180/Math.PI*60).toFixed(2) + '′';
+  $('d-radec').textContent = (m.ra/15).toFixed(3) + 'h  ' + (m.dec>=0?'+':'') + m.dec.toFixed(3) + '°';
+  $('d-ecl').textContent = m.lon.toFixed(2) + '°  ' + (m.lat>=0?'+':'') + m.lat.toFixed(2) + '°';
+  const ph = m.phase;
+  const name = ph < .02 || ph > .98 ? 'new' : ph < .23 ? 'waxing crescent'
+    : ph < .27 ? 'first quarter' : ph < .48 ? 'waxing gibbous' : ph < .52 ? 'full'
+    : ph < .73 ? 'waning gibbous' : ph < .77 ? 'last quarter' : 'waning crescent';
+  $('d-phase').textContent = name;
+  $('d-illum').textContent = (m.illum*100).toFixed(1) + '%';
+
+  ['L1','L2','L3','L4','L5'].forEach(k => $('d-'+k).textContent = km(g.d[k]) + ' km');
+  const bd = Math.hypot(g.bary.x, g.bary.y, g.bary.z);
+  $('d-bary').textContent = km(bd) + ' km';
+  $('sep-now').textContent = km(g.R) + ' km';
+
+  // the table of five, rebuilt each frame only when the numbers moved enough
+  const tb = $('ltable');
+  const want = LROWS.map(r => {
+    const k = r[0];
+    const dm = k === 'L4' || k === 'L5' ? g.R
+      : Math.hypot(g[k].x-g.moon.x, g[k].y-g.moon.y, g[k].z-g.moon.z);
+    return '<tr><td><span class="pt" style="background:#F0C674"></span>' + k + '</td>' +
+      '<td>' + km(g.d[k]) + ' km</td><td>' + km(dm) + ' km</td>' +
+      '<td style="text-align:left">' + r[1] + '</td>' +
+      '<td style="text-align:left">' + r[2] + '</td>' +
+      '<td style="text-align:left">' + r[3] + '</td></tr>';
+  }).join('');
+  if(tb.__last !== want){ tb.innerHTML = want; tb.__last = want; }
+
+  if(viz) MoonViz.frame({date: d, moon: m, lag: g, sun: s});
+}
+
+function tick(now){
+  const dt = Math.min(200, now - last); last = now;
+  if(playing) simMs += dt * rate;
+  paint();
+  requestAnimationFrame(tick);
+}
+
+/* ---- controls ---- */
+$('play').addEventListener('click', () => {
+  playing = !playing;
+  $('play').textContent = playing ? '❚❚' : '▶';
+  $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+});
+$('now').addEventListener('click', () => { simMs = Date.now(); paint(); });
+const rateEl = $('rate');
+function paintRate(){
+  rate = rateFromSlider(+rateEl.value);
+  $('ratev').textContent = fmtRate(rate);
+}
+rateEl.addEventListener('input', paintRate);
+['lpts','tri','sun','grid'].forEach(n => {
+  const el = $('t-'+n);
+  el.addEventListener('change', () => { if(viz) MoonViz.setLayer(n, el.checked); });
+});
+let bodyK = 1;
+$('b-scale').addEventListener('click', () => {
+  bodyK = bodyK === 1 ? 12 : bodyK === 12 ? 40 : 1;
+  const b = $('b-scale');
+  b.textContent = bodyK === 1 ? 'Bodies ×1 — true scale' : 'Bodies ×' + bodyK + ' — exaggerated';
+  b.setAttribute('aria-pressed', bodyK === 1 ? 'false' : 'true');
+  if(viz) MoonViz.setBodyScale(bodyK);
+});
+$('b-reset').addEventListener('click', () => { if(viz) MoonViz.resetView(); });
+document.querySelectorAll('[data-trace]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-trace]').forEach(o => o.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+    if(viz) MoonViz.setTrace(+b.dataset.trace);
+  });
+});
+
+/* ---- constants table ---- */
+(function constants(){
+  const mu = Lunar.MU;
+  const rows = [
+    ['Mass ratio μ = m☾/(m⊕+m☾)', mu.toFixed(9)],
+    ['Earth mass', Lunar.M_EARTH.toExponential(5) + ' kg'],
+    ['Moon mass', Lunar.M_MOON.toExponential(6) + ' kg'],
+    ['Mean separation', km(MEAN_R) + ' km'],
+    ['Perigee – apogee', km(PERIGEE) + ' – ' + km(APOGEE) + ' km'],
+    ['Orbital eccentricity', '0.0549 (mean; it varies)'],
+    ['Inclination to the ecliptic', '5.145°'],
+    ['Inclination to Earth’s equator', '18.3° – 28.6°, over 18.6 years'],
+    ['Sidereal month', '27.321662 d'],
+    ['Synodic month', '29.530589 d'],
+    ['Nodal regression', '18.61 years'],
+    ['Apsidal precession', '8.85 years'],
+    ['Barycentre from Earth’s centre', km(mu*MEAN_R) + ' km — inside the Earth (R⊕ 6371 km)'],
+    ['Routh criterion for L4/L5', 'stable if μ < 0.0385 — here μ = ' +
+      mu.toFixed(5) + ', so yes in the ideal problem'],
+    ['L1 / L2 instability e-folding', '1.48 d / 2.01 d — Sun–Earth is 23 d'],
+    ['Sun–Earth L1 / L2, for contrast', '1.50 million km from Earth'],
+    ['Sun : Earth pull on the Moon', '2.20 : 1']
+  ];
+  $('ctable').innerHTML = rows.map(r =>
+    '<tr><td style="text-align:left;color:var(--muted)">' + r[0] +
+    '</td><td>' + r[1] + '</td></tr>').join('');
+  $('hmu').textContent = 'μ = ' + mu.toFixed(6);
+  $('baryx').textContent = km(mu*MEAN_R) + ' km';
+})();
+
+/* ---- boot ---- */
+paintRate();
+viz = !!(window.MoonViz && window.THREE && MoonViz.init({
+  canvas: $('scene'), lunar: Lunar, layer: $('olayer'),
+  labels: {earth: $('lb-earth'), moon: $('lb-moon'), bary: $('lb-bary'),
+           L1: $('lb-L1'), L2: $('lb-L2'), L3: $('lb-L3'), L4: $('lb-L4'), L5: $('lb-L5'),
+           sun: $('lb-sun')}
+}));
+if(!viz){
+  $('novideo').style.display = 'grid';
+  document.querySelector('.hint-drag').style.display = 'none';
+} else {
+  MoonViz.setTrace(27.32);
+  document.querySelector('[data-trace="27.32"]').setAttribute('aria-pressed','true');
+}
+paint();
+requestAnimationFrame(tick);
+</script>
+</html>

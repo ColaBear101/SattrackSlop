@@ -138,13 +138,28 @@ td{padding:7px 12px; border-bottom:1px solid var(--rule); text-align:right; whit
 tbody tr:hover{background:var(--sunk)}
 .pt{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px;
   vertical-align:middle}
+
+/* ---- testing status ------------------------------------------------------
+ * These pages are newer than the Earth console and, unlike it, are not covered
+ * by a bit-identical regression gate. Saying so in the masthead costs a line
+ * and is the difference between a caveat and a surprise. */
+.tbadge{font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--contact);
+  border:1px solid var(--contact); border-radius:3px; padding:2px 6px;
+  white-space:nowrap; vertical-align:middle; margin-left:8px}
+.tnote{display:flex; flex-wrap:wrap; gap:4px 18px; padding:7px 16px;
+  background:var(--sunk); border-bottom:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  color:var(--muted); line-height:1.5}
+.tnote b{color:var(--ink2); font-weight:600}
+.tnote .why{color:var(--contact)}
 footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(--muted);
   font-size:11.5px; font-family:"IBM Plex Mono",monospace; text-align:center}
 </style>
 
 <header class="bar bar-top">
   <div>
-    <h1>Earth–Moon system</h1>
+    <h1>Earth–Moon system<span class="tbadge">testing</span></h1>
     <div class="ids">
       <span>Geocentric equatorial, mean equinox of date</span><span>·</span>
       <span>ELP-2000/82B</span><span>·</span>
@@ -154,6 +169,14 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
   <div class="spacer"></div>
   <a class="btn" href="index.html" style="text-decoration:none">← Ground track console</a>
 </header>
+
+<p class="tnote">
+  <span class="why">Not production-grade:</span>
+  <span>no regression gate, unlike the Earth console</span>
+  <span>libration points are the <b>circular</b> restricted three-body solution —
+    the real orbit has e = 0.055, so they breathe</span>
+  <span>the ephemeris itself is checked against JPL Horizons to <b>1.9″</b></span>
+</p>
 
 <main class="stage">
   <div class="viewport">

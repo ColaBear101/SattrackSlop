@@ -10,8 +10,8 @@ that was ever really Earth-specific.
 | | |
 |---|---|
 | **Ground track console** | https://sattrackslop.vercel.app |
-| **Lunar track console** | https://sattrackslop.vercel.app/moon-track.html |
-| **Earth–Moon system** | https://sattrackslop.vercel.app/moon.html |
+| **Lunar track console** *(testing)* | https://sattrackslop.vercel.app/moon-track.html |
+| **Earth–Moon system** *(testing)* | https://sattrackslop.vercel.app/moon.html |
 
 No build step and no server. Open `index.html` in a browser. It needs network access on first
 load for two CDN assets — `satellite.js` (SGP4) from cdnjs and the webfonts from Google Fonts —
@@ -48,6 +48,19 @@ verification/       an independent second implementation, and the regression gat
 
 The dependency graph is one-way: pages depend on `core/`, `core/` depends on nothing. No file in
 `earth/` is loaded by the Moon pages, and no file in `moon/` is loaded by the Earth page.
+
+### Status
+
+The Earth console is the finished piece: it answers the assignment and is held to a
+bit-identical regression gate on every change.
+
+**Both Moon pages are marked *testing* in their own mastheads**, and the badge names the actual
+reasons rather than hedging. They are not covered by that gate; the lunar ephemerides are baked
+at build time and frozen, because Horizons sends no CORS header and a browser cannot re-fetch
+them; positions are good to about a kilometre near a daily anchor and tens of kilometres between
+them; and two of the five spacecraft have no published ephemeris at all. Each page computes and
+shows its own staleness — how long ago the data was baked, and which craft runs out of coverage
+first — so the warning cannot quietly go out of date.
 
 ## The assignment
 

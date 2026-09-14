@@ -145,6 +145,11 @@ const FEATURES = [
 ];
 
 global.MoonData = {
+  /* When these ephemerides were pulled from Horizons. They are frozen from
+     this instant: nothing re-fetches them, because Horizons sends no CORS
+     header and a browser cannot reach it. The page shows this date so the
+     staleness is visible rather than implied. */
+  baked: 1789354800000,
   tracked: TRACKED,
   published: PUBLISHED,
   sites: SITES,

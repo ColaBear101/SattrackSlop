@@ -160,11 +160,25 @@ tbody tr:hover{background:var(--sunk)}
 footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(--muted);
   font-size:11.5px; font-family:"IBM Plex Mono",monospace; text-align:center}
 .nodata{padding:40px 18px; text-align:center; color:var(--muted)}
+/* ---- testing status ------------------------------------------------------
+ * These pages are newer than the Earth console and, unlike it, are not covered
+ * by a bit-identical regression gate. Saying so in the masthead costs a line
+ * and is the difference between a caveat and a surprise. */
+.tbadge{font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--contact);
+  border:1px solid var(--contact); border-radius:3px; padding:2px 6px;
+  white-space:nowrap; vertical-align:middle; margin-left:8px}
+.tnote{display:flex; flex-wrap:wrap; gap:4px 18px; padding:7px 16px;
+  background:var(--sunk); border-bottom:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  color:var(--muted); line-height:1.5}
+.tnote b{color:var(--ink2); font-weight:600}
+.tnote .why{color:var(--contact)}
 </style>
 
 <header class="bar bar-top">
   <div>
-    <h1>Lunar track console</h1>
+    <h1>Lunar track console<span class="tbadge">testing</span></h1>
     <div class="ids">
       <span>Selenographic, mean Earth / polar axis</span><span>·</span>
       <span>R<sub>☾</sub> <b>1737.4 km</b></span><span>·</span>
@@ -176,6 +190,14 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
   <a class="btn" href="index.html" style="text-decoration:none">Earth console</a>
   <a class="btn" href="moon.html" style="text-decoration:none">Lagrange points</a>
 </header>
+
+<p class="tnote" id="tnote">
+  <span class="why">Not production-grade, and here is exactly why:</span>
+  <span>ephemerides <b id="t-baked">—</b> and frozen — nothing re-fetches them</span>
+  <span>positions <b>~1 km</b> near an anchor, <b>~18 km</b> twelve hours out</span>
+  <span>Queqiao orbits are <b>published, not tracked</b></span>
+  <span id="t-cov">—</span>
+</p>
 
 <main class="stage">
   <div class="mapwrap">
@@ -993,6 +1015,21 @@ if(viz3d){
 }
 setMode(viz3d);
 satNode.textContent = cur.name;
+/* The staleness line is computed, not typed: a hard-coded date would be a
+   lie the moment the ephemerides are re-baked. */
+(function testingNote(){
+  const baked = new Date(MD.baked);
+  const days = Math.floor((Date.now() - MD.baked)/86400000);
+  $('t-baked').textContent = 'baked ' + iso(baked).slice(0,10) +
+    (days > 0 ? ', ' + days + ' d ago' : '');
+  const ends = MD.tracked.map(t => ({name: t.name.split(' ')[0],
+    end: t.sets[t.sets.length-1][0]}));
+  const soonest = ends.reduce((a,b) => a.end < b.end ? a : b);
+  const left = Math.floor((soonest.end - Date.now())/86400000);
+  $('t-cov').innerHTML = left >= 0
+    ? 'coverage ends first for <b>' + soonest.name + '</b> in <b>' + left + ' days</b>'
+    : '<b>' + soonest.name + '</b> is <b>' + (-left) + ' days past</b> its coverage';
+})();
 fit(); buildFleet(); buildSites(); paint();
 requestAnimationFrame(tick);
 </script>

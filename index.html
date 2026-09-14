@@ -540,16 +540,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
 
     <aside class="rail" aria-label="Visibility summary">
-      <div class="railsec" id="railSky">
-        <p class="eyebrow">Sky track · selected pass</p>
-        <div class="skybox">
-          <canvas id="sky" width="536" height="536"
-                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
-          <div class="skyfacts" id="skyfacts"></div>
-          <div class="dopbar" id="dopbar"></div>
-        </div>
-      </div>
-
       <div class="answer">
         <p class="eyebrow" id="lbl-vis">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
@@ -557,6 +547,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="livel">
           <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
           <span class="v" id="o3el">—</span>
+        </div>
+        <div class="countdown">
+          <span class="k" id="cdlabel">Next pass</span>
+          <span class="v" id="cdvalue">—</span>
+          <span class="w" id="cdwhen">—</span>
         </div>
         <div class="sitebox">
           <button class="btn" id="siteopen" aria-expanded="false">Change observer…</button>
@@ -573,16 +568,21 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
             <p class="sitenote" id="sitenote"></p>
           </div>
         </div>
-        <div class="countdown">
-          <span class="k" id="cdlabel">Next pass</span>
-          <span class="v" id="cdvalue">—</span>
-          <span class="w" id="cdwhen">—</span>
-        </div>
       </div>
 
       <div class="railsec">
         <p class="eyebrow">Access windows</p>
         <div class="passlist" id="passlist"></div>
+      </div>
+
+      <div class="railsec" id="railSky">
+        <p class="eyebrow">Sky track · selected pass</p>
+        <div class="skybox">
+          <canvas id="sky" width="536" height="536"
+                  aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
+          <div class="skyfacts" id="skyfacts"></div>
+          <div class="dopbar" id="dopbar"></div>
+        </div>
       </div>
 
       <div class="railsec">

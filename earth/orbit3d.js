@@ -701,17 +701,22 @@ function tick(ts){
      frame with the inside of a sprite. */
   satDot.visible = satHalo.visible = !!satPos && !pov;
 
-  // R(+) rides the radius vector, so the remaining gap to the marker reads as altitude
-  if(reLine.visible && satPos){
+  /* Altitude is the number people actually want, so it is drawn whenever there
+     is a spacecraft - not only when the planet is hidden. R(+) still is, because
+     it runs from the centre to the surface and would be buried inside the globe
+     with nothing to see. */
+  if(satPos){
     const dir = satPos.clone().normalize();
     const tip = dir.clone().multiplyScalar(1);
-    const arr = reLine.geometry.attributes.position.array;
-    arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
-    reLine.geometry.attributes.position.needsUpdate = true;
-    reLine.geometry.computeBoundingSphere();
-    reTip.position.copy(dir).multiplyScalar(1 - 0.036);
-    reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
-    if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
+    if(reLine.visible){
+      const arr = reLine.geometry.attributes.position.array;
+      arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
+      reLine.geometry.attributes.position.needsUpdate = true;
+      reLine.geometry.computeBoundingSphere();
+      reTip.position.copy(dir).multiplyScalar(1 - 0.036);
+      reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+      if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
+    } else if(labels.earth) labels.earth.__vec = null;
 
     // and the rest of the way: surface -> spacecraft is the altitude
     const arr2 = altLine.geometry.attributes.position.array;
@@ -737,6 +742,7 @@ function tick(ts){
     if(labels.earth) labels.earth.__vec = null;
     if(labels.alt) labels.alt.__vec = null;
   }
+
 
   // line of sight, drawn only while the pass is actually up
   const seen = satPos && el >= GT.MASK;
@@ -823,6 +829,20 @@ function paintLabels(satPos, el){
   place(labels.name, pov ? null : satPos);
   place(labels.earth, labels.earth ? labels.earth.__vec : null);
   place(labels.alt, labels.alt ? labels.alt.__vec : null);
+  /* R(+) and the altitude both lie ALONG the radius vector, and the default
+     Satellite camera sits on that same line - looking straight down it. Every
+     point on a ray through the eye projects to one pixel, so the two labels
+     landed exactly on top of each other and the altitude simply was not there
+     to be read. That is what "unchecking Earth only shows R(+)" actually was:
+     not a missing label, a vanishing point.
+     Nothing can be done about the foreshortening - it is the honest projection
+     of that camera - but the text can be pulled apart so both are legible. */
+  if(labels.earth && labels.alt &&
+     labels.earth.style.display === 'block' && labels.alt.style.display === 'block'){
+    const dy = Math.abs(parseFloat(labels.alt.style.top) - parseFloat(labels.earth.style.top));
+    const dx = Math.abs(parseFloat(labels.alt.style.left) - parseFloat(labels.earth.style.left));
+    labels.alt.style.marginTop = (dx < 90 && dy < 16) ? '15px' : '0px';
+  } else if(labels.alt) labels.alt.style.marginTop = '0px';
   if(labels.hover){
     if(hoverIdx >= 0){
       labels.hover.textContent = GT.CAT[hoverIdx].name;
@@ -880,10 +900,11 @@ global.Orbit3D = {
     if(wire) wire.visible = !earthOn;
     if(reLine) reLine.visible = !earthOn;
     if(reTip) reTip.visible = !earthOn;
-    if(altLine) altLine.visible = !earthOn;
-    if(altTip) altTip.visible = !earthOn;
+    /* The altitude arrow is NOT tied to this. It lives above the surface, so
+       the globe never occludes it, and it carries the one number a reader
+       wants off a 3D view. Hiding it with the planet was the old behaviour and
+       the wrong one. */
     if(labels.earth) labels.earth.style.display = earthOn ? 'none' : 'block';
-    if(labels.alt) labels.alt.style.display = earthOn ? 'none' : 'block';
   },
   get earth(){ return earthOn; },
   get fov(){ return fovOn; },

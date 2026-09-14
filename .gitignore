@@ -5,3 +5,10 @@ node_modules/
 .vercel
 verification/.regress-current.json
 verification/.regress-snap.js
+
+# The CI workflow is kept on disk but out of git: the deploy token has no
+# "workflow" scope, so a push that touches .github/workflows is refused outright.
+# Restore it with `git checkout with-ci-workflow -- .github/workflows` once the
+# token has that scope, or paste the file into GitHub via Actions -> new workflow,
+# which needs no token at all.
+.github/workflows/

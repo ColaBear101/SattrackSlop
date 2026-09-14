@@ -85,17 +85,47 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
 
   const rMag = Math.hypot(...c.pos);
   const nadir = c.pos.map(v => -v/rMag);
-  chk('it looks at nadir when yaw and pitch are zero',
-      Math.abs(dot3(c.dir, nadir) - 1) < 1e-6, 'dot(view, nadir) = ' + dot3(c.dir, nadir).toFixed(9));
-
-  /* Screen-up is the along-track direction, so the spacecraft flies toward the
-     top of the frame - the orientation nadir imagery is published in. */
   const zen = c.pos.map(v => v/rMag);
   const vh = ref.v.map(v => v/Math.hypot(...ref.v));
   const ah = vh.map((v, i) => v - zen[i]*dot3(vh, zen));
   const ahn = ah.map(v => v/Math.hypot(...ah));
-  chk('screen-up is the along-track direction', Math.abs(dot3(c.up, ahn) - 1) < 1e-6,
-      'dot(up, along-track) = ' + dot3(c.up, ahn).toFixed(9));
+
+  /* The camera looks FORWARD, down the track, with zenith up.
+     It used to default to nadir, and these two assertions used to say so. The
+     reason it changed is a real one rather than taste: looking straight down
+     puts the view axis ON the yaw axis, so a sideways drag - which yaws about
+     the local vertical - only rolled the image instead of turning the head. The
+     camera felt stuck. Facing along-track separates the axes.
+     Nadir is not lost, it is one drag away, and the pitch check below proves
+     it still arrives exactly. */
+  chk('it looks along-track when yaw and pitch are zero',
+      Math.abs(dot3(c.dir, ahn) - 1) < 1e-6, 'dot(view, along-track) = ' + dot3(c.dir, ahn).toFixed(9));
+  chk('screen-up is the zenith', Math.abs(dot3(c.up, zen) - 1) < 1e-6,
+      'dot(up, zenith) = ' + dot3(c.up, zen).toFixed(9));
+  chk('the view is level: no roll about the boresight',
+      Math.abs(dot3(c.up, ahn)) < 1e-6, 'up . along-track = ' + dot3(c.up, ahn).toExponential(2));
+
+  /* Pitching fully down must still land on nadir. That is the capability the
+     old default handed over for free, and it would be easy to lose silently
+     while changing where the camera starts. A downward drag of 400 px at
+     0.30 deg/px saturates the -89 clamp, one degree short of the gimbal pole,
+     so the residual is that degree rather than zero. */
+  await page.evaluate(() => {
+    const cv = document.getElementById('globe');
+    const R = cv.getBoundingClientRect();
+    const x = R.left + R.width/2, y = R.top + R.height/2;
+    cv.dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y, bubbles: true }));
+    for (let i = 1; i <= 40; i++)
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + i*10, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await page.waitForTimeout(500);
+  const down = await cam();
+  const dn = down.pos.map(v => -v/Math.hypot(...down.pos));
+  const offNadir = Math.acos(Math.max(-1, Math.min(1, dot3(down.dir, dn))))*180/Math.PI;
+  chk('pitching down still reaches nadir, to within the one-degree clamp',
+      offNadir < 1.5, offNadir.toFixed(2) + ' deg off nadir');
+  c = await cam();
 
   chk('the FOV starts at the value the other modes use', Math.abs(c.fov - 42) < 1e-9,
       'fov = ' + c.fov);

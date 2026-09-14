@@ -8026,8 +8026,13 @@ function clockTick(ts){
   const dt = rafPrev ? Math.min((ts-rafPrev)/1000, .25) : 0; rafPrev = ts;
   if(playing && D){
     simMs += dt*rate*1000;
-    const span = winT1()-winT0();
-    if(simMs > winT1()) simMs = winT0() + (simMs - winT1()) % span;   // loop the day
+    /* Run ON rather than loop. The old behaviour snapped back to +0 h at the end
+       of the bar, which made the clock lie: the time on screen jumped backwards
+       a day while the spacecraft kept flying. Now the analysis window itself
+       advances and the instant is carried across, so the scrubber returns to the
+       left edge because a NEW day has started, not because the old one was
+       replayed. */
+    if(simMs > winT1() || simMs < winT0()) rollWindow();
   }
   paintClock(false);
   if(window.__viz && window.OrbitViz) OrbitViz.setTime(new Date(simMs));
@@ -8691,6 +8696,28 @@ function toLocalInput(ms){
   return d.toISOString().slice(0,16);
 }
 function setWindow(ms){ winStart = ms; stop(); load(CAT[curIdx]); }
+
+/* Slide the analysis window to contain simMs, keeping the clock where it is.
+   load() recomputes everything and resets simMs to the window start, so the
+   instant is captured first and put back afterwards.
+
+   Recomputing is not cheap - passes are re-scanned and bisected - but it happens
+   at most once per window crossing, which even at the 3600x cap is once every
+   24 seconds of real time. Guarded against a rate so high that a single frame
+   skips whole windows, which would otherwise mean an unbounded loop. */
+function rollWindow(){
+  const span = winT1() - winT0();
+  if(!(span > 0)) return;
+  const keep = playing, at = simMs;
+  let start = winT0();
+  for(let i = 0; i < 64 && (at > start + span || at < start); i++)
+    start += at > start ? span : -span;
+  winStart = start;
+  load(CAT[curIdx]);
+  simMs = at;
+  playing = keep;
+  paintClock(true); paintPlay();
+}
 function paintWindow(){
   const inp = document.getElementById('winStartIn');
   if(inp && document.activeElement !== inp) inp.value = toLocalInput(D.start.getTime());
@@ -9265,8 +9292,14 @@ document.addEventListener('visibilitychange', () => {
       // every layer starts off - the default view was deliberately decluttered,
       // and the Layers button is right there for anyone who wants the geometry
       OrbitViz.layers().forEach(l => OrbitViz.show(l.key, false));
+      /* The star field is switched on here and left out of the panel. It is not
+         a layer in the sense the others are - they are annotation drawn over the
+         sky, this IS the sky, and the scene looked like a diagram without it.
+         The invented 2600-point starfield that used to stand in for it is gone,
+         so this is the only sky there is. */
+      OrbitViz.show('stars', true);
       const menu = document.getElementById('layersMenu');
-      menu.innerHTML = OrbitViz.layers().map(l =>
+      menu.innerHTML = OrbitViz.layers().filter(l => l.key !== 'stars').map(l =>
         '<label><input type="checkbox" data-layer="'+l.key+'"'+(l.on?' checked':'')+'> '+
         esc(l.label)+'</label>').join('');
       menu.addEventListener('change', e=>{

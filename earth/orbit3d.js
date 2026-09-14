@@ -190,7 +190,6 @@ function build(canvas){
   altLine.visible = altTip.visible = false;
   scene.add(altLine); scene.add(altTip);
 
-  starfield();
 
   // ground-bound overlays ride the Earth
   trackLine = mkLine(0, '--track', 1);
@@ -238,18 +237,12 @@ function mkLine(n, tokenName, width){
   return new THREE.Line(geo, new THREE.LineBasicMaterial({
     color: col(tokenName), transparent:true, opacity: width>1?.95:.75 }));
 }
-function starfield(){
-  const N = 2600, p = new Float32Array(N*3);
-  for(let i=0;i<N;i++){
-    const u = Math.random()*2-1, th = Math.random()*Math.PI*2, r = 120 + Math.random()*60;
-    const s = Math.sqrt(1-u*u);
-    p[i*3] = r*s*Math.cos(th); p[i*3+1] = r*u; p[i*3+2] = r*s*Math.sin(th);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(p,3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({
-    color: 0xdbe6ee, size: 0.55, sizeAttenuation:false, transparent:true, opacity:.55 })));
-}
+/* There was a starfield here: 2600 points at random on a shell. It was
+   decoration pretending to be sky - the constellations were wrong because there
+   were none, and in POV mode you could look up at a sky that does not exist.
+   orbitviz.js already carries the real one, 2865 HYG catalogue stars at their
+   actual right ascension and declination, so the invented one is deleted rather
+   than kept as a fallback. The real layer is now on by default.  */
 
 // untextured points rasterise as hard squares, which is the single loudest
 // 'this is a WebGL demo' tell
@@ -444,16 +437,19 @@ function setPovState(v){
   if(v){
     if(follow){ follow = false; if(onFollow) onFollow(false); }
     if(siteLock){ siteLock = false; if(onSite) onSite(false); }
-    pov0.yaw = 0; pov0.pitch = 0;                // re-entering re-centres on nadir
+    pov0.yaw = 0; pov0.pitch = 0;                // re-entering re-centres on the track ahead
   }
   if(onPov) onPov(v);
 }
 
-/* Aim the POV camera. Nadir is straight down, which in scene units is simply
-   toward the origin. The screen's up is the along-track direction, so the
-   spacecraft flies toward the top of the frame - the orientation nadir imagery
-   is published in. Yaw then turns the head about the local vertical and pitch
-   lifts it from nadir out to the horizon, and past it into the sky.
+/* Aim the POV camera: looking FORWARD along the velocity vector, with zenith up.
+   It used to look at nadir, and that was a mistake for one specific reason.
+   Looking straight down puts the view axis on the yaw axis, so dragging
+   sideways - which yaws about the local vertical - only ROLLED the image
+   instead of turning the head. The camera felt stuck, because in that pose the
+   horizontal drag had nowhere to send you. Facing along-track separates the two
+   axes: yaw turns left and right, pitch looks up and down, and nadir is simply
+   pitch -90, still one drag away.
 
    Rebuilt from the same basis every frame rather than accumulated onto the
    previous orientation: a long drag would otherwise walk the roll off true, and
@@ -470,10 +466,11 @@ function aimPov(satPos, satVel){
   ahead.normalize();
   const right = new THREE.Vector3().crossVectors(ahead, zenith).normalize();
   /* three.js cameras look down their own -Z, so the basis is (right, up, back).
-     With back = zenith the view direction is -zenith, which is nadir. */
+     back = -ahead makes the view direction +ahead: straight down the track. */
+  const back = ahead.clone().negate();
   cam.position.copy(satPos);
   cam.quaternion.setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(right, ahead, zenith));
+    new THREE.Matrix4().makeBasis(right, zenith, back));
   cam.rotateY(pov0.yaw*RAD);
   cam.rotateX(pov0.pitch*RAD);
   if(cam.fov !== pov0.fov){ cam.fov = pov0.fov; cam.updateProjectionMatrix(); }
@@ -590,8 +587,12 @@ function bindInput(canvas){
          leaving them. In POV it is not: looking around is what the mode is for,
          so the drag turns the head and stays aboard. */
       if(pov){
-        pov0.yaw -= (p.x-lastPt.x)*0.22;
-        pov0.pitch = Math.max(-110, Math.min(110, pov0.pitch - (p.y-lastPt.y)*0.22));
+        /* Pitch stops just short of +-90: straight down and straight up are
+           gimbal poles, where yaw and roll collapse onto each other and the
+           view tumbles. 89 reaches nadir for all practical purposes without
+           ever standing on the singularity. */
+        pov0.yaw -= (p.x-lastPt.x)*0.30;
+        pov0.pitch = Math.max(-89, Math.min(89, pov0.pitch - (p.y-lastPt.y)*0.30));
       } else {
         setFollowState(false); setSiteState(false);
         cam0.lon -= (p.x-lastPt.x)*0.32;
@@ -815,7 +816,11 @@ function paintLabels(satPos, el){
     node.style.left = ((v.x*0.5+0.5)*box.width) + 'px';
     node.style.top  = ((-v.y*0.5+0.5)*box.height) + 'px';
   };
-  place(labels.name, satPos);
+  /* In POV the camera sits exactly ON satPos, so projecting that point is
+     degenerate - it lands on the near plane and skitters around the frame with
+     every sub-pixel of camera motion. There is also nothing to label: you are
+     inside the thing. Hide it. */
+  place(labels.name, pov ? null : satPos);
   place(labels.earth, labels.earth ? labels.earth.__vec : null);
   place(labels.alt, labels.alt ? labels.alt.__vec : null);
   if(labels.hover){

@@ -24,9 +24,23 @@ const RAD = Math.PI/180;
 let THREE, renderer, scene, cam, canvas, layer, labels = {};
 let moonGroup, moonMesh, sunLight, ambient;
 let trackLine, orbitLine, satDot, satHalo, earthLine, subEarthRing;
-let sitePins = [], siteLabels = [];
+let sitePins = [], siteLabels = [], cage;
+let fleetGroup, fleetDots = [], fleetHits = [], fleetData = [], fleetSel = null;
+let raycaster, ptr = null, hoverIdx = -1, onPick = null, downPt = null;
 let started = false, texState = 'procedural';
 let cam0 = { lon: 20, lat: 24, dist: 3.6 }, dragging = false, lastPt = null;
+let follow = false;
+
+/* What the layers panel switches. Same shape as the Earth console's, so the
+   page can build the panel from layers() without knowing anything about the
+   scene. */
+const L = { fleet:true, orbit:true, track:true, sites:true, sitelabels:true,
+            subearth:true, earthline:true, cage:true };
+const LAYER_LABELS = {
+  fleet:'Other spacecraft', orbit:'Orbit', track:'Ground track',
+  sites:'Landing sites', sitelabels:'Site names', subearth:'Sub-Earth point',
+  earthline:'Direction to Earth', cage:'Graticule'
+};
 
 /* Fixed palette. Space has no light mode, exactly as the Earth globe decided. */
 const C = {
@@ -174,8 +188,11 @@ function build(cv, features, onUpgrade){
       side: THREE.DoubleSide}));
   moonGroup.add(subEarthRing);
 
+  fleetGroup = new THREE.Group(); moonGroup.add(fleetGroup);
+  raycaster = new THREE.Raycaster();
+
   /* a faint cage, so rotation is readable even over blank highland */
-  const cage = new THREE.LineSegments(
+  cage = new THREE.LineSegments(
     new THREE.WireframeGeometry(new THREE.SphereGeometry(1.0005, 24, 12)),
     new THREE.LineBasicMaterial({color: 0x2A343B, transparent: true, opacity: .30}));
   moonGroup.add(cage);
@@ -200,22 +217,82 @@ function bindInput(cv){
   cv.style.cursor = 'grab';
   cv.addEventListener('pointerdown', e => {
     dragging = true; lastPt = {x:e.clientX, y:e.clientY};
+    downPt = {x:e.clientX, y:e.clientY};
     cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing';
   });
   cv.addEventListener('pointermove', e => {
+    const b = cv.getBoundingClientRect();
+    ptr = { x: ((e.clientX-b.left)/b.width)*2 - 1,
+            y: -((e.clientY-b.top)/b.height)*2 + 1, cx: e.clientX, cy: e.clientY };
     if(!dragging || !lastPt) return;
     cam0.lon -= (e.clientX - lastPt.x)*0.32;
     cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (e.clientY - lastPt.y)*0.28));
     lastPt = {x:e.clientX, y:e.clientY};
   });
+  cv.addEventListener('pointerleave', () => { ptr = null; });
   const up = e => { dragging = false; lastPt = null; cv.style.cursor = 'grab';
     try { cv.releasePointerCapture(e.pointerId); } catch(_){} };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
+  /* Click to switch spacecraft.
+     The drag guard measures DISPLACEMENT FROM POINTERDOWN, not the sum of the
+     moves. Summing every delta makes ordinary hand jitter exceed any sane
+     threshold and silently kills the click - a bug already paid for once on the
+     Earth console. */
+  cv.addEventListener('click', e => {
+    if(downPt && Math.hypot(e.clientX-downPt.x, e.clientY-downPt.y) > 5) return;
+    const b = cv.getBoundingClientRect();
+    const m = { x: ((e.clientX-b.left)/b.width)*2 - 1,
+                y: -((e.clientY-b.top)/b.height)*2 + 1 };
+    /* Prefer whatever the hover label is naming. Re-raycasting on click looks
+       equivalent but is not: LRO and Chandrayaan-2 both fly ~100 km polar
+       orbits, so their hit spheres overlap on screen and the two picks can
+       resolve to different objects one frame apart. Observed exactly that -
+       the label said Chandrayaan-2 and the click selected LRO. Using the
+       hovered index makes the rule simple and true: you get what the label
+       says. The fresh pick stays as a fallback for a click with no preceding
+       hover, which is every touch interaction. */
+    const i = hoverIdx >= 0 ? hoverIdx : pickAt(m);
+    if(i >= 0 && fleetData[i] && onPick) onPick(fleetData[i].key);
+  });
   cv.addEventListener('wheel', e => {
     e.preventDefault();
     cam0.dist = Math.max(1.35, Math.min(60, cam0.dist * (e.deltaY > 0 ? 1.1 : 1/1.1)));
   }, {passive:false});
+}
+
+/* Every object at the Moon gets a marker, not just the selected one - there has
+   to be something to click. The selected one is drawn larger and brighter; the
+   rest are dimmed but live, so their motion is visible too. */
+function setFleet(list){
+  fleetDots.forEach(d => fleetGroup.remove(d));
+  fleetHits.forEach(d => fleetGroup.remove(d));
+  fleetDots = []; fleetHits = []; fleetData = list.slice();
+  for(const f of fleetData){
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.017, 14, 10),
+      new THREE.MeshBasicMaterial({color: C.sat, transparent: true, opacity: .55}));
+    m.visible = false;
+    fleetGroup.add(m); fleetDots.push(m);
+    /* A separate, larger, fully transparent sphere is the click target.
+       At this camera distance the visible dot is about nine pixels across —
+       findable by eye, but a coin-toss to hit with a mouse and hopeless on a
+       phone. The hit sphere is ~26 px, which is a real target, and keeping the
+       two apart means the marker can stay small without punishing the user.
+       It must stay visible:true — three.js raycasts invisible objects quite
+       happily, so hiding it would leave a ghost target behind. */
+    const h = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8),
+      new THREE.MeshBasicMaterial({transparent: true, opacity: 0, depthWrite: false}));
+    h.visible = false;
+    fleetGroup.add(h); fleetHits.push(h);
+  }
+}
+function pickAt(m){
+  if(!raycaster || !fleetHits.length || !L.fleet) return -1;
+  raycaster.setFromCamera(m, cam);
+  const live = fleetHits.filter(d => d.visible);
+  const hit = raycaster.intersectObjects(live, false);
+  if(!hit.length) return -1;
+  return fleetHits.indexOf(hit[0].object);
 }
 
 function setLine(line, pts){
@@ -260,12 +337,15 @@ function frame(st){
   }
 
   if(st.sunDir) sunLight.position.copy(vecToScene(st.sunDir, 1).normalize().multiplyScalar(40));
+  if(cage) cage.visible = L.cage;
+  fleetGroup.visible = L.fleet;
+  sitePins.forEach(p => p.visible = L.sites);
 
-  if(st.trackPts && st.trackPts.length)
+  if(st.trackPts && st.trackPts.length && L.track)
     setLine(trackLine, st.trackPts.map(p => ll(p.lat, p.lon, 1.004)));
   else trackLine.visible = false;
 
-  if(st.orbitPts && st.orbitPts.length)
+  if(st.orbitPts && st.orbitPts.length && L.orbit)
     setLine(orbitLine, st.orbitPts.map(p => ll(p.lat, p.lon, 1 + p.alt/1737.4)));
   else orbitLine.visible = false;
 
@@ -278,18 +358,44 @@ function frame(st){
     satHalo.lookAt(cam.position);
   }
 
-  if(st.subEarth){
+  if(st.subEarth && L.subearth){
     const v = ll(st.subEarth.lat, st.subEarth.lon, 1.004);
     subEarthRing.position.copy(v);
     subEarthRing.lookAt(v.clone().multiplyScalar(2));
     subEarthRing.visible = true;
   } else subEarthRing.visible = false;
 
-  if(st.earthDir){
+  /* fleet markers */
+  fleetSel = st.selected === undefined ? null : st.selected;
+  for(let i=0;i<fleetDots.length;i++){
+    const d = fleetDots[i], f = st.fleet && st.fleet[i];
+    const h = fleetHits[i];
+    if(!f || f.lat === undefined || f.lat === null){
+      d.visible = false; if(h) h.visible = false; continue;
+    }
+    const pos = ll(f.lat, f.lon, 1 + f.alt/1737.4);
+    d.position.copy(pos);
+    if(h){ h.position.copy(pos); h.visible = true; }
+    /* The selected craft already has satDot and its halo, so its fleet marker
+       would just be a second dot in the same place - and the layer is called
+       'Other spacecraft', which should mean what it says. The HIT sphere stays
+       live either way, so hovering the selection still names it. */
+    const sel = fleetData[i] && fleetData[i].key === fleetSel;
+    d.visible = !sel;
+    d.material.opacity = hoverIdx === i ? .95 : .5;
+  }
+
+  if(st.earthDir && L.earthline){
     const d = vecToScene(st.earthDir, 1).normalize();
     setLine(earthLine, [d.clone().multiplyScalar(1.02), d.clone().multiplyScalar(1.9)]);
   } else earthLine.visible = false;
 
+  /* Follow mode swings the camera to keep the selected spacecraft's sub-point
+     under it, which is the lunar equivalent of the Earth console's "satellite"
+     camera. */
+  if(follow && st.sat){
+    cam0.lon = -st.sat.lon; cam0.lat = Math.max(-88, Math.min(88, st.sat.lat));
+  }
   const rad = cam0.lat*RAD, lon = cam0.lon*RAD;
   cam.position.set(cam0.dist*Math.cos(rad)*Math.cos(lon),
                    cam0.dist*Math.sin(rad),
@@ -305,8 +411,20 @@ function frame(st){
     const node = siteLabels[i];
     if(!node) continue;
     const p = sitePins[i].position;
-    place(node, p.clone().normalize().dot(camDir) > 0.12 ? p : null);
+    place(node, (L.sites && L.sitelabels && p.clone().normalize().dot(camDir) > 0.12) ? p : null);
   }
+
+  /* hover: name the thing under the cursor, so a click is never a guess */
+  hoverIdx = ptr ? pickAt(ptr) : -1;
+  if(labels.hover){
+    if(hoverIdx >= 0){
+      labels.hover.textContent = fleetData[hoverIdx].name;
+      labels.hover.style.display = 'block';
+      labels.hover.style.left = (ptr.cx - renderer.domElement.getBoundingClientRect().left + 12) + 'px';
+      labels.hover.style.top  = (ptr.cy - renderer.domElement.getBoundingClientRect().top - 8) + 'px';
+    } else labels.hover.style.display = 'none';
+  }
+  if(canvas) canvas.style.cursor = dragging ? 'grabbing' : (hoverIdx >= 0 ? 'pointer' : 'grab');
   if(labels.sat) place(labels.sat, showSat ? satDot.position : null);
   if(labels.subEarth) place(labels.subEarth,
     (st.subEarth && subEarthRing.position.clone().normalize().dot(camDir) > 0.05)
@@ -324,12 +442,18 @@ global.Moon3D = {
       if(!renderer.getContext()) return false;
     } catch(e){ return false; }
     canvas = opts.canvas; layer = opts.layer; labels = opts.labels || {};
+    onPick = opts.onPick || null;
     started = true;
     return true;
   },
   frame,
   setSites(sites, nodes){ setSites(sites); siteLabels = nodes || []; },
-  resetView(){ cam0.lon = 20; cam0.lat = 24; cam0.dist = 3.6; },
+  setFleet,
+  setLayer(k, on){ if(k in L) L[k] = !!on; },
+  layers(){ return Object.keys(L).map(k => ({key:k, label:LAYER_LABELS[k], on:L[k]})); },
+  setFollow(on){ follow = !!on; },
+  get following(){ return follow; },
+  resetView(){ cam0.lon = 20; cam0.lat = 24; cam0.dist = 3.6; follow = false; },
   get ok(){ return started; },
   get texture(){ return texState; }
 };

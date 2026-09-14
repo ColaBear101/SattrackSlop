@@ -93,6 +93,19 @@ canvas#map[hidden]{display:none}
 .g-lbl.sat{color:#E8F4F9} .g-lbl.earth{color:#F0C674}
 .hint-drag{position:absolute; left:12px; bottom:9px; margin:0;
   font-family:"IBM Plex Mono",monospace; font-size:10px; color:#7C8A93}
+.g-hover{position:absolute; display:none; pointer-events:none; z-index:3;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; color:#E8F4F9;
+  background:rgba(5,9,12,.86); border:1px solid #2A343B; border-radius:3px;
+  padding:2px 7px; white-space:nowrap}
+.layerbox{position:absolute; top:10px; right:10px; z-index:2;
+  background:rgba(5,9,12,.82); border:1px solid #232D34; border-radius:4px;
+  padding:8px 10px; max-width:46%}
+.layerbox .seglabel{color:#7C8A93; display:block; margin-bottom:5px}
+.layerpanel{display:flex; flex-direction:column; gap:3px}
+.layerpanel label{display:flex; gap:6px; align-items:center; cursor:pointer;
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:#CFE3EE}
+.layerpanel input{margin:0; width:12px; height:12px}
+@media (max-width:520px){ .layerbox{display:none} }
 .maphint{display:flex; flex-wrap:wrap; gap:4px 14px; margin:7px 2px 0;
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted)}
 .maphint i{display:inline-block; width:14px; height:2px; vertical-align:middle;
@@ -169,13 +182,19 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
     <div class="viewtabs">
       <button class="btn" id="v3d" aria-pressed="true">Globe</button>
       <button class="btn" id="v2d" aria-pressed="false">Flat map</button>
+      <button class="btn" id="vfollow" aria-pressed="false">Follow</button>
       <button class="btn" id="vreset">Reset view</button>
       <span class="mono" id="texnote" style="font-size:10.5px;color:var(--muted)"></span>
     </div>
     <div class="globewrap" id="globewrap">
       <canvas id="globe" aria-label="Three-dimensional view of the Moon with the selected spacecraft's orbit and ground track, the landing sites and the sub-Earth point. The same numbers are in the tables below."></canvas>
       <div class="g-layer" id="glayer"></div>
-      <p class="hint-drag">drag to orbit · scroll to zoom</p>
+      <span class="g-hover" id="ghover"></span>
+      <div class="layerbox">
+        <span class="seglabel">Layers</span>
+        <div class="layerpanel" id="layers" role="group" aria-label="Scene layers"></div>
+      </div>
+      <p class="hint-drag">drag to orbit · scroll to zoom · click a spacecraft to switch to it</p>
     </div>
     <canvas id="map" hidden aria-label="Lunar map with the selected spacecraft's ground track, landing sites and named features. The same numbers are in the tables below."></canvas>
     <p class="maphint" id="maplegend"></p>
@@ -672,6 +691,16 @@ function feed3d(){
       st.orbitPts.push({lat: g.latitude*DEG, lon: g.longitude*DEG, alt: g.height});
     }
   }
+  /* Every object gets a position each frame, not just the selected one - the
+     markers are what you click, so they have to be live. */
+  st.fleet = FLEET.map(f => {
+    if(!f.track || !f.track.ok) return {};
+    const p = f.track.at(simMs);
+    if(!p) return {};
+    const g = MOON.toGeodetic(p.r, o);
+    return { lat: g.latitude*DEG, lon: g.longitude*DEG, alt: g.height };
+  });
+  st.selected = cur.key;
   Moon3D.frame(st);
 }
 
@@ -848,6 +877,14 @@ function buildSites(){
 
 /* ---- controls ------------------------------------------------------------ */
 $('pick').innerHTML = FLEET.map((f,i)=>'<option value="'+i+'">'+f.name+' — '+f.agency+'</option>').join('');
+function selectCraft(key){
+  const i = FLEET.findIndex(f => f.key === key);
+  if(i < 0 || FLEET[i] === cur) return;
+  cur = FLEET[i];
+  $('pick').value = String(i);
+  if(typeof satNode !== 'undefined') satNode.textContent = cur.name;
+  paint();
+}
 $('pick').addEventListener('change', e => { cur = FLEET[+e.target.value];
   if(typeof satNode !== 'undefined') satNode.textContent = cur.name; paint(); });
 $('play').addEventListener('click', () => {
@@ -861,7 +898,17 @@ $('rate').addEventListener('input', () => {
 });
 $('v3d').addEventListener('click', () => setMode(true));
 $('v2d').addEventListener('click', () => setMode(false));
-$('vreset').addEventListener('click', () => { if(viz3d) Moon3D.resetView(); });
+$('vreset').addEventListener('click', () => {
+  if(!viz3d) return;
+  Moon3D.resetView();
+  $('vfollow').setAttribute('aria-pressed','false');
+});
+$('vfollow').addEventListener('click', () => {
+  if(!viz3d) return;
+  const on = $('vfollow').getAttribute('aria-pressed') !== 'true';
+  Moon3D.setFollow(on);
+  $('vfollow').setAttribute('aria-pressed', String(on));
+});
 function setMode(on){
   mode3d = on && viz3d;
   $('v3d').setAttribute('aria-pressed', String(mode3d));
@@ -917,13 +964,28 @@ seNode.className = 'g-lbl earth'; seNode.textContent = 'sub-Earth'; glayer.appen
 
 viz3d = !!(window.Moon3D && window.THREE && Moon3D.init({
   canvas: $('globe'), layer: glayer, features: MD.features,
-  labels: { sat: satNode, subEarth: seNode },
-  onTexture: t => { $('texnote').textContent = t; }
+  labels: { sat: satNode, subEarth: seNode, hover: $('ghover') },
+  onTexture: t => { $('texnote').textContent = t; },
+  onPick: key => selectCraft(key)
 }));
 if(viz3d){
   Moon3D.setSites(MD.sites, siteNodes);
+  Moon3D.setFleet(FLEET.map(f => ({key:f.key, name:f.name + ' · ' + f.agency})));
+  /* Panel built from the scene's own layer list, so adding a layer to moon3d.js
+     puts a checkbox here without touching the page. Same contract the Earth
+     console uses. */
+  const lm = $('layers');
+  lm.innerHTML = Moon3D.layers().map(l =>
+    '<label><input type="checkbox" data-layer="' + l.key + '"' + (l.on ? ' checked' : '') +
+    '> ' + l.label + '</label>').join('');
+  lm.addEventListener('change', e => {
+    const k = e.target.dataset.layer;
+    if(k){ Moon3D.setLayer(k, e.target.checked); paint(); }
+  });
   $('texnote').textContent = 'painted (tiles loading…)';
 } else {
+  $('layerbox') && ($('layerbox').style.display = 'none');
+  const lb = document.querySelector('.layerbox'); if(lb) lb.style.display = 'none';
   /* No WebGL is a normal outcome, not an error. The flat map carries every
      number the globe does. */
   $('v3d').disabled = true;

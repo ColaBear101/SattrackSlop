@@ -612,6 +612,36 @@ which would take out the whole scene rather than just the imagery. Painting else
 readability first means a blocked tile costs nothing: the procedurally painted fallback, where
 the maria are drawn from the feature list, simply stays.
 
+### Working it like the Earth console
+
+Same affordances, because it is the same instrument:
+
+- **Every object is drawn at once**, not just the selected one — there has to be something to
+  click. Hovering names it; clicking switches to it.
+- A **layers panel** built from the scene's own layer list, so adding a layer to
+  `moon/moon3d.js` puts a checkbox on the page without touching the page.
+- **Follow** swings the camera to hold the selected spacecraft's sub-point beneath it, the lunar
+  equivalent of the Earth console's satellite camera.
+
+Two details that are not obvious until they bite:
+
+**The click follows the hover label, not a fresh raycast.** Those look equivalent and are not.
+LRO and Chandrayaan-2 both fly ~100 km polar orbits, so their hit spheres overlap on screen and
+the two picks can resolve to different objects one frame apart — observed exactly that, with the
+label reading Chandrayaan-2 while the click selected LRO. Using the hovered index makes the rule
+simple and true: you get what the label says.
+
+**The click target is a separate, invisible sphere**, larger than the marker. At normal zoom the
+visible dot is about nine pixels across — findable by eye, a coin-toss to hit with a mouse, and
+hopeless on a phone. The hit sphere is about twenty-six. Keeping them apart lets the marker stay
+small without punishing anyone. It has to stay `visible: true`, incidentally: three.js raycasts
+invisible objects quite happily, so hiding it would leave a ghost target behind — a bug already
+paid for once on the Earth console's catalogue cloud.
+
+And the drag guard measures **displacement from pointerdown**, not the sum of the moves. Summing
+every delta lets ordinary hand jitter exceed any sane threshold and silently kills the click —
+also already paid for once.
+
 ### Engineering readouts
 
 Sub-point, altitude and altitude rate, inertial and ground speed, the radial/transverse velocity

@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lunar Track Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Same instrument palette as the Earth console — this is the same program
+   pointed at a different body, and it should read that way. */
+:root{
+  --surface:#F2F4F5; --panel:#FFFFFF; --sunk:#E9EDEF; --ink:#0E1A1F; --ink2:#3C4D56;
+  --muted:#536169; --rule:#CBD6DB;
+  --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
+  --track:#0086AD; --contact:#B4670F; --observer:#C42A6E; --ring:#A9B9C1;
+  --regolith:#B9BDC0; --regodark:#8E9397; --far:#6F757A;
+  --shadow:0 1px 2px rgba(14,26,31,.06), 0 10px 26px -18px rgba(14,26,31,.34);
+  --void:#05090C;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
+    --muted:#8096A1; --rule:#22313A;
+    --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+    --track:#17A3CC; --contact:#CE801A; --observer:#E2557E; --ring:#374954;
+    --regolith:#39434A; --regodark:#232C32; --far:#4A555C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
+  --muted:#8096A1; --rule:#22313A;
+  --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
+  --track:#17A3CC; --contact:#CE801A; --observer:#E2557E; --ring:#374954;
+  --regolith:#39434A; --regodark:#232C32; --far:#4A555C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{background:var(--surface); color:var(--ink); margin:0;
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased}
+a{color:var(--track)}
+h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; letter-spacing:-.01em}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; font-weight:500;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--muted); margin:0}
+
+.bar{display:flex; align-items:center; gap:14px; padding:9px 16px; flex-wrap:wrap;
+  background:var(--chrome); color:var(--chromeink); border-bottom:1px solid var(--chromerule)}
+.bar-top h1{font-size:16px}
+.bar-top .ids{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.bar-top .ids b{color:var(--ink2); font-weight:600}
+.spacer{margin-left:auto}
+.btn{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px;
+  background:var(--panel); color:var(--ink); border:1px solid var(--chromerule);
+  border-radius:4px; padding:5px 10px; cursor:pointer; line-height:1.3}
+.btn:hover{border-color:var(--ring)}
+.btn[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+.btn:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--track); outline-offset:2px}
+.seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+
+/* the provenance badge — the point of the page, so it gets real styling */
+.grade{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.09em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1px solid;
+  white-space:nowrap; font-weight:600}
+.grade.tracked{color:var(--track); border-color:var(--track)}
+.grade.published{color:var(--contact); border-color:var(--contact)}
+.grade.schematic{color:var(--muted); border-color:var(--muted)}
+
+.stage{display:grid; grid-template-columns:minmax(0,1fr) 320px}
+@media (max-width:980px){ .stage{grid-template-columns:minmax(0,1fr)} }
+/* The rail is taller than a 2:1 equirectangular map, and a grid row sizes to
+   its tallest child, so the leftover height would otherwise all pool under
+   the map. Centring splits it. */
+.mapwrap{position:relative; padding:14px 16px; min-width:0; align-self:center}
+canvas#map{display:block; width:100%; border-radius:4px; background:var(--sunk);
+  border:1px solid var(--rule)}
+.maphint{display:flex; flex-wrap:wrap; gap:4px 14px; margin:7px 2px 0;
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted)}
+.maphint i{display:inline-block; width:14px; height:2px; vertical-align:middle;
+  margin-right:5px; border-radius:1px}
+
+.rail{background:var(--panel); border-left:1px solid var(--rule); overflow:auto}
+@media (max-width:980px){ .rail{border-left:0; border-top:1px solid var(--rule)} }
+.rblock{padding:12px 15px; border-bottom:1px solid var(--rule)}
+.rblock:last-child{border-bottom:0}
+.dv{display:flex; justify-content:space-between; gap:10px; align-items:baseline; padding:2px 0}
+.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muted); margin:0}
+.dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink); text-align:right}
+dl{margin:0}
+.warn{color:var(--contact)}
+.good{color:var(--track)}
+
+select{font-family:"IBM Plex Mono",monospace; font-size:12px; width:100%;
+  background:var(--panel); color:var(--ink); border:1px solid var(--rule);
+  border-radius:4px; padding:6px 8px}
+.bar-transport{border-top:1px solid var(--chromerule); background:var(--chrome2)}
+.rate{display:flex; align-items:center; gap:8px; flex:1 1 250px; min-width:200px}
+.rate input{flex:1; min-width:80px}
+.clock{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;
+  font-variant-numeric:tabular-nums; display:flex; gap:12px; flex-wrap:wrap}
+.clock .b{color:var(--muted)}
+
+.report{max-width:1180px; margin:0 auto; padding:28px 18px 70px;
+  display:flex; flex-direction:column; gap:32px}
+section{display:flex; flex-direction:column; gap:14px}
+.shead{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
+  border-bottom:1px solid var(--rule); padding-bottom:9px}
+.shead h2{font-size:21px}
+.shead .hint{color:var(--muted); font-size:12.5px; margin-left:auto}
+.cols{columns:3 270px; column-gap:26px}
+.cols > div{break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 22px}
+.cols h3{font-size:14px; margin-bottom:6px}
+.cols p{margin:0 0 9px; font-size:13px; line-height:1.68; color:var(--ink2)}
+.cols p:last-child{margin-bottom:0}
+.cols code{font-family:"IBM Plex Mono",monospace; font-size:12px; background:var(--sunk);
+  padding:1px 4px; border-radius:3px}
+.tablewrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-family:"IBM Plex Mono",monospace;
+  font-size:12.5px; font-variant-numeric:tabular-nums}
+th{text-align:right; font-weight:500; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); padding:7px 11px;
+  border-bottom:1px solid var(--rule); white-space:nowrap}
+th:first-child, td:first-child{text-align:left}
+td{padding:7px 11px; border-bottom:1px solid var(--rule); text-align:right; white-space:nowrap}
+tbody tr:hover{background:var(--sunk)}
+footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(--muted);
+  font-size:11.5px; font-family:"IBM Plex Mono",monospace; text-align:center}
+.nodata{padding:40px 18px; text-align:center; color:var(--muted)}
+</style>
+
+<header class="bar bar-top">
+  <div>
+    <h1>Lunar track console</h1>
+    <div class="ids">
+      <span>Selenographic, mean Earth / polar axis</span><span>·</span>
+      <span>R<sub>☾</sub> <b>1737.4 km</b></span><span>·</span>
+      <span>GM <b>4902.800066</b></span><span>·</span>
+      <span id="epochnote">—</span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <a class="btn" href="index.html" style="text-decoration:none">Earth console</a>
+  <a class="btn" href="moon.html" style="text-decoration:none">Lagrange points</a>
+</header>
+
+<main class="stage">
+  <div class="mapwrap">
+    <canvas id="map" aria-label="Lunar map with the selected spacecraft's ground track, landing sites and named features. The same numbers are in the tables below."></canvas>
+    <p class="maphint" id="maplegend"></p>
+  </div>
+
+  <aside class="rail">
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:7px">Spacecraft</p>
+      <select id="pick" aria-label="Select a spacecraft"></select>
+      <p style="margin:8px 0 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <span class="grade" id="gradechip">—</span>
+        <span class="mono" style="font-size:10.5px; color:var(--muted)" id="agency">—</span>
+      </p>
+      <p style="margin:7px 0 0; font-size:11.5px; line-height:1.55; color:var(--muted)" id="provnote">—</p>
+    </div>
+
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:6px">State</p>
+      <dl>
+        <div class="dv"><dt>Sub-point</dt><dd id="s-sub">—</dd></div>
+        <div class="dv"><dt>Altitude</dt><dd id="s-alt">—</dd></div>
+        <div class="dv"><dt>Altitude rate</dt><dd id="s-altrate">—</dd></div>
+        <div class="dv"><dt>Speed, inertial</dt><dd id="s-vel">—</dd></div>
+        <div class="dv"><dt>Ground speed</dt><dd id="s-gs">—</dd></div>
+        <div class="dv"><dt>v radial / transv.</dt><dd id="s-vsplit">—</dd></div>
+      </dl>
+    </div>
+
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:6px">Orbit</p>
+      <dl>
+        <div class="dv"><dt>a</dt><dd id="o-a">—</dd></div>
+        <div class="dv"><dt>e</dt><dd id="o-e">—</dd></div>
+        <div class="dv"><dt>i</dt><dd id="o-i">—</dd></div>
+        <div class="dv"><dt>Ω / ω</dt><dd id="o-node">—</dd></div>
+        <div class="dv"><dt>ν / M</dt><dd id="o-anom">—</dd></div>
+        <div class="dv"><dt>Period</dt><dd id="o-per">—</dd></div>
+        <div class="dv"><dt>Peri × apo alt</dt><dd id="o-apsis">—</dd></div>
+        <div class="dv"><dt>Spec. energy</dt><dd id="o-en">—</dd></div>
+        <div class="dv"><dt>Spec. ang. mom.</dt><dd id="o-h">—</dd></div>
+      </dl>
+    </div>
+
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:6px">Link &amp; lighting</p>
+      <dl>
+        <div class="dv"><dt>Earth range</dt><dd id="l-rng">—</dd></div>
+        <div class="dv"><dt>One-way light</dt><dd id="l-lt">—</dd></div>
+        <div class="dv"><dt>Earth elevation</dt><dd id="l-elev">—</dd></div>
+        <div class="dv"><dt>Sub-Earth point</dt><dd id="l-sube">—</dd></div>
+        <div class="dv"><dt>Sun elevation</dt><dd id="l-sun">—</dd></div>
+        <div class="dv"><dt>In sunlight</dt><dd id="l-lit">—</dd></div>
+      </dl>
+    </div>
+
+    <div class="rblock">
+      <p class="eyebrow" style="margin-bottom:6px">How stale is this</p>
+      <dl>
+        <div class="dv"><dt>Anchor epoch</dt><dd id="a-epoch">—</dd></div>
+        <div class="dv"><dt>Hours from it</dt><dd id="a-age">—</dd></div>
+        <div class="dv"><dt>Expected error</dt><dd id="a-err">—</dd></div>
+      </dl>
+      <p style="margin:7px 0 0; font-size:11.5px; line-height:1.55; color:var(--muted)" id="a-note">—</p>
+    </div>
+  </aside>
+</main>
+
+<footer class="bar bar-transport">
+  <button class="btn" id="play" aria-label="Pause">❚❚</button>
+  <div class="rate">
+    <span class="seglabel">Rate</span>
+    <input type="range" id="rate" min="0" max="100" value="40" step="1"
+           aria-label="Time rate, real time up to one week per second">
+    <span class="mono" id="ratev" style="min-width:74px">—</span>
+  </div>
+  <button class="btn" id="now">Now</button>
+  <div class="clock">
+    <span><span id="clock">—</span> UTC</span>
+    <span class="b">track <span id="trailv">1 orbit</span></span>
+  </div>
+  <button class="btn" id="trail">Trail: 1 orbit</button>
+</footer>
+
+<div class="report">
+  <section>
+    <div class="shead">
+      <h2>Everything at the Moon</h2>
+      <p class="hint">and how well each position is actually known</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Object</th><th>Agency</th><th>Knowledge</th><th>Orbit</th>
+          <th>Period</th><th>Alt (peri × apo)</th><th>Source</th></tr></thead>
+        <tbody id="fleet"></tbody>
+      </table>
+    </div>
+    <p style="margin:0; font-size:12.5px; color:var(--muted)" id="fleetnote"></p>
+  </section>
+
+  <section>
+    <div class="shead"><h2>Surface</h2>
+      <p class="hint">east-positive longitude, IAU convention</p></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Site</th><th>Agency</th><th>Year</th><th>Lat</th><th>Lon E</th>
+          <th>Side</th><th>Earth elev.</th><th>Sun elev.</th><th>Position</th></tr></thead>
+        <tbody id="sites"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="shead"><h2>What these numbers are, and are not</h2></div>
+    <div class="cols">
+      <div>
+        <h3>There are no lunar TLEs</h3>
+        <p>The Earth console runs on SGP4, which exists only for Earth satellites
+          described by two-line elements. Celestrak's own catalogue record for LRO settles
+          it: <code>DATA_STATUS_CODE = NEA</code> — No Elements Available — with
+          <code>ORBIT_CENTER = MO</code> and every orbital field blank. Asking for its
+          elements returns <code>No GP data found</code>.</p>
+        <p>So this page cannot reuse that half of the program. It carries daily osculating
+          element sets baked from JPL Horizons instead, and propagates between them.</p>
+      </div>
+      <div>
+        <h3>Why daily, and not one element set</h3>
+        <p>The Moon's gravity field is dominated by mascons rather than by a smooth J2 term,
+          so the quantities a Keplerian propagator holds constant do not stay constant.
+          Measured from Horizons: LRO's argument of periapsis moves about <b>3.1°/day</b>
+          and its period grows about <b>1.7 s every four hours</b>. Period error integrates
+          into along-track error, so a single element set puts the spacecraft on the wrong
+          side of the Moon within weeks.</p>
+        <p>Adding J2 does not rescue that — it captures nodal regression and misses the
+          part that hurts. A fresh anchor does. Checked against Horizons' own sub-observer
+          point over 289 samples: <b>1 km</b> within two hours of an anchor, 18 km at
+          twelve, against <b>32–56 km</b> for one element set held for days. The panel shows
+          which regime you are in.</p>
+      </div>
+      <div>
+        <h3>The rotation is the hard part</h3>
+        <p>Earth's GMST is a smooth polynomial. The Moon's orientation is a polynomial plus
+          a 13-term libration series applied to the pole's right ascension and declination
+          <i>and</i> to the prime meridian. It is not a refinement: leave it out and the
+          sub-spacecraft point is wrong by <b>44 km</b>. With it, <b>0.15 km</b> against
+          Horizons over 289 epochs.</p>
+        <p>One trap worth recording — the NAIF series rates are per Julian <i>century</i>
+          while every other term in the model is per day. Reading them as daily rates
+          advances the arguments 36 525× too fast and puts the pole 1.9° out.</p>
+      </div>
+      <div>
+        <h3>Three grades of knowing</h3>
+        <p><span class="grade tracked">tracked</span> — daily element sets from JPL
+          Horizons, which ingests the agencies' own navigation solutions. LRO,
+          Chandrayaan-2 and Danuri.</p>
+        <p><span class="grade published">published</span> — no ephemeris exists publicly;
+          the orbit is rebuilt from published mission parameters. Right size and shape,
+          but the <i>phase</i> — where along the orbit it actually is — is not knowable.</p>
+        <p><span class="grade schematic">schematic</span> — the orbit family is known and
+          little else. A halo orbit is not a conic and cannot be drawn from elements at all,
+          so it is marked rather than propagated.</p>
+      </div>
+      <div>
+        <h3>Why the Chinese craft are here</h3>
+        <p>Horizons carries no Chinese lunar spacecraft. A name search for
+          <code>Queqiao</code> returns "No matches found", and <code>Chang*</code> matches
+          only three spent boosters. CNSA publishes no machine-readable ephemeris, and this
+          is why tracking sites that draw from Horizons show an empty Moon where those
+          spacecraft are.</p>
+        <p>The choice is to show them honestly labelled or leave them off. Leaving them off
+          asserts that three spacecraft are at the Moon, which is false. Showing them as
+          though tracked would be worse than both. So they are here, with the grade stated
+          on every row.</p>
+      </div>
+      <div>
+        <h3>The far side is the whole story</h3>
+        <p>From a far-side site the Earth <i>never rises</i> — elevation is permanently
+          negative, not merely low. Chang'e-4 and Chang'e-6 both landed there, and neither
+          could have returned a single bit directly. That is the entire reason Queqiao
+          exists.</p>
+        <p>The surface table computes Earth elevation for every site, so the ones that can
+          never phone home are visible rather than asserted.</p>
+      </div>
+      <div>
+        <h3>A lunar ground track is nearly a great circle</h3>
+        <p>The Moon's surface rotates beneath an orbiter at only about <b>4.6 m/s</b>,
+          against roughly <b>1.56 km/s</b> of orbital ground speed — 0.3 %, where a LEO
+          satellite sees about 6 %. So successive passes barely shift: LRO's equator
+          crossings move west by only <b>1.07°</b>, about 32 km, per revolution.</p>
+        <p>That is why the track here looks like a tilted circle rather than the sheared
+          sine wave the Earth page draws, and why global coverage takes a month rather than
+          a day.</p>
+      </div>
+      <div>
+        <h3>Frames, and an accepted error</h3>
+        <p>Landing-site coordinates are published in the <b>mean Earth / polar axis</b>
+          frame, the cartographic standard. The IAU rotation series implemented here is
+          closer to the <b>principal axis</b> frame. The two differ by about 0.03°, roughly
+          <b>860 m</b> on the surface.</p>
+        <p>That is below the anchoring error everywhere except within an hour or two of an
+          anchor epoch, so it is accepted rather than corrected — and stated here rather
+          than buried.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer class="foot">
+  Element sets from JPL Horizons, Moon-centred, ICRF equatorial · orientation from
+  IAU/NAIF pck00011 with the full libration series ·
+  <a href="index.html">Earth console</a> · <a href="moon.html">Lagrange points</a>
+</footer>
+
+<script src="body.js"></script>
+<script src="propagator.js"></script>
+<script src="moondata.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const RAD = Math.PI/180, DEG = 180/Math.PI;
+const MOON = Body.Moon(), MD = MoonData, P = Propagator;
+const RM = MOON.Re, MU = MOON.mu;
+const C_KM_S = 299792.458;
+
+const pad = (n,w) => String(n).padStart(w||2,'0');
+const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+
+  ' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
+const km = v => v.toLocaleString('en-US',{maximumFractionDigits:0});
+const wrap180 = x => { while(x>180) x-=360; while(x<-180) x+=360; return x; };
+const lonE = x => ((x % 360) + 360) % 360;
+const farSide = l => { const e = lonE(l); return e > 90 && e < 270; };
+
+/* ---- the fleet ----------------------------------------------------------- */
+const FLEET = [];
+for(const t of MD.tracked){
+  const sets = t.sets.map(s => ({epoch:s[0], a:s[1], e:s[2], i:s[3], raan:s[4], argp:s[5], M:s[6]}));
+  FLEET.push({ key:t.key, name:t.name, agency: t.key==='ch2' ? 'ISRO' : t.key==='kplo' ? 'KARI' : 'NASA',
+    grade:'tracked', track: P.anchoredTrack(MOON, sets, {name:t.name}),
+    source:'JPL Horizons ' + t.horizons + ', record revised ' + (t.revised||'—') +
+           '; ' + sets.length + ' daily element sets',
+    note:'Daily osculating element sets from JPL Horizons, which ingests the operating agency’s own navigation solutions.' });
+}
+for(const p of MD.published){
+  FLEET.push({ key:p.key, name:p.name, agency:p.agency, grade:p.grade,
+    track: p.el ? P.keplerTrack(MOON, p.el, {name:p.name}) : null,
+    source:p.source, note:p.note, phaseKnown:false });
+}
+
+/* ---- the Sun and the Earth, seen from the Moon ---------------------------
+ * Low-precision solar position (Meeus ch. 25) in ICRF equatorial, and the
+ * Moon's own geocentric position, reused from the same series lunar.js uses.
+ * Both only need to be good to a fraction of a degree here: they drive a
+ * terminator and a link-geometry yes/no, not an ephemeris.                   */
+function sunEq(date){
+  const n = date.getTime()/86400000 + 2440587.5 - 2451545.0;
+  const L = (280.460 + 0.9856474*n) * RAD;
+  const g = (357.528 + 0.9856003*n) * RAD;
+  const lam = L + (1.915*Math.sin(g) + 0.020*Math.sin(2*g))*RAD;
+  const eps = (23.439 - 0.0000004*n)*RAD;
+  const R = (1.00014 - 0.01671*Math.cos(g) - 0.00014*Math.cos(2*g))*149597870.7;
+  return { x: R*Math.cos(lam), y: R*Math.cos(eps)*Math.sin(lam), z: R*Math.sin(eps)*Math.sin(lam) };
+}
+/* Geocentric Moon, so that Earth-from-Moon is just the negative. Truncated
+   ELP, the same handful of terms lunar.js carries. */
+function moonGeo(date){
+  const d = date.getTime()/86400000 + 2440587.5 - 2451545.0;
+  const T = d/36525;
+  const Lp = 218.3164477 + 13.17639648*d;
+  const D  = 297.8501921 + 12.19074920*d;
+  const Ms = 357.5291092 +  0.98560028*d;
+  const Mp = 134.9633964 + 13.06499295*d;
+  const F  =  93.2720950 + 13.22935024*d;
+  const s = x => Math.sin(x*RAD), c = x => Math.cos(x*RAD);
+  const lon = Lp + 6.289*s(Mp) - 1.274*s(2*D-Mp) + 0.658*s(2*D) + 0.214*s(2*Mp)
+            - 0.186*s(Ms) - 0.114*s(2*F) + 0.059*s(2*D-2*Mp) + 0.057*s(2*D-Ms-Mp);
+  const lat = 5.128*s(F) + 0.281*s(Mp+F) - 0.278*s(F-Mp) - 0.173*s(2*D-F)
+            + 0.055*s(2*D-Mp+F) - 0.046*s(2*D-Mp-F) + 0.033*s(2*D+F);
+  const r = 385000.56 - 20905.355*c(Mp) - 3699.111*c(2*D-Mp) - 2955.968*c(2*D)
+          - 569.925*c(2*Mp) + 246.158*c(2*D-2*Mp);
+  const eps = (23.439291 - 0.0130042*T)*RAD;
+  const la = lon*RAD, be = lat*RAD;
+  const x = r*Math.cos(be)*Math.cos(la);
+  const y0 = r*Math.cos(be)*Math.sin(la), z0 = r*Math.sin(be);
+  return { x, y: y0*Math.cos(eps) - z0*Math.sin(eps),
+              z: y0*Math.sin(eps) + z0*Math.cos(eps), r };
+}
+/* Earth and Sun as seen FROM the Moon's centre, ICRF equatorial */
+function earthFromMoon(date){ const m = moonGeo(date); return {x:-m.x, y:-m.y, z:-m.z, r:m.r}; }
+function sunFromMoon(date){
+  const s = sunEq(date), m = moonGeo(date);
+  return { x: s.x - m.x, y: s.y - m.y, z: s.z - m.z };
+}
+/* sub-body point on the Moon for a direction in inertial space */
+function subPoint(vec, o){
+  const f = MOON.toFixed(vec, o), n = Math.hypot(f.x, f.y, f.z);
+  return { lat: Math.asin(f.z/n)*DEG, lon: Math.atan2(f.y, f.x)*DEG };
+}
+/* elevation of a direction above the horizon at a surface site */
+function elevAt(lat, lon, vec, o){
+  const f = MOON.toFixed(vec, o), n = Math.hypot(f.x, f.y, f.z);
+  const la = lat*RAD, lo = lon*RAD;
+  const ux = Math.cos(la)*Math.cos(lo), uy = Math.cos(la)*Math.sin(lo), uz = Math.sin(la);
+  return Math.asin(Math.max(-1, Math.min(1, (f.x*ux + f.y*uy + f.z*uz)/n)))*DEG;
+}
+
+/* ---- clock --------------------------------------------------------------- */
+let simMs = Date.now(), playing = true, rate = 1, last = performance.now();
+let cur = FLEET[0], trailMode = 0;
+const TRAILS = [{n:'1 orbit', f:'orbit'}, {n:'6 h', f:6*3600e3},
+                {n:'24 h', f:24*3600e3}, {n:'7 d', f:7*86400e3}];
+const RATE_MAX = 604800;
+const rateFrom = v => v <= 0 ? 1 : Math.round(Math.pow(RATE_MAX, v/100));
+function fmtRate(r){
+  if(r < 60) return r + '× real';
+  if(r < 3600) return (r/60).toFixed(r<600?1:0) + ' min/s';
+  if(r < 86400) return (r/3600).toFixed(r<36000?1:0) + ' h/s';
+  return (r/86400).toFixed(r<864000?2:1) + ' d/s';
+}
+
+/* ---- the map ------------------------------------------------------------- */
+const cv = $('map'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+const px = l => (wrap180(l)+180)/360*W, py = l => (90-l)/180*H;
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function fit(){
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  W = Math.max(300, Math.round(r.width)); H = Math.round(W/2);
+  cv.width = W*dpr; cv.height = H*dpr; cv.style.height = H + 'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function drawMap(){
+  if(!W) return;
+  const date = new Date(simMs), o = MOON.spin(date);
+  ctx.clearRect(0,0,W,H);
+  /* near side / far side, which is the most useful thing a lunar map can show:
+     the far side is simply the half centred on 180 E, give or take libration */
+  ctx.fillStyle = tok('--regolith'); ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = tok('--regodark');
+  ctx.fillRect(px(90), 0, px(180)-px(90), H);
+  ctx.fillRect(0, 0, px(-90), H);
+  ctx.globalAlpha = .5; ctx.strokeStyle = tok('--rule'); ctx.lineWidth = 1;
+  for(let l=-150;l<=150;l+=30){ ctx.beginPath(); ctx.moveTo(px(l),0); ctx.lineTo(px(l),H); ctx.stroke(); }
+  for(let b=-60;b<=60;b+=30){ ctx.beginPath(); ctx.moveTo(0,py(b)); ctx.lineTo(W,py(b)); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  /* the ±90 meridians bound the near side; label them, since that is the line
+     that decides whether a lander can see the Earth at all */
+  ctx.strokeStyle = tok('--far'); ctx.setLineDash([4,3]); ctx.lineWidth = 1.3;
+  [-90,90].forEach(l=>{ ctx.beginPath(); ctx.moveTo(px(l),0); ctx.lineTo(px(l),H); ctx.stroke(); });
+  ctx.setLineDash([]);
+  ctx.font = '10px "IBM Plex Mono",monospace'; ctx.fillStyle = tok('--far');
+  ctx.textAlign = 'center'; ctx.fillText('FAR SIDE', px(180)-(px(180)-px(90))/2, 14);
+  ctx.fillText('NEAR SIDE', px(0), 14);
+
+  /* Night side, filled column by column.
+     The tempting closed form, lat = atan(-cos(h)/tan(latS)), is a real solution
+     but it DEGENERATES as the sub-solar latitude approaches zero: the terminator
+     stops being a function of longitude and becomes two vertical meridians
+     through the poles. The lunar sub-solar point sits within a degree or so of
+     the equator most of the time - the Moon's axial tilt to the ecliptic is only
+     1.54 deg - so that degenerate case is the NORMAL case here, not an edge one.
+     Testing the sign of the solar elevation per column cannot degenerate. */
+  const sunV = sunFromMoon(date), ss = subPoint(sunV, o);
+  const sLa = ss.lat*RAD, sLo = ss.lon*RAD;
+  const sinS = Math.sin(sLa), cosS = Math.cos(sLa);
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
+  const COLS = 240, dLat = 2;
+  for(let c=0;c<COLS;c++){
+    const l = -180 + 360*c/COLS;
+    const ch = Math.cos(l*RAD - sLo);
+    let runStart = null;
+    for(let la=-90; la<=90.001; la+=dLat){
+      const lit = sinS*Math.sin(la*RAD) + cosS*Math.cos(la*RAD)*ch > 0;
+      if(!lit && runStart === null) runStart = la;
+      if((lit || la > 90) && runStart !== null){
+        ctx.fillRect(px(l), py(la), W/COLS + 1, py(runStart) - py(la));
+        runStart = null;
+      }
+    }
+    if(runStart !== null) ctx.fillRect(px(l), py(90), W/COLS + 1, py(runStart) - py(90));
+  }
+
+  /* features */
+  ctx.font = '9.5px "IBM Plex Mono",monospace'; ctx.textAlign = 'left';
+  for(const f of MD.features){
+    const x = px(f.lon), y = py(f.lat);
+    ctx.fillStyle = tok('--muted'); ctx.globalAlpha = .8;
+    ctx.beginPath(); ctx.arc(x, y, 1.6, 0, 7); ctx.fill();
+    ctx.globalAlpha = .65; ctx.fillText(f.name, x+4, y+3); ctx.globalAlpha = 1;
+  }
+
+  /* ground track */
+  if(cur.track && cur.track.ok){
+    const per = orbitPeriod();
+    const spanMs = TRAILS[trailMode].f === 'orbit' ? per*1000 : TRAILS[trailMode].f;
+    const N = 420;
+    ctx.strokeStyle = tok('--track'); ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let prev = null;
+    for(let k=0;k<=N;k++){
+      const ms = simMs - spanMs + spanMs*k/N;
+      const st = cur.track.at(ms);
+      if(!st){ prev = null; continue; }
+      const g = MOON.toGeodetic(st.r, MOON.spin(new Date(ms)));
+      const la = g.latitude*DEG, lo = wrap180(g.longitude*DEG);
+      const x = px(lo), y = py(la);
+      if(prev && Math.abs(lo - prev) > 180) ctx.moveTo(x,y); else prev===null ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      prev = lo;
+    }
+    ctx.stroke();
+    const st = cur.track.at(simMs);
+    if(st){
+      const g = MOON.toGeodetic(st.r, o);
+      const x = px(wrap180(g.longitude*DEG)), y = py(g.latitude*DEG);
+      ctx.fillStyle = tok('--track');
+      ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
+      ctx.strokeStyle = tok('--panel'); ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
+
+  /* sites */
+  for(const s of MD.sites){
+    const x = px(s.lon), y = py(s.lat);
+    ctx.fillStyle = s.ok ? tok('--observer') : tok('--contact');
+    ctx.beginPath(); ctx.arc(x,y,2.8,0,7); ctx.fill();
+    ctx.fillStyle = tok('--ink'); ctx.globalAlpha = .85;
+    ctx.font = '9.5px "IBM Plex Mono",monospace';
+    ctx.fillText(s.name, x+5, y+3); ctx.globalAlpha = 1;
+  }
+  /* sub-Earth point: the middle of the near side, and it wanders with libration */
+  const se = subPoint(earthFromMoon(date), o);
+  ctx.strokeStyle = tok('--contact'); ctx.lineWidth = 1.6;
+  const ex = px(se.lon), ey = py(se.lat);
+  ctx.beginPath(); ctx.arc(ex, ey, 6, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ex-9,ey); ctx.lineTo(ex+9,ey);
+  ctx.moveTo(ex,ey-9); ctx.lineTo(ex,ey+9); ctx.stroke();
+  ctx.fillStyle = tok('--contact'); ctx.font = '9.5px "IBM Plex Mono",monospace';
+  ctx.fillText('sub-Earth', ex+11, ey-4);
+
+  $('maplegend').innerHTML =
+    '<span><i style="background:'+tok('--track')+'"></i>ground track</span>' +
+    '<span><i style="background:'+tok('--observer')+'"></i>landed</span>' +
+    '<span><i style="background:'+tok('--contact')+'"></i>crashed / sub-Earth</span>' +
+    '<span>sub-solar ' + ss.lat.toFixed(1) + '°, ' + lonE(ss.lon).toFixed(1) + '°E</span>';
+}
+
+function orbitPeriod(){
+  const el = cur.track && cur.track.kind === 'anchored'
+    ? cur.track.anchorAt(simMs) : (cur.track ? cur.track.elements : null);
+  return el ? 2*Math.PI*Math.sqrt(Math.pow(el.a,3)/MU) : 7000;
+}
+
+/* ---- the panel ----------------------------------------------------------- */
+function paint(){
+  const date = new Date(simMs), o = MOON.spin(date);
+  $('clock').textContent = iso(date);
+  $('gradechip').textContent = cur.grade;
+  $('gradechip').className = 'grade ' + cur.grade;
+  $('agency').textContent = cur.agency;
+  $('provnote').textContent = cur.note;
+
+  const blank = ids => ids.forEach(i => $(i).textContent = '—');
+  if(!cur.track || !cur.track.ok){
+    blank(['s-sub','s-alt','s-altrate','s-vel','s-gs','s-vsplit','o-a','o-e','o-i',
+           'o-node','o-anom','o-per','o-apsis','o-en','o-h','l-rng','l-lt','l-elev',
+           'l-sun','l-lit','a-epoch','a-age','a-err']);
+    $('a-note').textContent = 'A halo orbit is not a conic and cannot be propagated from '
+      + 'orbital elements. This object is listed, not tracked.';
+  } else {
+    const st = cur.track.at(simMs);
+    if(st){
+      const r = Math.hypot(st.r.x, st.r.y, st.r.z);
+      const v = Math.hypot(st.v.x, st.v.y, st.v.z);
+      const g = MOON.toGeodetic(st.r, o);
+      const la = g.latitude*DEG, lo = lonE(g.longitude*DEG);
+      $('s-sub').textContent = la.toFixed(3)+'°, '+lo.toFixed(3)+'°E'+(farSide(lo)?' · far':'');
+      $('s-alt').textContent = g.height.toFixed(1)+' km';
+      /* radial and transverse split of the velocity */
+      const rhat = {x:st.r.x/r, y:st.r.y/r, z:st.r.z/r};
+      const vr = st.v.x*rhat.x + st.v.y*rhat.y + st.v.z*rhat.z;
+      const vt = Math.sqrt(Math.max(0, v*v - vr*vr));
+      $('s-altrate').textContent = (vr>=0?'+':'')+(vr*1000).toFixed(1)+' m/s';
+      $('s-vel').textContent = v.toFixed(4)+' km/s';
+      $('s-vsplit').textContent = (vr>=0?'+':'')+vr.toFixed(4)+' / '+vt.toFixed(4);
+      /* ground speed: the transverse rate projected to the surface, minus the
+         Moon's own rotation, which is only 4.6 m/s at the equator */
+      const gs = vt*RM/r - (2*Math.PI*RM/MOON.siderealDaySeconds)*Math.cos(g.latitude);
+      $('s-gs').textContent = gs.toFixed(4)+' km/s';
+
+      /* osculating elements from the state, so they are live rather than the
+         stored anchor's values */
+      const hv = {x: st.r.y*st.v.z - st.r.z*st.v.y,
+                  y: st.r.z*st.v.x - st.r.x*st.v.z,
+                  z: st.r.x*st.v.y - st.r.y*st.v.x};
+      const h = Math.hypot(hv.x, hv.y, hv.z);
+      const energy = v*v/2 - MU/r;
+      const a = -MU/(2*energy);
+      const ev = {x:(st.v.y*hv.z - st.v.z*hv.y)/MU - rhat.x,
+                  y:(st.v.z*hv.x - st.v.x*hv.z)/MU - rhat.y,
+                  z:(st.v.x*hv.y - st.v.y*hv.x)/MU - rhat.z};
+      const ecc = Math.hypot(ev.x, ev.y, ev.z);
+      const inc = Math.acos(Math.max(-1,Math.min(1,hv.z/h)))*DEG;
+      const nv = {x:-hv.y, y:hv.x, z:0}, nn = Math.hypot(nv.x,nv.y,nv.z);
+      let raan = nn > 1e-9 ? Math.atan2(nv.y,nv.x)*DEG : 0; if(raan<0) raan+=360;
+      let argp = 0;
+      if(nn > 1e-9 && ecc > 1e-9){
+        argp = Math.acos(Math.max(-1,Math.min(1,(nv.x*ev.x+nv.y*ev.y+nv.z*ev.z)/(nn*ecc))))*DEG;
+        if(ev.z < 0) argp = 360 - argp;
+      }
+      let nu = 0;
+      if(ecc > 1e-9){
+        nu = Math.acos(Math.max(-1,Math.min(1,(ev.x*rhat.x+ev.y*rhat.y+ev.z*rhat.z)/ecc)))*DEG;
+        if(vr < 0) nu = 360 - nu;
+      }
+      const E = 2*Math.atan2(Math.sqrt(1-ecc)*Math.sin(nu*RAD/2), Math.sqrt(1+ecc)*Math.cos(nu*RAD/2));
+      let Mdeg = (E - ecc*Math.sin(E))*DEG; if(Mdeg<0) Mdeg+=360;
+      $('o-a').textContent = a.toFixed(2)+' km';
+      $('o-e').textContent = ecc.toFixed(6);
+      $('o-i').textContent = inc.toFixed(3)+'°';
+      $('o-node').textContent = raan.toFixed(2)+'° / '+argp.toFixed(2)+'°';
+      $('o-anom').textContent = nu.toFixed(2)+'° / '+Mdeg.toFixed(2)+'°';
+      $('o-per').textContent = (2*Math.PI*Math.sqrt(a*a*a/MU)/60).toFixed(2)+' min';
+      $('o-apsis').textContent = (a*(1-ecc)-RM).toFixed(1)+' × '+(a*(1+ecc)-RM).toFixed(1)+' km';
+      $('o-en').textContent = energy.toFixed(6)+' km²/s²';
+      $('o-h').textContent = h.toFixed(2)+' km²/s';
+
+      /* link geometry, the part that matters operationally */
+      const ev2 = earthFromMoon(date);
+      const dE = {x: ev2.x - st.r.x, y: ev2.y - st.r.y, z: ev2.z - st.r.z};
+      const rngE = Math.hypot(dE.x, dE.y, dE.z);
+      $('l-rng').textContent = km(rngE)+' km';
+      $('l-lt').textContent = (rngE/C_KM_S).toFixed(3)+' s';
+      /* Earth elevation from the spacecraft: angle of the Earth direction above
+         the spacecraft's local horizontal, i.e. is the Moon in the way */
+      const cosZ = (dE.x*rhat.x + dE.y*rhat.y + dE.z*rhat.z)/rngE;
+      const horiz = -Math.sqrt(Math.max(0, 1 - (RM/r)*(RM/r)));
+      const elE = Math.asin(Math.max(-1,Math.min(1,cosZ)))*DEG;
+      const blocked = cosZ < horiz;
+      $('l-elev').textContent = elE.toFixed(2)+'°';
+      $('l-elev').className = blocked ? 'warn' : 'good';
+      const se = subPoint(ev2, o);
+      $('l-sube').textContent = se.lat.toFixed(2)+'°, '+lonE(se.lon).toFixed(2)+'°E';
+      const sv = sunFromMoon(date);
+      const sr = Math.hypot(sv.x,sv.y,sv.z);
+      const cosS = (sv.x*rhat.x + sv.y*rhat.y + sv.z*rhat.z)/sr;
+      $('l-sun').textContent = (Math.asin(Math.max(-1,Math.min(1,cosS)))*DEG).toFixed(2)+'°';
+      const inShadow = cosS < horiz;
+      $('l-lit').textContent = inShadow ? 'no — in shadow' : 'yes';
+      $('l-lit').className = inShadow ? 'warn' : 'good';
+    }
+
+    /* staleness */
+    if(cur.track.kind === 'anchored'){
+      const anc = cur.track.anchorAt(simMs);
+      const age = cur.track.ageHours(simMs);
+      const beyond = cur.track.beyond(simMs);
+      $('a-epoch').textContent = iso(new Date(anc.epoch)).slice(0,16);
+      $('a-age').textContent = (age>=0?'+':'')+age.toFixed(2)+' h';
+      const err = MD.anchorErrorKm(age);
+      $('a-err').textContent = '±' + err.toFixed(0) + ' km';
+      $('a-err').className = Math.abs(age) > 12 ? 'warn' : '';
+      $('a-note').textContent = beyond
+        ? 'Outside the stored coverage. The nearest anchor is being stretched, not '
+          + 'interpolated, and the error above is a floor rather than an estimate.'
+        : 'Measured against Horizons: about 1 km within two hours of an anchor, rising '
+          + 'to 18 km at twelve. A single element set held for days sits at 32–56 km.';
+    } else {
+      $('a-epoch').textContent = iso(new Date(cur.track.elements.epoch)).slice(0,10);
+      $('a-age').textContent = ((simMs - cur.track.elements.epoch)/86400000).toFixed(0)+' d';
+      $('a-err').textContent = 'phase unknown';
+      $('a-err').className = 'warn';
+      $('a-note').textContent = 'Rebuilt from published mission parameters. The orbit’s '
+        + 'size, shape and inclination are right; WHERE ALONG IT the spacecraft is cannot be '
+        + 'known without an ephemeris, and none is published. Treat the marker as '
+        + '“somewhere on this path”.';
+    }
+  }
+  drawMap();
+}
+
+/* ---- tables -------------------------------------------------------------- */
+function buildFleet(){
+  $('fleet').innerHTML = FLEET.map(f => {
+    let orbit = '—', per = '—', apsis = '—';
+    if(f.track && f.track.ok){
+      const el = f.track.kind === 'anchored' ? f.track.sets[0] : f.track.elements;
+      orbit = el.i.toFixed(1)+'° incl';
+      per = (2*Math.PI*Math.sqrt(Math.pow(el.a,3)/MU)/60).toFixed(1)+' min';
+      apsis = (el.a*(1-el.e)-RM).toFixed(0)+' × '+(el.a*(1+el.e)-RM).toFixed(0)+' km';
+    } else if(f.key === 'queqiao1'){ orbit = 'Earth–Moon L2 halo'; per = '~14 d'; }
+    return '<tr><td><b>'+f.name+'</b></td><td style="text-align:left">'+f.agency+'</td>'+
+      '<td style="text-align:left"><span class="grade '+f.grade+'">'+f.grade+'</span></td>'+
+      '<td style="text-align:left">'+orbit+'</td><td>'+per+'</td><td>'+apsis+'</td>'+
+      '<td style="text-align:left;white-space:normal;max-width:30ch;color:var(--muted)">'+f.source+'</td></tr>';
+  }).join('');
+  $('fleetnote').innerHTML = 'Tracked orbits carry ' +
+    MD.tracked.reduce((s,t)=>s+t.sets.length,0).toLocaleString('en-US') +
+    ' daily element sets between them. Inclinations are referred to the lunar equator via ' +
+    'ICRF, not to the ecliptic — Horizons quotes the latter by default, and the two differ ' +
+    'by about 21°.';
+}
+function buildSites(){
+  const date = new Date(simMs), o = MOON.spin(date);
+  const ev = earthFromMoon(date), sv = sunFromMoon(date);
+  $('sites').innerHTML = MD.sites.slice().sort((a,b)=>b.year-a.year).map(s => {
+    const eE = elevAt(s.lat, s.lon, ev, o), eS = elevAt(s.lat, s.lon, sv, o);
+    const far = farSide(s.lon);
+    return '<tr><td><b>'+s.name+'</b><br><span style="color:var(--muted);font-size:11px">'+s.note+'</span></td>'+
+      '<td style="text-align:left">'+s.agency+'</td><td>'+s.year+'</td>'+
+      '<td>'+s.lat.toFixed(3)+'</td><td>'+lonE(s.lon).toFixed(3)+'</td>'+
+      '<td style="text-align:left">'+(far?'<b>far</b>':'near')+'</td>'+
+      '<td class="'+(eE<0?'warn':'')+'">'+eE.toFixed(1)+'°'+(eE<0?' never':'')+'</td>'+
+      '<td class="'+(eS<0?'':'good')+'">'+eS.toFixed(1)+'°</td>'+
+      '<td style="text-align:left;color:var(--muted)">'+s.conf+(s.ok?'':' · crash')+'</td></tr>';
+  }).join('');
+}
+
+/* ---- controls ------------------------------------------------------------ */
+$('pick').innerHTML = FLEET.map((f,i)=>'<option value="'+i+'">'+f.name+' — '+f.agency+'</option>').join('');
+$('pick').addEventListener('change', e => { cur = FLEET[+e.target.value]; paint(); });
+$('play').addEventListener('click', () => {
+  playing = !playing;
+  $('play').textContent = playing ? '❚❚' : '▶';
+  $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+});
+$('now').addEventListener('click', () => { simMs = Date.now(); paint(); buildSites(); });
+$('rate').addEventListener('input', () => {
+  rate = rateFrom(+$('rate').value); $('ratev').textContent = fmtRate(rate);
+});
+$('trail').addEventListener('click', () => {
+  trailMode = (trailMode+1) % TRAILS.length;
+  $('trail').textContent = 'Trail: ' + TRAILS[trailMode].n;
+  $('trailv').textContent = TRAILS[trailMode].n;
+  paint();
+});
+let rt = null;
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(()=>{ fit(); paint(); }, 120); });
+const mq = window.matchMedia('(prefers-color-scheme: dark)');
+if(mq.addEventListener) mq.addEventListener('change', () => paint());
+
+let siteTick = 0;
+function tick(now){
+  const dt = Math.min(200, now - last); last = now;
+  if(playing) simMs += dt*rate;
+  paint();
+  if(++siteTick % 30 === 0) buildSites();     // the sky moves slowly; the table can too
+  requestAnimationFrame(tick);
+}
+
+/* ---- boot ---------------------------------------------------------------- */
+const span = FLEET[0].track.span;
+$('epochnote').innerHTML = 'coverage <b>' + iso(new Date(span.from)).slice(0,10) +
+  ' → ' + iso(new Date(span.to)).slice(0,10) + '</b>';
+/* Start inside the stored coverage rather than at the wall clock, so the first
+   thing shown is a tracked position and not an extrapolation. */
+simMs = Math.min(Math.max(Date.now(), span.from), span.to);
+rate = rateFrom(+$('rate').value);
+$('ratev').textContent = fmtRate(rate);
+fit(); buildFleet(); buildSites(); paint();
+requestAnimationFrame(tick);
+</script>
+</html>

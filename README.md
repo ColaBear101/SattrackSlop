@@ -275,6 +275,87 @@ landing within a day of the trend model's figure when both were run on the same 
 since the backtest says this range runs about two months early, the true date is more likely after
 April than before it.
 
+## Making the central body a parameter
+
+The console was written for the Earth, and the Earth had leaked into every layer: `RE` and `MU`
+at module scope in three files, every position through `satellite.gstime` → `eciToGeodetic`, and
+SGP4 as the propagator. None of that was wrong; all of it was an assumption rather than a
+parameter. Extending to the Moon meant turning the assumption back into a choice.
+
+### The seam, and why it goes exactly there
+
+Two objects, each with one job.
+
+**`body.js`** — what is a property of the *central body*: where the prime meridian is now, how to
+get from inertial to body-fixed, the sub-satellite point, look angles from a surface site, plus
+the constants that used to be globals.
+
+**`propagator.js`** — what is a property of *how an object moves*, behind a single interface:
+
+```
+track.at(ms) -> {r, v} | null      body-centred inertial, km and km/s
+```
+
+That split is forced by a hard fact rather than chosen for tidiness. **SGP4 is defined only for
+Earth satellites described by TLEs, and there is no lunar analogue.** Celestrak's own catalogue
+record for LRO settles it:
+
+```
+LRO,2009-031A,35315,PAY,+,US,2009-06-18,AFETR,,,,,,,NEA,MO,ORB
+```
+
+`PERIOD`, `INCLINATION`, `APOGEE` and `PERIGEE` are all blank; `DATA_STATUS_CODE = NEA` is *No
+Elements Available*; `ORBIT_CENTER = MO` is the Moon. Asking for its elements returns `No GP data
+found`. Celestrak's documentation explains why: the SGP4 assumptions "are completely invalid when
+applied to other celestial bodies". The theory hard-wires Earth's μ, Earth's J2/J3/J4 and an
+Earth-fixed frame, and a TLE has no field in which to say what it orbits.
+
+So the propagation half of this program was never going to port, and the interface had to sit
+above it.
+
+Three things fell out of the work:
+
+- The four propagation adapters (`sampleMs`, `sample`, `elevationAt`, `stateAt`) were the same
+  three lines written out four times, each calling `satellite.js` directly and each closing over
+  the observer. They are one place now.
+- Two latent Earth gates would have silently broken the second body: `orbitviz` rejected any orbit
+  with `a < RE*0.9` — a 1829 km lunar orbit fails that by a factor of three, and the whole element
+  panel would have vanished with no error — and carried a *second* hard-coded μ.
+- `orbit3d.js` needed less work than expected. Its scene unit was already one Earth **radius**
+  rather than one kilometre, so every geometry literal in it (sphere 1, atmosphere 1.022, track
+  1.004, footprint 1.006) is body-relative already and survives the swap untouched.
+
+### The gate
+
+A refactor's honest self-assessment is a diff, not an opinion — and the errors this code has
+actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The culmination bug
+hit 15 satellites out of 309. Neither would survive contact with a screenshot, and both would pass
+a "looks the same to me".
+
+`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation,
+and reads full-precision values through a `window.__gt` test surface instead of scraping rounded
+text. 38 satellites spanning LEO, sun-synchronous, GEO, HEO and a decaying object, at two window
+spans: all six elements and every derived quantity, every AOS/LOS to the millisecond, culmination,
+azimuths, range, visibility totals, and 100 fixed sample probes each.
+
+**67,488 values, bit-identical**, across `index.html`, `orbit3d.js` and `orbitviz.js`.
+
+Two reproducibility rules, both learned by getting them wrong first: the window start is a fixed
+instant and never `Date.now()`; and the network is blocked during a run, because `refreshTLE()`
+would otherwise rewrite the element set mid-snapshot and the "baseline" would depend on what
+CelesTrak served that minute.
+
+A gate that has never failed is not a gate, so it was checked against a deliberate fault:
+perturbing Earth's radius by **10 cm** produced 77 differences, down to 1.5e-9 relative in derived
+quantities like the access half-angle. The only diffs during the actual refactor were the observer
+gaining `name` and `tz` fields — which retired a duplicate `ICT` constant — and the baseline was
+re-taken only after confirming no numeric value had moved.
+
+```
+node verification/snapshot.js     # write verification/baseline.json
+node verification/regress.js      # assert bit-identical
+```
+
 ## The Earth–Moon page
 
 `moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration points

@@ -117,7 +117,12 @@ section{display:flex; flex-direction:column; gap:15px}
   border-bottom:1px solid var(--rule); padding-bottom:9px}
 .shead h2{font-size:21px}
 .shead .hint{color:var(--muted); font-size:12.5px; margin-left:auto}
-.cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:26px}
+/* Multi-column, not grid. As a grid the row height is set by the tallest block,
+   so three of the four columns ended early and left a dead band across the
+   section. Columns flow and balance instead; break-inside keeps each block whole. */
+.cols{columns:4 258px; column-gap:26px}
+.cols > div{break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid;
+  margin:0 0 24px}
 .cols h3{font-size:14px; margin-bottom:6px}
 .cols p{margin:0 0 9px; font-size:13px; line-height:1.68; color:var(--ink2)}
 .cols p:last-child{margin-bottom:0}

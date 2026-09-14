@@ -708,8 +708,9 @@ A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 3
 `ndot = .00056` the KNACKSAT-2 element set is worth about a day; quoting pass times from a
 week-old set is quoting fiction. So the page does not rely on what is baked into it.
 
-**On load, and on every change of spacecraft, it fetches the current element set for that one
-object** — not the whole catalogue. A few hundred bytes, for the object actually being analysed:
+**On load, on every change of spacecraft, and every three hours the page stays open, it fetches
+the current element set for that one object** — not the whole catalogue. A few hundred bytes, for
+the object actually being analysed:
 
 1. `celestrak.org/NORAD/elements/gp.php?CATNR=<id>&FORMAT=tle` — authoritative, ~170 bytes.
 2. `tle.ivanstanojevic.me/api/tle/<id>` — fallback, JSON.
@@ -719,7 +720,7 @@ Both live sources send `Access-Control-Allow-Origin: *`, which is the only reaso
 with no backend can do this at all. (CelesTrak emits the header only when the request carries an
 `Origin`, so a bare `curl` appears to show no CORS support; a browser sees it.)
 
-Four details that matter more than the fetch itself:
+Five details that matter more than the fetch itself:
 
 - **It only ever moves forward.** A mirror can legitimately serve an element set *older* than the
   embedded one. Epochs are compared and an older set is refused — replacing a newer TLE with an
@@ -733,6 +734,16 @@ Four details that matter more than the fetch itself:
 - **The clock stays where you put it.** The window and span are unchanged, so a swap re-runs the
   analysis underneath the scrubber without throwing away the time you were looking at. Results are
   cached per NORAD ID in `localStorage` for three hours, so switching back and forth costs nothing.
+- **It keeps checking.** This used to be one check per object per *session*, which is right for a
+  visit and wrong for a console left running — the set on screen would age quietly past the point
+  where its pass times were worth quoting. The check now re-arms on the same three-hour beat as the
+  cache, so the retry lands exactly when the cached copy goes stale rather than being answered from
+  the copy it is trying to refresh. It rides the 30 s timer the age readout already uses, so all but
+  one call in 360 is a comparison rather than a request. Background tabs have their timers throttled
+  hard — Chrome drops them to roughly once a minute and may suspend them outright — so returning to
+  the tab also triggers a check. And the provenance line now says *when*: "confirmed current against
+  CelesTrak · checked 2.4 h ago" reads differently from the same sentence with no time on it, which
+  is the point.
 
 The embedded catalogue remains the offline fallback and what paints on first frame, and the
 other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not

@@ -8306,9 +8306,15 @@ async function refreshTLE(entry){
 
   if(!got){ tleLive = {src:null}; paintAges(); return; }
 
+  /* Re-arm rather than retire. This used to set __next = Infinity, which meant
+     one check per object per SESSION - fine for a visit, wrong for a console
+     left running, where the set on screen would quietly age past the point
+     where its pass times are worth quoting. The next attempt is due exactly
+     when fetchTLE's own cached copy goes stale, so the re-check reaches the
+     network instead of being answered from the cache it is trying to refresh. */
   if(got.l1 === entry.l1 && got.l2 === entry.l2){
     tleLive = {src:got.src, at:got.at};           // snapshot was already current
-    entry.__next = Infinity;
+    entry.__next = got.at + TLE_TTL;
     paintAges(); return;
   }
   /* Only ever move forward. A mirror can legitimately serve an element set
@@ -8317,10 +8323,16 @@ async function refreshTLE(entry){
   let newer = false;
   try { newer = elements(got.l1, got.l2).epoch > elements(entry.l1, entry.l2).epoch; }
   catch(e){ return; }
-  if(!newer){ tleLive = {src:null, older:got.src}; paintAges(); return; }
+  if(!newer){
+    /* A mirror serving an older set will still be serving it in five minutes,
+       so back off to the normal interval rather than hammering the retry. */
+    tleLive = {src:null, older:got.src};
+    entry.__next = got.at + TLE_TTL;
+    paintAges(); return;
+  }
 
   entry.l1 = got.l1; entry.l2 = got.l2;
-  entry.__next = Infinity;
+  entry.__next = got.at + TLE_TTL;
   tleLive = {src:got.src, at:got.at, updated:true};
 
   /* The window and span have not changed, so the clock stays where the user
@@ -8641,8 +8653,17 @@ document.querySelector('.viewport').addEventListener('mousedown', e=>{
    about where the numbers on screen came from. */
 function liveLine(now){
   if(!tleLive) return ['checking', 'Checking for a newer element set…'];
-  if(tleLive.updated) return ['live', 'Updated live from <b>'+tleLive.src+'</b>.'];
-  if(tleLive.src)     return ['live', 'Confirmed current against <b>'+tleLive.src+'</b>.'];
+  /* When the check happened, not merely that it happened. The page re-checks
+     while it is open, so on a console left running "confirmed current" would
+     otherwise read exactly the same after four hours as after four seconds -
+     and the one outcome worth engineering against is the page implying the
+     numbers are fresher than they are. */
+  const since = now - tleLive.at;
+  const seen = !tleLive.at ? ''
+    : since < 45000 ? ' · checked <b>just now</b>'
+    : ' · checked <b>'+ago(since)+'</b> ago';
+  if(tleLive.updated) return ['live', 'Updated live from <b>'+tleLive.src+'</b>'+seen+'.'];
+  if(tleLive.src)     return ['live', 'Confirmed current against <b>'+tleLive.src+'</b>'+seen+'.'];
   if(tleLive.older)   return ['snap', '<b>'+tleLive.older+'</b> offered an older set — keeping the embedded one.'];
   return ['snap', 'No live source reachable — showing the embedded snapshot.'];
 }
@@ -8671,7 +8692,24 @@ function paintAges(){
     ago(epochAgeMs) + ' old</span>' +
     (stale ? ' — accuracy degrades with age; re-fetch before quoting pass times.' : '.');
 }
-setInterval(paintAges, 30000);
+/* The age readout already ticks every 30 s; the element set is re-checked on
+   the same beat. refreshTLE's __next guard makes all but one call in 360 a
+   comparison rather than a request, so a second timer on its own schedule would
+   only have to duplicate that guard. */
+function tickAges(){
+  paintAges();
+  const entry = CAT[curIdx];
+  if(entry) refreshTLE(entry);        // no-op until __next comes due
+}
+setInterval(tickAges, 30000);
+
+/* Background tabs have their timers throttled hard - Chrome drops them to about
+   once a minute and may suspend them entirely - so a console parked on a second
+   monitor or behind another window can come back hours stale with its next
+   scheduled check still minutes away. Check on the way back in. */
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible') tickAges();
+});
 
 /* ---- 3D orbit view ------------------------------------------------------- *
  * Optional by design: if WebGL or three.js is missing the page still works,

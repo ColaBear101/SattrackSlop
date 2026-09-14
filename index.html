@@ -767,6 +767,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/6.0.1/satellite.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="body.js"></script>
+<script src="propagator.js"></script>
 <script src="orbit3d.js"></script>
 <script src="orbitviz.js"></script>
 <script src="lifetime.js"></script>
@@ -7251,8 +7253,12 @@ ZY-1 02E
 (function(){
 "use strict";
 const RAD = Math.PI/180, DEG = 180/Math.PI;
-const MU = 398600.4418, RE = 6378.137;          // km^3/s^2, km
-const OBS  = { lat: 13.75, lon: 100.52, altKm: 0 };   // Bangkok
+/* The central body is a parameter now rather than an assumption scattered
+   through four files. MU/RE/OBS stay as aliases so the rest of the page reads
+   the same; what changed is where they come from. */
+const BODY = Body.Earth(satellite);
+const MU = BODY.mu, RE = BODY.Re;
+const OBS = BODY.defaultSite;
 const MASK = 5;                                  // deg
 /* The analysis window used to be nailed to "24 h from the element set epoch".
    It is now an arbitrary span the user places anywhere - defaulting to their own
@@ -7267,7 +7273,10 @@ const stepFor = hrs => hrs <= 48 ? 10 : 30;      // display sample step, seconds
    merely imprecise, it is invisible. A 6.0 s pass of FENGYUN 3E was being lost
    at 10 s. */
 const passStepFor = hrs => hrs <= 48 ? 4 : 15;
-const ICT = 7;                                   // Bangkok is UTC+7, no DST
+/* The site carries its own offset now; this stays as an alias because the
+   label text says "ICT" in a dozen places and a site change should rename
+   those deliberately rather than silently. */
+const ICT = OBS.tz;
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
    has no network access of its own, so it cannot discover this at runtime. */
@@ -7353,54 +7362,52 @@ const compass = az => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW',
 /* ---- propagation --------------------------------------------------------- */
 // the same state as sample(), but at an arbitrary instant - used when the clock
 // sits outside the 24 h window, where there is no stored sample to read
-function sampleMs(satrec, ms){
+/* ---- propagation adapters ------------------------------------------------
+ * These four were the same three lines written out four times, each calling
+ * satellite.js directly and each closing over OBS. That is now the ONE place
+ * the page turns a propagated state into something a human reads, and it asks
+ * the Track for the state and the Body for the frame. Swapping either is a
+ * change of argument, not a change of code.
+ *
+ * The maths is untouched — same calls, same order, same objects — because this
+ * phase has to come out bit-identical against verification/baseline.json.     */
+function look(track, r, theta){
+  return track.body.lookAngles(OBS, track.body.toFixed(r, theta));
+}
+function fix(track, ms){                       // the state + frame angle at ms
   const t = new Date(ms);
-  const pv = satellite.propagate(satrec, t);
-  if(!pv || !pv.position) return null;
-  const gmst = satellite.gstime(t);
-  const gd   = satellite.eciToGeodetic(pv.position, gmst);
-  const look = satellite.ecfToLookAngles(
-      {longitude:OBS.lon*RAD, latitude:OBS.lat*RAD, height:OBS.altKm},
-      satellite.eciToEcf(pv.position, gmst));
+  const st = track.at(ms);
+  return st ? { t, r: st.r, v: st.v, theta: track.body.spin(t) } : null;
+}
+function subPoint(track, s){
+  const gd = track.body.toGeodetic(s.r, s.theta);
   let lon = gd.longitude*DEG; while(lon>180) lon-=360; while(lon<-180) lon+=360;
-  return { t, lat: gd.latitude*DEG, lon, alt: gd.height,
-           el: look.elevation*DEG, az: ((look.azimuth*DEG)%360+360)%360, rng: look.rangeSat };
+  const la = look(track, s.r, s.theta);
+  return { t: s.t, lat: gd.latitude*DEG, lon, alt: gd.height,
+           el: la.elevation*DEG, az: ((la.azimuth*DEG)%360+360)%360, rng: la.rangeSat };
 }
-function sample(satrec, start, k, step){
-  const t = new Date(start.getTime()+k*step*1000);
-  const pv = satellite.propagate(satrec, t);
-  if(!pv || !pv.position) return null;
-  const gmst = satellite.gstime(t);
-  const gd   = satellite.eciToGeodetic(pv.position, gmst);
-  const look = satellite.ecfToLookAngles(
-      {longitude:OBS.lon*RAD, latitude:OBS.lat*RAD, height:OBS.altKm},
-      satellite.eciToEcf(pv.position, gmst));
-  let lon = gd.longitude*DEG; while(lon>180) lon-=360; while(lon<-180) lon+=360;
-  return { t, lat: gd.latitude*DEG, lon, alt: gd.height,
-           el: look.elevation*DEG, az: ((look.azimuth*DEG)%360+360)%360, rng: look.rangeSat };
+function sampleMs(track, ms){
+  const s = fix(track, ms);
+  return s ? subPoint(track, s) : null;
 }
-function elevationAt(satrec, ms){
-  const t = new Date(ms);
-  const pv = satellite.propagate(satrec, t);
-  if(!pv || !pv.position) return -90;
-  const look = satellite.ecfToLookAngles(
-      {longitude:OBS.lon*RAD, latitude:OBS.lat*RAD, height:OBS.altKm},
-      satellite.eciToEcf(pv.position, satellite.gstime(t)));
-  return look.elevation*DEG;
+function sample(track, start, k, step){
+  return sampleMs(track, start.getTime()+k*step*1000);
 }
-function stateAt(satrec, ms){
-  const t = new Date(ms);
-  const pv = satellite.propagate(satrec, t);
-  if(!pv || !pv.position) return null;
-  const look = satellite.ecfToLookAngles(
-      {longitude:OBS.lon*RAD, latitude:OBS.lat*RAD, height:OBS.altKm},
-      satellite.eciToEcf(pv.position, satellite.gstime(t)));
-  return { el: look.elevation*DEG, az: ((look.azimuth*DEG)%360+360)%360, rng: look.rangeSat };
+function elevationAt(track, ms){
+  const s = fix(track, ms);
+  if(!s) return -90;
+  return look(track, s.r, s.theta).elevation*DEG;
+}
+function stateAt(track, ms){
+  const s = fix(track, ms);
+  if(!s) return null;
+  const la = look(track, s.r, s.theta);
+  return { el: la.elevation*DEG, az: ((la.azimuth*DEG)%360+360)%360, rng: la.rangeSat };
 }
 
 /* (c) access windows: coarse scan, then bisect each horizon crossing */
-function findPasses(satrec, t0, t1, step){
-  const f = ms => elevationAt(satrec, ms) - MASK;
+function findPasses(track, t0, t1, step){
+  const f = ms => elevationAt(track, ms) - MASK;
   const bisect = (lo,hi) => {
     let flo = f(lo);
     while(hi-lo > 1){                       // 1 ms
@@ -7415,18 +7422,18 @@ function findPasses(satrec, t0, t1, step){
     const cur = f(t);
     if(prevF < 0 && cur >= 0) open = bisect(prev, t);
     else if(prevF >= 0 && cur < 0 && open !== null){
-      passes.push(build(satrec, open, bisect(prev,t), clipStart, false)); open = null; clipStart = false;
+      passes.push(build(track, open, bisect(prev,t), clipStart, false)); open = null; clipStart = false;
     }
     prev = t; prevF = cur;
   }
-  if(open !== null) passes.push(build(satrec, open, t1, clipStart, true));
+  if(open !== null) passes.push(build(track, open, t1, clipStart, true));
   return passes;
 }
-function build(satrec, aos, los, clipA, clipL){
+function build(track, aos, los, clipA, clipL){
   let best = {el:-90, ms:aos, az:0, rng:0};
   const n = 150;
   for(let i=0;i<=n;i++){
-    const ms = aos + (los-aos)*i/n, s = stateAt(satrec, ms);
+    const ms = aos + (los-aos)*i/n, s = stateAt(track, ms);
     if(s && s.el > best.el) best = {el:s.el, ms, az:s.az, rng:s.rng};
   }
   let w = (los-aos)/n;                       // refine the culmination
@@ -7434,15 +7441,15 @@ function build(satrec, aos, los, clipA, clipL){
     // stay inside the pass: an unclamped climb walks past AOS/LOS on a window-
     // clipped pass and reports a peak that never happens while in view
     const ta = Math.max(aos, best.ms - w), tb = Math.min(los, best.ms + w);
-    const a = stateAt(satrec, ta), b = stateAt(satrec, tb);
+    const a = stateAt(track, ta), b = stateAt(track, tb);
     if(a && a.el > best.el) best = {el:a.el, ms:ta, az:a.az, rng:a.rng};
     else if(b && b.el > best.el) best = {el:b.el, ms:tb, az:b.az, rng:b.rng};
     else w /= 2;
   }
   best.ms = Math.min(los, Math.max(aos, best.ms));
-  const A = stateAt(satrec,aos), L = stateAt(satrec,los);
+  const A = stateAt(track,aos), L = stateAt(track,los);
   const arc = [];
-  for(let i=0;i<=90;i++){ const s = stateAt(satrec, aos+(los-aos)*i/90); if(s) arc.push(s); }
+  for(let i=0;i<=90;i++){ const s = stateAt(track, aos+(los-aos)*i/90); if(s) arc.push(s); }
   return { aos:new Date(aos), los:new Date(los), dur:(los-aos)/1000,
            maxEl:best.el, maxAt:new Date(best.ms), maxAz:best.az, minRng:best.rng,
            aosAz:A?A.az:0, losAz:L?L.az:0, arc, clipA, clipL, t0ms:aos, t1ms:los };
@@ -7466,31 +7473,33 @@ window.__gt = {
 };
 
 function compute(entry, t0ms, hours){
-  const satrec = satellite.twoline2satrec(entry.l1, entry.l2);
+  const track = Propagator.sgp4Track(BODY, entry, satellite);
   const E = elements(entry.l1, entry.l2);
   const step = stepFor(hours);
   const start = new Date(t0ms), end = new Date(t0ms + hours*3600000);
   const pts = [];
   const N = Math.round(hours*3600/step);
-  for(let k=0;k<=N;k++){ const s = sample(satrec,start,k,step); if(s) pts.push(s); }
+  for(let k=0;k<=N;k++){ const s = sample(track,start,k,step); if(s) pts.push(s); }
   if(!pts.length) throw new Error('no propagable samples for '+entry.name);
 
   /* The TLE mean motion is the KOZAI mean motion, so a = (mu/n^2)^(1/3) is not
      the orbit's semi-major axis - it is short by a few km, and by up to 6.4 km
      in this catalogue. SGP4 un-Kozai's it during init and leaves the recovered
-     Brouwer value in satrec.a, in Earth radii, on the WGS-72 sphere the theory
-     is defined against. Use that instead of re-deriving it badly. */
-  if(isFinite(satrec.a) && satrec.a > 0.9){
-    E.a = satrec.a * 6378.135;                     // WGS-72 Re: SGP4's own constant set
+     Brouwer value in satrec.a. The propagator knows how to un-normalise it -
+     on WGS-72, which is SGP4's own radius and 2 m off WGS-84. A propagator
+     without that recovered value (a lunar element set, say) returns null and
+     the TLE-derived a stands. */
+  const recovered = track.recoveredA;
+  if(recovered !== null){
+    E.a = recovered;
     E.aSource = 'sgp4';
   }
 
   /* Nodal period, measured rather than assumed: 86400/n is the mean-motion
      period and runs a few seconds long against the actual node-to-node time. */
   const nodeCross = ms => {
-    const pv = satellite.propagate(satrec, new Date(ms));
-    if(!pv || !pv.position) return null;
-    return satellite.eciToGeodetic(pv.position, satellite.gstime(new Date(ms))).latitude;
+    const s = fix(track, ms);
+    return s ? track.body.toGeodetic(s.r, s.theta).latitude : null;
   };
   (function(){
     const approx = 86400/E.n, t0 = start.getTime();
@@ -7523,25 +7532,26 @@ function compute(entry, t0ms, hours){
     // is not stepped over
     const N2 = Math.round(720 + 3000*Math.min(0.95, E.ecc));
     for(let k=0;k<=N2;k++){
-      const d = new Date(t0 + k*P*1000/N2);
-      const pv = satellite.propagate(satrec, d);
-      if(!pv || !pv.position) continue;
-      const g = satellite.eciToGeodetic(pv.position, satellite.gstime(d)).height;
+      const s = fix(track, t0 + k*P*1000/N2);
+      if(!s) continue;
+      const g = track.body.toGeodetic(s.r, s.theta).height;
       if(g < lo) lo = g; if(g > hi) hi = g;
     }
     if(isFinite(lo) && isFinite(hi)){ E.perigeeAlt = lo; E.apogeeAlt = hi; E.altMeasured = true; }
   })();
-  const passes = findPasses(satrec, start.getTime(), end.getTime(), passStepFor(hours));
+  const passes = findPasses(track, start.getTime(), end.getTime(), passStepFor(hours));
   const totalS = passes.reduce((s,p)=>s+p.dur, 0);
   const meanAlt = pts.reduce((s,p)=>s+p.alt,0)/pts.length;
   // 5° access footprint: central angle from the observer, at mean altitude
   const eps = MASK*RAD;
-  const lambda = Math.acos(RE*Math.cos(eps)/(RE+meanAlt)) - eps;
+  const lambda = Math.acos(BODY.Re*Math.cos(eps)/(BODY.Re+meanAlt)) - eps;
   // a long window can hold tens of thousands of samples; the flat map only needs
   // enough to draw a smooth line
   const drawStride = Math.max(1, Math.ceil(pts.length/8640));
-  return {entry, satrec, E, start, end, pts, passes, totalS, meanAlt, lambda,
-          step, hours, drawStride};
+  /* satrec stays on the returned object because orbitviz reads SGP4's own
+     fields from it; track is what everything else should use. */
+  return {entry, track, satrec: track.raw, E, start, end, pts, passes, totalS,
+          meanAlt, lambda, step, hours, drawStride};
 }
 
 /* ---- (a) render elements ------------------------------------------------- */
@@ -7868,7 +7878,7 @@ function setTime(idx, force){
   // inside the window read the stored sample; outside it, propagate the real
   // instant so every panel reports the same moment
   const p = inWindow(simMs) ? D.pts[Math.min(idx, D.pts.length-1)]
-                            : (sampleMs(D.satrec, simMs) || D.pts[Math.min(idx, D.pts.length-1)]);
+                            : (sampleMs(D.track, simMs) || D.pts[Math.min(idx, D.pts.length-1)]);
   if(!p) return;
   document.getElementById('r-lat').textContent = latStr(p.lat);
   document.getElementById('r-lon').textContent = lonStr(p.lon);
@@ -8666,7 +8676,8 @@ setInterval(paintAges, 30000);
 (function boot3D(){
   const canvas = document.getElementById('globe');
   const ok = window.Orbit3D && window.THREE && Orbit3D.init({
-    canvas, satellite: satellite,
+    canvas, satellite: satellite, body: BODY,
+    mkTrack: e => Propagator.sgp4Track(BODY, e, satellite),
     gt: { WORLD, CAT, OBS, MASK,
           now: () => new Date(simMs),          // one clock, shared
           fmtUTC:  d => iso(d).replace('Z',''),
@@ -8705,7 +8716,7 @@ setInterval(paintAges, 30000);
    * initialised after the renderer exists.                                    */
   if(window.OrbitViz){
     try {
-      OrbitViz.init({ THREE: window.THREE, scene: Orbit3D.scene,
+      OrbitViz.init({ THREE: window.THREE, scene: Orbit3D.scene, body: BODY,
                       satellite: satellite, scale: 1/6378.137 });
       // every layer starts off - the default view was deliberately decluttered,
       // and the Layers button is right there for anyone who wants the geometry

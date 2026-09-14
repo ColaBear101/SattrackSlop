@@ -9,12 +9,14 @@
   "obs": {
    "lat": 13.75,
    "lon": 100.52,
-   "altKm": 0
+   "altKm": 0,
+   "name": "Bangkok",
+   "tz": 7
   },
   "mask": 5,
   "RE": 6378.137,
   "MU": 398600.4418,
-  "written": "2026-09-14T03:21:56.483Z"
+  "written": "2026-09-14T03:31:01.210Z"
  },
  "missing": [
   "SUOMI NPP",

@@ -27,10 +27,14 @@ const SPACE = {
 };
 
 let THREE, sat, scene, U = 1/RE;
+/* The central body, injected at init. RE and MU above stay as the Earth
+   defaults so this file still loads standalone, but anything that gates on
+   a radius or divides by mu must use these. */
+let BODYRE = RE;
 let root = null, sky = null, started = false;
 let el = null;                                   // normalised elements of the current orbit
 let simTime = new Date(), planetMs = null, precMs = null, dpr = 1;
-const MU = 398600.4418;                          // km^3/s^2, for the e vector
+let MU = 398600.4418;                          // km^3/s^2, for the e vector
 let satrecRef = null;                            // needed for the live state vector
 let live = null, liveMs = null, nuShown = null, vShown = null;  // the parts that follow the spacecraft
 
@@ -930,10 +934,13 @@ function normElements(satrec, e){
     if(!isFinite(o.a) && isFinite(satrec.a) && satrec.a > 0.9) o.a = satrec.a*RE;
     if(!isFinite(o.a) && isFinite(satrec.no) && satrec.no > 0){
       const n = satrec.no/60;                     // rad/min -> rad/s
-      o.a = Math.cbrt(398600.4418/(n*n));
+      o.a = Math.cbrt(MU/(n*n));
     }
   }
-  if(!isFinite(o.a) || o.a < RE*0.9) return null;
+  /* Was RE*0.9 with RE hard-coded to Earth: a 1829 km lunar orbit fails that
+   test by a factor of three and the whole element panel silently vanishes.
+   Gate on the BODY radius instead. */
+  if(!isFinite(o.a) || o.a < BODYRE*0.9) return null;
   if(!isFinite(o.inc) || !isFinite(o.raan) || !isFinite(o.argp) || !isFinite(o.ecc)) return null;
   o.inc = Math.max(0, Math.min(180, o.inc));
   o.raan = rev(o.raan);
@@ -951,6 +958,7 @@ global.OrbitViz = {
     scene = opts.scene; sat = opts.satellite || global.satellite;
     if(!scene) return false;
     U = (typeof opts.scale === 'number' && opts.scale > 0) ? opts.scale : 1/RE;
+    if(opts.body){ BODYRE = opts.body.Re; MU = opts.body.mu; }
     dpr = Math.min(global.devicePixelRatio || 1, 2);
     root = new THREE.Group();
     sky = new THREE.Group();                      // holds the J2000 sky, precessed as one

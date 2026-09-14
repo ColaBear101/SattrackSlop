@@ -10,8 +10,14 @@
 (function (global) {
 'use strict';
 
-const RAD = Math.PI/180, DEG = 180/Math.PI, RE = 6378.137;
-const U = 1/RE;                                  // scene units: 1 = Earth radius
+const RAD = Math.PI/180, DEG = 180/Math.PI;
+/* The scene's unit is ONE BODY RADIUS, not one Earth radius. Every geometry
+   literal below (sphere 1, atmosphere 1.022, track 1.004, footprint 1.006) is
+   therefore already body-relative and needs no change when the body does —
+   which is why this file survives the swap so cheaply. */
+let BODY = null, mkTrack = null;
+let RE = 6378.137;
+let U = 1/RE;                                  // scene units: 1 = Earth radius
 const FOV_SEG = 144;                             // segments around the footprint
 
 let GT, THREE, sat;
@@ -256,8 +262,11 @@ function discTexture(){
 
 /* ---- the whole catalogue as a point cloud --------------------------------- */
 function buildCloud(){
-  recs = GT.CAT.map(c => { try { const r = sat.twoline2satrec(c.l1, c.l2);
-    return (r && !r.error) ? r : null; } catch(e){ return null; } });
+  /* One Track per catalogue object. The cloud does not care what propagates
+     them, only that each answers at(ms) — so a mixed catalogue of Earth TLEs
+     and lunar element sets would work here unchanged. */
+  recs = GT.CAT.map(c => { try { const t = mkTrack(c);
+    return (t && t.ok) ? t : null; } catch(e){ return null; } });
   const n = recs.length;
   cloudPos = new Float32Array(n*3);
   cloudColor = new Float32Array(n*3);
@@ -272,7 +281,7 @@ function buildCloud(){
 }
 function updateCloud(date){
   const base = col('--track'), hot = col('--contact');
-  const gmst = sat.gstime(date);
+  const gmst = BODY.spin(date);
   // A satellite that happens to sit between the eye and the Earth renders as a
   // huge blob across the view - a high orbit at low zoom does this constantly.
   // Fade anything that close, and take it out of the pick list while faded.
@@ -281,8 +290,8 @@ function updateCloud(date){
   for(let i=0;i<recs.length;i++){
     const r = recs[i]; let ok = false;
     if(r){
-      let pv = null;
-      try { pv = sat.propagate(r, date); } catch(e){ pv = null; }
+      const st = r.at(date.getTime());
+      const pv = st ? {position: st.r} : null;
       if(pv && pv.position && isFinite(pv.position.x)){
         cloudPos[i*3]   = pv.position.x*U;
         cloudPos[i*3+1] = pv.position.z*U;
@@ -315,8 +324,8 @@ function updateCloud(date){
 /* ---- focused satellite: orbit loop, ground track, footprint ---------------- */
 function setSat(entry, elements, win){
   curEntry = entry;
-  try { curRec = sat.twoline2satrec(entry.l1, entry.l2); } catch(e){ curRec = null; }
-  if(!curRec || curRec.error){
+  try { curRec = mkTrack(entry); } catch(e){ curRec = null; }
+  if(!curRec || !curRec.ok){
     // do not leave the last spacecraft's geometry standing under a new name
     curRec = null; trackPts = []; trackMs = []; ringMs = null;
     [orbitLine, trackLine, footRing].forEach(o=>{ if(o) o.visible = false; });
@@ -348,9 +357,9 @@ function setSat(entry, elements, win){
   const steps = 5040, dtms = spanMs/steps;            // span/5040, ~20 s over a day + pad
   for(let k=0;k<=steps;k++){
     const ms = anchor.getTime() + k*dtms;
-    let pv = null; try { pv = sat.propagate(curRec, new Date(ms)); } catch(e){}
+    let st = curRec.at(ms); let pv = st ? {position: st.r, velocity: st.v} : null;
     if(!pv || !pv.position) continue;
-    const gd = sat.eciToGeodetic(pv.position, sat.gstime(new Date(ms)));
+    const gd = BODY.toGeodetic(pv.position, BODY.spin(new Date(ms)));
     trackPts.push(llToScene(gd.latitude*DEG, gd.longitude*DEG, 1.004));
     trackMs.push(ms);
   }
@@ -368,8 +377,8 @@ function setSat(entry, elements, win){
 
   // 5-degree access footprint around the observer, at mean altitude
   let alt = 500;
-  { let pv=null; try{ pv = sat.propagate(curRec, anchor); }catch(e){}
-    if(pv && pv.position) alt = sat.eciToGeodetic(pv.position, sat.gstime(anchor)).height; }
+  { let st = curRec.at(anchor.getTime()); let pv = st ? {position: st.r} : null;
+    if(pv && pv.position) alt = BODY.toGeodetic(pv.position, BODY.spin(anchor)).height; }
   const eps = GT.MASK*RAD;
   const lam = Math.acos(RE*Math.cos(eps)/(RE+alt)) - eps;
   const lat1 = GT.OBS.lat*RAD, lon1 = GT.OBS.lon*RAD, fp = [];
@@ -412,7 +421,7 @@ function buildRing(centreMs){
   const N = 360, half = curPeriodS*1000/2, pts = [];
   for(let k=0;k<=N;k++){
     const t = new Date(centreMs - half + k*curPeriodS*1000/N);
-    let pv = null; try { pv = sat.propagate(curRec, t); } catch(e){}
+    const st0 = curRec.at(t.getTime()); const pv = st0 ? {position: st0.r} : null;
     if(pv && pv.position)
       pts.push(new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U));
   }
@@ -466,7 +475,7 @@ function col3(hex){
 function updateFov(pv, gmst){
   if(!fovRing) return;
   if(!pv || !pv.position){ fovRing.visible = false; return; }
-  const gd = sat.eciToGeodetic(pv.position, gmst);
+  const gd = BODY.toGeodetic(pv.position, gmst);
   const lat = gd.latitude, lon = gd.longitude, h = gd.height;
   const eps = GT.MASK*RAD;
   const inner = RE*Math.cos(eps)/(RE+h);
@@ -577,7 +586,7 @@ function tick(ts){
   }
 
   // the Earth turns under the orbits
-  const gmst = (frameNo % 3 === 1) ? updateCloud(simTime) : sat.gstime(simTime);
+  const gmst = (frameNo % 3 === 1) ? updateCloud(simTime) : BODY.spin(simTime);
   earthGroup.rotation.y = gmst;
   sunLight.position.copy(sunVec(simTime)).multiplyScalar(50);
 
@@ -592,15 +601,13 @@ function tick(ts){
   // focused spacecraft
   let satPos = null, el = -90;
   if(curRec){
-    let pv = null; try { pv = sat.propagate(curRec, simTime); } catch(e){}
+    const st1 = curRec.at(simTime.getTime()); const pv = st1 ? {position: st1.r, velocity: st1.v} : null;
     updateFov(pv, gmst);
     if(pv && pv.position){
       satPos = new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U);
       satDot.position.copy(satPos);
       satHalo.position.copy(satPos); satHalo.lookAt(cam.position);
-      const look = sat.ecfToLookAngles(
-        {longitude: GT.OBS.lon*RAD, latitude: GT.OBS.lat*RAD, height: GT.OBS.altKm},
-        sat.eciToEcf(pv.position, gmst));
+      const look = BODY.lookAngles(GT.OBS, BODY.toFixed(pv.position, gmst));
       el = look.elevation*DEG;
     }
   }
@@ -735,7 +742,9 @@ function retheme(){
 global.Orbit3D = {
   init(opts){
     GT = opts.gt; THREE = global.THREE; sat = opts.satellite;
-    if(!THREE || !THREE.WebGLRenderer) return false;
+    BODY = opts.body; mkTrack = opts.mkTrack;
+    if(!THREE || !THREE.WebGLRenderer || !BODY || !mkTrack) return false;
+    RE = BODY.Re; U = 1/RE;
     try {
       build(opts.canvas);
     } catch(e){ return false; }

@@ -104,9 +104,13 @@ const WANTED = [
         /* 100 fixed sample times across the window, independent of `step`, so a
            change in sampling cadence does not silently change what is compared */
         const probes = [];
+        /* D.track after the body refactor, D.satrec before it. Accepting both
+           is what lets this one file grade the code on either side of the
+           change — the quantity computed is identical, only the handle moved. */
+        const handle = D.track || D.satrec;
         for (let k = 0; k < 100; k++) {
           const ms = T0 + Math.round(hours * 3600000 * k / 99);
-          const s = gt.sampleMs(D.satrec, ms);
+          const s = gt.sampleMs(handle, ms);
           probes.push(s ? { ms, lat: s.lat, lon: s.lon, alt: s.alt,
                             el: s.el, az: s.az, rng: s.rng } : null);
         }

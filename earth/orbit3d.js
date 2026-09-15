@@ -718,6 +718,12 @@ function tick(ts){
       if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
     } else if(labels.earth) labels.earth.__vec = null;
 
+    /* Drive the arrow's visibility from whether there IS a spacecraft. It used
+       to be set in showEarth(), and when the altitude was decoupled from the
+       Earth toggle those were the only two lines that ever set it TRUE - so it
+       was built invisible at line 190 and stayed that way. The label kept
+       updating, which is what made it look fixed. */
+    altLine.visible = altTip.visible = true;
     // and the rest of the way: surface -> spacecraft is the altitude
     const arr2 = altLine.geometry.attributes.position.array;
     arr2[0]=tip.x; arr2[1]=tip.y; arr2[2]=tip.z;
@@ -739,6 +745,7 @@ function tick(ts){
       if(labels.alt.textContent !== txt) labels.alt.textContent = txt;
     }
   } else {
+    altLine.visible = altTip.visible = false;
     if(labels.earth) labels.earth.__vec = null;
     if(labels.alt) labels.alt.__vec = null;
   }

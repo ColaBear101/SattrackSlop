@@ -42,6 +42,14 @@ let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
+/* The R(+) vector is an ELEMENT annotation - it measures the body, the way h and
+   e measure the orbit - so it is owned by the Orbital elements layer rather than
+   by the Earth checkbox it happened to be wired to first. Starts off, because
+   that layer does.
+   Note it runs from the centre to the surface, so with the Earth drawn it is
+   inside the globe and occluded. That is honest rather than broken: the arrow is
+   where it says it is, and hiding the Earth reveals it. */
+let rVecOn = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -708,15 +716,19 @@ function tick(ts){
   if(satPos){
     const dir = satPos.clone().normalize();
     const tip = dir.clone().multiplyScalar(1);
-    if(reLine.visible){
+    if(rVecOn){
       const arr = reLine.geometry.attributes.position.array;
       arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
       reLine.geometry.attributes.position.needsUpdate = true;
       reLine.geometry.computeBoundingSphere();
       reTip.position.copy(dir).multiplyScalar(1 - 0.036);
       reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+      reLine.visible = reTip.visible = true;
       if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
-    } else if(labels.earth) labels.earth.__vec = null;
+    } else {
+      reLine.visible = reTip.visible = false;
+      if(labels.earth) labels.earth.__vec = null;
+    }
 
     /* Drive the arrow's visibility from whether there IS a spacecraft. It used
        to be set in showEarth(), and when the altitude was decoupled from the
@@ -746,6 +758,7 @@ function tick(ts){
     }
   } else {
     altLine.visible = altTip.visible = false;
+    reLine.visible = reTip.visible = false;
     if(labels.earth) labels.earth.__vec = null;
     if(labels.alt) labels.alt.__vec = null;
   }
@@ -900,18 +913,20 @@ global.Orbit3D = {
   showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn; },
   /* Hiding the planet is how you actually look at an orbit: the geometry stops
      being occluded by the thing it goes around. */
+  /* Driven by the Orbital elements checkbox, which lives in the page. */
+  showRVector(v){ rVecOn = !!v; },
+  get rVector(){ return rVecOn; },
   showEarth(v){
     earthOn = !!v;
     if(earth) earth.visible = earthOn;
     if(atmo) atmo.visible = earthOn;
     if(wire) wire.visible = !earthOn;
-    if(reLine) reLine.visible = !earthOn;
-    if(reTip) reTip.visible = !earthOn;
+    /* R(+) is no longer tied to this - see rVecOn. */
     /* The altitude arrow is NOT tied to this. It lives above the surface, so
        the globe never occludes it, and it carries the one number a reader
        wants off a 3D view. Hiding it with the planet was the old behaviour and
        the wrong one. */
-    if(labels.earth) labels.earth.style.display = earthOn ? 'none' : 'block';
+
   },
   get earth(){ return earthOn; },
   get fov(){ return fovOn; },

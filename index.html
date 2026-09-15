@@ -9304,8 +9304,17 @@ document.addEventListener('visibilitychange', () => {
         esc(l.label)+'</label>').join('');
       menu.addEventListener('change', e=>{
         const k = e.target.dataset.layer;
-        if(k) OrbitViz.show(k, e.target.checked);
+        if(!k) return;
+        OrbitViz.show(k, e.target.checked);
+        /* R(+) is drawn by orbit3d, not orbitviz, but it reads as one of the
+           element annotations - so it rides the same checkbox rather than
+           needing a control of its own. */
+        if(k === 'elements' && global3D()) Orbit3D.showRVector(e.target.checked);
       });
+      if(global3D()){
+        const el = OrbitViz.layers().find(l => l.key === 'elements');
+        Orbit3D.showRVector(!!(el && el.on));
+      }
       window.__viz = true;
     } catch(err){
       const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';

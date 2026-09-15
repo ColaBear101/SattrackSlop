@@ -167,6 +167,184 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   console.log('\n  (that is the condition snapshot.js depends on: it runs in a fresh');
   console.log('   context, so the baseline keeps describing Bangkok)');
 
+  // ========================================================================
+  // the place picker
+  // ========================================================================
+  /* The geocoder is mocked. Two reasons: a check that talks to someone else's
+     service fails when their service is down rather than when this code is
+     wrong, and a live search would return whatever Open-Meteo happens to hold
+     today, which is not something to assert against. The SHAPE of the reply is
+     copied from a real one, captured from the live service, so the parsing
+     under test is the parsing that runs in anger. */
+  const HITS = {
+    tok: [{ id:1850147, name:'Tokyo', latitude:35.6895, longitude:139.69171,
+            elevation:40.0, country:'Japan', admin1:'Tokyo', timezone:'Asia/Tokyo',
+            population:8336599 }],
+    lon: [{ id:2643743, name:'London', latitude:51.50853, longitude:-0.12574,
+            elevation:25.0, country:'United Kingdom', admin1:'England',
+            timezone:'Europe/London', population:8961989 }]
+  };
+  let geocodeCalls = 0;
+  await page.route('**geocoding-api.open-meteo.com/**', r => {
+    geocodeCalls++;
+    const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('name') || '')
+                .toLowerCase().slice(0, 3);
+    r.fulfill({ status: 200, contentType: 'application/json',
+                headers: { 'access-control-allow-origin': '*' },
+                body: JSON.stringify({ results: HITS[q] || [] }) });
+  });
+
+  const openForm = () => page.evaluate(() => {
+    const f = document.getElementById('siteform');
+    if (f.hidden) document.getElementById('siteopen').click();
+  });
+  const typeSearch = async text => {
+    await openForm();
+    await page.evaluate(t => {
+      const q = document.getElementById('s-search');
+      q.value = t; q.dispatchEvent(new Event('input', { bubbles: true }));
+    }, text);
+    await page.waitForFunction(
+      () => !document.getElementById('s-hits').hidden, null, { timeout: 8000 });
+  };
+
+  await typeSearch('Tokyo');
+  const shown = await page.evaluate(() =>
+    [...document.querySelectorAll('#s-hits button')].map(b => b.textContent));
+  chk('searching a place name offers it',
+      shown.length === 1 && /Tokyo/.test(shown[0]), shown.join(' | '));
+  chk('...with the coordinates that tell two places of one name apart',
+      /35\.69° N/.test(shown[0]) && /139\.69° E/.test(shown[0]), shown[0]);
+  chk('...and the ground height, which nobody knows off hand',
+      /40 m/.test(shown[0]), shown[0]);
+
+  await page.evaluate(() => document.querySelector('#s-hits button').click());
+  await page.waitForTimeout(2500);
+  const tk = await state();
+  chk('picking it moves the observer there',
+      Math.abs(tk.obs.lat - 35.6895) < 1e-6 && Math.abs(tk.obs.lon - 139.69171) < 1e-6,
+      tk.obs.lat + ', ' + tk.obs.lon);
+  chk('...taking the ground elevation with it',
+      Math.abs(tk.obs.altKm - 0.040) < 1e-9, tk.obs.altKm + ' km');
+  chk('...and a real timezone rather than a guess from longitude',
+      tk.obs.zone === 'Asia/Tokyo', String(tk.obs.zone));
+  chk('...which reads UTC+9', tk.tz === 'UTC+9', tk.tz);
+  chk('...and the whole page renamed itself', /Tokyo/.test(tk.heading), tk.heading);
+
+  // ---- a longitude guess that would have been wrong ------------------------
+  /* The point of carrying a zone at all. Kashgar sits at 75.99 E, so the
+     nearest hour of solar time is UTC+5 - and China keeps one zone for the
+     whole country, so it is really UTC+8. Three hours, which is every pass
+     time on the page wrong by three hours. */
+  const kashgar = await page.evaluate(() => {
+    window.__gt.applySite({ name:'Kashgar', lat:39.4704, lon:75.9898, altKm:1.289,
+                            zone:'Asia/Shanghai' }, false);
+    return { tz: window.__gt.OBS.tz, guess: Math.round(75.9898/15) };
+  });
+  chk('a zone beats the longitude guess where the two disagree',
+      kashgar.tz === 8 && kashgar.guess === 5,
+      'zone says UTC+' + kashgar.tz + ', longitude would have said UTC+' + kashgar.guess);
+
+  // ---- summer time ---------------------------------------------------------
+  /* The offset is not one number. London is UTC+0 in January and UTC+1 in July,
+     and a 7-day window of passes can sit either side of the change. Checked
+     against Intl's own longOffset field, which reaches the answer by a
+     different route than the wall-clock subtraction the page uses. */
+  const JAN = Date.UTC(2026, 0, 15, 12), JUL = Date.UTC(2026, 6, 15, 12);
+  const oracle = (zone, ms) => {
+    const v = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(new Date(ms)).find(x => x.type === 'timeZoneName').value;
+    const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(v);
+    return m ? (m[1] === '-' ? -1 : 1) * (+m[2] + (+(m[3] || 0)) / 60) : 0;
+  };
+  const dst = await page.evaluate(t => {
+    window.__gt.applySite({ name:'London', lat:51.50853, lon:-0.12574, altKm:0.025,
+                            zone:'Europe/London' }, false);
+    return { jan: window.__gt.tzAt(t.JAN), jul: window.__gt.tzAt(t.JUL) };
+  }, { JAN, JUL });
+  chk('the offset follows summer time',
+      dst.jan === oracle('Europe/London', JAN) && dst.jul === oracle('Europe/London', JUL),
+      'page says UTC+' + dst.jan + ' in January, UTC+' + dst.jul + ' in July; independently '
+        + oracle('Europe/London', JAN) + ' and ' + oracle('Europe/London', JUL));
+  chk('...and the two really are different, so that meant something',
+      dst.jan !== dst.jul, dst.jan + ' vs ' + dst.jul);
+
+  // ---- recents -------------------------------------------------------------
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  await typeSearch('London');
+  await page.evaluate(() => document.querySelector('#s-hits button').click());
+  await page.waitForTimeout(2000);
+  const chips = await page.evaluate(() => {
+    const b = document.getElementById('s-recent');
+    return { hidden: b.hidden, names: [...b.querySelectorAll('button')].map(x => x.textContent) };
+  });
+  chk('a place you have used comes back as a chip',
+      !chips.hidden && chips.names.indexOf('Tokyo') >= 0, chips.names.join(', ') || 'none');
+  chk('...and the one you are standing in is not offered',
+      chips.names.indexOf('London') < 0, chips.names.join(', '));
+  await page.evaluate(() => [...document.querySelectorAll('#s-recent button')]
+    .filter(b => b.textContent === 'Tokyo')[0].click());
+  await page.waitForTimeout(2000);
+  const wasTokyo = await state();
+  chk('...and one click goes back to it',
+      Math.abs(wasTokyo.obs.lat - 35.6895) < 1e-6 && wasTokyo.obs.zone === 'Asia/Tokyo',
+      wasTokyo.obs.name + ' ' + wasTokyo.obs.lat);
+
+  // ---- no network ----------------------------------------------------------
+  /* Search is a convenience over typing numbers in, so losing it has to cost
+     the convenience and nothing else. */
+  await page.unroute('**geocoding-api.open-meteo.com/**');
+  await page.route('**geocoding-api.open-meteo.com/**', r => r.abort());
+  await openForm();
+  await page.evaluate(() => {
+    const q = document.getElementById('s-search');
+    q.value = 'Tokyo'; q.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForFunction(
+    () => /unreachable/i.test(document.getElementById('sitenote').textContent),
+    null, { timeout: 10000 }).catch(() => {});
+  const offline = await page.evaluate(() => ({
+    note: document.getElementById('sitenote').textContent,
+    hits: document.getElementById('s-hits').hidden }));
+  chk('a dead search says so, rather than looking like no such place',
+      /unreachable/i.test(offline.note) && offline.hits, offline.note.trim());
+
+  await page.evaluate(() => {
+    document.getElementById('s-manual').open = true;
+    const set = (id, v) => { document.getElementById(id).value = v; };
+    set('s-name', 'Chiang Mai'); set('s-lat', 18.7883); set('s-lon', 98.9853);
+    set('s-alt', 0.31); set('s-tz', 7);
+    document.getElementById('siteapply').click();
+  });
+  await page.waitForTimeout(2000);
+  const manual = await state();
+  chk('...and coordinates still work with the search dead',
+      manual.obs.name === 'Chiang Mai' && Math.abs(manual.obs.lat - 18.7883) < 1e-9,
+      manual.obs.name + ' ' + manual.obs.lat + ', ' + manual.obs.lon);
+  chk('...clearing the zone, since a hand-typed coordinate is not a place',
+      manual.obs.zone === null, String(manual.obs.zone));
+
+  // ---- this device ---------------------------------------------------------
+  const gctx = page.context();
+  await gctx.grantPermissions(['geolocation']);
+  await gctx.setGeolocation({ latitude: 48.8584, longitude: 2.2945, accuracy: 25 });
+  await openForm();
+  await page.evaluate(() => document.getElementById('s-here').click());
+  await page.waitForFunction(() => /My location|device|could not|declined/i.test(
+    document.getElementById('sitenote').textContent), null, { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  const mine = await state();
+  const mineNote = await page.evaluate(() => document.getElementById('sitenote').textContent);
+  chk('"use my location" puts the observer where the device says it is',
+      Math.abs(mine.obs.lat - 48.8584) < 1e-4 && Math.abs(mine.obs.lon - 2.2945) < 1e-4,
+      mine.obs.lat + ', ' + mine.obs.lon);
+  chk('...and says how well the device knows that', /25 m/.test(mineNote), mineNote.trim());
+
+  console.log('\n  geocoder requests made: ' + geocodeCalls
+    + ' (debounced, so fewer than the keystrokes)');
+
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));
   await browser.close();

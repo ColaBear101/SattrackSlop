@@ -37,6 +37,7 @@ earth/
   orbit3d.js          the WebGL globe
   orbitviz.js         orbital-element vectors, stars, constellations, planets
   globetex.js         NASA imagery for the globe's surface, fetched at runtime
+  places.js           finding the observer: place search, this device, timezones
   lifetime.js         orbital decay and re-entry forecasting
 
 moon/
@@ -796,10 +797,28 @@ Two things make that safe rather than merely possible:
   and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
   cannot leak into it. Reset restores the assignment's own total to the bit.
 
-The timezone follows the site. An arbitrary lat/lon has no discoverable zone name, so the label
-reads `UTC+7` rather than inventing one, and the offset defaults to the nearest hour of solar time
-while staying editable. A note under the form says which regime the page is in — the assignment's
-site, or moved, in which case the README's own figures no longer describe what is on screen.
+Three ways in, because the observer used to be five numbers you had to already know:
+
+- **Search a place name.** One request to Open-Meteo's geocoder — no key, CORS open — returns the
+  position, the *ground elevation*, and a real IANA timezone. Results carry their coordinates
+  because two places share a name more often than not; searching "Chiang Mai" offers the city, the
+  airport, and a village of the same name in Chiang Rai.
+- **Use my location.** The browser's own coordinates and accuracy, with the zone the device is set
+  to — which for the device in your hand is the right answer and needs no request.
+- **Coordinates.** Folded away behind a disclosure, and unchanged: an arbitrary point on the Earth
+  still has to be reachable, and it is the only path that works with no network at all.
+
+The last few sites come back as chips, so returning to one is a click.
+
+The timezone follows the site, and it is **not one number**. A site with a zone is asked for its
+offset *at the instant being displayed*, so summer time is right on both sides of a transition —
+a 7-day window of passes can straddle one. A site typed in as bare coordinates has no discoverable
+zone, so it keeps the nearest hour of solar time, editable, and the note says which of the two is
+on screen. That guess is worth replacing: China keeps one zone across sixty degrees of longitude,
+so Kashgar came out three hours adrift, and India and Nepal are on half and quarter hours.
+
+A note under the form also says which regime the page is in — the assignment's site, or moved, in
+which case the README's own figures no longer describe what is on screen.
 
 Moving to Svalbard (78.23°N) returns **0 passes**, which is the right answer and a useful check:
 KNACKSAT-2's 51.6° orbit never reaches that latitude, so a site there cannot see it at all.

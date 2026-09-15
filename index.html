@@ -386,6 +386,33 @@ canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:blo
   border:1px solid var(--rule); border-radius:4px; padding:3px 5px}
 .siterow{display:flex; gap:7px; margin-top:3px}
 .sitenote{font-size:11px; color:var(--muted); margin:2px 0 0; line-height:1.45}
+/* The place picker. Search first, because the question "where am I" has a much
+   better answer than five number fields, and the number fields fold away behind
+   a disclosure rather than going: an arbitrary point on the Earth still has to
+   be reachable, and it is the only path that works with no network. */
+.sitefind{display:flex; gap:6px; margin:2px 0 4px; flex-wrap:wrap}
+.sitefind input{flex:1 1 11rem; min-width:0; font:inherit; font-size:12px; padding:5px 7px;
+  border:1px solid var(--rule); border-radius:3px; background:var(--bg); color:var(--ink);
+  /* the rail sets its numbers right-aligned; a search box is not a number */
+  text-align:left}
+.sitefind .btn{flex:0 0 auto; white-space:nowrap}
+.sitehits{list-style:none; margin:0 0 4px; padding:0; max-height:210px; overflow-y:auto;
+  border:1px solid var(--rule); border-radius:3px}
+.sitehits li{padding:0}
+.sitehits button{display:block; width:100%; text-align:left; border:0; background:none;
+  font:inherit; font-size:12px; color:var(--ink); padding:6px 8px; cursor:pointer;
+  border-bottom:1px solid var(--rule)}
+.sitehits li:last-child button{border-bottom:0}
+.sitehits button:hover, .sitehits button:focus-visible{background:var(--rule)}
+.sitehits .hw{display:block; font-size:10.5px; color:var(--muted); margin-top:1px}
+.siterecent{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 5px}
+.siterecent button{font:inherit; font-size:11px; padding:3px 7px; border:1px solid var(--rule);
+  border-radius:99px; background:none; color:var(--muted); cursor:pointer}
+.siterecent button:hover{color:var(--ink); border-color:var(--ink)}
+.sitemanual{margin:0 0 5px}
+.sitemanual summary{font-size:11.5px; color:var(--muted); cursor:pointer; padding:3px 0}
+.sitemanual summary:hover{color:var(--ink)}
+.sitenote.warn{color:var(--contact)}
 .exportbar{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:12px}
 .exphint{font-size:11px; color:var(--muted)}
 .skyfacts .k{color:var(--muted); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
@@ -580,13 +607,26 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="sitebox">
           <button class="btn" id="siteopen" aria-expanded="false">Change observer…</button>
           <div class="siteform" id="siteform" hidden>
-            <label>Name<input id="s-name" type="text" maxlength="24"></label>
-            <label>Latitude<input id="s-lat" type="number" step="0.0001" min="-90" max="90"></label>
-            <label>Longitude<input id="s-lon" type="number" step="0.0001" min="-180" max="180"></label>
-            <label>Altitude km<input id="s-alt" type="number" step="0.001" min="-0.5" max="9"></label>
-            <label>UTC offset<input id="s-tz" type="number" step="0.5" min="-12" max="14"></label>
+            <div class="sitefind">
+              <input id="s-search" type="search" autocomplete="off" spellcheck="false"
+                     placeholder="Search a town or city" aria-label="Search for a place"
+                     aria-controls="s-hits" aria-expanded="false">
+              <button class="btn" id="s-here">Use my location</button>
+            </div>
+            <ul class="sitehits" id="s-hits" role="listbox" aria-label="Search results" hidden></ul>
+            <div class="siterecent" id="s-recent" hidden></div>
+            <details class="sitemanual" id="s-manual">
+              <summary>Enter coordinates</summary>
+              <label>Name<input id="s-name" type="text" maxlength="24"></label>
+              <label>Latitude<input id="s-lat" type="number" step="0.0001" min="-90" max="90"></label>
+              <label>Longitude<input id="s-lon" type="number" step="0.0001" min="-180" max="180"></label>
+              <label>Altitude km<input id="s-alt" type="number" step="0.001" min="-0.5" max="9"></label>
+              <label>UTC offset<input id="s-tz" type="number" step="0.5" min="-12" max="14"></label>
+              <div class="siterow">
+                <button class="btn" id="siteapply">Apply</button>
+              </div>
+            </details>
             <div class="siterow">
-              <button class="btn" id="siteapply">Apply</button>
               <button class="btn" id="sitereset">Reset to Bangkok</button>
             </div>
             <p class="sitenote" id="sitenote"></p>
@@ -837,6 +877,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="core/body.js"></script>
 <script src="core/propagator.js"></script>
+<script src="earth/places.js"></script>
 <script src="earth/globetex.js"></script>
 <script src="earth/orbit3d.js"></script>
 <script src="earth/orbitviz.js"></script>
@@ -7354,7 +7395,23 @@ const passStepFor = hrs => hrs <= 48 ? 4 : 15;
    below is. An arbitrary lat/lon has no discoverable timezone name, so the
    offset is shown as UTC+7 rather than invented. */
 let TZ = OBS.tz;
-const tzLabel = () => 'UTC' + (TZ < 0 ? '\u2212' : '+') + (Math.abs(TZ) % 1 ? Math.abs(TZ).toFixed(1) : Math.abs(TZ));
+/* The offset at a given instant, rather than one number for all time.
+   A site picked by name carries a real IANA zone, and a zone that keeps summer
+   time has two answers - which one applies depends on the day of the pass, and
+   a 7-day window can straddle the change. A site typed in as coordinates has no
+   discoverable zone, so it keeps the editable number it was given, which is
+   what OBS.tz is.
+   TZ is that number; tzAt is the truth. Where they differ, tzAt wins. */
+function tzAt(ms){
+  if(OBS.zone && window.Places){
+    const o = Places.offsetAt(OBS.zone, ms);
+    if(o !== null) return o;
+  }
+  return TZ;
+}
+const tzNow = () => tzAt(typeof simMs === 'number' && isFinite(simMs) ? simMs : Date.now());
+const tzLabel = () => { const t = tzNow();
+  return 'UTC' + (t < 0 ? '−' : '+') + (Math.abs(t) % 1 ? Math.abs(t).toFixed(1) : Math.abs(t)); };
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
    has no network access of its own, so it cannot discover this at runtime. */
@@ -7414,7 +7471,7 @@ const pad = (x,n)=>String(x).padStart(n||2,'0');
 const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+
   ' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds())+'Z';
 const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
-const hmsLocal = d => { const t = new Date(d.getTime()+TZ*3600000);
+const hmsLocal = d => { const t = new Date(d.getTime()+tzAt(d.getTime())*3600000);
   return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
 // the analysis window starts at the epoch, so it usually crosses midnight
 const dayOff = d => Math.floor((d.getTime() - D.start.getTime())/86400000);
@@ -7583,7 +7640,7 @@ window.__gt = {
   /* a const declared further down the file, so it has to be deferred the way
      D and CAT are - the object literal itself is evaluated up here. */
   get DARK_SUN_EL(){ return DARK_SUN_EL; },
-  stepFor, passStepFor, OBS, MASK, RE, MU,
+  stepFor, passStepFor, OBS, MASK, RE, MU, tzAt, applySite,
   get D(){ return D; },
   get CAT(){ return CAT; }
 };
@@ -8034,7 +8091,7 @@ function paintClock(force){
   if(!D) return;
   const utc = document.getElementById('tpclock');
   const uStr = iso(new Date(simMs)).replace('Z',''),
-        lStr = iso(new Date(simMs + TZ*3600000)).replace('Z','');
+        lStr = iso(new Date(simMs + tzAt(simMs)*3600000)).replace('Z','');
   utc.textContent = uStr;
   document.getElementById('tpclocklocal').textContent = lStr;
   const hu = document.getElementById('o3clock'), hl = document.getElementById('o3clocklocal');
@@ -8474,16 +8531,46 @@ function applySite(o, persist){
   OBS.lat = +o.lat; OBS.lon = +o.lon;
   OBS.altKm = isFinite(o.altKm) ? +o.altKm : 0;
   OBS.name = String(o.name || '').trim().slice(0, 24) || 'Observer';
-  /* An arbitrary lat/lon has no discoverable timezone, so the nearest hour of
-     solar time is the honest default and the field stays editable. */
-  OBS.tz = isFinite(o.tz) ? +o.tz : Math.round(OBS.lon/15);
+  /* A place picked by name carries its own zone; a bare coordinate does not.
+     Only a zone this browser can actually resolve is kept - an engine with a
+     stub Intl answers UTC for everything, and showing UTC as though it were
+     local time is worse than admitting there is no zone at all. */
+  OBS.zone = (o.zone && window.Places && Places.zoneKnown(o.zone)) ? o.zone : null;
+  if(isFinite(o.tz)) OBS.tz = +o.tz;
+  else {
+    const z = OBS.zone ? Places.offsetAt(OBS.zone, Date.now()) : null;
+    /* An arbitrary lat/lon has no discoverable timezone, so the nearest hour of
+       solar time is the honest default and the field stays editable. */
+    OBS.tz = (z === null) ? Math.round(OBS.lon/15) : z;
+  }
   TZ = OBS.tz;
   if(persist){
     try { localStorage.setItem(SITE_KEY, JSON.stringify(
-      {lat:OBS.lat, lon:OBS.lon, altKm:OBS.altKm, name:OBS.name, tz:OBS.tz})); } catch(e){}
+      {lat:OBS.lat, lon:OBS.lon, altKm:OBS.altKm, name:OBS.name, tz:OBS.tz,
+       zone:OBS.zone, where:o.where || ''})); } catch(e){}
   }
   return true;
 }
+
+/* The last few places, so going back to one is a click rather than a search.
+   Keyed on position to three decimals - about a hundred metres - so picking the
+   same town twice does not fill the list with it. */
+const RECENT_KEY = 'obs-recent';
+const siteKey = s => (+s.lat).toFixed(3) + ',' + (+s.lon).toFixed(3);
+function recents(){
+  try {
+    const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(siteValid).slice(0, 6) : [];
+  } catch(e){ return []; }
+}
+function remember(extra){
+  const me = { name:OBS.name, where:(extra && extra.where) || '', lat:OBS.lat,
+               lon:OBS.lon, altKm:OBS.altKm, tz:OBS.tz, zone:OBS.zone };
+  const list = recents().filter(s => siteKey(s) !== siteKey(me));
+  list.unshift(me);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 6))); } catch(e){}
+}
+
 function paintSite(){
   const nm = OBS.name, pos = latStr(OBS.lat)+' '+lonStr(OBS.lon);
   const set = (id, txt) => { const e = document.getElementById(id); if(e) e.textContent = txt; };
@@ -8499,13 +8586,42 @@ function paintSite(){
   const ha = document.querySelector('#sec-access h2');
   if(ha) ha.textContent = 'Visibility from '+nm+' · '+MASK+'° elevation mask';
   const note = document.getElementById('sitenote');
-  if(note) note.textContent = (OBS.lat === HOME.lat && OBS.lon === HOME.lon && OBS.altKm === HOME.altKm)
-    ? 'The assignment site. Every figure in the README is computed here.'
-    : 'Moved from Bangkok — the README’s figures no longer describe this page.';
+  if(note){
+    note.classList.remove('warn');
+    const home = (OBS.lat === HOME.lat && OBS.lon === HOME.lon && OBS.altKm === HOME.altKm);
+    /* Which of the two offsets is on screen, and why. A reader comparing a pass
+       time against their own watch needs to know whether the page knows about
+       summer time here or is rounding longitude. */
+    const zone = OBS.zone
+      ? OBS.zone + ', so the offset follows summer time where it is kept.'
+      : 'No timezone for a bare coordinate — the offset is the nearest hour of solar time, and is editable.';
+    note.textContent = (home
+      ? 'The assignment site. Every figure in the README is computed here.'
+      : 'Moved from Bangkok — the README’s figures no longer describe this page.')
+      + ' ' + zone;
+  }
   const f = id => document.getElementById(id);
   if(f('s-name')){ f('s-name').value = OBS.name; f('s-lat').value = OBS.lat;
     f('s-lon').value = OBS.lon; f('s-alt').value = OBS.altKm; f('s-tz').value = OBS.tz; }
+  paintRecent();
 }
+
+function paintRecent(){
+  const box = document.getElementById('s-recent');
+  if(!box) return;
+  const list = recents().filter(s => siteKey(s) !== siteKey(OBS));
+  box.hidden = !list.length;
+  box.innerHTML = '';
+  list.forEach(s => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.name;
+    b.title = latStr(s.lat) + ' ' + lonStr(s.lon) + (s.where ? ' · ' + s.where : '');
+    b.addEventListener('click', () => { if(applySite(s, true)) siteChanged(); });
+    box.appendChild(b);
+  });
+}
+
 function siteChanged(){
   paintSite();
   const keep = simMs, wasPlaying = playing;
@@ -8522,6 +8638,14 @@ function bootExport(){
   if(c) c.addEventListener('click', guard(exportCSV));
   if(i) i.addEventListener('click', guard(exportICS));
 }
+
+function siteMsg(txt, warn){
+  const n = document.getElementById('sitenote');
+  if(!n) return;
+  n.textContent = txt;
+  n.classList.toggle('warn', !!warn);
+}
+
 function bootSite(){
   try {
     const j = JSON.parse(localStorage.getItem(SITE_KEY) || 'null');
@@ -8532,21 +8656,108 @@ function bootSite(){
   if(open) open.addEventListener('click', ()=>{
     const on = form.hidden;
     form.hidden = !on; open.setAttribute('aria-expanded', String(on));
-    if(on) paintSite();
+    if(on){ paintSite(); const q = document.getElementById('s-search'); if(q) q.focus(); }
   });
+
+  /* ---- search by name -------------------------------------------------- *
+   * The one path that answers all five fields at once. Everything it fills in
+   * is still editable underneath, and none of it is required: with no network
+   * the search says so and the coordinate fields carry on working.           */
+  const q = document.getElementById('s-search'), hits = document.getElementById('s-hits');
+  let timer = null, ctl = null;
+  const closeHits = () => {
+    if(!hits) return;
+    hits.hidden = true; hits.textContent = '';
+    if(q) q.setAttribute('aria-expanded', 'false');
+  };
+  const pick = site => {
+    if(!applySite(site, true)) return;
+    remember(site);
+    if(q) q.value = '';
+    closeHits();
+    siteChanged();
+  };
+  const showHits = list => {
+    hits.textContent = '';
+    list.forEach(site => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'option');
+      b.appendChild(document.createTextNode(site.name));
+      const w = document.createElement('span');
+      w.className = 'hw';
+      /* Position and ground height, because two places share a name more often
+         than not and the coordinates are what actually distinguish them. */
+      w.textContent = [site.where, latStr(site.lat) + ' ' + lonStr(site.lon),
+                       Math.round(site.altKm*1000) + ' m'].filter(Boolean).join(' · ');
+      b.appendChild(w);
+      b.addEventListener('click', () => pick(site));
+      li.appendChild(b); hits.appendChild(li);
+    });
+    hits.hidden = !list.length;
+    if(q) q.setAttribute('aria-expanded', String(!!list.length));
+  };
+  const run = () => {
+    const text = (q.value || '').trim();
+    if(text.length < 2){ closeHits(); return; }
+    if(!window.Places){ siteMsg('Place search is not available here — enter coordinates instead.', true); return; }
+    if(ctl) ctl.abort();
+    ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    Places.search(text, 6, ctl && ctl.signal).then(list => {
+      if(!list.length){ closeHits(); siteMsg('No place matched “' + text + '”.', false); return; }
+      showHits(list);
+      siteMsg(Places.credit + '. Pick one, or enter coordinates instead.', false);
+    }).catch(err => {
+      if(err && err.name === 'AbortError') return;   // superseded by a later keystroke
+      closeHits();
+      siteMsg('Place search is unreachable — enter coordinates instead.', true);
+    });
+  };
+  if(q){
+    /* Debounced rather than per-keystroke: someone typing "Ulaanbaatar" would
+       otherwise send eleven requests to a free service to answer the last one. */
+    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 250); });
+    q.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){ e.preventDefault(); clearTimeout(timer); run(); }
+      if(e.key === 'Escape') closeHits();
+    });
+  }
+
+  /* ---- this device ------------------------------------------------------ */
+  const hereBtn = document.getElementById('s-here');
+  if(hereBtn) hereBtn.addEventListener('click', () => {
+    if(!window.Places){ siteMsg('Location is not available here.', true); return; }
+    siteMsg('Asking this device where it is…', false);
+    hereBtn.disabled = true;
+    Places.here().then(site => {
+      hereBtn.disabled = false;
+      if(!applySite(site, true)){ siteMsg('That location did not make sense.', true); return; }
+      remember(site);
+      closeHits();
+      siteChanged();
+      siteMsg('Set from this device' + (site.accuracyM
+        ? ', accurate to about ' + Math.round(site.accuracyM) + ' m.' : '.'), false);
+    }).catch(err => {
+      hereBtn.disabled = false;
+      siteMsg((err && err.message ? err.message : 'no location') +
+              ' — search for a place or enter coordinates.', true);
+    });
+  });
+
+  /* ---- coordinates, unchanged ------------------------------------------- */
   const g = id => parseFloat((document.getElementById(id)||{}).value);
   const apply = document.getElementById('siteapply');
   if(apply) apply.addEventListener('click', ()=>{
     const ok = applySite({ name: (document.getElementById('s-name')||{}).value,
       lat: g('s-lat'), lon: g('s-lon'), altKm: g('s-alt'), tz: g('s-tz') }, true);
-    if(ok) siteChanged();
-    else document.getElementById('sitenote').textContent =
-      'Latitude must be within ±90° and longitude within ±180°.';
+    if(ok){ remember(null); closeHits(); siteChanged(); }
+    else siteMsg('Latitude must be within ±90° and longitude within ±180°.', true);
   });
   const rst = document.getElementById('sitereset');
   if(rst) rst.addEventListener('click', ()=>{
     applySite(HOME, false);
     try { localStorage.removeItem(SITE_KEY); } catch(e){}
+    closeHits();
     siteChanged();
   });
 }
@@ -9276,7 +9487,7 @@ document.addEventListener('visibilitychange', () => {
     gt: { WORLD, CAT, OBS, MASK,
           now: () => new Date(simMs),          // one clock, shared
           fmtUTC:  d => iso(d).replace('Z',''),
-          fmtLocal: d => iso(new Date(d.getTime()+TZ*3600000)).replace('Z','') },
+          fmtLocal: d => iso(new Date(d.getTime()+tzAt(d.getTime())*3600000)).replace('Z','') },
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
               el: document.getElementById('o3el'),
               earth: document.getElementById('o3earth'),

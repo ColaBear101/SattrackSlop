@@ -876,6 +876,28 @@ function paintLabels(satPos, el){
     labels.el.textContent = (el > -90 ? el.toFixed(1)+'°' : '—');
     labels.el.className = 'o3-el' + (up ? ' up' : '');
   }
+  /* The lens, but only while looking through it. The wheel drives pov0.fov from
+     8 to 90 degrees and until now changed the view with nothing to say what it
+     had changed it to.
+     Both figures are given because three.js stores the VERTICAL angle while a
+     camera is normally quoted by its horizontal one, and the two differ by the
+     aspect ratio - on a wide viewport by a lot. Printing only cam.fov would be
+     a number that matches no spec sheet.
+     The focal length is the 35 mm equivalent, from the horizontal angle: it is
+     the form anyone who has held a camera reads instantly, where 42 degrees
+     means nothing. */
+  if(labels.fov){
+    if(pov){
+      const v = pov0.fov;
+      const h = 2*Math.atan(Math.tan(v*RAD/2) * cam.aspect)*DEG;
+      const f = 36 / (2*Math.tan(h*RAD/2));
+      labels.fov.textContent = h.toFixed(1)+'° × '+v.toFixed(1)+'°';
+      labels.fov.title = 'horizontal × vertical field of view — about '
+                       + f.toFixed(0) + ' mm on 35 mm';
+      if(labels.fovmm) labels.fovmm.textContent = '≈' + f.toFixed(0) + ' mm';
+      labels.fov.parentNode.hidden = false;
+    } else labels.fov.parentNode.hidden = true;
+  }
 }
 
 /* ---- theme ---------------------------------------------------------------- */

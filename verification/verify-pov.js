@@ -52,6 +52,20 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
              up:  new THREE.Vector3(0, 1, 0).applyQuaternion(c.quaternion).toArray(),
              pov: Orbit3D.pov, follow: Orbit3D.follow, site: Orbit3D.site };
   });
+  /* The FOV readout. Read the ROW's own hidden flag and the text in it, not a
+     module variable that says what should have been written. */
+  const lens = () => page.evaluate(() => ({
+    hidden: document.getElementById('o3fovrow').hidden,
+    text:   document.getElementById('o3fov3').textContent,
+    mm:     document.getElementById('o3fovmm').textContent,
+    fov:    Orbit3D.camera.fov, aspect: Orbit3D.camera.aspect }));
+  /* What the row SHOULD say, derived here rather than in the page. */
+  const expect = (v, aspect) => {
+    const R = Math.PI/180, D = 180/Math.PI;
+    const h = 2*Math.atan(Math.tan(v*R/2) * aspect)*D;
+    return { text: h.toFixed(1) + '° × ' + v.toFixed(1) + '°',
+             mm: '≈' + (36/(2*Math.tan(h*R/2))).toFixed(0) + ' mm' };
+  };
   const pressed = () => page.evaluate(() =>
     [...document.querySelectorAll('.camseg .cam')]
       .map(b => b.dataset.mode + '=' + b.getAttribute('aria-pressed')));
@@ -144,6 +158,34 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   chk('...without moving the camera off the spacecraft', dist3(c.pos, held) < 1e-6);
   chk('...and without leaving the mode', c.pov === true);
 
+  // ---- the lens says what it is ------------------------------------------
+  /* The wheel drives the FOV over a 11:1 range. Without a readout the view
+     changes with nothing to say what it changed to, so the row is checked
+     against the camera it claims to describe - and against the HORIZONTAL
+     angle, since three.js stores the vertical one and a camera is quoted by
+     its horizontal. */
+  let lz = await lens(), want = expect(lz.fov, lz.aspect);
+  chk('the FOV row is showing in POV', lz.hidden === false);
+  chk('...and matches the camera it describes', lz.text === want.text,
+      lz.text + (lz.text === want.text ? '' : ' != ' + want.text));
+  chk('...including the 35 mm equivalent', lz.mm === want.mm, lz.mm);
+  chk('...and the horizontal angle is the wider of the two',
+      parseFloat(lz.text) > lz.fov, lz.text.split('×')[0].trim() + ' > ' + lz.fov.toFixed(1));
+  const wideText = lz.text;
+
+  /* A second wheel step: a readout written once at entry would pass everything
+     above and still be stale here. */
+  await page.evaluate(() => {
+    const cv = document.getElementById('globe');
+    const R = cv.getBoundingClientRect();
+    cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, clientX: R.left + R.width/2,
+                                               clientY: R.top + R.height/2, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  lz = await lens(); want = expect(lz.fov, lz.aspect);
+  chk('...and it follows a further zoom', lz.text !== wideText && lz.text === want.text,
+      wideText + ' -> ' + lz.text);
+
   // ---- a drag looks around rather than dropping the mode ------------------
   /* Every other mode treats a drag as "the user wants the free camera", because
      for those modes moving the camera IS leaving them. Looking around is the
@@ -174,6 +216,8 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   chk('leaving POV restores the shared FOV', Math.abs(c.fov - 42) < 1e-9, 'fov = ' + c.fov);
   chk('...and puts the camera back outside the orbit', Math.hypot(...c.pos) > 1.5,
       '|r| = ' + Math.hypot(...c.pos).toFixed(3) + ' Earth radii');
+  lz = await lens();
+  chk('leaving POV hides the FOV row', lz.hidden === true);
   const p2 = await pressed();
   chk('...with the POV button released', p2.includes('pov=false'), p2.join(' '));
 

@@ -36,6 +36,7 @@ core/               the body-agnostic half
 earth/
   orbit3d.js          the WebGL globe
   orbitviz.js         orbital-element vectors, stars, constellations, planets
+  globetex.js         NASA imagery for the globe's surface, fetched at runtime
   lifetime.js         orbital decay and re-entry forecasting
 
 moon/
@@ -994,17 +995,23 @@ npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
+npm run timeline     # the window rolling forward when playback runs off the end
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```
 
-The lunar checks are kept **out** of `npm test`, because they fetch from JPL Horizons and a clean
-run should not depend on someone else's uptime:
+Every one of those blocks NASA's imagery service before loading the page, so the globe falls back
+to its drawn coastlines. Two reasons: the timings some of them measure are wall-clock, and a
+megabyte of JPEG fetched ten times a run is rude to a service that is free.
+
+The lunar checks, and the globe imagery check, are kept **out** of `npm test`, because they fetch
+from JPL Horizons and NASA GIBS and a clean run should not depend on someone else's uptime:
 
 ```
 npm run moon         # rotation vs Horizons sub-observer point
 npm run moon:chain   # baked elements -> sub-point, end to end
 npm run moon:bake    # re-bake moon/moondata.js from Horizons
+npm run globe        # the globe's NASA imagery: orientation, terminator, city lights
 ```
 
 `.github/workflows/verify.yml` runs the offline suite on every push, and again weekly — the

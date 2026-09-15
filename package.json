@@ -35,7 +35,8 @@
     "moon": "node verification/verify-moon.js",
     "moon:chain": "node verification/verify-lunar-chain.js",
     "moon:bake": "node verification/fetch-lunar-ephem.js",
-    "timeline": "node verification/verify-timeline.js"
+    "timeline": "node verification/verify-timeline.js",
+    "globe": "node verification/verify-globe.js"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

@@ -41,6 +41,10 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   await page.route('**celestrak.org/**', r => r.abort());
+  /* The globe's NASA imagery is nothing to do with this check, and letting it
+     run costs seconds of wall clock that the timings here are measured against.
+     Blocked, so the page takes its documented fallback to the drawn coastlines. */
+  await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
   await page.route('**tle.ivanstanojevic.me/**', r => r.abort());
 
   const boot = async () => {

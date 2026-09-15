@@ -54,6 +54,10 @@ const chk = (name, ok, detail) => {
   page.on('pageerror', e => pageErrs.push(e.message));
 
   await page.route(ALT, r => r.abort());               // one source under test
+  /* The globe's NASA imagery is nothing to do with this check, and letting it
+     run costs seconds of wall clock that the timings here are measured against.
+     Blocked, so the page takes its documented fallback to the drawn coastlines. */
+  await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
   await page.route(GP, r => {
     hits++;
     return served ? r.fulfill({ status: 200, contentType: 'text/plain', body: served })

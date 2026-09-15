@@ -56,6 +56,9 @@ const WANTED = [
   /* No network: the baseline must not depend on what a server returned today. */
   await page.route('**://celestrak.org/**', r => r.abort());
   await page.route('**://tle.ivanstanojevic.me/**', r => r.abort());
+  /* The baseline is numbers, not pixels, and regenerating it should not depend
+     on NASA being reachable. */
+  await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
 
   await page.goto(PAGE, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__gt, null, { timeout: 30000 });

@@ -103,18 +103,167 @@ function earthTexture(){
   for(let lat=-60; lat<=60; lat+=30){ g.moveTo(0,py(lat)); g.lineTo(W,py(lat)); }
   g.stroke(); g.globalAlpha = 1;
   const t = THREE.CanvasTexture ? new THREE.CanvasTexture(c) : new THREE.Texture(c);
-  t.needsUpdate = true;
-  // An equirectangular map converges every texel row to a point at the poles, so
-  // the texture is sampled along a hugely stretched footprint there. Without
-  // anisotropic filtering that reads as smeared polar caps at any grazing angle.
+  return tuneTex(t, true);
+}
+
+/* The filtering every globe map needs, whether it was drawn here or fetched.
+   An equirectangular map converges every texel row to a point at the poles, so
+   the texture is sampled along a hugely stretched footprint there. Without
+   anisotropic filtering that reads as smeared polar caps at any grazing angle.
+
+   `srgb` is false for anything bound to the day/night shader: three.js only
+   decodes a texture's encoding for its own materials, and that shader does its
+   own gamma - marking the texture too would decode it twice. */
+function tuneTex(t, srgb){
   if(renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   t.generateMipmaps = true;
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
-  if(THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
-  else if(THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+  if(srgb){
+    if(THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    else if(THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+  }
+  t.needsUpdate = true;
   return t;
+}
+
+/* ---- the photographic surface -------------------------------------------- *
+ * One shader covers every imagery mode. It exists rather than a second
+ * MeshPhongMaterial for one reason: the night side.
+ *
+ * City lights are not lit by anything. They are emission, and the whole point
+ * is that they appear exactly where the Sun has gone - so the terminator has to
+ * be found per fragment from the real solar direction and the two maps
+ * crossfaded across it. No built-in material does that.
+ *
+ * The gamma is explicit. r128 applies its output encoding through a shader
+ * chunk that only the built-in materials include, so a ShaderMaterial's
+ * gl_FragColor reaches the framebuffer untouched - measured rather than
+ * assumed: a constant 0.5 comes out as byte 128 with outputEncoding set either
+ * way. Lighting has to happen in linear light or the terminator turns to mud,
+ * so the maps are decoded on the way in and the result encoded on the way out.
+ *
+ * The crossfade spans about 8 degrees either side of the geometric terminator,
+ * which is roughly the sky's own twilight and reads as dusk rather than a wipe. */
+const DAYNIGHT_VERT = [
+  'varying vec2 vUv;',
+  'varying vec3 vWN;',
+  'void main(){',
+  '  vUv = uv;',
+  /* the WORLD normal: the globe is spun by GMST on its group and the Sun
+     direction is given in world space, so a view-space normal would swing the
+     terminator round with the camera */
+  '  vWN = normalize(mat3(modelMatrix) * normal);',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+  '}'
+].join('\n');
+
+const DAYNIGHT_FRAG = [
+  'uniform sampler2D dayMap;',
+  'uniform sampler2D nightMap;',
+  'uniform vec3 sunDir;',
+  'uniform float useNight;',
+  'uniform float ambient;',
+  'uniform float nightGain;',
+  'varying vec2 vUv;',
+  'varying vec3 vWN;',
+  'vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }',
+  'void main(){',
+  '  float d = dot(normalize(vWN), normalize(sunDir));',
+  '  vec3 day = lin(texture2D(dayMap, vUv).rgb);',
+  '  vec3 c = day * (ambient + (1.0 - ambient) * clamp(d, 0.0, 1.0));',
+  '  if(useNight > 0.5){',
+  '    vec3 night = lin(texture2D(nightMap, vUv).rgb) * nightGain;',
+  '    c = mix(night, c, smoothstep(-0.14, 0.14, d));',
+  '  }',
+  '  gl_FragColor = vec4(pow(c, vec3(1.0/2.2)), 1.0);',
+  '}'
+].join('\n');
+
+let vectorMat = null, photoMat = null, surfaceKey = 'vector';
+let dayTex = null, nightTex = null, surfaceSeq = 0;
+
+function photoMaterial(){
+  if(photoMat) return photoMat;
+  photoMat = new THREE.ShaderMaterial({
+    uniforms: {
+      dayMap:   { value: null },
+      nightMap: { value: null },
+      sunDir:   { value: new THREE.Vector3(1, 0, 0) },
+      useNight: { value: 0 },
+      /* Not black on the night side even without lights: the Earth is lit by a
+         whole hemisphere of sky and by the Moon, and a pure black limb reads as
+         a hole cut in the starfield. */
+      ambient:  { value: 0.055 },
+      nightGain:{ value: 1.35 }
+    },
+    vertexShader: DAYNIGHT_VERT, fragmentShader: DAYNIGHT_FRAG
+  });
+  return photoMat;
+}
+
+/* Put a fetched surface on the globe.
+   Called once per rung of the size ladder, so it has to be safe to run with the
+   sphere already wearing the previous rung: the old textures are disposed as
+   they are replaced, or a mode switch leaks a 4096x2048 map on the GPU every
+   time. */
+function applyPhoto(stage){
+  const mat = photoMaterial();
+  const d = tuneTex(new THREE.Texture(stage.day), false);
+  if(dayTex) dayTex.dispose();
+  dayTex = d; mat.uniforms.dayMap.value = d;
+  if(stage.night){
+    if(!nightTex || nightTex.image !== stage.night){
+      const nt = tuneTex(new THREE.Texture(stage.night), false);
+      if(nightTex) nightTex.dispose();
+      nightTex = nt;
+    }
+    mat.uniforms.nightMap.value = nightTex;
+    mat.uniforms.useNight.value = 1;
+  } else {
+    /* A sampler with nothing bound is undefined behaviour on some drivers even
+       when the branch that reads it is never taken, so it keeps pointing at the
+       day map rather than at null. */
+    mat.uniforms.nightMap.value = d;
+    mat.uniforms.useNight.value = 0;
+  }
+  if(earth) earth.material = mat;
+}
+
+/* setSurface(key, onStatus)
+   onStatus gets {state, key, meta, detail} - 'loading', then 'ready' per rung,
+   or 'failed'. The page owns the wording; this owns the sequence.
+
+   Every callback is stamped with the request that started it and dropped if a
+   later one has begun, because these take seconds and a reader flicking through
+   the list will otherwise have the slow first choice land on top of the fast
+   second one. */
+function setSurface(key, onStatus){
+  const seq = ++surfaceSeq;
+  const say = (state, detail, meta) => {
+    if(seq === surfaceSeq && onStatus) onStatus({ state, key, detail, meta });
+  };
+  surfaceKey = key;
+  if(key === 'vector' || !global.GlobeTex){
+    if(earth && vectorMat) earth.material = vectorMat;
+    say('ready', null, null);
+    return;
+  }
+  say('loading', null, null);
+  global.GlobeTex.load(key, stage => {
+    if(seq !== surfaceSeq) return;            // superseded while in flight
+    applyPhoto(stage);
+    say('ready', stage.w + '×' + stage.h + (stage.last ? '' : ', sharpening…'), stage.meta);
+  }).catch(err => {
+    /* Falling back rather than leaving a half-dressed globe: whatever went
+       wrong, the vector surface always works and the reader is told which one
+       they are looking at. */
+    if(seq !== surfaceSeq) return;
+    surfaceKey = 'vector';
+    if(earth && vectorMat) earth.material = vectorMat;
+    say('failed', (err && err.message) || 'imagery unavailable', null);
+  });
 }
 
 /* ---- sun direction in ECI, from the subsolar point ------------------------ */
@@ -150,6 +299,9 @@ function build(canvas){
     new THREE.SphereGeometry(1, 160, 96),
     new THREE.MeshPhongMaterial({map: earthTexture(), shininess: 6, specular: 0x0a1014})
   );
+  /* Kept so a photographic surface can be taken off again without rebuilding
+     the coastline canvas, and so a failed fetch has something to fall back to. */
+  vectorMat = earth.material;
   earthGroup.add(earth);
 
   // rim of atmosphere: a back-faced shell brightened at grazing angles
@@ -775,6 +927,9 @@ function tick(ts){
   const gmst = (frameNo % 3 === 1) ? updateCloud(simTime) : BODY.spin(simTime);
   earthGroup.rotation.y = gmst;
   sunLight.position.copy(sunVec(simTime)).multiplyScalar(50);
+  /* The same vector the lamp uses, unscaled, so the painted terminator and the
+     lit terminator are the same line and not two answers to one question. */
+  if(photoMat) photoMat.uniforms.sunDir.value.copy(sunVec(simTime));
 
   const nowMs = simTime.getTime();
   updateTrail(nowMs);
@@ -1068,6 +1223,15 @@ global.Orbit3D = {
   showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn; },
   /* Hiding the planet is how you actually look at an orbit: the geometry stops
      being occluded by the thing it goes around. */
+  /* Exposed alongside scene and camera so a check can force a frame and read
+     the pixels back: a WebGL drawing buffer is gone by the next task, so
+     measuring what was actually painted means rendering and reading in one go. */
+  get renderer(){ return renderer; },
+  /* The globe's surface. The list comes from GlobeTex so the page does not
+     carry a second copy of it that can fall out of step. */
+  surfaces(){ return global.GlobeTex ? global.GlobeTex.modes() : [{key:'vector', label:'Coastlines'}]; },
+  setSurface(key, onStatus){ setSurface(key, onStatus); },
+  get surface(){ return surfaceKey; },
   /* Driven by the Orbital elements checkbox, which lives in the page. */
   showRVector(v){ elementsOn = !!v; },
   get rVector(){ return elementsOn; },

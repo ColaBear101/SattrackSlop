@@ -127,6 +127,16 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   cursor:pointer; min-height:30px; white-space:nowrap}
 .layerpanel label:hover{background:rgba(180,200,212,.14); color:#EAF2F6}
 .layerpanel input{accent-color:var(--contact); margin:0; width:14px; height:14px}
+/* The globe-surface picker sits above the annotation switches, separated by a
+   rule, because it is a different kind of control: one choice of what the
+   planet is made of, not a set of things to draw on top of it. */
+.layerhead{margin:2px 0 1px; padding:0 8px; font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:9px; letter-spacing:.15em; text-transform:uppercase; color:#7C919C}
+.layerrule{height:1px; margin:6px 4px 3px; background:rgba(180,200,212,.22)}
+.layernote{margin:1px 8px 2px; max-width:210px; white-space:normal;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; line-height:1.45;
+  color:#7C919C}
+.layernote.warn{color:#D69A5C}
 /* two variants: over the globe it needs a dark casing and a fixed light ink;
    in the chrome bars it must read against a light surface instead */
 .seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
@@ -827,6 +837,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="core/body.js"></script>
 <script src="core/propagator.js"></script>
+<script src="earth/globetex.js"></script>
 <script src="earth/orbit3d.js"></script>
 <script src="earth/orbitviz.js"></script>
 <script src="earth/lifetime.js"></script>
@@ -9303,6 +9314,54 @@ document.addEventListener('visibilitychange', () => {
    * A separate module draws the inertial frame, the element geometry, the real
    * star field and the planets. It shares the globe's scene, so it has to be
    * initialised after the renderer exists.                                    */
+  /* ---- what the planet is made of ---------------------------------------- *
+   * A single choice, so radios rather than checkboxes, and it sits above the
+   * annotation switches with a rule under it: those say what to draw ON the
+   * globe, this says what the globe IS.
+   *
+   * Built before the OrbitViz block and independently of it. The imagery is
+   * drawn by orbit3d, so if the sky module ever throws, the reader should still
+   * lose the star field and not the planet.                                    */
+  const SURFKEY = 'gt.surface';
+  if(global3D() && Orbit3D.surfaces){
+    const menu0 = document.getElementById('layersMenu');
+    let want = 'night';
+    try { want = localStorage.getItem(SURFKEY) || want; } catch(e){}
+    const modes = Orbit3D.surfaces();
+    if(!modes.some(m => m.key === want)) want = 'vector';
+    menu0.insertAdjacentHTML('beforeend',
+      '<p class="layerhead">Globe surface</p>' +
+      modes.map(m => '<label><input type="radio" name="globesurf" value="'+esc(m.key)+'"'+
+        (m.key === want ? ' checked' : '')+'> '+esc(m.label)+'</label>').join('') +
+      '<p class="layernote" id="texnote"></p><div class="layerrule"></div>');
+    const note = document.getElementById('texnote');
+    const NOTE = {};
+    modes.forEach(m => { NOTE[m.key] = m.note || ''; });
+    function surfStatus(st){
+      note.classList.toggle('warn', st.state === 'failed');
+      if(st.state === 'loading'){ note.textContent = 'Fetching NASA imagery…'; return; }
+      if(st.state === 'failed'){
+        /* Named rather than swallowed: a globe that silently stayed schematic
+           after you asked for a photograph is a bug report waiting to happen. */
+        note.textContent = 'Imagery unavailable — showing coastlines. ' + (st.detail || '');
+        const r = menu0.querySelector('input[name=globesurf][value=vector]');
+        if(r) r.checked = true;
+        return;
+      }
+      let t = NOTE[st.key] || '';
+      if(st.meta && st.meta.date) t += ' ' + st.meta.date + '.';
+      if(st.detail) t += ' ' + st.detail;
+      if(st.meta && window.GlobeTex) t += ' ' + GlobeTex.credit + '.';
+      note.textContent = t.trim();
+    }
+    menu0.addEventListener('change', e => {
+      if(e.target.name !== 'globesurf') return;
+      try { localStorage.setItem(SURFKEY, e.target.value); } catch(err){}
+      Orbit3D.setSurface(e.target.value, surfStatus);
+    });
+    Orbit3D.setSurface(want, surfStatus);
+  }
+
   if(window.OrbitViz){
     try {
       OrbitViz.init({ THREE: window.THREE, scene: Orbit3D.scene, body: BODY,
@@ -9321,10 +9380,10 @@ document.addEventListener('visibilitychange', () => {
          over the scene and ride the constellations switch instead. */
       OrbitViz.show('planets', true);
       const menu = document.getElementById('layersMenu');
-      menu.innerHTML = OrbitViz.layers()
+      menu.insertAdjacentHTML('beforeend', OrbitViz.layers()
         .filter(l => l.key !== 'stars' && l.key !== 'planets').map(l =>
         '<label><input type="checkbox" data-layer="'+l.key+'"'+(l.on?' checked':'')+'> '+
-        esc(l.label)+'</label>').join('');
+        esc(l.label)+'</label>').join(''));
       menu.addEventListener('change', e=>{
         const k = e.target.dataset.layer;
         if(!k) return;
@@ -9339,10 +9398,13 @@ document.addEventListener('visibilitychange', () => {
         Orbit3D.showRVector(!!(el && el.on));
       }
       window.__viz = true;
-    } catch(err){
-      const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
-    }
-  } else {
+    } catch(err){ hideLayersIfEmpty(); }
+  } else hideLayersIfEmpty();
+  /* The panel now has two independent tenants. It goes away only if both of
+     them failed to move in. */
+  function hideLayersIfEmpty(){
+    const m = document.getElementById('layersMenu');
+    if(m && m.children.length) return;
     const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
   }
 

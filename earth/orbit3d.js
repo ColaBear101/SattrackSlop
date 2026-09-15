@@ -42,14 +42,14 @@ let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
-/* The R(+) vector is an ELEMENT annotation - it measures the body, the way h and
-   e measure the orbit - so it is owned by the Orbital elements layer rather than
-   by the Earth checkbox it happened to be wired to first. Starts off, because
-   that layer does.
+/* R(+) and the altitude are both ELEMENT annotations - they measure the body
+   and the orbit the way h and e do - so the Orbital elements layer owns the
+   pair, rather than the Earth checkbox they happened to be wired to first.
+   Starts off, because that layer does.
    Note it runs from the centre to the surface, so with the Earth drawn it is
    inside the globe and occluded. That is honest rather than broken: the arrow is
    where it says it is, and hiding the Earth reveals it. */
-let rVecOn = false;
+let elementsOn = false;
 
 /* ---- small helpers -------------------------------------------------------- */
 const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -716,7 +716,7 @@ function tick(ts){
   if(satPos){
     const dir = satPos.clone().normalize();
     const tip = dir.clone().multiplyScalar(1);
-    if(rVecOn){
+    if(elementsOn){
       const arr = reLine.geometry.attributes.position.array;
       arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
       reLine.geometry.attributes.position.needsUpdate = true;
@@ -735,7 +735,7 @@ function tick(ts){
        Earth toggle those were the only two lines that ever set it TRUE - so it
        was built invisible at line 190 and stayed that way. The label kept
        updating, which is what made it look fixed. */
-    altLine.visible = altTip.visible = true;
+    altLine.visible = altTip.visible = elementsOn;
     // and the rest of the way: surface -> spacecraft is the altitude
     const arr2 = altLine.geometry.attributes.position.array;
     arr2[0]=tip.x; arr2[1]=tip.y; arr2[2]=tip.z;
@@ -746,7 +746,7 @@ function tick(ts){
     altTip.position.copy(dir).multiplyScalar(Math.max(1.0, rLen - 0.036));
     altTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
     if(labels.alt){
-      labels.alt.__vec = dir.clone().multiplyScalar((1 + rLen)/2);
+      labels.alt.__vec = elementsOn ? dir.clone().multiplyScalar((1 + rLen)/2) : null;
       const km = (rLen - 1)/U;
       /* This is |r| - R(+), measured from the SPHERE that is actually drawn.
          The panel's altitude is geodetic, above the WGS-84 ellipsoid, whose
@@ -914,14 +914,14 @@ global.Orbit3D = {
   /* Hiding the planet is how you actually look at an orbit: the geometry stops
      being occluded by the thing it goes around. */
   /* Driven by the Orbital elements checkbox, which lives in the page. */
-  showRVector(v){ rVecOn = !!v; },
-  get rVector(){ return rVecOn; },
+  showRVector(v){ elementsOn = !!v; },
+  get rVector(){ return elementsOn; },
   showEarth(v){
     earthOn = !!v;
     if(earth) earth.visible = earthOn;
     if(atmo) atmo.visible = earthOn;
     if(wire) wire.visible = !earthOn;
-    /* R(+) is no longer tied to this - see rVecOn. */
+    /* R(+) is no longer tied to this - see elementsOn. */
     /* The altitude arrow is NOT tied to this. It lives above the surface, so
        the globe never occludes it, and it carries the one number a reader
        wants off a 3D view. Hiding it with the planet was the old behaviour and

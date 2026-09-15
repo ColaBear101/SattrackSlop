@@ -514,6 +514,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="t3" id="o3fovrow" hidden>
           <span class="zone">FOV</span><span id="o3fov3">—</span><span class="mm" id="o3fovmm">—</span>
         </div>
+        <div class="t3" id="o3gsdrow" hidden>
+          <span class="zone">GSD</span><span id="o3gsd">—</span><span class="mm" id="o3gsdu">m/px</span>
+        </div>
 
       </div>
       <div class="camseg">
@@ -9268,6 +9271,8 @@ document.addEventListener('visibilitychange', () => {
               earth: document.getElementById('o3earth'),
               fov: document.getElementById('o3fov3'),
               fovmm: document.getElementById('o3fovmm'),
+              gsd: document.getElementById('o3gsd'),
+              gsdu: document.getElementById('o3gsdu'),
               alt: document.getElementById('o3alt') },
     onPick: (i, x, y) => askLoad(i, x, y),     // 2158 points is a lot to misclick
     onFollow: () => { if(window.__paintCamMode) window.__paintCamMode(); },

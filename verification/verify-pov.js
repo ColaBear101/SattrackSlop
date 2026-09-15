@@ -66,6 +66,45 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     return { text: h.toFixed(1) + '° × ' + v.toFixed(1) + '°',
              mm: '≈' + (36/(2*Math.tan(h*R/2))).toFixed(0) + ' mm' };
   };
+  /* The GSD readout, plus everything needed to recompute it from OUTSIDE the
+     page: the camera state and the drawing buffer it renders into. */
+  const gsd = () => page.evaluate(() => {
+    const c = Orbit3D.camera, cv = document.getElementById('globe');
+    return { hidden: document.getElementById('o3gsdrow').hidden,
+             text:   document.getElementById('o3gsd').textContent,
+             unit:   document.getElementById('o3gsdu').textContent,
+             title:  document.getElementById('o3gsd').title,
+             pos: c.position.toArray(), fov: c.fov, H: cv.height,
+             dir: new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion).toArray() };
+  });
+  /* The same quantity by a different road. The page casts rays and measures the
+     chord between where they land; this is the textbook derivative - one pixel
+     of angle at the slant range, stretched along the look by the secant of the
+     incidence angle - with the range and incidence from plane trigonometry on
+     the triangle centre-spacecraft-target:
+
+       sin i = (r / Re) sin theta        theta = the angle off nadir
+       rho   = Re sin(i - theta) / sin theta
+
+     Sharing no line of code with the implementation is the point. It disagrees
+     by design near the limb, where the derivative diverges and the measured
+     footprint does not, so it is only applied where sin i < 1. */
+  const RE_KM = 6378.137;
+  const analytic = g => {
+    const rmag = Math.hypot(...g.pos);
+    const cth = -(g.dir[0]*g.pos[0] + g.dir[1]*g.pos[1] + g.dir[2]*g.pos[2]) / rmag;
+    const th = Math.acos(Math.max(-1, Math.min(1, cth)));
+    const si = rmag * Math.sin(th);                    // r is already in Earth radii
+    if (si >= 1) return null;                          // the boresight clears the limb
+    const i = Math.asin(si);
+    const rho = th < 1e-9 ? (rmag - 1)*RE_KM : RE_KM*Math.sin(i - th)/Math.sin(th);
+    const x = rho * (2*Math.tan(g.fov*Math.PI/360)/g.H) * 1000;
+    return { x: x, y: x/Math.cos(i), inc: i*180/Math.PI, range: rho, off: th*180/Math.PI };
+  };
+  /* The row prints 3 significant figures, so agreement can only be asserted to
+     the width of the last digit printed - anything tighter would be testing the
+     rounding. */
+  const near = (shown, want) => Math.abs(shown - want) <= Math.max(0.5, want*5e-4);
   const pressed = () => page.evaluate(() =>
     [...document.querySelectorAll('.camseg .cam')]
       .map(b => b.dataset.mode + '=' + b.getAttribute('aria-pressed')));
@@ -207,6 +246,70 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   chk('...and turns the view', turned > 1e-3, 'turned ' + turned.toFixed(2) + ' deg');
   chk('...while the camera stays on the spacecraft', dist3(c.pos, held) < 1e-6);
 
+  // ---- ground sample distance --------------------------------------------
+  /* POV enters looking along-track, and a horizontal ray from any positive
+     altitude passes the sphere by - so before pitching down there is genuinely
+     nothing to measure, and the row has to say so rather than print the
+     divergent number the derivative would give. */
+  await page.evaluate(() => { Orbit3D.freeCam(); Orbit3D.setPov(true); });
+  await page.waitForTimeout(600);
+  let gz = await gsd();
+  chk('the GSD row shows in POV', gz.hidden === false);
+  chk('...and reports nothing while the view axis clears the limb',
+      gz.text === '—' && analytic(gz) === null,
+      'off-nadir ' + (Math.acos(Math.max(-1, Math.min(1,
+        -(gz.dir[0]*gz.pos[0]+gz.dir[1]*gz.pos[1]+gz.dir[2]*gz.pos[2])/Math.hypot(...gz.pos))))*180/Math.PI).toFixed(1) + ' deg');
+
+  /* Pitch down onto the ground and check the figure against the trigonometry.
+     Two attitudes, because one of them could match by luck: a steep oblique,
+     where the two axes differ by a factor of two and a half, and near-nadir,
+     where they must converge. */
+  const pitchTo = deg => page.evaluate(d => {
+    const cv = document.getElementById('globe'), R = cv.getBoundingClientRect();
+    const x = R.left + R.width/2, y = R.top + R.height/2;
+    cv.dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y, bubbles: true }));
+    for (let i = 1; i <= 20; i++)
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + d*i/20, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, deg/0.30);                                  // the drag rate, 0.30 deg per pixel
+
+  for (const [what, extra] of [['a steep oblique', 30], ['near nadir', 59]]) {
+    await pitchTo(extra); await page.waitForTimeout(500);
+    gz = await gsd();
+    const a = analytic(gz);
+    const got = gz.text.split(' × ').map(Number);
+    chk(what + ': the boresight is on the ground', !!a && gz.text !== '—',
+        a ? (a.off).toFixed(1) + ' deg off nadir, incidence ' + a.inc.toFixed(1) : 'no intersection');
+    if (!a) continue;
+    chk('...across-look matches the trigonometry', near(got[0], a.x),
+        got[0] + ' vs ' + a.x.toFixed(2) + ' m');
+    chk('...along-look matches it too', near(got[1], a.y),
+        got[1] + ' vs ' + a.y.toFixed(2) + ' m');
+    chk('...and the obliquity stretch is the secant of the incidence angle',
+        Math.abs(got[1]/got[0] - 1/Math.cos(a.inc*Math.PI/180)) < 5e-3,
+        (got[1]/got[0]).toFixed(3) + ' vs ' + (1/Math.cos(a.inc*Math.PI/180)).toFixed(3));
+    chk('...in metres per pixel', gz.unit === 'm/px', gz.unit);
+    chk('...with the range and incidence given in full', 
+        /slant range [0-9]+ km, incidence [0-9.]+/.test(gz.title), gz.title);
+  }
+  chk('near nadir the two axes converge', Math.abs(gz.text.split(' × ')
+        .map(Number).reduce((p, q) => p/q) - 1) < 0.02, gz.text);
+
+  /* Narrowing the lens narrows the pixel in exact proportion: the camera has not
+     moved, so range and incidence are untouched and only tan(fov/2) changed. */
+  const before = gz;
+  await page.evaluate(() => {
+    const cv = document.getElementById('globe'), R = cv.getBoundingClientRect();
+    cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, clientX: R.left + R.width/2,
+                                               clientY: R.top + R.height/2, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  gz = await gsd();
+  const ratio = Math.tan(gz.fov*Math.PI/360) / Math.tan(before.fov*Math.PI/360);
+  chk('zooming in shrinks the ground sample in proportion to tan(fov/2)',
+      near(Number(gz.text.split(' × ')[0]), Number(before.text.split(' × ')[0])*ratio),
+      before.text + ' -> ' + gz.text + '  (fov ' + before.fov.toFixed(1) + ' -> ' + gz.fov.toFixed(1) + ')');
+
   // ---- leaving restores the free camera exactly ---------------------------
   /* cam0 is never written while POV is on, so the free camera comes back where
      it was rather than wherever the spacecraft happened to be. */
@@ -218,6 +321,7 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
       '|r| = ' + Math.hypot(...c.pos).toFixed(3) + ' Earth radii');
   lz = await lens();
   chk('leaving POV hides the FOV row', lz.hidden === true);
+  chk('...and the GSD row with it', (await gsd()).hidden === true);
   const p2 = await pressed();
   chk('...with the POV button released', p2.includes('pov=false'), p2.join(' '));
 

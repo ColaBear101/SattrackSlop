@@ -450,6 +450,71 @@ function setPovState(v){
   if(onPov) onPov(v);
 }
 
+/* Ground sample distance at the boresight: how much ground one rendered pixel
+   covers, where the view axis actually meets the surface.
+
+   Measured, not approximated. The obvious formula - range times the per-pixel
+   angle, divided by cos(incidence) - is a derivative, and it runs away exactly
+   where the geometry gets interesting: near the horizon cos(incidence) goes to
+   zero and it reports a footprint the pixel does not have. So instead four
+   extra rays are cast, half a pixel either side of the boresight in each screen
+   axis, and the ground distance between the pairs IS the answer. Near the limb
+   the outer ray simply misses the body and the readout says so, which is the
+   truth: that pixel's footprint runs off past the horizon and has no size.
+
+   The two numbers are the screen's own horizontal and vertical, which is why
+   they can sit in the same reading order as the field of view above them. That
+   is exact rather than convenient: the camera is yawed then pitched from a
+   basis whose up IS the zenith and is never rolled, so the screen-vertical axis
+   lies in the plane through the spacecraft, the boresight and the body centre -
+   the incidence plane - and the screen-horizontal axis is perpendicular to it.
+   Vertical therefore carries the whole of the obliquity stretch and horizontal
+   carries none, which is what makes them worth printing separately: looking
+   forward at a shallow angle they differ by an order of magnitude.
+
+   Distances come from the sphere the scene actually draws. The view has no
+   flattening in it - the globe is a SphereGeometry(1) - so measuring against an
+   ellipsoid would describe a picture that is not on screen; the difference is
+   under a third of a percent either way.
+
+   Pixels are the drawing buffer's, not CSS pixels: those are the samples that
+   exist, and on a 2x display there are twice as many of them as the layout
+   suggests. */
+function gsdAt(){
+  const cv = renderer && renderer.domElement;
+  if(!cv || !(cv.width > 0) || !(cv.height > 0)) return null;
+  const ty = Math.tan(pov0.fov*RAD/2);
+  const hy = ty / cv.height;                  // HALF a pixel at the image plane z = -1
+  const hx = ty * cam.aspect / cv.width;
+  const P = cam.position, r2 = P.lengthSq();
+  if(!(r2 > 1)) return null;                  // inside the body: nothing to sample
+  function hit(x, y){
+    const d = new THREE.Vector3(x, y, -1).normalize().applyQuaternion(cam.quaternion);
+    const b = P.dot(d), disc = b*b - (r2 - 1);
+    if(disc < 0) return null;                 // the ray passes the body by
+    const t = -b - Math.sqrt(disc);
+    if(!(t > 0)) return null;                 // the body is behind the camera
+    return { p: P.clone().addScaledVector(d, t), d: d, t: t };
+  }
+  const c = hit(0, 0);
+  if(!c) return null;
+  const xp = hit(hx, 0), xm = hit(-hx, 0), yp = hit(0, hy), ym = hit(0, -hy);
+  if(!xp || !xm || !yp || !ym) return null;   // the pixel straddles the limb
+  const inc = Math.acos(Math.max(-1, Math.min(1, -c.d.dot(c.p.clone().normalize()))))*DEG;
+  return { x: xp.p.distanceTo(xm.p)*RE*1000,  // metres per pixel, across the look
+           y: yp.p.distanceTo(ym.p)*RE*1000,  //                   along it
+           range: c.t*RE, inc: inc };
+}
+
+/* 3 significant figures is the most this is worth: the underlying orbit is a
+   TLE, and the last digit of a metre would be inventing precision. */
+function gsdText(g){
+  const sig = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+  const big = Math.max(g.x, g.y), k = big >= 10000;
+  const a = k ? g.x/1000 : g.x, b = k ? g.y/1000 : g.y;
+  return { text: sig(a) + ' × ' + sig(b), unit: k ? 'km/px' : 'm/px' };
+}
+
 /* Aim the POV camera: looking FORWARD along the velocity vector, with zenith up.
    It used to look at nadir, and that was a mistake for one specific reason.
    Looking straight down puts the view axis on the yaw axis, so dragging
@@ -897,6 +962,31 @@ function paintLabels(satPos, el){
       if(labels.fovmm) labels.fovmm.textContent = '≈' + f.toFixed(0) + ' mm';
       labels.fov.parentNode.hidden = false;
     } else labels.fov.parentNode.hidden = true;
+  }
+  /* The scale of what the lens is pointed at. FOV alone says how wide the view
+     is in angle; this says what that is worth on the ground, which is the
+     number that changes when you pitch down towards nadir without touching the
+     wheel at all.
+     The row stays put while the boresight is off the body rather than vanishing
+     and shoving the layout about - it just has nothing to report. */
+  if(labels.gsd){
+    if(pov){
+      const g = gsdAt();
+      if(g){
+        const t = gsdText(g);
+        labels.gsd.textContent = t.text;
+        if(labels.gsdu) labels.gsdu.textContent = t.unit;
+        labels.gsd.title = 'ground covered by one rendered pixel, across × along '
+          + 'the look direction — slant range ' + g.range.toFixed(0)
+          + ' km, incidence ' + g.inc.toFixed(1) + '°';
+      } else {
+        labels.gsd.textContent = '—';
+        if(labels.gsdu) labels.gsdu.textContent = '';
+        labels.gsd.title = 'the centre of the view is past the limb, so a pixel '
+          + 'there covers no bounded patch of ground';
+      }
+      labels.gsd.parentNode.hidden = false;
+    } else labels.gsd.parentNode.hidden = true;
   }
 }
 

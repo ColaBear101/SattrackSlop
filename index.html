@@ -9298,8 +9298,13 @@ document.addEventListener('visibilitychange', () => {
          The invented 2600-point starfield that used to stand in for it is gone,
          so this is the only sky there is. */
       OrbitViz.show('stars', true);
+      /* The Sun, Moon and planets are sky, not annotation - same argument as the
+         stars - so they are on and out of the panel too. Their NAMES are text
+         over the scene and ride the constellations switch instead. */
+      OrbitViz.show('planets', true);
       const menu = document.getElementById('layersMenu');
-      menu.innerHTML = OrbitViz.layers().filter(l => l.key !== 'stars').map(l =>
+      menu.innerHTML = OrbitViz.layers()
+        .filter(l => l.key !== 'stars' && l.key !== 'planets').map(l =>
         '<label><input type="checkbox" data-layer="'+l.key+'"'+(l.on?' checked':'')+'> '+
         esc(l.label)+'</label>').join('');
       menu.addEventListener('change', e=>{

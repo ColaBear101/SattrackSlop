@@ -27,6 +27,9 @@ const SPACE = {
 };
 
 let THREE, sat, scene, U = 1/RE;
+/* Whether the sky's writing is on: the planet/Sun/Moon names, owned by the
+   constellations switch. The discs themselves are not affected. */
+let skyNames = false;
 /* The central body, injected at init. RE and MU above stay as the Earth
    defaults so this file still loads standalone, but anything that gates on
    a radius or divides by mu must use these. */
@@ -45,8 +48,14 @@ const LAYERS = [
   { key:'frame',          label:'Inertial frame (ECI + Aries)', on:false },
   { key:'elements',       label:'Orbital elements',             on:true  },
   { key:'stars',          label:'Star field (mag ≤ 5.5)',   on:false },
-  { key:'constellations', label:'Constellation lines',          on:false },
-  { key:'planets',        label:'Sun, Moon & planets',          on:false }
+  /* This switch now carries the NAMES as well as the lines. The Sun, Moon and
+     planets are always drawn - they are part of the sky, not an annotation - but
+     their labels are text over the scene, which is the same kind of thing a
+     constellation figure is. So one control owns the writing and the discs stay
+     put underneath it. The label says so rather than leaving the reader to
+     discover it. */
+  { key:'constellations', label:'Constellation lines & names',  on:false },
+  { key:'planets',        label:'Sun, Moon & planets',          on:true  }
 ];
 const G = {};                                    // key -> THREE.Group, absent until built
 
@@ -848,6 +857,7 @@ function buildPlanets(){
     disc.renderOrder = 9;
     const lab = makeLabel(b.n, b.c, { h: b.k === 'Sun' || b.k === 'Moon' ? 0.017 : 0.014,
                                       opacity:0.9, order:10 });
+    lab.visible = skyNames;
     g.add(disc); g.add(lab);
     bodyNodes.push({ b: b, disc: disc, lab: lab });
   }
@@ -1031,6 +1041,13 @@ global.OrbitViz = {
       ensure(key).visible = true;
     } else if(G[key]){
       G[key].visible = false;
+    }
+    /* The constellations switch also owns the sky's writing. Applied after the
+       group visibility above, and guarded because the planets layer may not be
+       built yet on the first call. */
+    if(key === 'constellations'){
+      skyNames = L.on;
+      if(bodyNodes) for(let i=0;i<bodyNodes.length;i++) bodyNodes[i].lab.visible = skyNames;
     }
     return true;
   },

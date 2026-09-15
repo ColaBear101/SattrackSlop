@@ -488,22 +488,54 @@ function gsdAt(){
   const hx = ty * cam.aspect / cv.width;
   const P = cam.position, r2 = P.lengthSq();
   if(!(r2 > 1)) return null;                  // inside the body: nothing to sample
-  function hit(x, y){
-    const d = new THREE.Vector3(x, y, -1).normalize().applyQuaternion(cam.quaternion);
-    const b = P.dot(d), disc = b*b - (r2 - 1);
-    if(disc < 0) return null;                 // the ray passes the body by
-    const t = -b - Math.sqrt(disc);
-    if(!(t > 0)) return null;                 // the body is behind the camera
-    return { p: P.clone().addScaledVector(d, t), d: d, t: t };
+
+  /* One pencil of five rays - the centre and half a pixel each way in both
+     screen axes - cast about whatever direction it is given, so the boresight
+     and the straight-down reference go through the same code rather than one
+     being measured and the other trusted to a formula. */
+  function pencil(fwd, ax, ay){
+    function hit(x, y){
+      const d = fwd.clone().addScaledVector(ax, x).addScaledVector(ay, y).normalize();
+      const b = P.dot(d), disc = b*b - (r2 - 1);
+      if(disc < 0) return null;               // the ray passes the body by
+      const t = -b - Math.sqrt(disc);
+      if(!(t > 0)) return null;               // the body is behind the camera
+      return { p: P.clone().addScaledVector(d, t), d: d, t: t };
+    }
+    const c = hit(0, 0);
+    if(!c) return null;
+    const xp = hit(hx, 0), xm = hit(-hx, 0), yp = hit(0, hy), ym = hit(0, -hy);
+    if(!xp || !xm || !yp || !ym) return null; // the pixel straddles the limb
+    return { x: xp.p.distanceTo(xm.p)*RE*1000,   // metres per pixel, across the look
+             y: yp.p.distanceTo(ym.p)*RE*1000,   //                   along it
+             range: c.t*RE,
+             inc: Math.acos(Math.max(-1, Math.min(1,
+                    -c.d.dot(c.p.clone().normalize()))))*DEG };
   }
-  const c = hit(0, 0);
-  if(!c) return null;
-  const xp = hit(hx, 0), xm = hit(-hx, 0), yp = hit(0, hy), ym = hit(0, -hy);
-  if(!xp || !xm || !yp || !ym) return null;   // the pixel straddles the limb
-  const inc = Math.acos(Math.max(-1, Math.min(1, -c.d.dot(c.p.clone().normalize()))))*DEG;
-  return { x: xp.p.distanceTo(xm.p)*RE*1000,  // metres per pixel, across the look
-           y: yp.p.distanceTo(ym.p)*RE*1000,  //                   along it
-           range: c.t*RE, inc: inc };
+
+  const q = cam.quaternion;
+  const camX = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+  const camY = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+  const fwd  = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+
+  /* Straight down from where the spacecraft is now, in the same lens. This is
+     the figure a spec sheet quotes, and it exists whatever the camera happens
+     to be pointed at - which matters because POV enters looking along-track,
+     and a horizontal ray from any positive altitude never meets the sphere. A
+     readout that is blank in its opening frame reads as broken, so the nadir
+     value stands in and says that it has. */
+  const down = P.clone().normalize().negate();
+  let ny = camY.clone().addScaledVector(down, -camY.dot(down));
+  if(ny.lengthSq() < 1e-12) ny = camX.clone().addScaledVector(down, -camX.dot(down));
+  ny.normalize();
+  const nadir = pencil(down, new THREE.Vector3().crossVectors(ny, down).normalize(), ny);
+
+  const bore = pencil(fwd, camX, camY);
+  if(!bore && !nadir) return null;
+  return bore ? { x: bore.x, y: bore.y, range: bore.range, inc: bore.inc,
+                  nadir: nadir ? nadir.x : null, onBody: true }
+              : { x: nadir.x, y: nadir.y, range: nadir.range, inc: nadir.inc,
+                  nadir: nadir.x, onBody: false };
 }
 
 /* 3 significant figures is the most this is worth: the underlying orbit is a
@@ -972,18 +1004,29 @@ function paintLabels(satPos, el){
   if(labels.gsd){
     if(pov){
       const g = gsdAt();
-      if(g){
+      if(g && g.onBody){
         const t = gsdText(g);
         labels.gsd.textContent = t.text;
         if(labels.gsdu) labels.gsdu.textContent = t.unit;
         labels.gsd.title = 'ground covered by one rendered pixel, across × along '
           + 'the look direction — slant range ' + g.range.toFixed(0)
-          + ' km, incidence ' + g.inc.toFixed(1) + '°';
+          + ' km, incidence ' + g.inc.toFixed(1) + '°'
+          + (g.nadir ? ', ' + gsdText({x:g.nadir, y:g.nadir}).text.split(' × ')[0]
+                     + ' ' + gsdText({x:g.nadir, y:g.nadir}).unit + ' straight down' : '');
+      } else if(g){
+        /* The view axis clears the limb, so the pixel under the crosshair has no
+           bounded footprint. Rather than print nothing, fall back to the value
+           straight down and label it as such. */
+        const t = gsdText(g);
+        labels.gsd.textContent = t.text.split(' × ')[0];
+        if(labels.gsdu) labels.gsdu.textContent = t.unit + ' at nadir';
+        labels.gsd.title = 'the centre of the view clears the limb, so a pixel '
+          + 'there covers no bounded patch of ground — this is the figure '
+          + 'straight down from the spacecraft instead, in the same lens';
       } else {
         labels.gsd.textContent = '—';
         if(labels.gsdu) labels.gsdu.textContent = '';
-        labels.gsd.title = 'the centre of the view is past the limb, so a pixel '
-          + 'there covers no bounded patch of ground';
+        labels.gsd.title = 'no ground in view';
       }
       labels.gsd.parentNode.hidden = false;
     } else labels.gsd.parentNode.hidden = true;

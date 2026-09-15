@@ -255,10 +255,22 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   await page.waitForTimeout(600);
   let gz = await gsd();
   chk('the GSD row shows in POV', gz.hidden === false);
-  chk('...and reports nothing while the view axis clears the limb',
-      gz.text === '—' && analytic(gz) === null,
-      'off-nadir ' + (Math.acos(Math.max(-1, Math.min(1,
-        -(gz.dir[0]*gz.pos[0]+gz.dir[1]*gz.pos[1]+gz.dir[2]*gz.pos[2])/Math.hypot(...gz.pos))))*180/Math.PI).toFixed(1) + ' deg');
+  /* The boresight has no footprint here, so the row shows the value straight
+     down instead - which has to be both labelled as such and correct. Its
+     reference is the plainest arithmetic in the file: at nadir the range IS the
+     altitude and there is no obliquity, so it is altitude times one pixel of
+     angle and nothing else. */
+  const boreOffNadir = g => Math.acos(Math.max(-1, Math.min(1,
+    -(g.dir[0]*g.pos[0] + g.dir[1]*g.pos[1] + g.dir[2]*g.pos[2])/Math.hypot(...g.pos))))*180/Math.PI;
+  chk('...with the view axis clear of the limb on entry',
+      analytic(gz) === null, 'off-nadir ' + boreOffNadir(gz).toFixed(1) + ' deg');
+  chk('...so it falls back to the figure straight down, and says so',
+      /at nadir/.test(gz.unit), gz.text + ' ' + gz.unit);
+  {
+    const want = (Math.hypot(...gz.pos) - 1)*RE_KM * (2*Math.tan(gz.fov*Math.PI/360)/gz.H) * 1000;
+    chk('...which is the altitude times one pixel of angle', near(Number(gz.text), want),
+        gz.text + ' vs ' + want.toFixed(2) + ' m');
+  }
 
   /* Pitch down onto the ground and check the figure against the trigonometry.
      Two attitudes, because one of them could match by luck: a steep oblique,
@@ -289,8 +301,10 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
         Math.abs(got[1]/got[0] - 1/Math.cos(a.inc*Math.PI/180)) < 5e-3,
         (got[1]/got[0]).toFixed(3) + ' vs ' + (1/Math.cos(a.inc*Math.PI/180)).toFixed(3));
     chk('...in metres per pixel', gz.unit === 'm/px', gz.unit);
-    chk('...with the range and incidence given in full', 
+    chk('...with the range and incidence given in full',
         /slant range [0-9]+ km, incidence [0-9.]+/.test(gz.title), gz.title);
+    chk('...and the straight-down figure alongside, so the two compare',
+        /straight down/.test(gz.title), gz.title);
   }
   chk('near nadir the two axes converge', Math.abs(gz.text.split(' × ')
         .map(Number).reduce((p, q) => p/q) - 1) < 0.02, gz.text);
@@ -306,9 +320,17 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   await page.waitForTimeout(500);
   gz = await gsd();
   const ratio = Math.tan(gz.fov*Math.PI/360) / Math.tan(before.fov*Math.PI/360);
+  /* Both sides of this one come off the screen, so both carry the rounding of
+     the last printed digit and the two errors compound: the prediction inherits
+     half a unit from the value it is scaled from, and the value it is compared
+     against has half a unit of its own. Allowing for one of them - which is all
+     near() does, since everywhere else a printed number is checked against an
+     exact one - fails this about a third of the time. */
+  const now = Number(gz.text.split(' × ')[0]), was = Number(before.text.split(' × ')[0]);
   chk('zooming in shrinks the ground sample in proportion to tan(fov/2)',
-      near(Number(gz.text.split(' × ')[0]), Number(before.text.split(' × ')[0])*ratio),
-      before.text + ' -> ' + gz.text + '  (fov ' + before.fov.toFixed(1) + ' -> ' + gz.fov.toFixed(1) + ')');
+      Math.abs(now - was*ratio) <= 0.5*(1 + ratio) + now*5e-4,
+      before.text + ' -> ' + gz.text + '  (fov ' + before.fov.toFixed(1) + ' -> ' + gz.fov.toFixed(1)
+        + ', predicted ' + (was*ratio).toFixed(2) + ')');
 
   // ---- leaving restores the free camera exactly ---------------------------
   /* cam0 is never written while POV is on, so the free camera comes back where

@@ -9052,11 +9052,40 @@ const TLE_SOURCES = [
     } catch(e){ return null; } } }
 ];
 
+/* What a two-line element set has to look like before this page will run a
+   propagator on it.
+
+   A TLE line is 69 characters of printable ASCII, and both lines carry the
+   catalogue number in columns 3 to 7. The old check asked only that line 1 be
+   AT LEAST 69 characters and that its number matched - no maximum, no
+   character restriction, nothing asked of line 2 at all - so a line with
+   anything appended past column 69 was accepted and handed to the renderer and
+   to SGP4.
+
+   One function, used on both the network reply and the cached copy. They were
+   two different standards before: the fetch branch validated, and the cache
+   branch checked that l1 was truthy. A record that could never have arrived
+   over the network was therefore trusted the moment it was in localStorage -
+   which is exactly where the fetch branch puts things. */
+const TLE_LINE = /^[\x20-\x7E]{69,71}$/;
+function tleOk(rec, satnum){
+  return !!rec && typeof rec.l1 === 'string' && typeof rec.l2 === 'string'
+    && TLE_LINE.test(rec.l1) && TLE_LINE.test(rec.l2)
+    && rec.l1.substring(2, 7).trim() === String(satnum)
+    && rec.l2.substring(2, 7).trim() === String(satnum);
+}
+
 async function fetchTLE(satnum){
   const key = 'tle:'+satnum;
   try {
     const c = JSON.parse(localStorage.getItem(key) || 'null');
-    if(c && c.l1 && (Date.now() - c.at) < TLE_TTL) return c;
+    if(c && isFinite(c.at) && (Date.now() - c.at) < TLE_TTL){
+      if(tleOk(c, satnum)) return c;
+      /* Poisoned or truncated. Drop it rather than return it and rather than
+         leave it to be rejected again on every refresh for the life of the
+         session. */
+      try { localStorage.removeItem(key); } catch(e2){}
+    }
   } catch(e){}
   for(const s of TLE_SOURCES){
     try {
@@ -9068,9 +9097,8 @@ async function fetchTLE(satnum){
       const got = s.parse(await r.text());
       /* A source that is up but has no such object answers 200 with an error
          page, so validate the shape before believing it. */
-      if(!got || got.l1.length < 69 || got.l2.length < 69) continue;
-      if(got.l1.substring(2,7).trim() !== String(satnum)) continue;
-      const rec = {l1:got.l1, l2:got.l2, src:s.name, at:Date.now()};
+      const rec = {l1: got && got.l1, l2: got && got.l2, src:s.name, at:Date.now()};
+      if(!tleOk(rec, satnum)) continue;
       try { localStorage.setItem(key, JSON.stringify(rec)); } catch(e){}
       return rec;
     } catch(e){ /* CORS, DNS, timeout, offline - try the next one */ }

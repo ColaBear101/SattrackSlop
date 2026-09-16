@@ -665,6 +665,7 @@ function gsdAt(){
     if(!xp || !xm || !yp || !ym) return null; // the pixel straddles the limb
     return { x: xp.p.distanceTo(xm.p)*RE*1000,   // metres per pixel, across the look
              y: yp.p.distanceTo(ym.p)*RE*1000,   //                   along it
+             hit: c.p,                           // where the boresight met the ground
              range: c.t*RE,
              inc: Math.acos(Math.max(-1, Math.min(1,
                     -c.d.dot(c.p.clone().normalize()))))*DEG };
@@ -690,9 +691,9 @@ function gsdAt(){
   const bore = pencil(fwd, camX, camY);
   if(!bore && !nadir) return null;
   return bore ? { x: bore.x, y: bore.y, range: bore.range, inc: bore.inc,
-                  nadir: nadir ? nadir.x : null, onBody: true }
+                  nadir: nadir ? nadir.x : null, onBody: true, hit: bore.hit }
               : { x: nadir.x, y: nadir.y, range: nadir.range, inc: nadir.inc,
-                  nadir: nadir.x, onBody: false };
+                  nadir: nadir.x, onBody: false, hit: null };
 }
 
 /* 3 significant figures is the most this is worth: the underlying orbit is a
@@ -702,6 +703,144 @@ function gsdText(g){
   const big = Math.max(g.x, g.y), k = big >= 10000;
   const a = k ? g.x/1000 : g.x, b = k ? g.y/1000 : g.y;
   return { text: sig(a) + ' × ' + sig(b), unit: k ? 'km/px' : 'm/px' };
+}
+
+/* ---- the POV minimap ------------------------------------------------------ *
+ * POV is the one camera mode that takes away the thing every other mode gives
+ * for free: where the spacecraft actually is. Through a 20-degree lens the
+ * Earth is a textured wall, and a reader who has pitched down and yawed around
+ * has no way back to "over the south Pacific, looking north-east".
+ *
+ * So: the whole world at once, flat, with four things on it - where the
+ * spacecraft is, the circle it can currently see, where the camera is pointed
+ * inside that circle, and the observer. Equirectangular because that is the
+ * projection the ground track below already uses and the one whose distortion a
+ * reader of this page has already made their peace with.
+ *
+ * The coastlines are drawn once into an offscreen canvas and blitted. They are
+ * a few thousand line segments and the rest of this runs every frame.           */
+let miniBase = null, miniW = 0, miniH = 0;
+/* The sub-satellite point for the frame being drawn. updateFov() derives it
+   already, and propagating a second time for the minimap would be a second
+   SGP4 call per frame to answer a question just answered. */
+let lastGd = null;
+
+function miniCoast(w, h){
+  if(miniBase && miniW === w && miniH === h) return miniBase;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const px = lon => (lon+180)/360*w, py = lat => (90-lat)/180*h;
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(120,150,166,.30)'; g.lineWidth = 1;
+  g.beginPath();
+  for(let lon=-120; lon<=120; lon+=60){ g.moveTo(px(lon),0); g.lineTo(px(lon),h); }
+  for(const lat of [-60,-30,0,30,60]){ g.moveTo(0,py(lat)); g.lineTo(w,py(lat)); }
+  g.stroke();
+  g.beginPath();
+  for(const f of GT.WORLD.features){
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for(const poly of polys) for(const ring of poly){
+      ring.forEach((p,i) => i ? g.lineTo(px(p[0]),py(p[1])) : g.moveTo(px(p[0]),py(p[1])));
+      g.closePath();
+    }
+  }
+  g.fillStyle = 'rgba(58,88,72,.55)'; g.fill();
+  g.strokeStyle = 'rgba(112,160,128,.85)'; g.lineWidth = 1; g.stroke();
+  miniBase = c; miniW = w; miniH = h;
+  return c;
+}
+
+/* Scene coordinates back to a place on the planet. The globe is spun by GMST on
+   its group, so the point has to come back into the group's frame first; after
+   that this is just the inverse of llToScene. */
+function sceneToLatLon(p){
+  const v = p.clone();
+  earthGroup.updateWorldMatrix(true, false);
+  earthGroup.worldToLocal(v);
+  const r = v.length();
+  if(!(r > 0)) return null;
+  return { lat: Math.asin(v.y/r)*DEG, lon: Math.atan2(-v.z, v.x)*DEG };
+}
+
+/* A small-circle of angular radius lam about a point, in degrees, as a list of
+   [lon,lat] - the same spherical construction the 3D access ring uses. */
+function smallCircle(latDeg, lonDeg, lam, steps){
+  const lat = latDeg*RAD, lon = lonDeg*RAD;
+  const sinLat = Math.sin(lat), cosLat = Math.cos(lat);
+  const cosL = Math.cos(lam), sinL = Math.sin(lam), out = [];
+  for(let k=0;k<=steps;k++){
+    const th = k/steps*Math.PI*2;
+    const la = Math.asin(sinLat*cosL + cosLat*sinL*Math.cos(th));
+    const lo = lon + Math.atan2(Math.sin(th)*sinL*cosLat, cosL - sinLat*Math.sin(la));
+    out.push([((lo*DEG + 540) % 360) - 180, la*DEG]);
+  }
+  return out;
+}
+
+function drawMini(gd, gsd){
+  const cv = labels.mini;
+  if(!cv) return;
+  if(!pov || !gd){ cv.hidden = true; return; }
+  cv.hidden = false;
+  const w = cv.width, h = cv.height;
+  const g = cv.getContext('2d');
+  const px = lon => (lon+180)/360*w, py = lat => (90-lat)/180*h;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(miniCoast(w, h), 0, 0);
+
+  const satLat = gd.latitude*DEG, satLon = gd.longitude*DEG;
+
+  /* The circle the spacecraft can see right now, by the same geometry as the
+     3D ring: cos of the Earth-centre angle is (Re/(Re+h))cos(eps), less the
+     mask. Drawn as segments so the dateline breaks the stroke instead of
+     drawing a line straight back across the map. */
+  const eps = GT.MASK*RAD, inner = RE*Math.cos(eps)/(RE + gd.height);
+  if(inner <= 1){
+    const ring = smallCircle(satLat, satLon, Math.acos(inner) - eps, 72);
+    g.strokeStyle = 'rgba(233,242,247,.55)'; g.lineWidth = 1.6;
+    g.beginPath();
+    let prev = null;
+    for(const [lo, la] of ring){
+      if(prev !== null && Math.abs(lo - prev) > 180) g.moveTo(px(lo), py(la));
+      else if(prev === null) g.moveTo(px(lo), py(la));
+      else g.lineTo(px(lo), py(la));
+      prev = lo;
+    }
+    g.stroke();
+  }
+
+  // the observer
+  g.fillStyle = SPACE.observer;
+  g.beginPath(); g.arc(px(GT.OBS.lon), py(GT.OBS.lat), 2.6, 0, 7); g.fill();
+
+  /* Where the lens is actually pointed. This is the whole reason the minimap
+     exists in POV and not elsewhere: the dot says where you are, this says
+     which way you are facing. Reuses the boresight the GSD readout already
+     casts rather than casting it again. */
+  if(gsd && gsd.onBody && gsd.hit){
+    const look = sceneToLatLon(gsd.hit);
+    if(look){
+      const dx = Math.abs(look.lon - satLon) > 180 ? null : 1;
+      g.strokeStyle = 'rgba(206,128,26,.85)'; g.lineWidth = 1.4;
+      if(dx){
+        g.beginPath();
+        g.moveTo(px(satLon), py(satLat));
+        g.lineTo(px(look.lon), py(look.lat));
+        g.stroke();
+      }
+      g.fillStyle = SPACE.contact;
+      g.beginPath(); g.arc(px(look.lon), py(look.lat), 3.4, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(10,16,20,.9)'; g.lineWidth = 1;
+      g.beginPath(); g.arc(px(look.lon), py(look.lat), 3.4, 0, 7); g.stroke();
+    }
+  }
+
+  // the spacecraft itself, drawn last so nothing sits on top of it
+  g.fillStyle = SPACE.track;
+  g.beginPath(); g.arc(px(satLon), py(satLat), 3.6, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(10,16,20,.9)'; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(px(satLon), py(satLat), 3.6, 0, 7); g.stroke();
 }
 
 /* Aim the POV camera: looking FORWARD along the velocity vector, with zenith up.
@@ -797,8 +936,9 @@ function col3(hex){
    is (Re/(Re+h))·cos(eps), less the mask itself. */
 function updateFov(pv, gmst){
   if(!fovRing) return;
-  if(!pv || !pv.position){ fovRing.visible = false; return; }
+  if(!pv || !pv.position){ fovRing.visible = false; lastGd = null; return; }
   const gd = BODY.toGeodetic(pv.position, gmst);
+  lastGd = gd;
   const lat = gd.latitude, lon = gd.longitude, h = gd.height;
   const eps = GT.MASK*RAD;
   const inner = RE*Math.cos(eps)/(RE+h);
@@ -1161,9 +1301,17 @@ function paintLabels(satPos, el){
      wheel at all.
      The row stays put while the boresight is off the body rather than vanishing
      and shoving the layout about - it just has nothing to report. */
+  /* One cast per frame, shared. The readout and the minimap are asking the
+     same question - where does the boresight meet the ground - and casting it
+     twice would be ten rays for five answers, with the standing risk of the
+     two disagreeing inside a single frame. */
+  const gsdNow = pov ? gsdAt() : null;
+  /* After the camera has been aimed for this frame, because the boresight the
+     minimap draws is the camera's. */
+  drawMini(lastGd, gsdNow);
   if(labels.gsd){
     if(pov){
-      const g = gsdAt();
+      const g = gsdNow;
       if(g && g.onBody){
         const t = gsdText(g);
         labels.gsd.textContent = t.text;

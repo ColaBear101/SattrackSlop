@@ -351,6 +351,82 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   const p2 = await pressed();
   chk('...with the POV button released', p2.includes('pov=false'), p2.join(' '));
 
+  // ---- the minimap ---------------------------------------------------------
+  /* POV takes away the one thing every other camera mode gives for free: where
+     the spacecraft actually is. The minimap gives it back, so what matters is
+     that the dot is in the right PLACE - an equirectangular projection drawn
+     into a canvas is exactly the kind of thing that renders plausibly while
+     being rolled, flipped or off by a factor.
+
+     Checked by reading the pixels back and finding the marker by its own
+     colour, then comparing against satellite.js propagated directly - the
+     library's own SGP4 and its own eciToGeodetic, sharing no line with the
+     path orbit3d took to draw it. */
+  await page.evaluate(() => { Orbit3D.freeCam(); Orbit3D.setPov(true); });
+  await page.waitForTimeout(700);
+  await pitchTo(70);                       // look down, so the boresight is on the ground
+  await page.waitForTimeout(700);
+
+  const mini = await page.evaluate(() => {
+    const c = document.getElementById('o3mini');
+    if (!c || c.hidden || getComputedStyle(c).display === 'none') return { off: true };
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    /* centroid of every pixel close to the track colour - the spacecraft dot is
+       the only thing drawn in it */
+    let sx = 0, sy = 0, n = 0;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++){
+      const i = (y*c.width + x)*4;
+      if (Math.abs(d[i]-0x17) < 26 && Math.abs(d[i+1]-0xa3) < 26 && Math.abs(d[i+2]-0xcc) < 26){
+        sx += x; sy += y; n++;
+      }
+    }
+    if (!n) return { none: true };
+    const lon = (sx/n)/c.width*360 - 180, lat = 90 - (sy/n)/c.height*180;
+
+    /* the independent answer */
+    const e = __gt.CAT[__gt.D.idx !== undefined ? __gt.D.idx : 0];
+    const entry = __gt.D.entry || e;
+    const rec = satellite.twoline2satrec(entry.l1, entry.l2);
+    const when = new Date(Orbit3D.time);
+    const pv = satellite.propagate(rec, when);
+    const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(when));
+    return { lat: lat, lon: lon, n: n,
+             trueLat: satellite.degreesLat(gd.latitude),
+             trueLon: satellite.degreesLong(gd.longitude),
+             degPerPx: 360/c.width };
+  });
+
+  if (mini.off){
+    chk('the minimap is drawn in POV', false, 'hidden or display:none at this size');
+  } else if (mini.none){
+    chk('the minimap is drawn in POV', false, 'no spacecraft marker found in the canvas');
+  } else {
+    chk('the minimap is drawn in POV', mini.n > 4, mini.n + ' px of marker found');
+    const dLat = Math.abs(mini.lat - mini.trueLat);
+    let dLon = Math.abs(mini.lon - mini.trueLon); if (dLon > 180) dLon = 360 - dLon;
+    /* The marker is a disc a few pixels across and the map is 0.75 deg per
+       pixel, so agreement can only be asserted to about the size of the dot. */
+    const tol = 3*mini.degPerPx;
+    chk('...with the spacecraft where satellite.js independently puts it',
+        dLat < tol && dLon < tol,
+        'drawn ' + mini.lat.toFixed(2) + ', ' + mini.lon.toFixed(2)
+          + '   propagated ' + mini.trueLat.toFixed(2) + ', ' + mini.trueLon.toFixed(2)
+          + '   off by ' + dLat.toFixed(2) + ', ' + dLon.toFixed(2)
+          + ' deg against a ' + tol.toFixed(2) + ' deg tolerance');
+    /* A map drawn upside down or rolled by half the world would still put a dot
+       somewhere, so this asserts the two independent answers agree in SIGN as
+       well as magnitude - the case a symmetric tolerance can miss. */
+    chk('...on the right side of the equator and the right side of the dateline',
+        (mini.lat >= 0) === (mini.trueLat >= 0) && (mini.lon >= 0) === (mini.trueLon >= 0),
+        'drawn ' + (mini.lat >= 0 ? 'N' : 'S') + (mini.lon >= 0 ? 'E' : 'W')
+          + ', propagated ' + (mini.trueLat >= 0 ? 'N' : 'S') + (mini.trueLon >= 0 ? 'E' : 'W'));
+  }
+
+  await page.evaluate(() => Orbit3D.freeCam());
+  await page.waitForTimeout(500);
+  chk('...and it goes away with the mode',
+      await page.evaluate(() => document.getElementById('o3mini').hidden === true));
+
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));
   await browser.close();

@@ -120,6 +120,26 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
   align-items:flex-end; gap:5px}
 .viewport .layerseg .seglabel{margin-right:2px}
+/* The POV minimap. Looking out of a spacecraft through a narrow lens tells you
+   nothing about where the spacecraft IS, which is the one thing the other camera
+   modes give away for free. Bottom right, over the globe, only while in POV. */
+/* Bottom LEFT, not right: the layers panel hangs down the right-hand side and
+   on a short viewport or a phone the two overlapped outright. The left side
+   carries only the drag hint, which this sits above. */
+.o3-mini{position:absolute; left:10px; bottom:34px; width:240px; height:120px;
+  border:1px solid rgba(180,200,212,.30); border-radius:3px;
+  background:rgba(10,16,20,.72); backdrop-filter:blur(6px); pointer-events:none}
+.o3-mini[hidden]{display:none}
+/* Short viewports run the HUD down from the top and the hint up from the
+   bottom; between them there is not room for a full-size map. */
+@media (max-width:760px), (max-height:720px){
+  .o3-mini{width:168px; height:84px; left:8px; bottom:30px}
+}
+/* And on a phone there is no room at all: at this width the globe already
+   carries the clock, the camera buttons, the trail buttons and the layers
+   panel stacked over it, and the map lands on top of all four. Better absent
+   than overlapping - POV still works, it just does not get a map. */
+@media (max-width:640px){ .o3-mini{display:none} }
 .layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
   background:rgba(10,16,20,.72); border:1px solid rgba(180,200,212,.28); border-radius:3px;
   backdrop-filter:blur(6px)}
@@ -579,6 +599,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <span class="seglabel">Layers</span>
         <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
       </div>
+      <canvas id="o3mini" class="o3-mini" width="480" height="240" hidden
+              aria-label="Minimap: the spacecraft's position, its access circle and where the camera is pointed"></canvas>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
         <p class="pcn" id="pcname">—</p>
@@ -9546,6 +9568,7 @@ document.addEventListener('visibilitychange', () => {
     labels: { name: document.getElementById('o3name'), hover: document.getElementById('o3hover'),
               el: document.getElementById('o3el'),
               earth: document.getElementById('o3earth'),
+              mini: document.getElementById('o3mini'),
               fov: document.getElementById('o3fov3'),
               fovmm: document.getElementById('o3fovmm'),
               gsd: document.getElementById('o3gsd'),

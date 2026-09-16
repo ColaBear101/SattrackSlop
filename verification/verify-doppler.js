@@ -161,10 +161,22 @@ const chk = (name, ok, detail) => {
       + '   ' + p.aosKHz.toFixed(2).padStart(8) + '  ' + p.culKHz.toFixed(2).padStart(8)
       + '  ' + p.losKHz.toFixed(2).padStart(8));
 
-  const signs = res.passes.every(p => p.aosRR < 0 && p.losRR > 0);
-  chk('\n  every pass approaches then recedes', signs,
-      'ṙ negative at AOS and positive at LOS on all ' + res.passes.length);
-  const culm = res.passes.every(p => Math.abs(p.culRR) < Math.abs(p.aosRR));
+  /* Only for passes that lie wholly inside the analysis window.
+     The window opens at the moment the check runs, so whatever the spacecraft
+     was doing at that instant is where the first pass begins - and if it was
+     already above the mask and already going away, that pass has its maximum
+     elevation at its own first sample. Its range rate is then positive at AOS
+     and identical at culmination, which is not the Doppler being wrong: it is
+     a pass cut in half by the clock. Asserting the approach-then-recede shape
+     over it made this check fail depending on the time of day it ran.
+     A clipped pass is the one whose culmination sits on its own AOS. */
+  const whole = res.passes.filter(p => p.culRR !== p.aosRR);
+  const clipped = res.passes.length - whole.length;
+  const signs = whole.every(p => p.aosRR < 0 && p.losRR > 0);
+  chk('\n  every complete pass approaches then recedes', signs,
+      'ṙ negative at AOS and positive at LOS on all ' + whole.length
+        + (clipped ? ' (' + clipped + ' clipped by the window edge, skipped)' : ''));
+  const culm = whole.every(p => Math.abs(p.culRR) < Math.abs(p.aosRR));
   chk('  range rate is smallest at culmination', culm,
       'the closing speed passes through zero near closest approach');
 

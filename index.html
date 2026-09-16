@@ -8479,7 +8479,18 @@ function exportICS(){
       'Naked eye: ' + r.eye + ' (sun ' + r.sunEl.toFixed(0) + ' deg, spacecraft ' + r.lit + ')',
       'Site ' + r.site + ' ' + latStr(r.lat) + ' ' + lonStr(r.lon),
       'Element set epoch ' + iso(D.E.epoch)
-    ].filter(Boolean).join('\\n');
+    /* Escaped per LINE, not after the join. RFC 5545 section 3.3.11 makes
+       backslash, comma and semicolon special inside a TEXT value, and this
+       is the one TEXT value on the event that skipped the escaper that
+       SUMMARY, LOCATION and the alarm all use - while being the one that
+       interpolates the observer's name, which since the place picker can
+       be anything Open-Meteo returns. A site called "Bangkok, Thailand"
+       emitted a bare comma and importers read the rest of the line as a
+       second value.
+       After the join would be wrong: the separator below is a literal
+       backslash-n, which is how ICS spells a line break inside a value,
+       and escaping it would turn every line break into the characters. */
+    ].filter(Boolean).map(esc).join('\\n');
     L.push('BEGIN:VEVENT',
       fold('UID:' + r.norad + '-' + r.aos.getTime() + '@ground-track'),
       'DTSTAMP:' + now, 'DTSTART:' + stamp(r.aos), 'DTEND:' + stamp(r.los),

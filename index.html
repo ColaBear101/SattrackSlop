@@ -8770,8 +8770,23 @@ function load(entry){
   document.getElementById('idnorad').textContent = D.E.satnum;
   document.getElementById('idcospar').textContent = D.E.cospar;
   document.getElementById('idepoch').textContent = iso(D.E.epoch);
-  document.getElementById('tleraw').innerHTML =
-    '<b>'+entry.name+'</b>\n'+entry.l1+'\n'+entry.l2;
+  /* Built as nodes, not as a string of HTML.
+     These three values are NOT constants. refreshTLE() replaces entry.l1 and
+     entry.l2 with text pulled off the network and calls load() again, so this
+     line renders whatever a TLE source - or anything able to answer for one -
+     sent back. Through innerHTML that was script execution in this origin,
+     which can read the obs-site record holding the observer's coordinates and
+     can rewrite every number on the page. The spacecraft picker sixty lines
+     below already escapes the same catalogue fields; this was the one sink
+     that did not.
+     textContent rather than an escaper because there is then nothing to get
+     wrong: #tleraw is a <pre> and needs no markup beyond the bold name. */
+  const rawEl = document.getElementById('tleraw');
+  rawEl.textContent = '';
+  const nameEl = document.createElement('b');
+  nameEl.textContent = entry.name;
+  rawEl.appendChild(nameEl);
+  rawEl.appendChild(document.createTextNode('\n' + entry.l1 + '\n' + entry.l2));
   document.getElementById('trackhint').textContent =
     iso(D.start)+'  →  '+iso(D.end)+'  ·  '+(D.E.n*D.hours/24).toFixed(1)+' revolutions';
   const hd = document.querySelector('#sec-track h2');

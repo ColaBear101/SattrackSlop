@@ -251,11 +251,16 @@ function setSurface(key, onStatus){
     return;
   }
   say('loading', null, null);
+  /* The GPU's own ceiling, passed down so the ladder stops there. 8192 on a
+     software renderer, 16384 on a discrete card, as low as 4096 on some
+     phones - and a texture past it is not a sharper globe, it is a failed
+     upload after the bytes have already been paid for. */
+  const cap = (renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || 0;
   global.GlobeTex.load(key, stage => {
     if(seq !== surfaceSeq) return;            // superseded while in flight
     applyPhoto(stage);
     say('ready', stage.w + '×' + stage.h + (stage.last ? '' : ', sharpening…'), stage.meta);
-  }).catch(err => {
+  }, null, cap).catch(err => {
     /* Falling back rather than leaving a half-dressed globe: whatever went
        wrong, the vector surface always works and the reader is told which one
        they are looking at. */

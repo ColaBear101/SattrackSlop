@@ -9617,7 +9617,10 @@ document.addEventListener('visibilitychange', () => {
       let t = NOTE[st.key] || '';
       if(st.meta && st.meta.date) t += ' ' + st.meta.date + '.';
       if(st.detail) t += ' ' + st.detail;
-      if(st.meta && window.GlobeTex) t += ' ' + GlobeTex.credit + '.';
+      /* The surface names its own source: the Blue Marble ships with the page
+         now, the dated layers still come from GIBS, and the clouds mode is
+         both. A single fixed credit line would be wrong for two of the three. */
+      if(st.meta) t += ' Imagery courtesy ' + (st.meta.source || 'NASA') + '.';
       note.textContent = t.trim();
     }
     menu0.addEventListener('change', e => {

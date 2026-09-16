@@ -25,9 +25,35 @@
  *   node verification/verify-globe.js        (needs playwright and the network)
  */
 const path = require('path');
+const fs = require('fs');
+const http = require('http');
 const { chromium } = require('playwright');
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+/* Served over http rather than opened as a file, for two reasons both learned
+   the hard way. A file:// page has an opaque origin, so every image drawn into
+   a canvas taints it and the geography check below cannot read back a single
+   pixel. And http with no charset header is the environment that exposed
+   index.html carrying no <meta charset> at all. It is also how the page really
+   runs. */
+const ROOT = path.join(__dirname, '..');
+const TYPES = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json',
+                '.jpg':'image/jpeg', '.png':'image/png', '.svg':'image/svg+xml',
+                '.css':'text/css', '.ico':'image/x-icon' };
+function serve(){
+  return new Promise(resolve => {
+    const srv = http.createServer((req, res) => {
+      const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^[\\/]+/, '') || 'index.html';
+      const file = path.join(ROOT, rel);
+      if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+        res.writeHead(404); return res.end('not here');
+      }
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
+      fs.createReadStream(file).pipe(res);
+    });
+    srv.listen(0, '127.0.0.1', () => resolve(srv));
+  });
+}
+let PAGE = null;
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -54,6 +80,8 @@ const SITES = [
 ];
 
 (async () => {
+  const srv = await serve();
+  PAGE = 'http://127.0.0.1:' + srv.address().port + '/index.html';
   const browser = await chromium.launch({
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
@@ -77,7 +105,7 @@ const SITES = [
   // ---- the vector surface needs no network ----------------------------------
   const netFor = async key => {
     const seen = [];
-    const on = r => { const u = r.url(); if (/gibs|nasa/i.test(u)) seen.push(u); };
+    const on = r => { const u = r.url(); if (/gibs|nasa|bluemarble-/i.test(u)) seen.push(u); };
     page.on('request', on);
     await page.evaluate(k => new Promise(res => {
       Orbit3D.setSurface(k, st => { if (st.state !== 'loading') res(st); });
@@ -107,7 +135,7 @@ const SITES = [
     console.log('\n' + fails + ' CHECK(S) FAILED');
     await browser.close(); process.exit(1);
   }
-  chk('NASA imagery loads and reaches full size', /4096/.test(loaded), loaded);
+  chk('imagery loads and reaches the size it asked for', /8192|4096/.test(loaded), loaded);
 
   const shaded = await page.evaluate(() => {
     let found = null;
@@ -165,8 +193,14 @@ const SITES = [
       worstLand < BLUE && worstSea > BLUE,
       'bluest land ' + worstLand.toFixed(1) + ', least blue sea ' + worstSea.toFixed(1)
         + ', threshold ' + BLUE);
-  chk('...at the full requested size', geo[0].W === 4096 && geo[0].H === 2048,
-      geo[0].W + '×' + geo[0].H);
+  /* The ladder stops at MAX_TEXTURE_SIZE, so the size to expect is the GPU's,
+     not one written down here: asserting 8192 outright would fail on a phone
+     that caps at 4096 - correctly, and for entirely the wrong reason. */
+  const cap = await page.evaluate(() => {
+    const gl = Orbit3D.renderer.getContext(); return gl.getParameter(gl.MAX_TEXTURE_SIZE); });
+  chk('...at the largest size this GPU will hold',
+      geo[0].W === Math.min(8192, cap) && geo[0].H === geo[0].W/2,
+      geo[0].W + '×' + geo[0].H + ', MAX_TEXTURE_SIZE ' + cap);
 
   // ---- the terminator -------------------------------------------------------
   /* Measured with the city lights OFF. With them on, a lit city on the night
@@ -394,22 +428,40 @@ const SITES = [
         dayNow.length + ' daylit cities in view, none changed by 4 of 255');
   }
 
-  // ---- a dead network falls back rather than breaking -----------------------
+  // ---- a dead NASA ---------------------------------------------------------
+  /* The Blue Marble ships with the page now, so losing GIBS has to cost the
+     dated layers and nothing else. This is the check that would notice it
+     quietly going back to being fetched. */
   await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
-  /* Through the radio, not through setSurface: the point of these three is the
-     page's own handling of a failure, and calling the API with a private
-     callback would bypass every line of it. */
+  const marbleOffline = await page.evaluate(() => new Promise(res => {
+    Orbit3D.setSurface('marble', st => { if (st.state !== 'loading') res(st); });
+  }));
+  chk('the Blue Marble still loads with NASA unreachable',
+      marbleOffline.state === 'ready',
+      marbleOffline.state + (marbleOffline.detail ? ' - ' + marbleOffline.detail : ''));
+  const offlineMap = await page.evaluate(() => {
+    let m = null;
+    Orbit3D.scene.traverse(o => {
+      if (o.material && o.material.uniforms && o.material.uniforms.dayMap) m = o; });
+    const img = m && m.material.uniforms.dayMap.value.image;
+    return img ? { w: img.width || img.naturalWidth, src: (img.src || '').split('/').pop() } : null;
+  });
+  chk('...off the file that ships with it',
+      !!offlineMap && /bluemarble-/.test(offlineMap.src),
+      offlineMap ? offlineMap.src + ' at ' + offlineMap.w : 'no day map bound');
+
+  /* And a layer that genuinely needs the network still says so, rather than
+     quietly showing a static Blue Marble and calling it yesterday's weather. */
   await page.evaluate(() => {
-    const r = document.querySelector('input[name=globesurf][value=marble]');
+    const r = document.querySelector('input[name=globesurf][value=clouds]');
     r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.waitForFunction(
     () => /unavailable/i.test(document.getElementById('texnote').textContent),
     null, { timeout: 30000 }).catch(() => {});
-  const noteTxt = await page.evaluate(() => document.getElementById('texnote').textContent);
-  chk('imagery that will not load falls back to the coastlines',
-      await page.evaluate(() => Orbit3D.surface === 'vector'));
-  chk('...and says so in the panel', /unavailable/i.test(noteTxt), noteTxt.trim());
+  const cloudNote = await page.evaluate(() => document.getElementById('texnote').textContent);
+  chk('a dated layer still reports the dead network', /unavailable/i.test(cloudNote),
+      cloudNote.trim());
   chk('...and puts the radio back where the globe actually is',
       await page.evaluate(() => {
         const r = document.querySelector('input[name=globesurf]:checked');
@@ -419,5 +471,6 @@ const SITES = [
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));
   await browser.close();
+  srv.close();
   process.exit(fails || errs.length ? 1 : 0);
 })();

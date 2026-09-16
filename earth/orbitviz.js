@@ -21,12 +21,284 @@ const SPACE = {
   track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
   ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
   aries:'#F0C24B',                               // the direction everything is measured from
-  hvec:'#9FD3E3', evec:'#F0A03C', rvec:'#E8EFF2',
+  hvec:'#9FD3E3', evec:'#F0A03C',
   vvec:'#7FE0B0', vtvec:'#6FC79C', vnvec:'#D6A0E0',
   pole:'#9FD3E3', star:'#DCE7EE'
 };
 
 let THREE, sat, scene, U = 1/RE;
+/* Borrowed from orbit3d at init; see the note in init(). */
+let camRef = null, viewEl = null, occluder = null;
+
+/* ---- the label layout ------------------------------------------------------
+ * Every element label is registered here with a priority and the geometry that
+ * selects it. Two jobs are done against that list, and they are kept apart on
+ * purpose:
+ *
+ *   updateLive() decides where an ANCHOR is - that is physics, and it runs on
+ *   simulated time at 8 Hz.
+ *   layout() decides where the TEXT sits relative to its anchor - that is
+ *   optics, and it runs on the camera. They must not share a clock: pause the
+ *   playback and sim time stops while the camera keeps moving under the drag.
+ *
+ * The displacement is written to sprite.center, not to sprite.position. With
+ * sizeAttenuation off, three.js computes the quad as
+ * (position.xy - (center - 0.5)) * scale, so center is a pure screen-space
+ * offset in units of the sprite's own size - two float writes, no extra objects,
+ * and the anchor stays exactly where it means something.
+ */
+let TAGS = [], byKey = {}, PICKS = [], hotKey = null, wantKey = null, wantN = 0;
+let layoutDirty = true, lastLayoutMs = 0, hotSinceMs = 0;
+const lastCam = { x:NaN, y:NaN, z:NaN, qx:NaN, qy:NaN, qz:NaN, qw:NaN, fov:NaN, w:0, h:0 };
+/* Candidate offsets from the anchor, in px, tried in order: three along the
+   push direction, then two across it. The cross ones exist for the hovered
+   label, which goes from about 40 px wide to several hundred and frequently
+   cannot clear its neighbours by sliding along one axis alone. */
+const CANDS = [[14,0], [30,0], [50,0], [26,24], [26,-24]];
+const LPAD = 4, LMARGIN = 6;       // gap between labels, and from the frame edge
+const KEEP = 2;                    // priority at or below this is never hidden
+
+function clearTags(){ TAGS = []; byKey = {}; PICKS = []; hotKey = null; wantKey = null; }
+
+function regTag(sp, o){
+  const t = { key:o.key, prio:(o.prio === undefined ? 5 : o.prio), sprite:sp,
+              lead:o.lead || null, cand:0, rect:{x:0,y:0,w:0,h:0}, vis:false };
+  sp.userData.tag = t;
+  TAGS.push(t); byKey[o.key] = t;
+  return sp;
+}
+function regPick(obj, key){
+  if(!obj) return obj;
+  obj.userData.tagKey = key;
+  PICKS.push(obj);
+  return obj;
+}
+
+/* Is a point hidden behind the body? sprite depthTest handles the drawing, but
+   an occluded label must also stop holding a slot that a visible one needs. */
+function behindBody(p, eye, R){
+  const d = new THREE.Vector3().subVectors(p, eye);
+  const L = d.length(); if(!(L > 0)) return false;
+  d.divideScalar(L);
+  const f = eye.clone().negate(), tca = f.dot(d);
+  if(tca <= 0) return false;
+  return (f.lengthSq() - tca*tca) < R*R && tca < L;
+}
+
+function layout(){
+  if(!camRef || !TAGS.length) return;
+  const cv = viewEl ? viewEl() : null;
+  const W = cv ? cv.clientWidth : 0, H = cv ? cv.clientHeight : 0;
+  if(!(W > 0 && H > 0)) return;
+  // with sizeAttenuation off, this is exactly the pixels per unit of sprite scale
+  const k = H / (2*Math.tan(camRef.fov*RAD/2));
+  const R = occluder ? occluder() : 0;
+  const eye = camRef.position;
+  const live = [];
+
+  for(let i=0;i<TAGS.length;i++){
+    const t = TAGS[i], sp = t.sprite;
+    t.vis = false;
+    /* Walk the PARENTS, never the sprite itself. layout() owns sprite.visible,
+       so reading it back here would latch: the first pass that hid a label
+       would make every later pass skip it, and it would never return.
+       Whether the physics wants the label at all is a separate question, and
+       updateLive answers it through userData.off. */
+    if(sp.userData.off) continue;
+    let on = true;
+    for(let n = sp.parent; n; n = n.parent) if(!n.visible){ on = false; break; }
+    if(!on) continue;
+    const pos = new THREE.Vector3().setFromMatrixPosition(sp.matrixWorld);
+    const pr = pos.clone().project(camRef);
+    if(pr.z > 1) continue;                               // behind the camera
+    if(Math.abs(pr.x) > 1.4 || Math.abs(pr.y) > 1.4) continue;
+    if(R && behindBody(pos, eye, R)) continue;
+    const form = sp.userData.form[sp.material.map === sp.userData.form.full.tex ? 'full' : 'short'];
+    t.w = form.ink.w * k; t.h = form.ink.h * k;
+    if(t.w > W - 2*LMARGIN) continue;                    // wider than the frame: hide, never pin
+    t.cx = (pr.x*0.5 + 0.5)*W; t.cy = (-pr.y*0.5 + 0.5)*H;
+    t.depth = pr.z;
+    /* Push outward from the middle of the frame by default: this is a radial
+       diagram, so away-from-centre is away-from-everything-else. */
+    let lx = t.cx - W/2, ly = t.cy - H/2;
+    const ln = Math.hypot(lx, ly) || 1;
+    t.lx = lx/ln; t.ly = ly/ln;
+    t.vis = true;
+    live.push(t);
+  }
+
+  // hot first so the expanded label never loses, then priority, then near to far
+  live.sort(function(a, b){
+    return ((b.key === hotKey) - (a.key === hotKey)) || (a.prio - b.prio) || (a.depth - b.depth);
+  });
+
+  const placed = [];
+  for(let i=0;i<live.length;i++){
+    const t = live[i];
+    let got = -1;
+    for(let j=0;j<CANDS.length;j++){
+      const c = (t.cand + j) % CANDS.length;             // try where it was: no dancing
+      const r = clampRect(rectAt(t, c), W, H);
+      let clash = false;
+      for(let q=0;q<placed.length;q++) if(hits(placed[q], r)){ clash = true; break; }
+      if(!clash){ t.cand = c; t.rect = r; got = c; break; }
+    }
+    if(got < 0){
+      if(t.prio <= KEEP || t.key === hotKey){
+        t.rect = clampRect(rectAt(t, t.cand), W, H);     // never hidden: overlap and be read
+      } else { t.vis = false; continue; }
+    }
+    placed.push(t.rect);
+    /* centre of the placed rect, expressed as an offset from the anchor, in
+       units of the sprite's own size. y is inverted because screen y grows down
+       and sprite space grows up. */
+    t.sprite.center.set(0.5 - (t.rect.x + t.w/2 - t.cx)/t.w,
+                        0.5 + (t.rect.y + t.h/2 - t.cy)/t.h);
+  }
+  for(let i=0;i<TAGS.length;i++) TAGS[i].sprite.visible = TAGS[i].vis;
+}
+
+/* The rect a label would occupy at candidate slot c: along the outward push,
+   then across it. */
+function rectAt(t, c){
+  const a = CANDS[c][0], p = CANDS[c][1];
+  return { x: t.cx + t.lx*a - t.ly*p - t.w/2,
+           y: t.cy + t.ly*a + t.lx*p - t.h/2,
+           w: t.w, h: t.h };
+}
+function hits(a, b){
+  return !(a.x + a.w + LPAD <= b.x || b.x + b.w + LPAD <= a.x ||
+           a.y + a.h + LPAD <= b.y || b.y + b.h + LPAD <= a.y);
+}
+function clampRect(r, W, H){
+  if(r.x < LMARGIN) r.x = LMARGIN; else if(r.x + r.w > W - LMARGIN) r.x = W - LMARGIN - r.w;
+  if(r.y < LMARGIN) r.y = LMARGIN; else if(r.y + r.h > H - LMARGIN) r.y = H - LMARGIN - r.h;
+  return r;
+}
+
+/* Runs on the camera, capped at 30 Hz, and skipped entirely when nothing that
+   affects the projection has moved - which is the common case while paused. */
+function layoutIfStale(){
+  if(!camRef || !TAGS.length) return;
+  const now = (global.performance && performance.now) ? performance.now() : Date.now();
+  if(now - lastLayoutMs < 33) return;
+  const cv = viewEl ? viewEl() : null;
+  const W = cv ? cv.clientWidth : 0, H = cv ? cv.clientHeight : 0;
+  const p = camRef.position, q = camRef.quaternion;
+  const moved = p.x !== lastCam.x || p.y !== lastCam.y || p.z !== lastCam.z ||
+                q.x !== lastCam.qx || q.y !== lastCam.qy || q.z !== lastCam.qz ||
+                q.w !== lastCam.qw || camRef.fov !== lastCam.fov ||
+                W !== lastCam.w || H !== lastCam.h;
+  if(!moved && !layoutDirty) return;
+  lastCam.x = p.x; lastCam.y = p.y; lastCam.z = p.z;
+  lastCam.qx = q.x; lastCam.qy = q.y; lastCam.qz = q.z; lastCam.qw = q.w;
+  lastCam.fov = camRef.fov; lastCam.w = W; lastCam.h = H;
+  layoutDirty = false; lastLayoutMs = now;
+  layout();
+}
+
+/* ---- picking ---------------------------------------------------------------
+ * orbit3d owns the pointer and the camera and hands in a camera-configured
+ * raycaster; this decides what was hit and what it means. Three passes rather
+ * than one distance-sorted intersect, so a big far cone cannot beat a small
+ * near label.
+ *
+ * The sprite is the primary target on purpose: after the layout pass a label
+ * frequently sits 30 px from its anchor, it is the largest and flattest thing
+ * on offer, and it is what the pointer is genuinely aimed at. THREE.Sprite's
+ * own raycast accounts for both sizeAttenuation and center, so it is hit where
+ * it is actually drawn.
+ *
+ * Nothing is added to PICKS by accident, so there is no exclusion list - the
+ * orbit-plane disc, which spans the frame and would swallow every hover, simply
+ * never registers.
+ */
+/* labelsOnly: test the label rectangles and stop. Split out because a label is
+   explicit UI drawn on top and should beat a catalogue point behind it, while
+   the element GEOMETRY should not - see the caller. */
+function pickKey(rc, ndc, labelsOnly){
+  if(!PICKS.length || !camRef) return null;
+  const cv = viewEl ? viewEl() : null;
+  const H = cv ? cv.clientHeight : 0, W = cv ? cv.clientWidth : 0;
+
+  /* Labels are hit-tested against the rectangles the layout pass already
+     computed, not by raycasting the sprites.
+     THREE.Sprite.raycast builds its quad from the world scale, but with
+     sizeAttenuation off the DRAWN quad is that scale multiplied by the distance
+     to the camera - so at four Earth radii the pick target is a quarter the
+     size of the label a reader is aiming at, and hovering mostly missed. The
+     rects are exact, already computed, and already account for the de-collision
+     offset. */
+  if(ndc && W > 0 && H > 0){
+    const sx = (ndc.x*0.5 + 0.5)*W, sy = (-ndc.y*0.5 + 0.5)*H;
+    let best = null;
+    for(let i=0;i<TAGS.length;i++){
+      const t = TAGS[i];
+      if(!t.vis) continue;
+      const r = t.rect;
+      if(sx < r.x - 2 || sx > r.x + r.w + 2 || sy < r.y - 2 || sy > r.y + r.h + 2) continue;
+      // the hot label is on top, then the higher priority one
+      if(!best || (t.key === hotKey) || (best.key !== hotKey && t.prio < best.prio)) best = t;
+    }
+    if(best) return best.key;
+  }
+  if(labelsOnly) return null;
+  if(H > 0 && rc.params && rc.params.Line){
+    /* Line.threshold is a WORLD distance from the ray, and the default of 1 is
+       one Earth radius here - it would hit every arc in the frame. Derived from
+       the camera so it stays about 8 screen pixels however far the reader has
+       zoomed. */
+    const dist = camRef.position.length() || 1;
+    rc.params.Line.threshold = 8 * 2*Math.tan(camRef.fov*RAD/2) * dist / H;
+  }
+  const meshes = [], lines = [];
+  for(let i=0;i<PICKS.length;i++){
+    const o = PICKS[i];
+    if(o.isSprite) continue;                    // handled above, by rectangle
+    let on = true;
+    for(let n = o; n; n = n.parent) if(!n.visible){ on = false; break; }
+    if(!on) continue;
+    (o.isLine ? lines : meshes).push(o);
+  }
+  const R = occluder ? occluder() : 0;
+  const passes = [meshes, lines];
+  for(let p=0;p<passes.length;p++){
+    if(!passes[p].length) continue;
+    const hit = rc.intersectObjects(passes[p], false);
+    for(let i=0;i<hit.length;i++){
+      const k = hit[i].object.userData.tagKey;
+      if(!k || !byKey[k]) continue;
+      if(R && behindBody(hit[i].point, camRef.position, R)) continue;
+      return k;
+    }
+  }
+  return null;
+}
+
+/* Hysteresis, because an arc crossing would otherwise strobe:
+     - a DIFFERENT key must win twice running before it takes over
+     - once expanded, a label holds for 180 ms after the pointer leaves    */
+function setHoverKey(k){
+  const now = (global.performance && performance.now) ? performance.now() : Date.now();
+  if(k === hotKey){ wantKey = k; wantN = 0; hotSinceMs = now; return; }
+  if(k === null){
+    if(hotKey !== null && now - hotSinceMs < 180) return;   // minimum dwell
+    applyHot(null); wantKey = null; wantN = 0; return;
+  }
+  if(k === wantKey){ if(++wantN >= 2){ applyHot(k); hotSinceMs = now; } }
+  else { wantKey = k; wantN = 1; }
+}
+function applyHot(k){
+  if(k === hotKey) return;
+  hotKey = k;
+  for(let i=0;i<TAGS.length;i++){
+    const t = TAGS[i];
+    setForm(t.sprite, t.key === k);
+    t.sprite.renderOrder = (t.key === k) ? 16 : (t.sprite.userData.baseOrder || 12);
+  }
+  layoutDirty = true;
+}
+
 /* Whether the sky's writing is on: the planet/Sun/Moon names, owned by the
    constellations switch. The discs themselves are not affected. */
 let skyNames = false;
@@ -69,15 +341,25 @@ function raDec(ra, dec, r){
   return eci(r*cd*cos(ra), r*cd*sin(ra), r*sin(dec));
 }
 
-/* Labels: r128 has no text, and an HTML overlay would need the camera and the
-   canvas rect, neither of which this module is handed. Canvas sprites it is.
+/* Labels: r128 has no text, so these are canvas sprites.
+   This module IS now handed the camera and the canvas, so the original reason
+   for sprites over an HTML overlay - that it had neither - no longer holds. The
+   reason that does hold is DEPTH: this layer annotates a 3D cage, half of which
+   is behind the planet at any moment, and a DOM label cannot be occluded by the
+   Earth. Half the old mess was far-side labels drawing over near-side ones.
    sizeAttenuation is off so a label is the same size on screen whether it sits
-   at 1.1 Earth radii or out on the star sphere at 400. */
-function makeLabel(text, colour, opt){
-  opt = opt || {};
-  const lines = Array.isArray(text) ? text : [text];
-  // these were rendering around 12 screen pixels tall over a star field, which
-  // is legible in a screenshot and not in use
+   at 1.1 Earth radii or out on the star sphere at 400. That also makes its
+   on-screen size exactly scale * H / (2 tan(fov/2)) with no read-back, which is
+   what the layout pass below is built on. */
+/* One baked form of a label: its own canvas, its own texture, the sprite scale
+   that shows it undistorted, and the size of the INK.
+
+   The ink box is not the canvas box and the difference is not cosmetic: the
+   canvas is padded by 42% of the type size on every side, so laying labels out
+   by the canvas would push them ~40% further apart than a reader can see, and
+   each one would drift off the geometry it belongs to. Both the layout pass and
+   the check that verifies it measure the ink. */
+function bakeForm(lines, colour, opt){
   const px = opt.px || 56, pad = Math.round(px*0.42), lh = Math.round(px*1.28);
   const cv = document.createElement('canvas');
   let g = cv.getContext('2d');
@@ -86,7 +368,8 @@ function makeLabel(text, colour, opt){
   g.font = font;
   let w = 0;
   for(let i=0;i<lines.length;i++) w = Math.max(w, g.measureText(lines[i]).width);
-  cv.width  = Math.ceil(w) + pad*2;              // resizing the canvas resets the context
+  w = Math.ceil(w);
+  cv.width  = w + pad*2;                         // resizing the canvas resets the context
   cv.height = lh*lines.length + pad*2;
   g = cv.getContext('2d');
   g.font = font; g.textBaseline = 'top'; g.textAlign = 'left';
@@ -105,22 +388,72 @@ function makeLabel(text, colour, opt){
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   if(THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
   else if(THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
-  const m = new THREE.SpriteMaterial({ map:t, transparent:true, depthWrite:false,
-    depthTest: opt.depthTest !== false, sizeAttenuation:false,
-    opacity: opt.opacity === undefined ? 1 : opt.opacity });
-  const s = new THREE.Sprite(m);
   // a fraction of viewport height at fov 42; 1.75x over the first pass, which
   // was sized for a screenshot rather than for reading. h covers the WHOLE
   // sprite, so a two-line label would otherwise set each line at half size.
-  const h = (opt.h || 0.020) * 1.75 * (lines.length > 1 ? 1 + 0.6*(lines.length-1) : 1);
-  s.scale.set(h*cv.width/cv.height, h, 1);
+  const hh = (opt.h || 0.020) * 1.75 * (lines.length > 1 ? 1 + 0.6*(lines.length-1) : 1);
+  const scl = new THREE.Vector3(hh*cv.width/cv.height, hh, 1);
+  return { tex:t, scl:scl,
+           ink:{ w: scl.x * (w/cv.width), h: scl.y * (lh*lines.length/cv.height) } };
+}
+
+/* Swap a label between its short and full form. Texture to texture, so no
+   shader recompile - only null <-> texture would cause one. */
+function setForm(sp, wantFull){
+  const f = sp.userData.form && sp.userData.form[wantFull ? 'full' : 'short'];
+  if(!f || sp.material.map === f.tex) return;
+  sp.material.map = f.tex;
+  sp.scale.copy(f.scl);
+}
+
+/* An element label: a symbol at rest, the full sentence when hovered.
+   Two textures baked up front rather than one repainted on demand, because a
+   repainted label sized to its longest string keeps that width while showing
+   one glyph - and the width is exactly what the layout and the clamping are
+   computed from. */
+function tagLabel(short, full, colour, opt){
+  opt = opt || {};
+  const S = bakeForm(Array.isArray(short) ? short : [short], colour, opt);
+  const F = (full == null) ? S
+          : bakeForm(Array.isArray(full) ? full : [full], colour, opt);
+  /* No depth test, and that is a decision rather than an oversight.
+     A sprite is a flat quad at its anchor's depth, so a label whose anchor sits
+     near the limb has the far half of its quad eaten by the globe - an expanded
+     "inclination i = 51.63" came out as "tation i = 51.63". The problem the
+     depth test would have solved - far-side labels drawing over near-side ones -
+     is solved better upstream: layout() culls anything genuinely behind the body
+     analytically, by behindBody(), and drops it from the pass entirely instead
+     of leaving an invisible label holding a slot. */
+  const m = new THREE.SpriteMaterial({ map:S.tex, transparent:true, depthWrite:false,
+    depthTest: !!opt.depthTest, sizeAttenuation:false,
+    opacity: opt.opacity === undefined ? 1 : opt.opacity });
+  const sp = new THREE.Sprite(m);
+  sp.scale.copy(S.scl);
+  sp.renderOrder = opt.order || 12;
+  sp.userData.form = { short:S, full:F };
+  sp.userData.baseOrder = sp.renderOrder;
+  return opt.key ? regTag(sp, opt) : sp;
+}
+
+function makeLabel(text, colour, opt){
+  opt = opt || {};
+  const lines = Array.isArray(text) ? text : [text];
+  const F = bakeForm(lines, colour, opt);
+  const m = new THREE.SpriteMaterial({ map:F.tex, transparent:true, depthWrite:false,
+    depthTest: opt.depthTest !== false, sizeAttenuation:false,
+    opacity: opt.opacity === undefined ? 1 : opt.opacity });
+  const s = new THREE.Sprite(m);
+  s.scale.copy(F.scl);
   s.renderOrder = opt.order || 12;
+  s.userData.form = { short:F, full:F };         // nothing to expand: one form
   return s;
 }
 
-/* makeLabel bakes its text into a texture, which is right for a label that never
-   changes and wrong for one that counts. This one keeps its own canvas so the
-   value can be repainted in place. */
+/* A live element label. Its SHORT form is a fixed symbol and is baked once; its
+   FULL form counts, so that one keeps its own canvas and is repainted in place.
+   The full form's width is fixed from opt.sample rather than measured per
+   repaint, so the rect the layout works from does not jitter as the digits
+   change under it. */
 function liveLabel(colour, opt){
   opt = opt || {};
   const px = 56, pad = 24, h = px + pad*2;
@@ -128,18 +461,25 @@ function liveLabel(colour, opt){
   // size to the longest string this label will ever hold, or it clips
   const probe = document.createElement('canvas').getContext('2d');
   probe.font = '600 '+px+'px "IBM Plex Mono", ui-monospace, monospace';
-  const w = Math.ceil(probe.measureText(opt.sample || '000000000000000000000000').width) + pad*2;
+  const wInk = Math.ceil(probe.measureText(opt.sample || '000000000000000000000000').width);
+  const w = wInk + pad*2;
   cv.width = w; cv.height = h;
   const tex = new THREE.CanvasTexture(cv);
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = false;
   if(THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
   else if(THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true,
-    depthWrite:false, depthTest:false, sizeAttenuation:false }));
   const hh = (opt.h || 0.019) * 1.75;
-  sp.scale.set(hh*w/h, hh, 1);
-  sp.renderOrder = 14;
+  const fullScl = new THREE.Vector3(hh*w/h, hh, 1);
+  const full = { tex:tex, scl:fullScl,
+                 ink:{ w: fullScl.x*(wInk/w), h: fullScl.y*(px/h) } };
+  const short = bakeForm([opt.short || '?'], colour, { h: opt.h || 0.019, px: px });
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:short.tex, transparent:true,
+    depthWrite:false, depthTest: !!opt.depthTest, sizeAttenuation:false }));
+  sp.scale.copy(short.scl);
+  sp.renderOrder = opt.order || 14;
+  sp.userData.form = { short:short, full:full };
+  sp.userData.baseOrder = sp.renderOrder;
   sp.userData.paint = function(text){
     const g = cv.getContext('2d');
     g.clearRect(0,0,w,h);
@@ -150,8 +490,11 @@ function liveLabel(colour, opt){
     g.strokeText(text, pad, pad); g.fillStyle = C(colour).getStyle();
     g.fillText(text, pad, pad);
     tex.needsUpdate = true;
+    /* If the full form is the one on screen, the swap already happened and the
+       scale is already right; nothing here changes the sprite's size, which is
+       the point of the fixed width above. */
   };
-  return sp;
+  return opt.key ? regTag(sp, opt) : sp;
 }
 
 function lineFrom(pts, colour, opacity){
@@ -297,7 +640,7 @@ function buildLive(parent){
   arcGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((seg+1)*3), 3));
   live = {
     seg,
-    h: mk(SPACE.hvec), e: mk(SPACE.evec), r: mk(SPACE.rvec),
+    h: mk(SPACE.hvec), e: mk(SPACE.evec),
     hTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.085, SPACE.hvec, .95),
     eTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.evec, .95),
     nu: new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
@@ -306,17 +649,29 @@ function buildLive(parent){
     vTip:  cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.vvec, .95),
     vtTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.060, SPACE.vtvec, .9),
     vnTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.060, SPACE.vnvec, .9),
-    vLbl:  liveLabel(SPACE.vvec,  {h:0.017, sample:'v = 00.000 km/s'}),
-    vtLbl: liveLabel(SPACE.vtvec, {h:0.015, sample:'vt = 00.000 km/s (transverse)'}),
-    vnLbl: liveLabel(SPACE.vnvec, {h:0.015, sample:'vn = 00.000 km/s (radial)'}),
-    hLbl: liveLabel(SPACE.hvec, {h:0.017, sample:'h = 000000000 km2/s'}),
-    eLbl: liveLabel(SPACE.evec, {h:0.017, sample:'e = 0.0000000  (mean; perigee barely defined)'}),
-    nuLbl: liveLabel(SPACE.contact, {h:0.018, sample:'\u03b8 = 000.00\u00b0 from mean perigee'})
+    /* short: what the arrow IS. full: what it currently measures, on hover.
+       The values all live in the elements card below the globe as well; what
+       cannot live there is which arrow is which, so that is what stays on
+       screen. */
+    vLbl:  liveLabel(SPACE.vvec,  {h:0.017, short:'v',  key:'v',  prio:5, sample:'v = 00.000 km/s'}),
+    vtLbl: liveLabel(SPACE.vtvec, {h:0.015, short:'vt', key:'vt', prio:7, sample:'vt = 00.000 km/s (transverse)'}),
+    vnLbl: liveLabel(SPACE.vnvec, {h:0.015, short:'vn', key:'vn', prio:7, sample:'vn = 00.000 km/s (radial)'}),
+    hLbl: liveLabel(SPACE.hvec, {h:0.017, short:'h', key:'h', prio:2, sample:'h = 000000000 km2/s'}),
+    eLbl: liveLabel(SPACE.evec, {h:0.017, short:'e', key:'e', prio:2, sample:'e = 0.0000000  (mean; perigee barely defined)'}),
+    nuLbl: liveLabel(SPACE.contact, {h:0.018, short:'\u03b8', key:'nu', prio:1, sample:'\u03b8 = 000.00\u00b0 from mean perigee'})
   };
-  [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
+  [live.h, live.e, live.hTip, live.eTip, live.nu,
    live.hLbl, live.eLbl, live.nuLbl,
    live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
    live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>parent.add(o));
+  /* Each arrow selects its own label. The label sprite is registered first
+     because it is the primary target - see pickKey. */
+  regPick(live.hLbl,'h');  regPick(live.h,'h');   regPick(live.hTip,'h');
+  regPick(live.eLbl,'e');  regPick(live.e,'e');   regPick(live.eTip,'e');
+  regPick(live.nuLbl,'nu'); regPick(live.nu,'nu');
+  regPick(live.vLbl,'v');  regPick(live.v,'v');   regPick(live.vTip,'v');
+  regPick(live.vtLbl,'vt'); regPick(live.vt,'vt'); regPick(live.vtTip,'vt');
+  regPick(live.vnLbl,'vn'); regPick(live.vn,'vn'); regPick(live.vnTip,'vn');
   liveMs = null; nuShown = null;
 }
 
@@ -356,7 +711,7 @@ function updateLive(date){
   let pv = null;
   try { pv = sat.propagate(satrecRef, date); } catch(e){ pv = null; }
   const vis = !!(pv && pv.position && pv.velocity && isFinite(pv.position.x));
-  [live.h, live.e, live.r, live.hTip, live.eTip, live.nu,
+  [live.h, live.e, live.hTip, live.eTip, live.nu,
    live.hLbl, live.eLbl, live.nuLbl,
    live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
    live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>o.visible = vis);
@@ -385,7 +740,11 @@ function updateLive(date){
   const eDir = (el && isFinite(el.ecc) && isFinite(el.argp)) ? basis(el).p : null;
   const rLen = rS.length();
 
-  setRay(live.r, null, rS);
+  /* The radius vector is orbit3d's: it draws the same ray in TWO parts, R(+)
+     from the centre to the surface in ink and the altitude from the surface to
+     the spacecraft in the track colour, and that join is the whole point of it.
+     A single white line over the top painted out the outer half and destroyed
+     the distinction. rS is kept - the velocity trio is built on it. */
   setRay(live.h, live.hTip, hDir.clone().multiplyScalar(Math.max(1.55, rLen*1.12)));
   live.hLbl.position.copy(hDir).multiplyScalar(Math.max(1.55, rLen*1.12) + 0.16);
 
@@ -404,11 +763,11 @@ function updateLive(date){
     const eLen = Math.max(1.30, rLen*0.92);
     setRay(live.e, live.eTip, eDir.clone().multiplyScalar(eLen));
     live.eLbl.position.copy(eDir).multiplyScalar(eLen + 0.16);
-    live.e.visible = live.eTip.visible = live.eLbl.visible = true;
+    live.e.visible = live.eTip.visible = true; live.eLbl.userData.off = false;
     live.e.material.opacity = nearCircular ? .38 : .95;
     live.eTip.material.opacity = nearCircular ? .38 : .95;
   } else {
-    live.e.visible = live.eTip.visible = live.eLbl.visible = false;
+    live.e.visible = live.eTip.visible = false; live.eLbl.userData.off = true;
   }
 
   /* The angle is measured from the arrow that is actually drawn, so the arc
@@ -447,7 +806,7 @@ function updateLive(date){
     }
     live.nu.geometry.attributes.position.needsUpdate = true;
     live.nu.geometry.computeBoundingSphere();
-    live.nu.visible = live.nuLbl.visible = true;
+    live.nu.visible = true; live.nuLbl.userData.off = false;
     const mid = ang/2;
     live.nuLbl.position.copy(fromDir).multiplyScalar(Rnu*cos(mid)*1.12)
       .addScaledVector(inPlane, Rnu*sin(mid)*1.12);
@@ -461,12 +820,12 @@ function updateLive(date){
          Quoting it beside an osculating arrow would have described a different
          quantity, which is why this used to print the osculating value. */
       const eShown = el.ecc;
-      if(live.eLbl.visible) live.eLbl.userData.paint(nearCircular
+      if(!live.eLbl.userData.off) live.eLbl.userData.paint(nearCircular
         ? 'e = '+eShown.toFixed(7)+'  (mean; perigee barely defined)'
         : 'e = '+eShown.toFixed(7)+'  (mean)');
     }
   } else {
-    live.nu.visible = live.nuLbl.visible = false;
+    live.nu.visible = false; live.nuLbl.userData.off = true;
   }
   /* Velocity, split in the plane. Note the cross-track component here is zero
      by construction, not by physics: h is defined as r x v, so v.h vanishes for
@@ -494,8 +853,8 @@ function updateLive(date){
      drawing all three stacks three arrows and three labels on one another.
      Show the split only where there is a split to show. */
   const tiny = Math.abs(vRad) < 0.02;
-  live.vn.visible = live.vnTip.visible = live.vnLbl.visible = !tiny;
-  live.vt.visible = live.vtTip.visible = live.vtLbl.visible = !tiny;
+  live.vn.visible = live.vnTip.visible = !tiny; live.vnLbl.userData.off = tiny;
+  live.vt.visible = live.vtTip.visible = !tiny; live.vtLbl.userData.off = tiny;
   if(vShown === null || Math.abs(vMag - vShown) > 0.0005){
     vShown = vMag;
     live.vLbl.userData.paint('v = '+vMag.toFixed(3)+' km/s');
@@ -507,6 +866,7 @@ function updateLive(date){
 
 function buildElements(){
   const g = new THREE.Group();
+  clearTags();                 // a rebuild must not leave the last orbit's tags behind
   if(!el) return g;
   const b = basis(el), O = new THREE.Vector3();
   const rp = el.a*(1-el.ecc)*U, ra = el.a*(1+el.ecc)*U;
@@ -536,65 +896,84 @@ function buildElements(){
   g.add(lineFrom([b.n.clone().multiplyScalar(-Ln), b.n.clone().multiplyScalar(Ln)], 'ink2', 0.7));
   const rAsc = radiusAt(el, -el.argp)*U, rDes = radiusAt(el, 180-el.argp)*U;
   const asc = b.n.clone().multiplyScalar(rAsc), des = b.n.clone().multiplyScalar(-rDes);
-  g.add(dot(asc, 0.030, 'contact'));
-  const ascL = makeLabel('ASCENDING NODE', SPACE.contact, { h:0.017, depthTest:false });
-  ascL.position.copy(asc).addScaledVector(b.n, 0.22).add(new THREE.Vector3(0,0.10,0));
-  g.add(ascL);
-  g.add(dot(des, 0.020, 'ink2', 0.6));
-  const desL = makeLabel('DESCENDING NODE', SPACE.ink2,
-                         { h:0.014, depthTest:false, opacity:0.75 });
-  desL.position.copy(des).addScaledVector(b.n, -0.22).add(new THREE.Vector3(0,0.09,0));
-  g.add(desL);
+  const ascDot = dot(asc, 0.030, 'contact'); g.add(ascDot);
+  const ascL = tagLabel('☊', 'ascending node', SPACE.contact,
+                        { h:0.017, key:'asc', prio:4 });
+  ascL.position.copy(asc).addScaledVector(b.n, 0.22);
+  g.add(ascL); regPick(ascL,'asc'); regPick(ascDot,'asc');
+  const desDot = dot(des, 0.020, 'ink2', 0.6); g.add(desDot);
+  /* Plain letters for the descending node where the ascending one gets the
+     astronomical symbol: a reader of this page can be assumed to know neither,
+     but the ascending node is the one the RAAN arc points at and the one worth
+     a mark of its own. */
+  const desL = tagLabel('DESC', 'descending node', SPACE.ink2,
+                        { h:0.014, opacity:0.75, key:'desc', prio:6 });
+  desL.position.copy(des).addScaledVector(b.n, -0.22);
+  g.add(desL); regPick(desL,'desc'); regPick(desDot,'desc');
 
   // RAAN: measured in the equatorial plane, from Aries, eastward. The arc starts
   // on +X by construction — that is the assertion this layer exists to make.
   const raan = arcPts(O, b.x, b.y, Rn, el.raan, Math.max(24, Math.round(el.raan/2)));
-  g.add(lineFrom(raan, 'aries', 0.95));
+  const raanArc = lineFrom(raan, 'aries', 0.95); g.add(raanArc);
   const tipN = raan[raan.length-1];
-  g.add(cone(tipN, new THREE.Vector3().subVectors(tipN, raan[raan.length-2]), 0.11, 'aries'));
+  const raanCone = cone(tipN, new THREE.Vector3().subVectors(tipN, raan[raan.length-2]), 0.11, 'aries');
+  g.add(raanCone);
   g.add(lineFrom([O, b.x.clone().multiplyScalar(Rn*1.06)], 'aries', 0.55));
-  const raanL = makeLabel('Ω = '+el.raan.toFixed(2)+'°', SPACE.aries,
-                          { h:0.021, depthTest:false });
-  raanL.position.copy(raan[raan.length>>1]).multiplyScalar(1.10).add(new THREE.Vector3(0,0.08,0));
-  g.add(raanL);
+  /* The +Y nudge that used to be here, and on the four labels below, is gone.
+     A world-space push along +Y is a screen-space push only when the camera
+     happens to sit near the equator; at the pole it does nothing at all. It was
+     de-collision attempted in the wrong space, and the layout pass at the end of
+     this file does that job now. What stays is the push that MEANS something:
+     outward, away from the thing being named. */
+  const raanL = tagLabel('Ω', 'RAAN  Ω = '+el.raan.toFixed(2)+'°', SPACE.aries,
+                         { h:0.021, key:'raan', prio:0 });
+  raanL.position.copy(raan[raan.length>>1]).multiplyScalar(1.10);
+  g.add(raanL); regPick(raanL,'raan'); regPick(raanArc,'raan'); regPick(raanCone,'raan');
 
   // Inclination is a dihedral angle, so it is drawn where it is defined: on a
   // circle about the node line, from the equatorial plane up into the orbit plane.
   const Ci = b.n.clone().multiplyScalar(Rn*0.90), rho = Math.max(0.30, Rn*0.26);
   const inc = arcPts(Ci, b.eq, b.z, rho, el.inc, Math.max(20, Math.round(el.inc/2)));
-  g.add(lineFrom(inc, 'track', 0.95));
+  const incArc = lineFrom(inc, 'track', 0.95); g.add(incArc);
   g.add(lineFrom([Ci, new THREE.Vector3().copy(Ci).addScaledVector(b.eq, rho)], 'ring', 0.6));
   g.add(lineFrom([Ci, new THREE.Vector3().copy(Ci).addScaledVector(b.v, rho)], 'track', 0.6));
   const tipI = inc[inc.length-1];
-  g.add(cone(tipI, new THREE.Vector3().subVectors(tipI, inc[inc.length-2]), 0.085, 'track'));
-  const incL = makeLabel('i = '+el.inc.toFixed(2)+'°', SPACE.track,
-                         { h:0.021, depthTest:false });
+  const incCone = cone(tipI, new THREE.Vector3().subVectors(tipI, inc[inc.length-2]), 0.085, 'track');
+  g.add(incCone);
+  const incL = tagLabel('i', 'inclination  i = '+el.inc.toFixed(2)+'°', SPACE.track,
+                        { h:0.021, key:'inc', prio:0 });
   incL.position.copy(inc[inc.length>>1]).addScaledVector(b.z, 0.15).addScaledVector(b.eq, 0.06);
-  g.add(incL);
+  g.add(incL); regPick(incL,'inc'); regPick(incArc,'inc'); regPick(incCone,'inc');
 
   // argument of perigee: inside the orbit plane, node -> perigee
   const argp = arcPts(O, b.n, b.v, Rw, el.argp, Math.max(24, Math.round(el.argp/2)));
-  g.add(lineFrom(argp, 'contact', 0.95));
+  const argpArc = lineFrom(argp, 'contact', 0.95); g.add(argpArc);
   const tipW = argp[argp.length-1];
-  g.add(cone(tipW, new THREE.Vector3().subVectors(tipW, argp[argp.length-2]), 0.10, 'contact'));
-  const argpL = makeLabel('ω = '+el.argp.toFixed(2)+'°', SPACE.contact,
-                          { h:0.021, depthTest:false });
-  argpL.position.copy(argp[argp.length>>1]).multiplyScalar(1.10).add(new THREE.Vector3(0,0.08,0));
-  g.add(argpL);
+  const argpCone = cone(tipW, new THREE.Vector3().subVectors(tipW, argp[argp.length-2]), 0.10, 'contact');
+  g.add(argpCone);
+  const argpL = tagLabel('ω', 'arg. of perigee  ω = '+el.argp.toFixed(2)+'°',
+                         SPACE.contact, { h:0.021, key:'argp', prio:0 });
+  argpL.position.copy(argp[argp.length>>1]).multiplyScalar(1.10);
+  g.add(argpL); regPick(argpL,'argp'); regPick(argpArc,'argp'); regPick(argpCone,'argp');
 
   // apsides
   const pPos = b.p.clone().multiplyScalar(rp), aPos = b.p.clone().multiplyScalar(-ra);
   g.add(lineFrom([pPos, aPos], 'muted', 0.35));
-  g.add(dot(pPos, 0.028, 'contact'));
-  g.add(dot(aPos, 0.024, 'muted'));
-  const pl = makeLabel(['PERIGEE', (el.a*(1-el.ecc)-RE).toFixed(0)+' km'], SPACE.contact,
-                       { h:0.016, depthTest:false });
-  pl.position.copy(pPos).addScaledVector(b.p, 0.24).add(new THREE.Vector3(0,0.09,0));
-  g.add(pl);
-  const al = makeLabel(['APOGEE', (el.a*(1+el.ecc)-RE).toFixed(0)+' km'], SPACE.muted,
-                       { h:0.016, depthTest:false });
-  al.position.copy(aPos).addScaledVector(b.p, -0.24).add(new THREE.Vector3(0,0.09,0));
-  g.add(al);
+  const periDot = dot(pPos, 0.028, 'contact'); g.add(periDot);
+  const apoDot  = dot(aPos, 0.024, 'muted');    g.add(apoDot);
+  /* One line each, not two. makeLabel gives a two-line label 1.6x the height as
+     well as the width, and these two share the apse line with the e arrow -
+     three stacked two-line labels on a near-circular orbit was the single
+     largest contributor to the pile-up. The altitudes are in the elements card
+     below as min and max altitude. */
+  const pl = tagLabel('perigee', 'perigee  '+(el.a*(1-el.ecc)-RE).toFixed(0)+' km alt',
+                      SPACE.contact, { h:0.016, key:'peri', prio:3 });
+  pl.position.copy(pPos).addScaledVector(b.p, 0.24);
+  g.add(pl); regPick(pl,'peri'); regPick(periDot,'peri');
+  const al = tagLabel('apogee', 'apogee  '+(el.a*(1+el.ecc)-RE).toFixed(0)+' km alt',
+                      SPACE.muted, { h:0.016, key:'apo', prio:3 });
+  al.position.copy(aPos).addScaledVector(b.p, -0.24);
+  g.add(al); regPick(al,'apo'); regPick(apoDot,'apo');
 
   // the orbit normal, so the sense of the inclination arc reads at a glance
   g.add(lineFrom([O, b.w.clone().multiplyScalar(Rn*0.85)], 'track', 0.35));
@@ -987,6 +1366,15 @@ global.OrbitViz = {
     if(!THREE || !THREE.Sprite) return false;
     scene = opts.scene; sat = opts.satellite || global.satellite;
     if(!scene) return false;
+    /* Handed in rather than reached for: the camera and the canvas belong to
+       orbit3d, and this module borrows them to project its own labels.
+       `occluder` returns a RADIUS in scene units, not a boolean, so orbitviz
+       never has to know what orbit3d is drawing - and so that hiding the Earth
+       correctly switches occlusion off, because a reader who asked to see
+       through the planet must not have labels hidden behind it. */
+    camRef = opts.camera || null;
+    viewEl = opts.viewport || null;
+    occluder = opts.occluder || null;
     U = (typeof opts.scale === 'number' && opts.scale > 0) ? opts.scale : 1/RE;
     if(opts.body){ BODYRE = opts.body.Re; MU = opts.body.mu; }
     dpr = Math.min(global.devicePixelRatio || 1, 2);
@@ -1003,12 +1391,29 @@ global.OrbitViz = {
     return true;
   },
 
+  /* The pointer seam. orbit3d owns the camera and the canvas and hands in a
+     raycaster it has already aimed; this says what was hit and what it means.
+     pick() has no side effects so a check can call it and assert on the answer;
+     setHover() is what actually changes the picture. */
+  pick(rc, ndc){ return rc ? pickKey(rc, ndc, false) : null; },
+  /* Is the pointer over a label? Answered from the rectangles alone, with no
+     raycast, so the caller can ask before it decides what the pointer means. */
+  pickLabel(ndc){ return ndc ? pickKey(null, ndc, true) : null; },
+  setHover(k){ setHoverKey(k || null); },
+  get hover(){ return hotKey; },
+  /* For the checks: the registered labels, their priorities, and which form is
+     on screen - read off the material, not off a flag that says what should
+     have been bound. */
+  tags(){ return TAGS.map(function(t){
+    return { key:t.key, prio:t.prio, visible:t.sprite.visible,
+             full: t.sprite.material.map === t.sprite.userData.form.full.tex }; }); },
   setOrbit(o){
     if(!started) return false;
     o = o || {};
     el = normElements(o.satrec, o.elements);
     satrecRef = o.satrec || null;
     killLayer('elements');                        // a switch of spacecraft must not leak the last one
+    clearTags();
     if(el && layerOn('elements')) ensure('elements');
     return !!el;
   },
@@ -1020,7 +1425,12 @@ global.OrbitViz = {
     if(precMs === null || Math.abs(ms - precMs) > 2.6e9){   // ~30 days; precession is 50"/yr
       precess(simTime); precMs = ms;
     }
-    if(G.elements && live) updateLive(simTime);
+    if(G.elements && live){ updateLive(simTime); layoutDirty = true; }
+    /* Deliberately NOT inside the updateLive throttle above. That one is gated
+       on simulated time, and with playback paused sim time stops while the
+       camera keeps moving under the reader's drag - the labels would freeze
+       where they were and slide off their anchors. */
+    layoutIfStale();
     if(G.planets) updatePlanets(simTime, false);
     if(starMat){
       // the window can be dragged to a screen with a different pixel ratio, and

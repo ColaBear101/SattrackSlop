@@ -1021,7 +1021,8 @@ function bindInput(canvas){
   canvas.addEventListener('touchmove', move, {passive:false});
   window.addEventListener('mouseup', up);
   window.addEventListener('touchend', up);
-  canvas.addEventListener('mouseleave', ()=>{ mouse = null; hoverIdx = -1; });
+  canvas.addEventListener('mouseleave', ()=>{ mouse = null; hoverIdx = -1;
+    if(global.OrbitViz && OrbitViz.setHover) OrbitViz.setHover(null); });
   canvas.addEventListener('wheel', e => {
     /* There is no range to change from inside the spacecraft, so in POV the
        wheel is a lens instead: 8 deg is a long telephoto on the limb, 90 deg
@@ -1230,6 +1231,29 @@ function tick(ts){
   } else if(hoverIdx !== -1 && (dragging || !cloudPts.visible)){
     hoverIdx = -1;                                  // drop a stale hover
     canvas.style.cursor = dragging ? 'grabbing' : 'grab';
+  }
+  /* Who owns the pointer, in order.
+     A LABEL wins outright, including over the catalogue: it is explicit UI
+     drawn on top, and the alternative is that it almost never wins at all -
+     2158 catalogue points blanket the view, so nearly every label has one
+     behind it. When a label wins, the catalogue hover is dropped too, so a
+     click on the omega label does not load whatever happened to be behind it.
+     Failing that the catalogue wins, because clicking a point loads that
+     spacecraft and an arc under the cursor must not eat that.
+     Element GEOMETRY comes last, on what is left. */
+  if(global.OrbitViz && OrbitViz.setHover){
+    if(mouse && !dragging){
+      const onLabel = OrbitViz.pickLabel ? OrbitViz.pickLabel(mouse) : null;
+      if(onLabel){
+        if(hoverIdx !== -1){ hoverIdx = -1; canvas.style.cursor = 'pointer'; }
+        OrbitViz.setHover(onLabel);
+      } else if(hoverIdx >= 0){
+        OrbitViz.setHover(null);
+      } else {
+        raycaster.setFromCamera(mouse, cam);
+        OrbitViz.setHover(OrbitViz.pick(raycaster, mouse));
+      }
+    } else OrbitViz.setHover(null);
   }
   paintLabels(satPos, el);
   renderer.render(scene, cam);

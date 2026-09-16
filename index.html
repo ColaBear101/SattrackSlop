@@ -9666,7 +9666,14 @@ document.addEventListener('visibilitychange', () => {
   if(window.OrbitViz){
     try {
       OrbitViz.init({ THREE: window.THREE, scene: Orbit3D.scene, body: BODY,
-                      satellite: satellite, scale: 1/6378.137 });
+                      satellite: satellite, scale: 1/6378.137,
+                      /* orbitviz projects its own labels now, so it needs the
+                         camera and the canvas. The occluding radius is a
+                         function rather than a constant because the Earth
+                         checkbox turns the globe off, and with it occlusion. */
+                      camera: Orbit3D.camera,
+                      viewport: () => Orbit3D.renderer.domElement,
+                      occluder: () => Orbit3D.earth ? 1 : 0 });
       // every layer starts off - the default view was deliberately decluttered,
       // and the Layers button is right there for anyone who wants the geometry
       OrbitViz.layers().forEach(l => OrbitViz.show(l.key, false));

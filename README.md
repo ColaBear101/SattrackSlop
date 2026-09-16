@@ -1015,6 +1015,7 @@ npm run optical      # shadow cone geometry and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run timeline     # the window rolling forward when playback runs off the end
+npm run elements     # the element labels: no overlap, nothing clipped, hover expands one
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

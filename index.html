@@ -589,6 +589,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div class="trailseg">
         <span class="seglabel" id="traillabel">Trail</span>
         <div class="seg" role="group" aria-labelledby="traillabel">
+          <button class="btn trl" data-t="off" aria-pressed="false">Off</button>
           <button class="btn trl" data-t="1800000" aria-pressed="false">30 m</button>
           <button class="btn trl" data-t="orbit" aria-pressed="false">1 orbit</button>
           <button class="btn trl" data-t="21600000" aria-pressed="true">6 h</button>
@@ -715,9 +716,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
     <label class="btn" for="o3earth2" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3earth2" checked> Earth
-    </label>
-    <label class="btn" for="o3fov" style="display:inline-flex;gap:7px;align-items:center">
-      <input type="checkbox" id="o3fov" checked> Footprint
     </label>
     <label class="btn" for="o3cloud" style="display:inline-flex;gap:7px;align-items:center">
       <input type="checkbox" id="o3cloud" checked> Catalogue
@@ -9622,7 +9620,12 @@ document.addEventListener('visibilitychange', () => {
       '<p class="layerhead">Globe surface</p>' +
       modes.map(m => '<label><input type="radio" name="globesurf" value="'+esc(m.key)+'"'+
         (m.key === want ? ' checked' : '')+'> '+esc(m.label)+'</label>').join('') +
-      '<p class="layernote" id="texnote"></p><div class="layerrule"></div>');
+      '<p class="layernote" id="texnote"></p><div class="layerrule"></div>' +
+      /* The access footprint is a thing drawn ON the scene, which is what this
+         panel is for. It used to sit in the transport bar beside Earth and
+         Catalogue, which is where the controls that did not fit went. */
+      '<label><input type="checkbox" id="o3fov" data-scene="footprint" checked>' +
+      ' Access footprint</label>');
     const note = document.getElementById('texnote');
     const NOTE = {};
     modes.forEach(m => { NOTE[m.key] = m.note || ''; });
@@ -9647,6 +9650,12 @@ document.addEventListener('visibilitychange', () => {
       note.textContent = t.trim();
     }
     menu0.addEventListener('change', e => {
+      if(e.target.dataset.scene === 'footprint'){
+        fovOn = e.target.checked;
+        if(global3D()) Orbit3D.showFov(fovOn);
+        paintClock(true);                         // the flat map draws it too
+        return;
+      }
       if(e.target.name !== 'globesurf') return;
       try { localStorage.setItem(SURFKEY, e.target.value); } catch(err){}
       Orbit3D.setSurface(e.target.value, surfStatus);
@@ -9702,8 +9711,14 @@ document.addEventListener('visibilitychange', () => {
 
   const trls = [...document.querySelectorAll('.trailseg .trl')];
   function applyTrail(){
-    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true') || trls[2];
+    const b = trls.find(x => x.getAttribute('aria-pressed') === 'true')
+           || trls.find(x => x.dataset.t === '21600000');
     const v = b.dataset.t;
+    /* Off belongs in this control rather than beside it. A checkbox next to a
+       row of durations leaves the durations sitting there meaning nothing while
+       it is unticked; one control with one state does not. */
+    Orbit3D.showTrack(v !== 'off');
+    if(v === 'off') return;
     Orbit3D.setTrail(v === 'all' ? Infinity
                    : v === 'orbit' ? D.E.period*1000      // one revolution
                    : +v);
@@ -9725,11 +9740,6 @@ document.addEventListener('visibilitychange', () => {
   document.getElementById('o3cloud').addEventListener('change', e=>Orbit3D.showCloud(e.target.checked));
   document.getElementById('o3earth2').addEventListener('change',
     e=>Orbit3D.showEarth(e.target.checked));
-  document.getElementById('o3fov').addEventListener('change', e=>{
-    fovOn = e.target.checked;
-    if(global3D()) Orbit3D.showFov(fovOn);
-    paintClock(true);                             // repaint the flat map too
-  });
 })();
 
 curIdx = DEFAULT;

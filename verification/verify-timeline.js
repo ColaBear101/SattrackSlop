@@ -97,6 +97,69 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
       document.getElementById('tpplay').getAttribute('aria-label') === 'Pause'));
 
   console.log('\npage errors: ' + (errs.length ? errs.slice(0, 3).join(' | ') : 'none'));
+  // ---- the trail switch ----------------------------------------------------
+  /* Off is a segment of the trail control rather than a checkbox beside it, so
+     there is one control with one state instead of a tickbox and a row of
+     durations that mean nothing while it is unticked.
+
+     The check that matters is the last one. setSat() makes the whole
+     ground-bound group visible again every time a spacecraft is loaded, so a
+     trail switched off would quietly come back the moment the reader picked a
+     different object - which is why it is a flag the loader consults and not
+     just the mesh's visible bit. Read off the mesh in the scene graph, never
+     off the button's aria-pressed: the button is the thing being tested. */
+  const trailMesh = () => page.evaluate(() => {
+    let tl = null;
+    Orbit3D.scene.traverse(o => {
+      if (o.type === 'Line' && o.material && o.material.vertexColors
+          && o.geometry.attributes.color) tl = o;
+    });
+    return tl ? { visible: tl.visible, pts: tl.geometry.attributes.position.count } : null;
+  });
+  const trailClick = t => page.evaluate(v =>
+    [...document.querySelectorAll('.trailseg .trl')].find(x => x.dataset.t === v).click(), t);
+
+  const segs = await page.evaluate(() =>
+    [...document.querySelectorAll('.trailseg .trl')].map(x => x.textContent.trim()));
+  chk('the trail control carries its own off switch', segs[0] === 'Off', segs.join(' '));
+
+  const on0 = await trailMesh();
+  chk('...and the trail is drawn to begin with', !!on0 && on0.visible === true,
+      on0 ? on0.pts + ' points, visible' : 'no trail mesh found');
+
+  await trailClick('off');
+  await page.waitForTimeout(700);
+  const off0 = await trailMesh();
+  chk('...Off takes it out of the scene', off0 && off0.visible === false,
+      off0 ? 'visible = ' + off0.visible : 'mesh gone');
+
+  /* Load a different spacecraft. This is the regression. */
+  await page.evaluate(() => {
+    const box = document.getElementById('satsearch');
+    const other = __gt.CAT.find(c => String(c.satnum) !== String(__gt.D.E.satnum));
+    box.value = other.name;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const o = document.querySelector('#satlist [role=option]');
+    if (o) o.click();
+  });
+  await page.waitForTimeout(2500);
+  const offAfter = await trailMesh();
+  chk('...and stays off when a different spacecraft is loaded',
+      offAfter && offAfter.visible === false,
+      offAfter ? 'visible = ' + offAfter.visible : 'mesh gone');
+  chk('...with the button still showing it',
+      await page.evaluate(() => document.querySelector('.trailseg .trl[data-t=off]')
+        .getAttribute('aria-pressed') === 'true'));
+
+  await trailClick('21600000');
+  await page.waitForTimeout(700);
+  const back = await trailMesh();
+  chk('...and a duration brings it back', back && back.visible === true,
+      back ? back.pts + ' points, visible' : 'mesh gone');
+
   if (errs.length) fails++;
 
   await browser.close();

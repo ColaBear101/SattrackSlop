@@ -42,6 +42,11 @@ let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
+/* The trail has its own switch, and it has to be a flag rather than just the
+   mesh's visible bit: setSat() makes the whole ground-bound group visible again
+   every time a spacecraft is loaded, so a trail switched off would quietly come
+   back the moment the reader picked a different object. */
+let trackOn = true;
 /* R(+) and the altitude are both ELEMENT annotations - they measure the body
    and the orbit the way h and e do - so the Orbital elements layer owns the
    pair, rather than the Earth checkbox they happened to be wired to first.
@@ -496,7 +501,9 @@ function setSat(entry, elements, win){
     if(labels.name){ labels.name.textContent = entry.name; labels.name.style.display = 'none'; }
     return;
   }
-  [orbitLine, trackLine, footRing].forEach(o=>{ if(o) o.visible = true; });
+  if(orbitLine) orbitLine.visible = true;
+  if(footRing) footRing.visible = true;
+  if(trackLine) trackLine.visible = trackOn;   // ...but the trail keeps its switch
   const periodS = elements && elements.period ? elements.period : 5400;
   if(!(GT && GT.now))                              // only self-clocked scenes reset time
     simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
@@ -1407,7 +1414,8 @@ global.Orbit3D = {
     cloudPts.visible = v;
     if(!v){ hoverIdx = -1; if(labels.hover) labels.hover.style.display = 'none'; }
   },
-  showTrack(v){ if(trackLine) trackLine.visible = v; },
+  showTrack(v){ trackOn = !!v; if(trackLine) trackLine.visible = trackOn; },
+  get track(){ return trackOn; },
   // the scene is inertial, so a fixed camera longitude is a right ascension and
   // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
   setSite(v){ setSiteState(!!v); },

@@ -345,7 +345,8 @@ function build(canvas){
   reLine = new THREE.Line(reGeo, new THREE.LineBasicMaterial({
     color: new THREE.Color(SPACE.ink), transparent:true, opacity:.9 }));
   reTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.ink) }));
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.ink), transparent:true }));
+  reTip.userData.arrowHead = true; reTip.userData.baseOpacity = 1;
   reLine.visible = reTip.visible = false;
   scene.add(reLine); scene.add(reTip);
 
@@ -356,7 +357,8 @@ function build(canvas){
   altLine = new THREE.Line(altGeo, new THREE.LineBasicMaterial({
     color: new THREE.Color(SPACE.track), transparent:true, opacity:.95 }));
   altTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.track) }));
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.track), transparent:true }));
+  altTip.userData.arrowHead = true; altTip.userData.baseOpacity = 1;
   altLine.visible = altTip.visible = false;
   scene.add(altLine); scene.add(altTip);
 
@@ -1256,7 +1258,28 @@ function tick(ts){
     } else OrbitViz.setHover(null);
   }
   paintLabels(satPos, el);
+  fadeHeads();
   renderer.render(scene, cam);
+}
+
+/* An arrowhead the camera has closed on stops being a pointer and becomes a
+   wall of flat colour across the view. Every cone tagged arrowHead - these two
+   and orbitviz's - fades out over 20 to 10 of its own lengths from the eye and
+   is gone inside that. At the default zoom the nearest head is ~44 lengths
+   away; in POV the velocity head sits at ~8, filling the middle of the view. Done through the MATERIAL, so it never fights the code
+   that owns object.visible; baseOpacity is what it fades from. */
+let headPos = null;                             // THREE is not loaded when this file is
+function fadeHeads(){
+  if(!headPos) headPos = new THREE.Vector3();
+  scene.traverseVisible(function(o){
+    if(!o.userData.arrowHead) return;
+    const len = (o.geometry.parameters && o.geometry.parameters.height) || 0.07;
+    o.updateWorldMatrix(true, false);            // moved this frame; render refreshes it later
+    const d = cam.position.distanceTo(headPos.setFromMatrixPosition(o.matrixWorld));
+    const t = Math.min(1, Math.max(0, (d - 10*len) / (10*len)));
+    o.material.opacity = o.userData.baseOpacity * t;
+    o.material.visible = t > 0;
+  });
 }
 
 function paintLabels(satPos, el){

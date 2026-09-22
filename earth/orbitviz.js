@@ -20,9 +20,14 @@ const R_SKY = 400;                               // far sphere radius, in Earth 
 const SPACE = {
   track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
   ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
-  aries:'#F0C24B',                               // the direction everything is measured from
-  hvec:'#9FD3E3', evec:'#F0A03C',
-  vvec:'#7FE0B0', vtvec:'#6FC79C', vnvec:'#D6A0E0',
+  aries:'#F5C842',                               // the direction everything is measured from
+  /* One hue per element, so no two quantities on the globe share a colour.
+     Before this, theta, omega, the node and perigee were all the same orange,
+     e a near-identical one, i the orbit's own blue, and v / vt two greens. */
+  raan:'#F5C842',                                // = aries: the arc starts there
+  inc:'#A98BFF', argp:'#FF9230', nu:'#FF4FA3',
+  hvec:'#4FC3FF', evec:'#FF5555',
+  vvec:'#4DF0A0', vtvec:'#2FD9D9', vnvec:'#E8F060',
   pole:'#9FD3E3', star:'#DCE7EE'
 };
 
@@ -108,6 +113,10 @@ function layout(){
     let on = true;
     for(let n = sp.parent; n; n = n.parent) if(!n.visible){ on = false; break; }
     if(!on) continue;
+    /* matrixWorld is refreshed by the renderer, and this can run between an
+       anchor move in updateLive and the next render - without this it lays out
+       the previous tick's anchors. */
+    sp.updateWorldMatrix(true, false);
     const pos = new THREE.Vector3().setFromMatrixPosition(sp.matrixWorld);
     const pr = pos.clone().project(camRef);
     if(pr.z > 1) continue;                               // behind the camera
@@ -334,7 +343,10 @@ const G = {};                                    // key -> THREE.Group, absent u
 /* ---- small helpers -------------------------------------------------------- */
 const rev = a => a - Math.floor(a/360)*360;
 const sin = a => Math.sin(a*RAD), cos = a => Math.cos(a*RAD);
-const C = n => new THREE.Color(SPACE[n]);
+/* A palette key or a colour. The live parts pass SPACE.hvec - a hex, not a key -
+   and SPACE['#...'] is undefined, which THREE.Color turns into WHITE: every
+   live arrow and head was being drawn white whatever the palette said. */
+const C = n => new THREE.Color(SPACE[n] || n);
 function eci(x, y, z){ return new THREE.Vector3(x, z, -y); }
 function raDec(ra, dec, r){
   const cd = cos(dec);
@@ -502,6 +514,18 @@ function lineFrom(pts, colour, opacity){
   return new THREE.Line(g, new THREE.LineBasicMaterial({
     color: C(colour), transparent:true, opacity: opacity }));
 }
+/* The same path as a tube. WebGL draws every Line 1 px wide whatever linewidth
+   says, and at 1 px the element colours wash out to near-white against the
+   globe. The Line stays underneath as the pick target (its 8 px threshold is
+   kinder to a pointer than a 3 px tube); this is only what the eye reads. */
+const TUBE_R = 0.007;                            // ~3 px across at the default zoom
+function tubeGeo(pts){
+  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(8, pts.length*2), TUBE_R, 6, false);
+}
+function tubeFrom(pts, colour, opacity){
+  return new THREE.Mesh(tubeGeo(pts), new THREE.MeshBasicMaterial({
+    color: C(colour), transparent:true, opacity: opacity, depthWrite:false }));
+}
 /* An arc swept from u toward v about a common centre. u and v must be a unit
    pair spanning the plane the angle is defined in; building every element angle
    this way is what stops the drawing from disagreeing with the number. */
@@ -521,6 +545,10 @@ function cone(pos, dir, size, colour, opacity){
       opacity: opacity === undefined ? 1 : opacity }));
   m.position.copy(pos);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  // orbit3d fades every tagged head out as the camera closes on it; the
+  // opacity it fades FROM lives here, so write baseOpacity, not material.opacity
+  m.userData.arrowHead = true;
+  m.userData.baseOpacity = m.material.opacity;
   return m;
 }
 function dot(pos, size, colour, opacity){
@@ -644,7 +672,13 @@ function buildLive(parent){
     hTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.085, SPACE.hvec, .95),
     eTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.evec, .95),
     nu: new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
-          color:C(SPACE.contact), transparent:true, opacity:.9 })),
+          color:C('nu'), transparent:true, opacity:.95 })),
+    // the arc runs outside the orbit, so a spoke ties its end to the spacecraft
+    // and a head says which way the angle grows
+    nuTube: new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+          color:C('nu'), transparent:true, opacity:.95, depthWrite:false })),
+    nuSpoke: mk(SPACE.nu),
+    nuTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, 'nu', .95),
     v:  mk(SPACE.vvec), vt: mk(SPACE.vtvec), vn: mk(SPACE.vnvec),
     vTip:  cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.075, SPACE.vvec, .95),
     vtTip: cone(new THREE.Vector3(), new THREE.Vector3(0,1,0), 0.060, SPACE.vtvec, .9),
@@ -658,9 +692,10 @@ function buildLive(parent){
     vnLbl: liveLabel(SPACE.vnvec, {h:0.015, short:'vn', key:'vn', prio:7, sample:'vn = 00.000 km/s (radial)'}),
     hLbl: liveLabel(SPACE.hvec, {h:0.017, short:'h', key:'h', prio:2, sample:'h = 000000000 km2/s'}),
     eLbl: liveLabel(SPACE.evec, {h:0.017, short:'e', key:'e', prio:2, sample:'e = 0.0000000  (mean; perigee barely defined)'}),
-    nuLbl: liveLabel(SPACE.contact, {h:0.018, short:'\u03b8', key:'nu', prio:1, sample:'\u03b8 = 000.00\u00b0 from mean perigee'})
+    nuLbl: liveLabel(SPACE.nu, {h:0.018, short:'\u03b8', key:'nu', prio:1, sample:'\u03b8 = 000.00\u00b0 from mean perigee'})
   };
-  [live.h, live.e, live.hTip, live.eTip, live.nu,
+  live.nuSpoke.material.opacity = .5;
+  [live.h, live.e, live.hTip, live.eTip, live.nu, live.nuTube, live.nuSpoke, live.nuTip,
    live.hLbl, live.eLbl, live.nuLbl,
    live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
    live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>parent.add(o));
@@ -668,7 +703,7 @@ function buildLive(parent){
      because it is the primary target - see pickKey. */
   regPick(live.hLbl,'h');  regPick(live.h,'h');   regPick(live.hTip,'h');
   regPick(live.eLbl,'e');  regPick(live.e,'e');   regPick(live.eTip,'e');
-  regPick(live.nuLbl,'nu'); regPick(live.nu,'nu');
+  regPick(live.nuLbl,'nu'); regPick(live.nu,'nu'); regPick(live.nuTip,'nu');
   regPick(live.vLbl,'v');  regPick(live.v,'v');   regPick(live.vTip,'v');
   regPick(live.vtLbl,'vt'); regPick(live.vt,'vt'); regPick(live.vtTip,'vt');
   regPick(live.vnLbl,'vn'); regPick(live.vn,'vn'); regPick(live.vnTip,'vn');
@@ -704,18 +739,22 @@ function setRay(line, tip, vec, headBack){
 }
 
 function updateLive(date){
-  if(!live || !satrecRef || !sat) return;
+  if(!live || !satrecRef || !sat) return false;
   const ms = date.getTime();
-  if(liveMs !== null && Math.abs(ms - liveMs) < 120) return;   // ~8 Hz is plenty
+  if(liveMs !== null && Math.abs(ms - liveMs) < 120) return false;   // ~8 Hz is plenty
   liveMs = ms;
   let pv = null;
   try { pv = sat.propagate(satrecRef, date); } catch(e){ pv = null; }
   const vis = !!(pv && pv.position && pv.velocity && isFinite(pv.position.x));
-  [live.h, live.e, live.hTip, live.eTip, live.nu,
-   live.hLbl, live.eLbl, live.nuLbl,
-   live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip,
-   live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>o.visible = vis);
-  if(!vis) return;
+  [live.h, live.e, live.hTip, live.eTip, live.nu, live.nuTube, live.nuSpoke, live.nuTip,
+   live.v, live.vt, live.vn, live.vTip, live.vtTip, live.vnTip].forEach(o=>o.visible = vis);
+  /* The labels go through userData.off, never sprite.visible. layout() owns
+     visible, and writing true here at 8 Hz un-hid every label the layout had
+     dropped for a collision until the next pass hid it again - the labels
+     blinked at the physics rate. */
+  [live.hLbl, live.eLbl, live.nuLbl,
+   live.vLbl, live.vtLbl, live.vnLbl].forEach(o=>o.userData.off = !vis);
+  if(!vis) return true;
 
   const R = [pv.position.x, pv.position.y, pv.position.z];
   const V = [pv.velocity.x, pv.velocity.y, pv.velocity.z];
@@ -765,7 +804,7 @@ function updateLive(date){
     live.eLbl.position.copy(eDir).multiplyScalar(eLen + 0.16);
     live.e.visible = live.eTip.visible = true; live.eLbl.userData.off = false;
     live.e.material.opacity = nearCircular ? .38 : .95;
-    live.eTip.material.opacity = nearCircular ? .38 : .95;
+    live.eTip.userData.baseOpacity = nearCircular ? .38 : .95;
   } else {
     live.e.visible = live.eTip.visible = false; live.eLbl.userData.off = true;
   }
@@ -797,7 +836,11 @@ function updateLive(date){
        perigees are apart. atan2 in the orbit plane has no branch to choose. */
     let ang = Math.atan2(rHat.dot(inPlane), rHat.dot(fromDir))*DEG;
     if(ang < 0) ang += 360;
-    const Rnu = Math.max(0.62, rLen*0.42);
+    /* OUTSIDE the orbit. It was max(0.62, 0.42 r), which for anything in LEO
+       is 0.62 Earth radii - inside the planet, so the globe hid the arc and
+       the theta label anchored on it was culled as behind the body. Just past
+       the e arrow's tip, so the angle visibly starts from that arrow. */
+    const Rnu = Math.max(1.36, rLen*1.22);
     const arr = live.nu.geometry.attributes.position.array;
     for(let k=0;k<=live.seg;k++){
       const t = ang*k/live.seg;
@@ -806,10 +849,23 @@ function updateLive(date){
     }
     live.nu.geometry.attributes.position.needsUpdate = true;
     live.nu.geometry.computeBoundingSphere();
+    // rebuilt rather than bent: 8 Hz, a few hundred vertices
+    const tubePts = [];
+    for(let k=0;k<=live.seg;k+=2) tubePts.push(new THREE.Vector3(arr[k*3], arr[k*3+1], arr[k*3+2]));
+    live.nuTube.geometry.dispose();
+    live.nuTube.geometry = ang > 0.5 ? tubeGeo(tubePts) : new THREE.BufferGeometry();
     live.nu.visible = true; live.nuLbl.userData.off = false;
-    const mid = ang/2;
-    live.nuLbl.position.copy(fromDir).multiplyScalar(Rnu*cos(mid)*1.12)
-      .addScaledVector(inPlane, Rnu*sin(mid)*1.12);
+    const nuEnd = fromDir.clone().multiplyScalar(Rnu*cos(ang)).addScaledVector(inPlane, Rnu*sin(ang));
+    const nuDir = fromDir.clone().multiplyScalar(-sin(ang)).addScaledVector(inPlane, cos(ang));
+    setSeg(live.nuSpoke, null, rS, nuEnd);         // spacecraft out to the end of the arc
+    live.nuTip.position.copy(nuEnd).addScaledVector(nuDir, -0.036);
+    live.nuTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), nuDir);
+    live.nuTube.visible = live.nuSpoke.visible = live.nuTip.visible = true;
+    /* At the arc's END, beside the spacecraft, not at its middle: past
+       theta = 180 the middle is on the far side of the planet from a camera
+       that is following the spacecraft, and the label was culled as behind
+       the body for half of every orbit. */
+    live.nuLbl.position.copy(nuEnd).multiplyScalar(1.08);
     if(nuShown === null || Math.abs(ang - nuShown) > 0.05){
       nuShown = ang;
       // one symbol for the angle either way, with the reference named, rather
@@ -825,7 +881,8 @@ function updateLive(date){
         : 'e = '+eShown.toFixed(7)+'  (mean)');
     }
   } else {
-    live.nu.visible = false; live.nuLbl.userData.off = true;
+    live.nu.visible = live.nuTube.visible = live.nuSpoke.visible = live.nuTip.visible = false;
+    live.nuLbl.userData.off = true;
   }
   /* Velocity, split in the plane. Note the cross-track component here is zero
      by construction, not by physics: h is defined as r x v, so v.h vanishes for
@@ -862,6 +919,7 @@ function updateLive(date){
     live.vnLbl.userData.paint('vn = '+vRad.toFixed(3)+' km/s (radial)');
   }
   live.hLbl.userData.paint('h = '+(hMag).toFixed(0)+' km\u00b2/s');
+  return true;
 }
 
 function buildElements(){
@@ -896,8 +954,8 @@ function buildElements(){
   g.add(lineFrom([b.n.clone().multiplyScalar(-Ln), b.n.clone().multiplyScalar(Ln)], 'ink2', 0.7));
   const rAsc = radiusAt(el, -el.argp)*U, rDes = radiusAt(el, 180-el.argp)*U;
   const asc = b.n.clone().multiplyScalar(rAsc), des = b.n.clone().multiplyScalar(-rDes);
-  const ascDot = dot(asc, 0.030, 'contact'); g.add(ascDot);
-  const ascL = tagLabel('☊', 'ascending node', SPACE.contact,
+  const ascDot = dot(asc, 0.030, 'raan'); g.add(ascDot);
+  const ascL = tagLabel('☊', 'ascending node', SPACE.raan,
                         { h:0.017, key:'asc', prio:4 });
   ascL.position.copy(asc).addScaledVector(b.n, 0.22);
   g.add(ascL); regPick(ascL,'asc'); regPick(ascDot,'asc');
@@ -914,9 +972,9 @@ function buildElements(){
   // RAAN: measured in the equatorial plane, from Aries, eastward. The arc starts
   // on +X by construction — that is the assertion this layer exists to make.
   const raan = arcPts(O, b.x, b.y, Rn, el.raan, Math.max(24, Math.round(el.raan/2)));
-  const raanArc = lineFrom(raan, 'aries', 0.95); g.add(raanArc);
+  const raanArc = lineFrom(raan, 'raan', 1); g.add(raanArc); g.add(tubeFrom(raan, 'raan', 1));
   const tipN = raan[raan.length-1];
-  const raanCone = cone(tipN, new THREE.Vector3().subVectors(tipN, raan[raan.length-2]), 0.11, 'aries');
+  const raanCone = cone(tipN, new THREE.Vector3().subVectors(tipN, raan[raan.length-2]), 0.11, 'raan');
   g.add(raanCone);
   g.add(lineFrom([O, b.x.clone().multiplyScalar(Rn*1.06)], 'aries', 0.55));
   /* The +Y nudge that used to be here, and on the four labels below, is gone.
@@ -925,7 +983,7 @@ function buildElements(){
      de-collision attempted in the wrong space, and the layout pass at the end of
      this file does that job now. What stays is the push that MEANS something:
      outward, away from the thing being named. */
-  const raanL = tagLabel('Ω', 'RAAN  Ω = '+el.raan.toFixed(2)+'°', SPACE.aries,
+  const raanL = tagLabel('Ω', 'RAAN  Ω = '+el.raan.toFixed(2)+'°', SPACE.raan,
                          { h:0.021, key:'raan', prio:0 });
   raanL.position.copy(raan[raan.length>>1]).multiplyScalar(1.10);
   g.add(raanL); regPick(raanL,'raan'); regPick(raanArc,'raan'); regPick(raanCone,'raan');
@@ -934,32 +992,32 @@ function buildElements(){
   // circle about the node line, from the equatorial plane up into the orbit plane.
   const Ci = b.n.clone().multiplyScalar(Rn*0.90), rho = Math.max(0.30, Rn*0.26);
   const inc = arcPts(Ci, b.eq, b.z, rho, el.inc, Math.max(20, Math.round(el.inc/2)));
-  const incArc = lineFrom(inc, 'track', 0.95); g.add(incArc);
+  const incArc = lineFrom(inc, 'inc', 1); g.add(incArc); g.add(tubeFrom(inc, 'inc', 1));
   g.add(lineFrom([Ci, new THREE.Vector3().copy(Ci).addScaledVector(b.eq, rho)], 'ring', 0.6));
-  g.add(lineFrom([Ci, new THREE.Vector3().copy(Ci).addScaledVector(b.v, rho)], 'track', 0.6));
+  g.add(lineFrom([Ci, new THREE.Vector3().copy(Ci).addScaledVector(b.v, rho)], 'inc', 0.6));
   const tipI = inc[inc.length-1];
-  const incCone = cone(tipI, new THREE.Vector3().subVectors(tipI, inc[inc.length-2]), 0.085, 'track');
+  const incCone = cone(tipI, new THREE.Vector3().subVectors(tipI, inc[inc.length-2]), 0.085, 'inc');
   g.add(incCone);
-  const incL = tagLabel('i', 'inclination  i = '+el.inc.toFixed(2)+'°', SPACE.track,
+  const incL = tagLabel('i', 'inclination  i = '+el.inc.toFixed(2)+'°', SPACE.inc,
                         { h:0.021, key:'inc', prio:0 });
   incL.position.copy(inc[inc.length>>1]).addScaledVector(b.z, 0.15).addScaledVector(b.eq, 0.06);
   g.add(incL); regPick(incL,'inc'); regPick(incArc,'inc'); regPick(incCone,'inc');
 
   // argument of perigee: inside the orbit plane, node -> perigee
   const argp = arcPts(O, b.n, b.v, Rw, el.argp, Math.max(24, Math.round(el.argp/2)));
-  const argpArc = lineFrom(argp, 'contact', 0.95); g.add(argpArc);
+  const argpArc = lineFrom(argp, 'argp', 1); g.add(argpArc); g.add(tubeFrom(argp, 'argp', 1));
   const tipW = argp[argp.length-1];
-  const argpCone = cone(tipW, new THREE.Vector3().subVectors(tipW, argp[argp.length-2]), 0.10, 'contact');
+  const argpCone = cone(tipW, new THREE.Vector3().subVectors(tipW, argp[argp.length-2]), 0.10, 'argp');
   g.add(argpCone);
   const argpL = tagLabel('ω', 'arg. of perigee  ω = '+el.argp.toFixed(2)+'°',
-                         SPACE.contact, { h:0.021, key:'argp', prio:0 });
+                         SPACE.argp, { h:0.021, key:'argp', prio:0 });
   argpL.position.copy(argp[argp.length>>1]).multiplyScalar(1.10);
   g.add(argpL); regPick(argpL,'argp'); regPick(argpArc,'argp'); regPick(argpCone,'argp');
 
   // apsides
   const pPos = b.p.clone().multiplyScalar(rp), aPos = b.p.clone().multiplyScalar(-ra);
   g.add(lineFrom([pPos, aPos], 'muted', 0.35));
-  const periDot = dot(pPos, 0.028, 'contact'); g.add(periDot);
+  const periDot = dot(pPos, 0.028, 'argp'); g.add(periDot);
   const apoDot  = dot(aPos, 0.024, 'muted');    g.add(apoDot);
   /* One line each, not two. makeLabel gives a two-line label 1.6x the height as
      well as the width, and these two share the apse line with the e arrow -
@@ -967,7 +1025,7 @@ function buildElements(){
      largest contributor to the pile-up. The altitudes are in the elements card
      below as min and max altitude. */
   const pl = tagLabel('perigee', 'perigee  '+(el.a*(1-el.ecc)-RE).toFixed(0)+' km alt',
-                      SPACE.contact, { h:0.016, key:'peri', prio:3 });
+                      SPACE.argp, { h:0.016, key:'peri', prio:3 });
   pl.position.copy(pPos).addScaledVector(b.p, 0.24);
   g.add(pl); regPick(pl,'peri'); regPick(periDot,'peri');
   const al = tagLabel('apogee', 'apogee  '+(el.a*(1+el.ecc)-RE).toFixed(0)+' km alt',
@@ -1425,7 +1483,11 @@ global.OrbitViz = {
     if(precMs === null || Math.abs(ms - precMs) > 2.6e9){   // ~30 days; precession is 50"/yr
       precess(simTime); precMs = ms;
     }
-    if(G.elements && live){ updateLive(simTime); layoutDirty = true; }
+    /* When the anchors have just moved, lay out in the same frame rather than
+       waiting out the 30 Hz cap: until then a label would be drawn with the
+       last pass's offset against its new anchor, or shown after the physics
+       switched it off. */
+    if(G.elements && live && updateLive(simTime)){ layoutDirty = true; lastLayoutMs = -Infinity; }
     /* Deliberately NOT inside the updateLive throttle above. That one is gated
        on simulated time, and with playback paused sim time stops while the
        camera keeps moving under the reader's drag - the labels would freeze

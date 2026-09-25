@@ -506,7 +506,11 @@ function setSat(entry, elements, win){
   if(orbitLine) orbitLine.visible = true;
   if(footRing) footRing.visible = true;
   if(trackLine) trackLine.visible = trackOn;   // ...but the trail keeps its switch
-  const periodS = elements && elements.period ? elements.period : 5400;
+  /* periodShown when the page supplies one: for a near-equatorial GEO object
+     the node-to-node period can be 9 % short, which left a gap of a tenth of
+     the ring on the globe. */
+  const periodS = elements && (elements.periodShown || elements.period)
+                ? (elements.periodShown || elements.period) : 5400;
   if(!(GT && GT.now))                              // only self-clocked scenes reset time
     simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
   // sample across the ANALYSIS WINDOW, not from the epoch: the clock runs

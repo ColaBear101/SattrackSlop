@@ -95,7 +95,7 @@ The picker at the top right searches **2,158 spacecraft** by name or NORAD ID �
 
 | Element | Symbol | Value | Where it comes from |
 |---|---|---|---|
-| Semi-major axis | a | **6741.908 km** | recovered by SGP4 from the mean motion |
+| Semi-major axis | a | **6741.908 km** | SGP4's Brouwer value, recovered from the Kozai mean motion |
 | Eccentricity | e | **0.0007959** | line 2 cols 27–33 (leading decimal implied) |
 | Inclination | i | **51.6258°** | line 2 cols 9–16 |
 | RAAN | Ω | **213.5681°** | line 2 cols 18–25 |
@@ -103,7 +103,9 @@ The picker at the top right searches **2,158 spacecraft** by name or NORAD ID �
 | Mean anomaly at epoch | M | **207.5073°** | line 2 cols 44–51 |
 
 Five of the six are stored literally in the TLE. The semi-major axis is not, and getting it right
-takes more than one line of algebra.
+takes more than one line of algebra. All six are SGP4 *mean* elements — the theory's averaged orbit,
+with its periodic terms taken out — and not the osculating elements of the instantaneous two-body
+orbit — a distinction that turns out to matter more than the one below.
 
 The obvious route is Kepler's third law applied to the TLE's mean motion:
 
@@ -112,26 +114,54 @@ n = 15.68476422 rev/day × 2π / 86400 = 1.140651e-3 rad/s
 a = (μ / n²)^(1/3),  μ = 398600.4418 km³/s²   →   6741.396 km
 ```
 
-**That answer is wrong.** The mean motion in a TLE is the *Kozai* mean motion: it already carries a
-J2 correction, so feeding it to an unperturbed two-body law double-counts the oblateness. SGP4
-un-Kozai's it during initialisation and recovers the Brouwer semi-major axis, which is the real one:
+**That is not the value SGP4 works with.** The mean motion in a TLE is a *Kozai* mean motion, and
+SGP4's theory runs on Brouwer's mean elements. The two are different mean-element conventions, and
+their mean motions differ by a term of order J2. SGP4 converts
+the Kozai value to Brouwer's during initialisation and recovers the Brouwer semi-major axis from it,
+and that is the value the page shows:
 
 ```
-a = 6741.908 km            (SGP4 recovered value, on WGS-72 where the theory is defined)
-error in the naive form:     −512 m
+a = 6741.908 km            (SGP4's Brouwer mean value, on WGS-72 where the theory is defined)
+naive form, against it:      −512 m
 ```
 
-The error depends on inclination through a (3cos²i − 1) term, so it nearly vanishes at 54.7° — which
-is why KNACKSAT-2 at 51.63° is a best case — and is worst for equatorial and polar orbits. Across the
-2158-satellite catalogue the median error is **2.95 km**, the worst **6.38 km**, and LANDSAT 9 below
-is off by 2.9 km.
+The difference depends on inclination through a (3cos²i − 1) term, so it nearly vanishes at 54.7° —
+which is why KNACKSAT-2 at 51.63° is a best case — and is largest for equatorial and polar orbits.
+Across the 2158-satellite catalogue the median difference is **2.95 km**, the largest **6.38 km**, and
+LANDSAT 9 below is off by 2.9 km.
+
+Neither number is the semi-major axis of the ellipse the spacecraft is on at the epoch. Convert
+SGP4's own position and velocity there to two-body elements (on its μ = 398 600.8 km³/s²) and the
+osculating orbit has a = 6747.93 km, e = 0.0012452 and ω = 83.03°, against the mean 6741.908 km,
+0.0007959 and 152.63°; its a moves 12.1 km over one revolution. The page lists these under the mean
+elements. At an eccentricity this small ω and M are each poorly defined, and only their sum, the
+argument of latitude, means much: the epoch sits 0.14° past the ascending node in the mean elements
+and 0.00° in the osculating ones. So the 512 m is a real correction — the naive form is a formula
+SGP4 does not use — but it is small beside the 6 km between the mean and osculating a.
 
 Derived: nodal period 91.75 min, measured node-to-node rather than as 86400/n, which runs 3.7 s
 long. Altitude 358.0–383.8 km over one revolution, taken from the propagation rather than from
-a(1∓e) − Rₑ: the mean-element form ignores the J2 short-period radial term, understating the real
-swing here by about 15 km, and on a highly eccentric object it returns a perigee altitude *below the
-surface*. Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a
-Landsat's. At 360 km the atmosphere is still biting, and this element set goes stale fast.
+a(1∓e) − Rₑ. The mean-element form gives a swing of 2ae = 10.7 km and misses two things of the same
+size. The orbit radius itself varies 19.5 km, because SGP4's periodic terms move it: 8.3 km of the
+excess is J3's long-period eccentricity term and under 1 km is J2's short-period one. And altitude
+is height above the WGS-84 ellipsoid, whose surface under the track is 13.2 km lower at ±51.8° than
+at the equator. The two combine, by phase, into the swing above. On a highly eccentric object the
+mean-element form also returns a perigee altitude *below the surface*.
+
+These figures are for a window starting at the epoch. The page measures the period and the apsis
+altitudes over the first revolution of whatever window is set — by default one starting now — so
+its figures move a little with the window, and it says so under them.
+
+For a near-equatorial object in deep space the node-to-node period is not a usable number. At
+i = 0.03° the latitude being timed never exceeds a few hundredths of a degree, and the Moon and Sun
+move it by as much, so GEO objects in the catalogue below 0.3° measured anywhere from 1307 to 1543
+min against a sidereal day of 1436.07 (GOES 18: 1461.4). LEO orbits are unaffected even at 0.23°,
+because J2 is symmetric about the equator; SGP4 applies lunisolar terms only past 225 min. For
+deep-space orbits below 1°, and wherever no two nodes are found, the page shows the Keplerian
+2π√(a³/μ) from SGP4's a instead and labels it "Kepler period" — 1436.13 min for GOES 18.
+
+Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a Landsat's. At
+360 km the atmosphere is still biting, and this element set goes stale fast.
 
 ## (b) Ground track
 
@@ -141,8 +171,10 @@ sidereal time → geodetic sub-satellite point on WGS-84. The track breaks at th
 Segments where Bangkok has the spacecraft above 5° are overdrawn thicker and in a second colour.
 A time scrubber moves the spacecraft along the track and re-renders the day/night terminator.
 
-At 51.63° inclination the track is a band between ±51.6° latitude — Bangkok at 13.75°N sits well
-inside it, unlike the near-polar Landsat track that crosses the tropics almost vertically.
+At 51.63° inclination the track is a band between ±51.8° geodetic latitude — the orbit plane bounds
+geocentric latitude at the inclination, and geodetic latitude runs about 0.2° higher up there.
+Bangkok at 13.75°N sits well inside it, unlike the near-polar Landsat track that crosses the tropics
+almost vertically.
 
 ## (c) Visibility from Bangkok (13.75°N, 100.52°E, 5° mask)
 
@@ -178,12 +210,18 @@ Selectable in the picker. NORAD 49260, epoch 2026-09-12 04:49:46.684 UTC, sun-sy
 ## How the Earth numbers are checked
 
 An independent second implementation (own WGS-84 ECEF→ENU elevation, own TLE column parsing,
-own Kepler-third-law semi-major axis) was cross-checked against this one:
+own Kepler-third-law semi-major axis, own Kozai-to-Brouwer conversion) was cross-checked against
+this one:
 
 - The five elements read straight from the TLE agree to better than 1e-12 relative. The
   semi-major axis, the period and the apsis altitudes are now taken from SGP4 rather than from
   mean-element algebra, for the reasons in section (a), so they deliberately differ from the
   harness's naive values.
+- The semi-major axis the page does show is checked on its own. The harness re-derives SGP4's
+  un-Kozai step from Spacetrack Report #3 on WGS-72 and compares it with the value
+  `core/propagator.js` hands the page: they agree to 2.7e-16 relative across all 167 element sets
+  in `verification/resource.txt`. Until that check existed, nothing independent looked at the
+  number on the card — the naive-against-naive comparison above passed whatever SGP4 did.
 - Topocentric elevation agrees with `satellite.js` look angles to 2.6e-10 degrees over 200
   samples across the day, and with a from-scratch WGS-84 topocentric implementation to 1.1e-9
   degrees over 24 h — floating-point noise, no systematic bias.
@@ -195,7 +233,10 @@ own Kepler-third-law semi-major axis) was cross-checked against this one:
 
   Both gaps are the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
 
-Run it yourself: `node verification/report.js` and `node verification/verify.js`.
+Run it yourself: `node verification/report.js` and `node verification/verify.js`. The report
+prints the LANDSAT 9 answer as the page computes it — SGP4's a, the node-to-node period and the
+propagated altitudes over the first revolution from the epoch — with the naive mean-element values
+on a line of their own, labelled as what the page does not show. It used to print only those.
 
 ## The view from the spacecraft
 
@@ -1061,7 +1102,7 @@ live-refresh check, in that order. Individually:
 
 ```
 npm run verify       # independent second implementation of elements/elevation/visibility
-npm run report       # the LANDSAT 9 answer, printed
+npm run report       # the LANDSAT 9 answer, printed as the page computes it
 npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources
 npm run pov          # the POV camera, measured against the propagated state

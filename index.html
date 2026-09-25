@@ -364,6 +364,16 @@ section{display:flex; flex-direction:column; gap:16px}
   text-transform:uppercase; color:var(--muted)}
 .dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:14.5px; color:var(--ink)}
+/* the osculating row: symbols, not words, so no uppercasing - it would turn
+   omega into Omega and nu into a Latin N */
+.oscbox{display:flex; flex-direction:column; gap:9px; padding:13px 15px;
+  background:var(--sunk); border:1px solid var(--rule); border-radius:4px}
+.osc{grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px 18px}
+.osc .dv dt{text-transform:none; letter-spacing:0}
+.osc .dv dt i{font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif; font-style:italic;
+  font-size:14px; color:var(--track)}
+.osc .dv dd{font-size:13.5px}
+.dnote{font-size:12px; line-height:1.55; color:var(--muted); margin:0; max-width:92ch}
 
 .mapbox{background:var(--panel); border:1px solid var(--rule); border-radius:4px;
   padding:12px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow)}
@@ -687,7 +697,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
 
       <div class="railsec">
-        <p class="eyebrow">Orbit at epoch</p>
+        <p class="eyebrow">Orbit in this window</p>
         <dl class="minigrid" id="minigrid"></dl>
       </div>
 
@@ -773,10 +783,16 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   <section id="sec-elements">
     <div class="shead">
       <h2>Orbital elements at epoch</h2>
-      <p class="hint">read from the TLE, angles referred to the TEME frame of epoch</p>
+      <p class="hint">SGP4 mean elements from the TLE (Kozai n, Brouwer a), angles in the TEME frame of epoch</p>
     </div>
     <div class="elements" id="elgrid"></div>
+    <div class="oscbox">
+      <p class="eyebrow">Osculating at epoch · the same instant, from SGP4's r and v</p>
+      <dl class="derived osc" id="osc"></dl>
+      <p class="dnote" id="oscnote"></p>
+    </div>
     <dl class="derived" id="derived"></dl>
+    <p class="dnote" id="dnote"></p>
   </section>
 
   <!-- (b) ------------------------------------------------------------------ -->
@@ -873,9 +889,13 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div>
         <h3>Elements</h3>
         <p>Inclination, RAAN, eccentricity, argument of perigee and mean anomaly are read from
-        their fixed columns in TLE line 2 — no fitting, no propagation. The semi-major axis is not
-        stored in a TLE; it comes from the mean motion <code>n</code> as
-        <code>a = (μ/n²)^⅓</code> with <code>μ = 398 600.4418 km³/s²</code>.</p>
+        their fixed columns in TLE line 2 — no fitting, no propagation. They are SGP4 mean
+        elements, not osculating ones; the osculating values at the epoch are listed under them.
+        The semi-major axis is not stored in a TLE. The mean motion <code>n</code> in line 2 is
+        Kozai's; SGP4 converts it to Brouwer's <code>n″</code> during initialisation and recovers
+        <code>a″ = (kₑ/n″)^⅔</code> on WGS-72, and that is the value shown. The two-body
+        <code>a = (μ/n²)^⅓</code> on the Kozai <code>n</code> <span id="anaive">differs from it by a
+        few km</span>; across the catalogue the difference reaches 6.4 km.</p>
       </div>
       <div>
         <h3>Propagation</h3>
@@ -887,10 +907,13 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
       <div>
         <h3>Visibility</h3>
-        <p>Topocentric elevation is computed at the <span id="lbl-prose">Bangkok</span> site every <code>10 s</code>. Each
-        horizon crossing of the 5° mask is then bracketed and bisected to millisecond precision, so
-        the cumulative total is not quantised by the sample step. Purely geometric — no terrain,
-        refraction or link budget.</p>
+        <p>Topocentric elevation is scanned at the <span id="lbl-prose">Bangkok</span> site every
+        <code id="lbl-scan">4 s</code>. Each horizon crossing of the 5° mask is then bracketed and
+        bisected to millisecond precision, so the cumulative total is not quantised by the scan.
+        The scan has to be finer than the shortest pass worth finding, since a pass that falls
+        between two samples is never bracketed at all — which is why it runs finer than the
+        <code id="lbl-sample">10 s</code> the ground track is drawn at. Purely geometric — no
+        terrain, refraction or link budget.</p>
       </div>
       <div>
         <h3>The two views</h3>
@@ -7691,6 +7714,11 @@ const SGP4_WHY = {
   4: 'semi-latus rectum below zero',
   6: 'decayed'
 };
+/* SGP4's own gravitational parameter - WGS-72, 398600.8 km^3/s^2 - for
+   anything worked out from its Brouwer a or from its r and v. The WGS-84 MU
+   above is 0.36 km^3/s^2 smaller; mixing the two sets moves an osculating a
+   by about 6 m, which is nothing, but there is no reason to mix them. */
+const SGP4_MU = (satellite.constants && satellite.constants.mu) || MU;
 const sgp4Why = code => code === null || code === undefined ? 'the element set could not be read'
   : SGP4_WHY[code] ? 'error ' + code + ': ' + SGP4_WHY[code]
   : 'no usable position';
@@ -7728,8 +7756,10 @@ function compute(entry, t0ms, hours){
      Brouwer value in satrec.a. The propagator knows how to un-normalise it -
      on WGS-72, which is SGP4's own radius and 2 m off WGS-84. A propagator
      without that recovered value (a lunar element set, say) returns null and
-     the TLE-derived a stands. */
+     the TLE-derived a stands. The two-body value is kept beside it, only so
+     the card can say how far apart the two are for this element set. */
   const recovered = track.recoveredA;
+  E.aNaive = E.a;
   if(recovered !== null){
     E.a = recovered;
     E.aSource = 'sgp4';
@@ -7758,15 +7788,58 @@ function compute(entry, t0ms, hours){
       }
       prev = cur;
     }
-    if(hits.length === 2) E.period = (hits[1]-hits[0])/1000;
+    if(hits.length === 2){ E.period = (hits[1]-hits[0])/1000; E.periodMeasured = true; }
+  })();
+
+  /* Which period to SHOW. The node-to-node time is the right figure wherever
+     the node is a definite point, and it stays in E.period - the apsis
+     sampling below and the regression baseline are both built on it. For a
+     near-equatorial orbit in deep space it is not a definite point. At
+     i = 0.03 deg the latitude being bisected never gets beyond a few
+     hundredths of a degree, and the Moon and Sun move it by as much, so one
+     node-to-node time says little about the next. Measured across this
+     catalogue, deep-space objects below 0.3 deg came out anywhere from 1307 min
+     (NUSANTARA TIGA) to 1543 min (JCSAT-18) against a sidereal day of
+     1436.07, GOES 18 read 1461.4, and between 0.5 and 1 deg they still spread
+     over a minute.
+     A LEO orbit does not have the problem even at i = 0.23 deg (IXPE agrees
+     with SGP4's own mean nodal rate to 0.001 %): J2 is symmetric about the
+     equator and leaves an equatorial orbit's latitude alone, and the lunisolar
+     terms that do not are applied only beyond 225 min. So there, and wherever
+     the search found no two nodes at all, the period shown is Keplerian,
+     2 pi sqrt(a^3/mu) from the semi-major axis on the card, on the mu that a
+     was recovered with - which makes it exactly 2 pi/n'' for SGP4's value -
+     and it is labelled as such. New fields only; E.period does not move. */
+  (function(){
+    const mu = E.aSource === 'sgp4' ? SGP4_MU : MU;
+    const kepler = 2*Math.PI*Math.sqrt(E.a*E.a*E.a/mu);
+    const deepSpace = kepler >= 225*60;
+    const planeUnclear = deepSpace && Math.min(E.inc, 180-E.inc) < 1;
+    const nodal = E.periodMeasured && !planeUnclear;
+    E.periodShown = nodal ? E.period : kepler;
+    E.periodKind  = nodal ? 'nodal' : 'keplerian';
+    E.periodWhy   = nodal ? null : planeUnclear ? 'equatorial' : 'nonodes';
   })();
 
   /* Apsis altitudes from the propagation, not from a(1 -+ e) - Re. The mean-
-     element form ignores the J2 short-period radial term (several km in LEO)
-     and goes NEGATIVE on eccentric objects: CLUSTER II-FM8 printed a perigee
-     altitude of -142.6 km, below the surface. */
+     element form misses two things, each the size of 2ae itself on a near-
+     circular LEO orbit. The orbit radius swings more than the mean e says,
+     because SGP4's periodic terms move it: for KNACKSAT-2's README set 19.5 km
+     against 2ae = 10.7, and of the difference 8.3 km is J3's long-period
+     eccentricity term and under 1 km J2's short-period one. And altitude is
+     measured above the WGS-84 ellipsoid, whose surface is 13 km lower at
+     51.6 deg than at the equator. The mean-element form also goes NEGATIVE on
+     eccentric objects: CLUSTER II-FM8 printed a perigee altitude of -142.6 km,
+     below the surface.
+     The radius and the surface radius under the track are kept alongside, as
+     new fields, so the eccentricity card can say which of the two the swing
+     is made of; so is the osculating a, which the mean a on the card is not.
+     lo, hi and the sampling are exactly what they were. */
   (function(){
     let lo = Infinity, hi = -Infinity;
+    let rLo = Infinity, rHi = -Infinity, sLo = Infinity, sHi = -Infinity,
+        oLo = Infinity, oHi = -Infinity;
+    const Re = track.body.Re, e2 = track.body.flattening*(2 - track.body.flattening);
     const P = E.period, t0 = start.getTime();
     // an eccentric orbit sweeps perigee fast; sample harder so the minimum
     // is not stepped over
@@ -7779,10 +7852,24 @@ function compute(entry, t0ms, hours){
         if(track.lastError === 6 && (groundAt === null || ms < groundAt)) groundAt = ms;
         continue;
       }
-      const g = track.body.toGeodetic(s.r, s.theta).height;
+      const gd = track.body.toGeodetic(s.r, s.theta);
+      const g = gd.height;
       if(g < lo) lo = g; if(g > hi) hi = g;
+      const r = Math.hypot(s.r.x, s.r.y, s.r.z);
+      if(r < rLo) rLo = r; if(r > rHi) rHi = r;
+      // geocentric radius of the ellipsoid point the height is measured from
+      const sl = Math.sin(gd.latitude), cl = Math.cos(gd.latitude);
+      const Nv = Re/Math.sqrt(1 - e2*sl*sl);
+      const Rs = Math.hypot(Nv*cl, Nv*(1 - e2)*sl);
+      if(Rs < sLo) sLo = Rs; if(Rs > sHi) sHi = Rs;
+      // the osculating a, by vis-viva, for how far it strays from the mean a
+      const v2 = s.v.x*s.v.x + s.v.y*s.v.y + s.v.z*s.v.z;
+      const aOsc = 1/(2/r - v2/SGP4_MU);
+      if(aOsc < oLo) oLo = aOsc; if(aOsc > oHi) oHi = aOsc;
     }
-    if(isFinite(lo) && isFinite(hi)){ E.perigeeAlt = lo; E.apogeeAlt = hi; E.altMeasured = true; }
+    if(isFinite(lo) && isFinite(hi)){ E.perigeeAlt = lo; E.apogeeAlt = hi; E.altMeasured = true;
+      E.rMin = rLo; E.rMax = rHi; E.surfMin = sLo; E.surfMax = sHi;
+      E.oscAMin = oLo; E.oscAMax = oHi; }
   })();
   const passes = findPasses(track, start.getTime(), end.getTime(), passStepFor(hours));
   const totalS = passes.reduce((s,p)=>s+p.dur, 0);
@@ -7818,31 +7905,108 @@ function compute(entry, t0ms, hours){
 }
 
 /* ---- (a) render elements ------------------------------------------------- */
+/* Osculating elements: the two-body orbit through SGP4's own r and v at one
+   instant, on SGP4's mu. They are not what the TLE holds. The TLE's are MEAN
+   elements, with SGP4's periodic terms averaged out, and mean nothing to
+   anything but SGP4; these are what converting the state vector gives. The
+   two differ by far more than the Kozai and Brouwer a do - for KNACKSAT-2's
+   README set, 6 km in a and 70 deg in omega at the epoch. Degrees. u, the
+   argument of latitude, is measured from the node rather than from perigee,
+   so it survives a near-circular orbit where omega and nu separately do not.
+   Built from atan2 throughout: acos of a dot product loses its sign and its
+   precision exactly where e and i are small, which is most of this catalogue. */
+function osculating(track, ms){
+  const st = track.at(ms);
+  if(!st) return null;
+  const r = st.r, v = st.v, mu = SGP4_MU;
+  const rr = Math.hypot(r.x, r.y, r.z), v2 = v.x*v.x + v.y*v.y + v.z*v.z;
+  const rv = r.x*v.x + r.y*v.y + r.z*v.z;
+  const h = {x: r.y*v.z - r.z*v.y, y: r.z*v.x - r.x*v.z, z: r.x*v.y - r.y*v.x};
+  const hh = Math.hypot(h.x, h.y, h.z);
+  const ev = {x: ((v2 - mu/rr)*r.x - rv*v.x)/mu,
+              y: ((v2 - mu/rr)*r.y - rv*v.y)/mu,
+              z: ((v2 - mu/rr)*r.z - rv*v.z)/mu};
+  // unit vectors in the plane: towards the ascending node, and 90 deg on from it
+  const nh = Math.hypot(h.x, h.y) || 1e-300;
+  const N = {x: -h.y/nh, y: h.x/nh, z: 0};
+  const Q = {x: (h.y*N.z - h.z*N.y)/hh, y: (h.z*N.x - h.x*N.z)/hh, z: (h.x*N.y - h.y*N.x)/hh};
+  const dot = (p, q) => p.x*q.x + p.y*q.y + p.z*q.z;
+  const deg = (y, x) => ((Math.atan2(y, x)*DEG) % 360 + 360) % 360;
+  const u = deg(dot(Q, r), dot(N, r)), w = deg(dot(Q, ev), dot(N, ev));
+  return { a: 1/(2/rr - v2/mu), e: Math.hypot(ev.x, ev.y, ev.z),
+           inc: Math.atan2(nh, h.z)*DEG, raan: deg(N.y, N.x),
+           argp: w, nu: ((u - w) % 360 + 360) % 360, u };
+}
+
 function renderElements(){
   const E = D.E;
   const sunSync = E.inc > 95 && E.inc < 104;
+  const osc = osculating(D.track, E.epoch.getTime());
+  const nearCirc = E.ecc < 0.002;
+  /* ...and near the equator the node is as ill-defined as the perigee, so the
+     phase that survives is the longitude, measured from the equinox. */
+  const nearEq = E.inc < 1;
+  // an angle in [0, 360) at dp places - 359.998 must print as 0.00, not 360.00
+  const ang = (x, dp) => { const v = ((x % 360) + 360) % 360;
+    return (+v.toFixed(dp) >= 360 ? 0 : v).toFixed(dp); };
+  /* What the altitude swing is made of. The orbit radius and the ground under
+     it both move, and on a near-circular LEO orbit the second is the size of
+     the first: the WGS-84 surface is 13 km lower at 51.6 deg than at the
+     equator. The two add by phase, not simply, so they are given separately. */
+  const swingNote = () => {
+    const swing = E.apogeeAlt - E.perigeeAlt;
+    if(!E.altMeasured) return 'Effectively circular: a(1∓e) puts perigee and apogee '+swing.toFixed(1)+' km apart.';
+    const rs = E.rMax - E.rMin, ss = E.surfMax - E.surfMin, ae2 = 2*E.a*E.ecc;
+    return 'Effectively circular. Altitude still swings '+swing.toFixed(1)+' km over a revolution. '+
+      'The orbit radius varies '+rs.toFixed(1)+' km (2ae alone gives '+ae2.toFixed(1)+
+      (Math.abs(rs - ae2) >= 0.1 ? '; the difference is SGP4\'s periodic terms)' : ')')+
+      (ss >= 0.1 ? ', and the WGS-84 surface beneath the track is '+ss.toFixed(1)+
+        ' km lower at its highest latitude than at the equator.' : '.');
+  };
+  /* The ground track's reach, read off the track itself. The orbit plane bounds
+     GEOCENTRIC latitude at i; the map is in geodetic latitude, which runs
+     higher - about 0.18 deg at 51.6 deg and 370 km - so the track the page
+     draws goes past the number the old note printed. */
+  const reach = () => {
+    const lim = Math.min(90, E.inc > 90 ? 180 - E.inc : E.inc);
+    let ml = 0;
+    for(const p of D.pts){ const a = Math.abs(p.lat); if(a > ml) ml = a; }
+    const dp = lim < 1 ? 2 : 1;
+    return 'Ground track reaches ±'+ml.toFixed(dp)+'° geodetic latitude'+
+      (ml - lim >= 0.05 ? ', '+(ml - lim).toFixed(1)+'° past i: the plane bounds geocentric latitude, and geodetic runs higher.' : '.');
+  };
+  const dA = E.aNaive - E.a;
   const cells = [
     ['a','Semi-major axis', E.a.toFixed(1), 'km',
       E.aSource === 'sgp4'
-        ? 'Recovered by SGP4 from the mean motion. Half the major axis — not a mean radius, which is a(1+e²/2).'
+        ? 'Recovered by SGP4 from the Kozai mean motion; the two-body (μ/n²)^⅓ gives '+E.aNaive.toFixed(1)+
+          ', '+Math.abs(dA).toFixed(2)+' km '+(dA < 0 ? 'short' : 'long')+
+          '. Half the major axis — not a mean radius, which is a(1+e²/2).'
         : 'From the mean motion as (μ/n²)^⅓.',
-      E.aSource === 'sgp4' ? 'SGP4 Brouwer value, WGS-72' : 'derived from line 2 cols 53–63 (n)'],
+      E.aSource === 'sgp4' ? 'SGP4 Brouwer mean value, WGS-72' : 'derived from line 2 cols 53–63 (n)'],
     ['e','Eccentricity', E.ecc.toFixed(7), '',
-      (E.ecc < 0.002 ? 'Effectively circular. Altitude still swings '
-        +(E.apogeeAlt-E.perigeeAlt).toFixed(1)+' km over a revolution, mostly from J2.'
+      (nearCirc ? swingNote()
         : 'Altitude runs '+E.perigeeAlt.toFixed(0)+' to '+E.apogeeAlt.toFixed(0)+' km.'),
       'line 2 cols 27–33, leading decimal implied'],
     ['i','Inclination', E.inc.toFixed(4), '°',
-      (E.inc>90?'Retrograde. ':'Prograde. ')+(sunSync?'Sun-synchronous — the node drifts ~0.986°/day to hold a fixed local solar time.':'Ground track reaches ±'+Math.min(90,E.inc>90?180-E.inc:E.inc).toFixed(1)+'° latitude.'),
+      (E.inc>90?'Retrograde. ':'Prograde. ')+(sunSync?'Sun-synchronous — the node drifts ~0.986°/day to hold a fixed local solar time.':reach()),
       'line 2 cols 9–16'],
     ['Ω','RAAN', E.raan.toFixed(4), '°',
-      'Where the orbit plane cuts the equator going north, measured from the vernal equinox.',
+      'Where the orbit plane cuts the equator going north, measured from the vernal equinox.'+
+      (nearEq && osc ? ' At i this small the node is itself barely defined; the osculating Ω at epoch is '+
+        ang(osc.raan, 1)+'°.' : ''),
       'line 2 cols 18–25'],
     ['ω','Argument of perigee', E.argp.toFixed(4), '°',
-      'Perigee position measured within the orbit plane from the ascending node.',
+      'Perigee position measured within the orbit plane from the ascending node.'+
+      (nearCirc && osc ? ' A mean-element perigee: at this e it is barely defined, and the osculating ω at epoch is '+
+        ang(osc.argp, 1)+'°.' : ''),
       'line 2 cols 35–42'],
     ['M','Mean anomaly', E.ma.toFixed(4), '°',
-      'Phase around the orbit at the epoch instant — the anchor the propagation starts from.',
+      'Phase around the orbit at the epoch instant — the anchor the propagation starts from.'+
+      (nearCirc && nearEq ? ' Read it with ω and Ω: at this e and i only the sum of all three, the mean longitude, is well defined — '+
+        ang(E.raan + E.argp + E.ma, 2)+'°.'
+       : nearCirc ? ' Read it with ω: their sum, the mean argument of latitude, is '+
+        ang(E.argp + E.ma, 2)+'° and is well defined.' : ''),
       'line 2 cols 44–51']
   ];
   document.getElementById('elgrid').innerHTML = cells.map(c=>
@@ -7850,25 +8014,65 @@ function renderElements(){
     '<p class="val">'+c[2]+(c[3]?'<span> '+c[3]+'</span>':'')+'</p>'+
     '<p class="note">'+c[4]+'</p><p class="src">'+c[5]+'</p></div>').join('');
 
+  /* The same orbit at the same instant, as the state vector says it is. */
+  const oscEl = document.getElementById('osc'), oscNote = document.getElementById('oscnote');
+  if(oscEl){
+    const ov = osc ? [
+      ['a', osc.a.toFixed(1)+' km'], ['e', osc.e.toFixed(7)], ['i', osc.inc.toFixed(4)+'°'],
+      ['Ω', ang(osc.raan, 4)+'°'], ['ω', ang(osc.argp, 2)+'°'], ['ν', ang(osc.nu, 2)+'°'],
+      nearEq ? ['l = Ω + ω + ν', ang(osc.raan + osc.u, 2)+'°']
+             : ['u = ω + ν', ang(osc.u, 2)+'°']
+    ] : [];
+    oscEl.innerHTML = ov.map(o=>
+      '<div class="dv"><dt><i>'+o[0]+'</i></dt><dd>'+o[1]+'</dd></div>').join('');
+    oscNote.textContent = !osc ? 'SGP4 gives no state at the epoch for this element set.'
+      : 'The two-body orbit through SGP4\'s position and velocity at the epoch, on its own μ = 398 600.8 km³/s². '+
+        'These are not the TLE\'s elements: the mean elements above have SGP4\'s periodic terms averaged out'+
+        (isFinite(E.oscAMax) ? ', and the osculating a alone moves '+(E.oscAMax - E.oscAMin).toFixed(1)+' km over a revolution' : '')+
+        '.'+(!nearCirc ? ''
+          : nearEq ? ' At e and i this small Ω, ω and ν are each poorly defined; l, the true longitude, is the phase to trust.'
+          : ' At e this small ω and ν are each poorly defined; u, measured from the node, is the phase to trust.');
+  }
+
+  const P = E.periodShown;
   const dv = [
     ['Mean motion', D.E.n.toFixed(8)+' rev/day'],
-    ['Nodal period', (D.E.period/60).toFixed(2)+' min'],
+    [E.periodKind === 'nodal' ? 'Nodal period' : 'Kepler period', (P/60).toFixed(2)+' min'],
     ['Mean altitude', D.meanAlt.toFixed(1)+' km'],
     ['Min altitude', D.E.perigeeAlt.toFixed(1)+' km'],
     ['Max altitude', D.E.apogeeAlt.toFixed(1)+' km'],
-    ['Revs in 24 h', D.E.n.toFixed(2)],
+    ['Revs in 24 h', (86400/P).toFixed(2)],
     ['B* drag term', D.E.bstar.toExponential(4)+' 1/ER'],
     ['Rev. no. @ epoch', String(D.E.rev)]
   ];
   document.getElementById('derived').innerHTML = dv.map(d=>
     '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
+  /* Say what these are measured over. They were headed "at epoch", and they
+     are not: the period and the apsis search run from the start of the
+     window, which defaults to now, and the mean altitude is over the whole
+     window. Measuring them from the epoch instead would move every number the
+     regression gate compares, so the label moves instead. */
+  const dn = document.getElementById('dnote');
+  if(dn){
+    dn.textContent = ((E.periodKind === 'nodal' ? 'The period and the min and max altitude are'
+                                               : 'The min and max altitude are')+
+      ' propagated over the first revolution from the window start, '+iso(D.start)+
+      ', and the mean altitude over the whole '+spanLabel(D.hours)+' window, so they move slightly as the window does. '+
+      'Revs in 24 h is 86 400 s divided by the period; the mean motion is the TLE\'s own, Kozai\'s. '+
+      (E.periodWhy === 'equatorial'
+        ? 'At i = '+E.inc.toFixed(4)+'° the ascending node is poorly defined: the Moon and Sun move the latitude being timed by a good fraction of the inclination, '+
+          'so node-to-node times wander ('+(E.period/60).toFixed(1)+' min on this revolution). The period shown is the Keplerian 2π√(a³/μ) from the a above.'
+        : E.periodWhy === 'nonodes'
+        ? 'No two ascending nodes were found, so the period shown is the Keplerian 2π√(a³/μ) from the a above.'
+        : '')).trim();
+  }
 
   // the rail carries only what frames the visibility answer
   const mini = [
     ['Inclination', E.inc.toFixed(2)+'°'],
-    ['Period', (E.period/60).toFixed(1)+' min'],
+    [E.periodKind === 'nodal' ? 'Period' : 'Kepler period', (P/60).toFixed(1)+' min'],
     ['Mean alt.', D.meanAlt.toFixed(0)+' km'],
-    ['Revs / day', E.n.toFixed(2)]
+    ['Revs / day', (86400/P).toFixed(2)]
   ];
   document.getElementById('minigrid').innerHTML = mini.map(d=>
     '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
@@ -8933,7 +9137,7 @@ function load(entry, trial){
   rawEl.appendChild(nameEl);
   rawEl.appendChild(document.createTextNode('\n' + entry.l1 + '\n' + entry.l2));
   document.getElementById('trackhint').textContent =
-    iso(D.start)+'  →  '+iso(D.end)+'  ·  '+(D.E.n*D.hours/24).toFixed(1)+' revolutions';
+    iso(D.start)+'  →  '+iso(D.end)+'  ·  '+(D.hours*3600/D.E.periodShown).toFixed(1)+' revolutions';
   const hd = document.querySelector('#sec-track h2');
   if(hd) hd.textContent = 'Ground track · ' + spanLabel(D.hours) + ' from window start';
   const ha = document.querySelector('#sec-access h2');
@@ -8941,6 +9145,16 @@ function load(entry, trial){
   document.getElementById('footepoch').textContent =
     'Element set epoch '+iso(D.E.epoch)+' · window '+spanLabel(D.hours)+
     ' from '+iso(D.start)+' · sample '+D.step+' s';
+  /* The method box states the steps this analysis actually used. It said
+     "every 10 s" for the horizon scan, which is the drawing step; the scan is
+     finer, and relaxes on long windows, and the difference is the one the
+     README says decides whether a short pass is found at all. */
+  document.getElementById('lbl-scan').textContent = passStepFor(D.hours)+' s';
+  document.getElementById('lbl-sample').textContent = D.step+' s';
+  const dA = D.E.aNaive - D.E.a;
+  document.getElementById('anaive').textContent = D.E.aSource === 'sgp4'
+    ? 'comes out '+Math.abs(dA).toFixed(2)+' km '+(dA < 0 ? 'short' : 'long')+' for this element set'
+    : 'is shown instead for this element set, since SGP4 left no Brouwer value to read';
   if(global3D()){
     Orbit3D.setSat(entry, D.E, {start: D.start.getTime(), hours: D.hours});
     if(window.__applyTrail) window.__applyTrail();   // "1 orbit" is per-spacecraft
@@ -9929,7 +10143,7 @@ document.addEventListener('visibilitychange', () => {
     Orbit3D.showTrack(v !== 'off');
     if(v === 'off') return;
     Orbit3D.setTrail(v === 'all' ? Infinity
-                   : v === 'orbit' ? D.E.period*1000      // one revolution
+                   : v === 'orbit' ? D.E.periodShown*1000 // one revolution
                    : +v);
   }
   trls.forEach(b => b.addEventListener('click', ()=>{

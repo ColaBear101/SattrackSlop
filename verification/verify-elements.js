@@ -19,6 +19,13 @@
  *   - "expanded" is read off the texture actually bound to the material, not
  *     off a bookkeeping flag that says which one should have been.
  *
+ * The last section leaves the globe for the elements panel in section (a) and
+ * the method box, which had the opposite problem: every number was readable
+ * and several said the wrong thing about themselves - a "nodal period" 25 min
+ * off for GEO objects, an altitude swing put down to J2, a latitude limit the
+ * drawn track overshoots, a scan step that was the drawing step. Those are
+ * checked against figures worked out here, in node.
+ *
  * Served over http, because a file:// page has an opaque origin and this suite
  * has been bitten by that before.
  *
@@ -250,6 +257,120 @@ const clipped = m => m.tags.filter(t =>
   });
   chk('the orbit-plane disc is not pickable', discPick.found && !discPick.pickable,
       discPick.found ? 'found, tagKey ' + discPick.pickable : 'disc not found');
+
+  // ---- the elements PANEL: does each number say what it is? ----------------
+  /* The section (a) cards and the method box beneath them. Each check reads
+     the text a student would copy and compares it with a figure worked out
+     here, in node, from the same element set - not with the page's own
+     variables, which would only prove the page agrees with itself. */
+  const sat = require('./satellite.min.js');
+  const MU72 = sat.constants.mu, A84 = 6378.137, F84 = 1/298.257223563, E2 = F84*(2 - F84);
+  const pick = name => page.evaluate(n => {
+    const b = document.getElementById('satsearch');
+    b.value = n; b.dispatchEvent(new Event('input', { bubbles: true }));
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }, name).then(() => page.waitForFunction(n => window.__gt.D.entry.name === n, name, { timeout: 20000 }));
+  const panel = () => page.evaluate(() => {
+    const D = window.__gt.D, E = D.E;
+    const pairs = sel => [...document.querySelectorAll(sel + ' .dv')].map(d =>
+      [d.querySelector('dt').textContent, d.querySelector('dd').textContent]);
+    return { l1: D.entry.l1, l2: D.entry.l2, start: D.start.getTime(), hours: D.hours,
+             period: E.period, ecc: E.ecc, a: E.a, inc: E.inc, epoch: E.epoch.getTime(),
+             maxLat: Math.max.apply(null, D.pts.map(p => Math.abs(p.lat))),
+             notes: [...document.querySelectorAll('#elgrid .note')].map(n => n.textContent),
+             derived: pairs('#derived'), mini: pairs('#minigrid'), osc: pairs('#osc'),
+             scan: document.getElementById('lbl-scan').textContent,
+             sample: document.getElementById('lbl-sample').textContent };
+  });
+  const val = (pairs, label) => { const p = pairs.find(x => x[0] === label); return p ? parseFloat(p[1]) : NaN; };
+
+  await pick('KNACKSAT-2');
+  let pn = await panel();
+  const knRec = sat.twoline2satrec(pn.l1, pn.l2);
+  /* The eccentricity card's breakdown, re-measured over the same revolution
+     at the same instants the page samples. */
+  {
+    const N2 = Math.round(720 + 3000*Math.min(0.95, pn.ecc));
+    let rLo = Infinity, rHi = -Infinity, sLo = Infinity, sHi = -Infinity;
+    for(let k = 0; k <= N2; k++){
+      const t = new Date(pn.start + k*pn.period*1000/N2);
+      const pv = sat.propagate(knRec, t);
+      const r = Math.hypot(pv.position.x, pv.position.y, pv.position.z);
+      const lat = sat.eciToGeodetic(pv.position, sat.gstime(t)).latitude;
+      const s = Math.sin(lat), c = Math.cos(lat), N = A84/Math.sqrt(1 - E2*s*s);
+      const R = Math.hypot(N*c, N*(1 - E2)*s);           // the ellipsoid under the track
+      rLo = Math.min(rLo, r); rHi = Math.max(rHi, r); sLo = Math.min(sLo, R); sHi = Math.max(sHi, R);
+    }
+    const m = pn.notes[1].match(/radius varies ([\d.]+) km \(2ae alone gives ([\d.]+).*?surface beneath the track is ([\d.]+) km/);
+    chk('the eccentricity card splits the swing into orbit radius and ellipsoid, and both are right',
+        !!m && Math.abs(+m[1] - (rHi - rLo)) < 0.051 && Math.abs(+m[2] - 2*pn.a*pn.ecc) < 0.051
+            && Math.abs(+m[3] - (sHi - sLo)) < 0.051 && !/mostly from J2/.test(pn.notes[1]),
+        m ? 'radius ' + m[1] + ' (mine ' + (rHi - rLo).toFixed(2) + '), 2ae ' + m[2] +
+            ', surface ' + m[3] + ' (mine ' + (sHi - sLo).toFixed(2) + ') km' : pn.notes[1]);
+  }
+  {
+    const m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic/);
+    chk('the inclination card quotes the geodetic reach of the track it draws, not i',
+        !!m && Math.abs(+m[1] - pn.maxLat) < 0.051 && +m[1] > pn.inc + 0.1,
+        m ? '±' + m[1] + '° against i = ' + pn.inc + '°, track max ' + pn.maxLat.toFixed(3) + '°' : pn.notes[2]);
+  }
+  /* Osculating elements at epoch, from the state vector, written out again
+     with acos rather than the page's atan2 so the two do not share a route. */
+  {
+    const pv = sat.propagate(knRec, new Date(pn.epoch)), r = pv.position, v = pv.velocity;
+    const rr = Math.hypot(r.x, r.y, r.z), vv = Math.hypot(v.x, v.y, v.z);
+    const h = [r.y*v.z - r.z*v.y, r.z*v.x - r.x*v.z, r.x*v.y - r.y*v.x], hh = Math.hypot(h[0], h[1], h[2]);
+    const rv = r.x*v.x + r.y*v.y + r.z*v.z, k = vv*vv - MU72/rr;
+    const ev = [(k*r.x - rv*v.x)/MU72, (k*r.y - rv*v.y)/MU72, (k*r.z - rv*v.z)/MU72];
+    const e = Math.hypot(ev[0], ev[1], ev[2]), nn = Math.hypot(h[0], h[1]);
+    const n = [-h[1]/nn, h[0]/nn];
+    let w = Math.acos((n[0]*ev[0] + n[1]*ev[1])/e)*180/Math.PI; if(ev[2] < 0) w = 360 - w;
+    let u = Math.acos((n[0]*r.x + n[1]*r.y)/rr)*180/Math.PI; if(r.z < 0) u = 360 - u;
+    const mine = { a: 1/(2/rr - vv*vv/MU72), e, i: Math.acos(h[2]/hh)*180/Math.PI, 'ω': w,
+                   'u = ω + ν': (u % 360 + 360) % 360 };
+    const dAng = (x, y) => Math.abs(((x - y) % 360 + 540) % 360 - 180);
+    // half a unit in the last place each value is printed to
+    const off = Object.entries(mine).filter(([key, want]) => {
+      const got = val(pn.osc, key), angle = key === 'ω' || key.startsWith('u');
+      const q = key === 'a' ? 0.051 : key === 'e' ? 6e-8 : key === 'i' ? 6e-5 : 0.006;
+      return !((angle ? dAng(got, want) : Math.abs(got - want)) <= q);
+    }).map(([key, want]) => key + ' ' + val(pn.osc, key) + ' vs ' + want);
+    chk('the osculating row is the two-body orbit through SGP4\'s r, v at the epoch',
+        pn.osc.length >= 7 && !off.length,
+        off.length ? off.join('; ') : 'a ' + mine.a.toFixed(3) + ' km, e ' + mine.e.toFixed(7) +
+          ', ω ' + mine['ω'].toFixed(2) + '° (mean ω 152.63°)');
+  }
+  chk('a LEO orbit shows its measured nodal period, in the panel and the rail',
+      Math.abs(val(pn.derived, 'Nodal period') - pn.period/60) < 0.0051
+        && Math.abs(val(pn.mini, 'Period') - pn.period/60) < 0.051,
+      val(pn.derived, 'Nodal period') + ' min');
+  chk('...and "Revs in 24 h" is a count over that period, not the Kozai n again',
+      Math.abs(val(pn.derived, 'Revs in 24 h') - 86400/pn.period) < 0.0051,
+      val(pn.derived, 'Revs in 24 h') + ' against n = ' + pn.l2.slice(52, 63).trim());
+  chk('the method box states the scan step this window used, not the drawing step',
+      pn.scan === '4 s' && pn.sample === '10 s', 'scan ' + pn.scan + ', sample ' + pn.sample);
+
+  /* GOES 18 at i = 0.035 deg: node-to-node times there wander by tens of
+     minutes, and the page used to print one of them as the period. */
+  await pick('GOES 18');
+  pn = await panel();
+  {
+    const nB = sat.twoline2satrec(pn.l1, pn.l2).no;       // SGP4's Brouwer n'', rad/min
+    const kep = 2*Math.PI/nB;
+    const got = val(pn.derived, 'Kepler period');
+    chk('a near-equatorial GEO object shows a labelled Kepler period, 2π/n″',
+        Math.abs(got - kep) < 0.0051 && Math.abs(val(pn.mini, 'Kepler period') - kep) < 0.051
+          && !pn.derived.some(d => d[0] === 'Nodal period'),
+        got + ' min (2π/n″ = ' + kep.toFixed(3) + '; node to node measured ' + (pn.period/60).toFixed(1) + ')');
+  }
+
+  /* A long window relaxes both steps, and the prose has to follow. */
+  await pick('KNACKSAT-2');
+  await page.evaluate(() => document.querySelector('.bar-window .span[data-h="72"]').click());
+  await page.waitForFunction(() => window.__gt.D.hours === 72, null, { timeout: 30000 });
+  pn = await panel();
+  chk('...and follows the window: 15 s scan, 30 s track on a 3 d span',
+      pn.scan === '15 s' && pn.sample === '30 s', 'scan ' + pn.scan + ', sample ' + pn.sample);
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

@@ -34,9 +34,9 @@ const FALLBACK = {
   stale: true
 };
 
-function pickTLE() {
+function readSats() {
   const f = path.join(DIR, 'resource.txt');
-  if (!fs.existsSync(f)) return FALLBACK;
+  if (!fs.existsSync(f)) return [];
   const lines = fs.readFileSync(f, 'utf8').split(/\r?\n/).map(s => s.replace(/\s+$/, ''));
   const sats = [];
   for (let i = 0; i + 2 < lines.length; i++) {
@@ -46,6 +46,11 @@ function pickTLE() {
       i += 2;
     }
   }
+  return sats;
+}
+
+function pickTLE() {
+  const sats = readSats();
   if (!sats.length) return FALLBACK;
   const by = n => sats.find(s => s.name.toUpperCase().replace(/\s+/g, ' ') === n);
   return by('LANDSAT 9') || by('LANDSAT 8') || sats[0];
@@ -144,6 +149,33 @@ function sjElevation(satrec, date) {
   return { elDeg: la.elevation * R2D, azDeg: la.azimuth * R2D, rangeKm: la.rangeSat };
 }
 
+// ================================================================ CHECK 4
+// The semi-major axis the page DISPLAYS. CHECK 1's a is the two-body
+// (mu/n^2)^(1/3) on both sides, which is the value the page does not show: it
+// shows the Brouwer value SGP4 recovers during initialisation, and until this
+// check nothing independent ever looked at that number. Re-derived here from
+// the published un-Kozai step (Hoots & Roehrich, Spacetrack Report #3), on
+// SGP4's own WGS-72 constants, written fresh and sharing no code with
+// satellite.js's initl(). The last line takes a'' = (ke/n'')^(2/3), the form
+// Vallado's sgp4init uses; STR#3's a0/(1 - d0) differs from it by millimetres.
+const MU72 = 398600.8, RE72 = 6378.135, J2_72 = 0.001082616;
+function myBrouwerA(l2) {
+  const inc = parseFloat(l2.slice(8, 16)) * D2R;
+  const ecc = parseFloat('0.' + l2.slice(26, 33).trim());
+  const nKozai = parseFloat(l2.slice(52, 63)) * 2 * Math.PI / 1440;   // rad/min
+  const xke = 60 / Math.sqrt(RE72 * RE72 * RE72 / MU72);              // ER^1.5/min
+  const c2 = Math.cos(inc) * Math.cos(inc);
+  const b2 = 1 - ecc * ecc;
+  // 1.5 k2 (3cos^2 i - 1) / beta^3, with k2 = J2/2; divided by a^2 below
+  const k = 0.75 * J2_72 * (3 * c2 - 1) / (Math.sqrt(b2) * b2);
+  const a1 = Math.pow(xke / nKozai, 2 / 3);
+  const d1 = k / (a1 * a1);
+  const a0 = a1 * (1 - d1 / 3 - d1 * d1 - 134 * d1 * d1 * d1 / 81);
+  const d0 = k / (a0 * a0);
+  const nBrouwer = nKozai / (1 + d0);
+  return Math.pow(xke / nBrouwer, 2 / 3) * RE72;                      // km
+}
+
 // ================================================================ reporting
 function relDiff(mine, theirs) {
   const d = Math.abs(mine - theirs);
@@ -190,10 +222,10 @@ function main() {
     ['mean anomaly (deg)',     theirs.ma,              mine.ma],
     ['mean motion (rev/day)',  theirs.n,               mine.n],
     ['epoch (ms since 1970)',  theirs.epoch.getTime(), mine.epochMs],
-    ['semi-major axis a (km)', theirs.a,               mine.a],
-    ['period (s)',             theirs.period,          mine.period],
-    ['perigee altitude (km)',  theirs.perigeeAlt,      mine.perigeeAlt],
-    ['apogee altitude (km)',   theirs.apogeeAlt,       mine.apogeeAlt]
+    ['two-body a (km)',       theirs.a,               mine.a],
+    ['period 86400/n (s)',     theirs.period,          mine.period],
+    ['a(1-e) - Re (km)',       theirs.perigeeAlt,      mine.perigeeAlt],
+    ['a(1+e) - Re (km)',       theirs.apogeeAlt,       mine.apogeeAlt]
   ];
   console.log(pad('FIELD', 24) + pad('core.js (yours)', 25) + pad('independent (mine)', 25) + 'rel.diff');
   console.log('-'.repeat(86));
@@ -296,16 +328,50 @@ function main() {
               '  (|diff| = ' + dt.toFixed(3) + ' s; pass counts ' +
               passes.length + ' vs ' + bfRuns + ')');
 
+  // ---------------------------------------------------------- CHECK 4
+  hdr('CHECK 4 -- DISPLAYED SEMI-MAJOR AXIS  (core/propagator.js  vs  independent un-Kozai)');
+  require(path.join(DIR, '..', 'core/body.js'));
+  require(path.join(DIR, '..', 'core/propagator.js'));
+  const EARTH = globalThis.Body.Earth(satellite);
+  const shown = t => globalThis.Propagator.sgp4Track(EARTH, t, satellite).recoveredA;
+  const A_TOL = 1e-9;
+  const aMine = myBrouwerA(tle.l2), aPage = shown(tle);
+  const aRd = aPage === null ? Infinity : relDiff(aMine, aPage);
+  console.log(pad('', 24) + pad('page (propagator)', 25) + pad('independent (mine)', 25) + 'rel.diff');
+  console.log('-'.repeat(86));
+  console.log(pad('Brouwer a (km)', 24) + pad(aPage, 25) + pad(aMine, 25) + aRd.toExponential(3) +
+              (aRd > A_TOL ? '   <<< MISMATCH' : ''));
+  console.log(pad('two-body (mu/n^2)^(1/3)', 24) + pad('', 25) + pad(mine.a, 25) +
+              '(not shown; ' + (mine.a - aMine >= 0 ? '+' : '') + (mine.a - aMine).toFixed(3) + ' km)');
+  // and every set in resource.txt, since the Kozai correction depends on i and e
+  let worst = { rd: 0, name: '' }, n4 = 0, bad4 = 0;
+  for (const s of readSats()) {
+    const aP = shown(s);
+    if (aP === null) continue;               // an element set SGP4 will not initialise
+    const rd = relDiff(myBrouwerA(s.l2), aP);
+    n4++;
+    if (rd > A_TOL) bad4++;
+    if (rd > worst.rd) worst = { rd, name: s.name };
+  }
+  console.log('');
+  console.log('resource.txt: ' + n4 + ' element sets, worst rel.diff ' + worst.rd.toExponential(3) +
+              (worst.name ? ' (' + worst.name + ')' : '') + ', ' + bad4 + ' over ' + A_TOL);
+  const c4pass = aRd <= A_TOL && bad4 === 0;
+  console.log('');
+  console.log('CHECK 4: ' + (c4pass ? 'PASS' : 'FAIL') +
+              '  (the a the page shows is SGP4\'s Brouwer value, to ' + A_TOL + ' relative)');
+
   // ---------------------------------------------------------- verdict
   hdr('VERDICT');
   console.log('CHECK 1 orbital elements      : ' + (c1pass ? 'PASS' : 'FAIL'));
   console.log('CHECK 2 topocentric elevation : ' + (c2pass ? 'PASS' : 'FAIL'));
   console.log('CHECK 3 cumulative visibility : ' + (c3pass ? 'PASS' : 'FAIL'));
+  console.log('CHECK 4 displayed a (Brouwer) : ' + (c4pass ? 'PASS' : 'FAIL'));
   if (tle.stale) {
     console.log('');
     console.log('(!) Ran on the STALE FALLBACK TLE -- these are NOT real-data results.');
   }
-  process.exitCode = (c1pass && c2pass && c3pass) ? 0 : 1;
+  process.exitCode = (c1pass && c2pass && c3pass && c4pass) ? 0 : 1;
 }
 
 main();

@@ -232,6 +232,13 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .railprov .stale{color:var(--contact); font-weight:600}
 .railprov .prov-live{color:var(--track)} .railprov .prov-snap{color:var(--contact)}
 .railprov .prov-checking{color:var(--ink2); opacity:.75}
+.railprov .prov-gone{color:var(--contact); font-weight:600}
+/* Re-entry: the one case where the answer block's own number is not to be
+   believed, so it is said inside the block, above that number. */
+.reentry{margin:0 0 12px; padding:8px 10px; border-left:3px solid var(--contact);
+  background:var(--chrome2); border-radius:0 3px 3px 0;
+  font-size:12px; line-height:1.5; color:var(--ink)}
+.reentry b{color:var(--contact); font-weight:700}
 .railfoot{margin-top:auto; padding:12px 18px; display:flex; flex-direction:column; gap:4px}
 .railfoot a{font-size:11.5px}
 
@@ -335,6 +342,8 @@ section{display:flex; flex-direction:column; gap:16px}
 .tle-meta .prov-snap{color:var(--contact); font-weight:600}
 .tle-meta .prov-snap b{color:var(--contact)}
 .tle-meta .prov-checking{color:var(--ink2); opacity:.75}
+.tle-meta .prov-gone{color:var(--contact); font-weight:600}
+.tle-meta .prov-gone b{color:var(--contact)}
 
 .elements{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px;
   background:var(--rule); border:1px solid var(--rule); border-radius:4px; overflow:hidden}
@@ -491,6 +500,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 .combo-list li.note:only-child{border-top:0; margin-top:0}
 .combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
   letter-spacing:.06em; color:var(--muted); width:290px; max-width:100%}
+/* a spacecraft that could not be loaded - said where it was asked for */
+.combo-hint.loadnote{color:var(--contact); letter-spacing:.02em; line-height:1.45; margin-top:4px}
 
 .skip{position:absolute; left:-9999px; top:0; background:var(--panel); color:var(--ink);
   padding:10px 14px; border:1px solid var(--rule); border-radius:3px; z-index:100}
@@ -554,6 +565,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden></ul>
       </div>
       <p class="combo-hint" id="satcount">—</p>
+      <p class="combo-hint loadnote" id="loadnote" role="alert" hidden></p>
     </div>
   </header>
 
@@ -616,6 +628,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 
     <aside class="rail" aria-label="Visibility summary">
       <div class="answer">
+        <p class="reentry" id="reentry" role="status" hidden></p>
         <p class="eyebrow" id="lbl-vis">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
@@ -7666,6 +7679,22 @@ window.__gt = {
   get CAT(){ return CAT; }
 };
 
+/* The entry interface - conventionally 400,000 ft, about 122 km - below which a
+   returning object is taken to be re-entering. Nothing stays in orbit there. */
+const REENTRY_KM = 120;
+/* satellite.js's refusal codes, in words. 6 is the one this catalogue meets:
+   objects that were in orbit when it was built and are not now. */
+const SGP4_WHY = {
+  1: 'mean eccentricity or semi-major axis out of range',
+  2: 'mean motion below zero',
+  3: 'perturbed eccentricity out of range',
+  4: 'semi-latus rectum below zero',
+  6: 'decayed'
+};
+const sgp4Why = code => code === null || code === undefined ? 'the element set could not be read'
+  : SGP4_WHY[code] ? 'error ' + code + ': ' + SGP4_WHY[code]
+  : 'no usable position';
+
 function compute(entry, t0ms, hours){
   const track = Propagator.sgp4Track(BODY, entry, satellite);
   const E = elements(entry.l1, entry.l2);
@@ -7673,8 +7702,25 @@ function compute(entry, t0ms, hours){
   const start = new Date(t0ms), end = new Date(t0ms + hours*3600000);
   const pts = [];
   const N = Math.round(hours*3600/step);
-  for(let k=0;k<=N;k++){ const s = sample(track,start,k,step); if(s) pts.push(s); }
-  if(!pts.length) throw new Error('no propagable samples for '+entry.name);
+  /* A sample SGP4 refuses is skipped, as it always was - but no longer
+     forgotten. The first refusal says why there is nothing to analyse, if there
+     is nothing; and an error 6 anywhere in the window is SGP4 reporting that the
+     orbit has met the ground at that instant, which is the re-entry test below. */
+  let lost = null, groundAt = null;
+  for(let k=0;k<=N;k++){
+    const s = sample(track,start,k,step);
+    if(s){ pts.push(s); continue; }
+    const code = track.lastError;
+    if(!lost) lost = {code};
+    if(code === 6 && groundAt === null) groundAt = start.getTime()+k*step*1000;
+  }
+  if(!pts.length){
+    /* Nothing to analyse at all. The reason travels with the error, so load()
+       can say "SGP4 has this object decayed" rather than "something failed". */
+    const err = new Error('no propagable samples for '+entry.name);
+    err.sgp4 = lost ? lost.code : null;
+    throw err;
+  }
 
   /* The TLE mean motion is the KOZAI mean motion, so a = (mu/n^2)^(1/3) is not
      the orbit's semi-major axis - it is short by a few km, and by up to 6.4 km
@@ -7727,7 +7773,12 @@ function compute(entry, t0ms, hours){
     const N2 = Math.round(720 + 3000*Math.min(0.95, E.ecc));
     for(let k=0;k<=N2;k++){
       const s = fix(track, t0 + k*P*1000/N2);
-      if(!s) continue;
+      if(!s){
+        // a perigee SGP4 puts underground; noted for the re-entry test below
+        const ms = t0 + k*P*1000/N2;
+        if(track.lastError === 6 && (groundAt === null || ms < groundAt)) groundAt = ms;
+        continue;
+      }
       const g = track.body.toGeodetic(s.r, s.theta).height;
       if(g < lo) lo = g; if(g > hi) hi = g;
     }
@@ -7742,10 +7793,28 @@ function compute(entry, t0ms, hours){
   // a long window can hold tens of thousands of samples; the flat map only needs
   // enough to draw a smooth line
   const drawStride = Math.max(1, Math.ceil(pts.length/8640));
+  /* Re-entry. SGP4 has no notion that an orbit can end: handed the element set
+     of an object that came down last week it goes on producing positions - at
+     40 km, then at 20 - and refuses only once the radius is inside the Earth.
+     Everything downstream then quotes passes, naked-eye verdicts and Doppler
+     for a spacecraft that is not there. So ask the propagation how low it goes.
+     Below the ~120 km entry interface an orbit does not last more than a
+     revolution or two; an error 6 is SGP4 itself saying the orbit reached the
+     ground. Both are read from everything propagated above: the window's own
+     samples, and the densely-sampled revolution from its start, whether or not
+     that revolution ends inside the window. The revolution matters on its own
+     account - CLUSTER II-FM8 has a 53 h period, so a 24 h window can hold
+     nothing but apogee arcs from an object whose perigee is underground. A new
+     field only: nothing above reads it, so no number the gate compares can
+     move. */
+  let lowest = E.altMeasured ? E.perigeeAlt : Infinity;
+  for(const p of pts) if(p.alt < lowest) lowest = p.alt;
+  const reentry = (lowest < REENTRY_KM || groundAt !== null)
+    ? {minAlt: lowest, groundAt} : null;
   /* satrec stays on the returned object because orbitviz reads SGP4's own
      fields from it; track is what everything else should use. */
   return {entry, track, satrec: track.raw, E, start, end, pts, passes, totalS,
-          meanAlt, lambda, step, hours, drawStride};
+          meanAlt, lambda, step, hours, drawStride, reentry};
 }
 
 /* ---- (a) render elements ------------------------------------------------- */
@@ -8665,6 +8734,15 @@ function bootExport(){
   const c = document.getElementById('exp-csv'), i = document.getElementById('exp-ics');
   const guard = fn => () => {
     if(!D || !D.passes.length){ hintExport('No passes in this window to export.'); return; }
+    /* An exported pass outlives the page that computed it: once it is a row in
+       someone's spreadsheet or an alarm on their phone, the re-entry warning is
+       no longer beside it. So the passes of an object SGP4 has below the entry
+       interface do not leave the page. */
+    if(D.reentry){
+      hintExport('Not exported — SGP4 takes ' + D.entry.name + ' below the ' + REENTRY_KM +
+                 ' km entry interface, so these passes will not happen.');
+      return;
+    }
     fn();
   };
   if(c) c.addEventListener('click', guard(exportCSV));
@@ -8795,9 +8873,44 @@ function bootSite(){
 }
 
 /* ---- boot ---------------------------------------------------------------- */
-function load(entry){
+/* load() says whether it loaded. It used to assume it would. compute() throws
+   when SGP4 cannot propagate an object anywhere in the window - by late
+   September 2026, fourteen catalogue entries that SGP4 has decayed and one whose
+   elements it rejects outright - and the throw came out of here after choose()
+   had already moved curIdx and the picker. The masthead, passes and globe
+   stayed on the previous spacecraft under a picker naming the new one, and
+   every later change of span, window or site re-ran the same failure. Now the
+   new analysis is computed before anything is touched. If it cannot be, every
+   control goes back to what D - still the analysis on screen - was computed
+   from, and the page says why.
+
+   trial: the caller has its own account of a failure (refreshTLE trying a newer
+   element set) and wants only the answer, which is left in load.failed.      */
+function load(entry, trial){
   if(winStart === null) winStart = Date.now();
-  D = compute(entry, winStart, spanH);
+  let nd;
+  try { nd = compute(entry, winStart, spanH); }
+  catch(err){
+    load.failed = err;
+    const why = (err && typeof err === 'object' && 'sgp4' in err) ? sgp4Why(err.sgp4)
+      : String(err && err.message || err);
+    const tried = 'from ' + iso(new Date(winStart)) + ' for ' + spanLabel(spanH);
+    const msg = !D ? entry.name + ' cannot be propagated ' + tried + ' (' + why + ').'
+      : D.entry !== entry
+        ? entry.name + ' not loaded: SGP4 cannot propagate it anywhere in this window (' +
+          why + '). Still showing ' + D.entry.name + '.'
+        : 'Window not changed: SGP4 cannot propagate ' + entry.name + ' anywhere ' + tried +
+          ' (' + why + ').';
+    if(D){
+      curIdx = CAT.indexOf(D.entry); box.value = D.entry.name;
+      winStart = D.start.getTime(); spanH = D.hours;
+      paintWindow();
+    }
+    if(!trial) loadNote(msg);
+    return false;
+  }
+  D = nd;
+  if(!trial) loadNote('');
   document.getElementById('satname').textContent = entry.name;
   document.getElementById('idnorad').textContent = D.E.satnum;
   document.getElementById('idcospar').textContent = D.E.cospar;
@@ -8835,6 +8948,7 @@ function load(entry){
   }
   renderElements();
   renderAccess();
+  paintReentry();
   paintAges();
   paintWindow();
   refreshTLE(entry);            // fire and forget; reloads if a newer set exists
@@ -8847,6 +8961,30 @@ function load(entry){
   lastIdx = -1; paintClock(true); paintPlay();
   selectPass(0, false);
   paintRate();
+  return true;
+}
+/* Under the picker, because that is where the request that failed was made.
+   Cleared by the next analysis that does load. */
+function loadNote(txt){
+  const n = document.getElementById('loadnote');
+  if(!n) return;
+  n.textContent = txt;
+  n.hidden = !txt;
+}
+/* In the answer block, above the number it undermines. "12 min in view" is the
+   first thing read on the page, and for an object below the entry interface it
+   is the one figure that should not be believed. */
+function paintReentry(){
+  const n = document.getElementById('reentry');
+  if(!n) return;
+  const R = D.reentry;
+  n.hidden = !R;
+  if(!R) return;
+  n.innerHTML = '<b>Re-entry.</b> Propagated from the start of this window, SGP4 takes ' +
+    esc(D.entry.name) + ' down to ' + R.minAlt.toFixed(1) + ' km' +
+    (R.groundAt !== null ? ', and below the surface at ' + iso(new Date(R.groundAt)) + ' (error 6)' : '') +
+    ' — under the ' + REENTRY_KM + ' km entry interface. It has re-entered or is about to' +
+    (D.passes.length ? ', so the passes listed will not happen and are not exported.' : '.');
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -8996,7 +9134,15 @@ function rollWindow(){
   for(let i = 0; i < 64 && (at > start + span || at < start); i++)
     start += at > start ? span : -span;
   winStart = start;
-  load(CAT[curIdx]);
+  if(!load(CAT[curIdx])){
+    /* Played on into time SGP4 cannot propagate - an object decaying under the
+       running clock. load() has put the window back; stop at its edge rather
+       than retrying the same failure on every animation frame. */
+    simMs = Math.min(winT1(), Math.max(winT0(), at));
+    playing = false;
+    paintClock(true); paintPlay();
+    return;
+  }
   simMs = at;
   playing = keep;
   paintClock(true); paintPlay();
@@ -9064,7 +9210,17 @@ if(DEFAULT < 0) DEFAULT = 0;
  */
 const TLE_TTL   = 3*3600*1000;   // don't ask a source twice inside three hours
 const TLE_RETRY = 5*60*1000;     // after a failure, wait this long before retry
-let tleLive = null;              // provenance of the element set now on screen
+/* Where the element set came from is a property of the ENTRY, kept beside its
+   __next as entry.__prov, and the line on screen is read from D.entry - the
+   spacecraft actually on screen - every time it is painted. It used to be one
+   page-wide variable that load() never reset and refreshTLE() skipped when
+   nothing was due, so the line described whichever object had been checked
+   last: GOES 18's embedded set read "Updated live from CelesTrak" because
+   KNACKSAT-2's had been, and KNACKSAT-2's live set, revisited, read "No live
+   source reachable" because GOES 18's check had failed. With nothing global
+   there is nothing left over to show. An entry not yet checked has no __prov,
+   and says it is checking. */
+const provOnScreen = () => (D && D.entry.__prov) || null;
 
 function tleFromText(t){
   const L = String(t).trim().split(/\r?\n/).map(x => x.replace(/\s+$/,''));
@@ -9076,7 +9232,14 @@ function tleFromText(t){
 const TLE_SOURCES = [
   { name:'CelesTrak',
     url: id => 'https://celestrak.org/NORAD/elements/gp.php?CATNR='+id+'&FORMAT=tle',
-    parse: tleFromText },
+    parse: tleFromText,
+    /* CelesTrak answers for an object it no longer carries with a 404 and "No GP
+       data found". For something that was in the catalogue when this snapshot
+       was built, that nearly always means it has re-entered - an answer, not an
+       outage. It was being treated as an outage: the mirror was asked next, and
+       a mirror still serving the last set it saw turned a withdrawn object into
+       "Confirmed current". */
+    gone: t => /No GP data found/i.test(t) },
   { name:'TLE API',
     url: id => 'https://tle.ivanstanojevic.me/api/tle/'+id,
     parse: t => { try { const j = JSON.parse(t);
@@ -9125,8 +9288,13 @@ async function fetchTLE(satnum){
       const bail = setTimeout(() => ctl.abort(), 8000);
       const r = await fetch(s.url(satnum), {signal: ctl.signal, cache:'no-store'});
       clearTimeout(bail);
+      const text = await r.text();
+      /* Read before the status check, since the answer that matters most comes
+         back as a 404. Not written to the cache, which holds element sets -
+         the entry's own __next already spaces out the next time it is asked. */
+      if(s.gone && s.gone(text)) return {src:s.name, gone:true, at:Date.now()};
       if(!r.ok) continue;
-      const got = s.parse(await r.text());
+      const got = s.parse(text);
       /* A source that is up but has no such object answers 200 with an error
          page, so validate the shape before believing it. */
       const rec = {l1: got && got.l1, l2: got && got.l2, src:s.name, at:Date.now()};
@@ -9142,9 +9310,21 @@ async function refreshTLE(entry){
   if(entry.__next && Date.now() < entry.__next) return;
   entry.__next = Date.now() + TLE_RETRY;          // also guards re-entry
   const got = await fetchTLE(entry.satnum);
-  if(CAT[curIdx] !== entry) return;               // user moved on mid-flight
+  /* The user may have moved on mid-flight. Every outcome is still recorded on
+     the entry it belongs to, so coming back to it shows its own result; only
+     the painting waits for it to be on screen. */
+  const here = !!D && D.entry === entry;
 
-  if(!got){ tleLive = {src:null}; paintAges(); return; }
+  if(!got){ entry.__prov = {src:null}; if(here) paintAges(); return; }
+
+  /* Withdrawn by the authoritative source. Said as such, and the set on screen
+     is left alone - there is nothing newer to take. */
+  if(got.gone){
+    entry.__prov = {gone:got.src, at:got.at};
+    entry.__next = got.at + TLE_TTL;
+    if(here) paintAges();
+    return;
+  }
 
   /* Re-arm rather than retire. This used to set __next = Infinity, which meant
      one check per object per SESSION - fine for a visit, wrong for a console
@@ -9153,9 +9333,10 @@ async function refreshTLE(entry){
      when fetchTLE's own cached copy goes stale, so the re-check reaches the
      network instead of being answered from the cache it is trying to refresh. */
   if(got.l1 === entry.l1 && got.l2 === entry.l2){
-    tleLive = {src:got.src, at:got.at};           // snapshot was already current
+    entry.__prov = {src:got.src, at:got.at};      // snapshot was already current
     entry.__next = got.at + TLE_TTL;
-    paintAges(); return;
+    if(here) paintAges();
+    return;
   }
   /* Only ever move forward. A mirror can legitimately serve an element set
      older than the one embedded here, and replacing a newer TLE with an older
@@ -9166,20 +9347,35 @@ async function refreshTLE(entry){
   if(!newer){
     /* A mirror serving an older set will still be serving it in five minutes,
        so back off to the normal interval rather than hammering the retry. */
-    tleLive = {src:null, older:got.src};
+    entry.__prov = {src:null, older:got.src};
     entry.__next = got.at + TLE_TTL;
-    paintAges(); return;
+    if(here) paintAges();
+    return;
   }
+  /* Newer, but for an object no longer on screen. Taking it now would mean
+     swapping in a set nobody has propagated, so leave it in fetchTLE's cache and
+     make the check due: the next visit takes it from there at once. */
+  if(!here){ entry.__next = 0; return; }
 
+  const held = {l1:entry.l1, l2:entry.l2};
   entry.l1 = got.l1; entry.l2 = got.l2;
   entry.__next = got.at + TLE_TTL;
-  tleLive = {src:got.src, at:got.at, updated:true};
+  entry.__prov = {src:got.src, at:got.at, updated:true};
 
   /* The window and span have not changed, so the clock stays where the user
      put it; only the element set underneath it is new. */
   const keep = simMs, wasPlaying = playing;
-  load(entry);
-  setSim(keep, !wasPlaying);
+  if(load(entry, true)){ setSim(keep, !wasPlaying); return; }
+
+  /* Newer, and SGP4 cannot propagate it anywhere in this window - in practice,
+     a later set that has the object decayed. Adopting it used to throw out of
+     load() with the entry already rewritten, which left the old analysis on
+     screen over the new element set and made every later span change throw
+     too. Keep the set that works, and pass on what the newer one says. */
+  entry.l1 = held.l1; entry.l2 = held.l2;
+  const code = load.failed ? load.failed.sgp4 : null;
+  entry.__prov = {dead:got.src, at:got.at, code, why:sgp4Why(code)};
+  paintAges();
 }
 
 
@@ -9492,6 +9688,7 @@ document.querySelector('.viewport').addEventListener('mousedown', e=>{
 /* One sentence, used in three places, so the page never disagrees with itself
    about where the numbers on screen came from. */
 function liveLine(now){
+  const tleLive = provOnScreen();
   if(!tleLive) return ['checking', 'Checking for a newer element set…'];
   /* When the check happened, not merely that it happened. The page re-checks
      while it is open, so on a console left running "confirmed current" would
@@ -9504,6 +9701,11 @@ function liveLine(now){
     : ' · checked <b>'+ago(since)+'</b> ago';
   if(tleLive.updated) return ['live', 'Updated live from <b>'+tleLive.src+'</b>'+seen+'.'];
   if(tleLive.src)     return ['live', 'Confirmed current against <b>'+tleLive.src+'</b>'+seen+'.'];
+  if(tleLive.gone)    return ['gone', '<b>'+tleLive.gone+'</b> has no current elements for this object'+seen+
+                              ' — it may have re-entered.'];
+  if(tleLive.dead)    return ['gone', '<b>'+tleLive.dead+'</b> has a newer set that SGP4 cannot propagate in this window ('+
+                              tleLive.why+')'+seen+' — keeping the one on screen'+
+                              (tleLive.code === 6 ? '; the object may have re-entered.' : '.')];
   if(tleLive.older)   return ['snap', '<b>'+tleLive.older+'</b> offered an older set — keeping the embedded one.'];
   return ['snap', 'No live source reachable — showing the embedded snapshot.'];
 }
@@ -9757,7 +9959,20 @@ countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type t
    showing the wrong answer in between. */
 bootSite();
 bootExport();
-load(CAT[curIdx]);
+if(!load(CAT[curIdx])){
+  /* The default is a moving target too: KNACKSAT-2 will re-enter one day, and a
+     page that failed on its own default would open blank. Try the rest of the
+     preference list, then the catalogue in order, and say what was skipped. */
+  const said = document.getElementById('loadnote').textContent;
+  const tried = new Set([curIdx]);
+  const order = WANT.map(re => CAT.findIndex(c => re.test(c.name))).concat(CAT.map((_, i) => i));
+  for(const i of order){
+    if(i < 0 || tried.has(i)) continue;
+    tried.add(i);
+    curIdx = i; box.value = CAT[i].name;
+    if(load(CAT[i])){ loadNote(said + ' Showing ' + CAT[i].name + ' instead.'); break; }
+  }
+}
 if('IntersectionObserver' in window){
   new IntersectionObserver(es => {
     mapVisible = es[0].isIntersecting;

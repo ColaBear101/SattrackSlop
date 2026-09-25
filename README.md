@@ -984,6 +984,61 @@ other 2,157 objects in the 3D catalogue cloud are still drawn from it — they a
 analysis. To refresh that baseline, rebuild `catalog.txt` and re-inject it into the
 `<script id="tledata">` block.
 
+### When the object is no longer there
+
+The catalogue is a snapshot, and some of what it holds has since come down. SGP4 meets such an
+object in one of two ways, and the page used to handle neither.
+
+- **SGP4 refuses it.** Once the drag terms put the orbit inside the Earth, SGP4 returns error 6
+  ("decayed") for every instant and there is nothing to analyse. By late September 2026 that is
+  fourteen catalogue entries — COSMOS 2558, ODIN and DUCHIFAT 1 among them, all three recorded as
+  re-entered in the CelesTrak SATCAT — plus STARLINK-2342, whose elements SGP4 rejects outright
+  (error 1). Picking one threw after the picker had already moved: the masthead, passes and globe
+  stayed on the previous spacecraft under a picker naming the new one, and every later change of
+  span or window threw again. The new analysis is now computed before anything on screen is
+  touched. If it cannot be, the picker, window and span go back to what is still on screen, and a
+  note under the picker gives SGP4's reason — "ODIN not loaded: SGP4 cannot propagate it anywhere
+  in this window (error 6: decayed)". A window SGP4 cannot fill is refused the same way, playback
+  that runs into one stops at its edge, and a default spacecraft that has itself come down falls
+  back to the next in the preference list rather than opening a blank page. To make the reason
+  available at all, the propagator keeps SGP4's error code (`track.lastError`) where it used to
+  flatten it to `null`; the success path, and the `r` and `v` it hands through, are untouched.
+- **SGP4 propagates it anyway.** Short of that point it goes on producing positions at 40 km,
+  then at 20, and the page quoted passes, naked-eye verdicts and Doppler for them — ICEYE-X34,
+  re-entered 14 September, showed a mean altitude of 42.7 km. The analysis now records how low the
+  propagation goes, over the window's own samples and the densely-sampled first revolution from
+  its start, and whether SGP4 raised error 6 on the way. Below the ~120 km entry interface, or at
+  any error 6, the answer block says so above the minutes-in-view figure, and neither export will
+  write the passes: once they are a spreadsheet row or a phone alarm, the warning is no longer
+  beside them. The revolution matters on its own account. CLUSTER II-FM8 has a 53 h period, so a
+  24 h window can hold nothing but apogee arcs from an object whose perigee is underground.
+
+The live refresh has three answers of its own that are not a fresher set:
+
+- **A newer set SGP4 cannot propagate is refused.** A source can serve a later set for an object
+  that has since come down — the TLE API does for ICEYE-X34. Adopting it threw out of the reload
+  with the entry already rewritten. The page now tries it, keeps the set that works if it fails,
+  and says what the newer one showed.
+- **CelesTrak's "No GP data found" is a withdrawal, not an outage.** CelesTrak answers for an
+  object it no longer carries with a 404 and that text, and for something in this catalogue that
+  nearly always means re-entry. It was treated as a failure and the mirror asked next, which,
+  still serving the last set it had seen, turned CLUSTER II-FM8 (re-entered 1 September) into
+  "Confirmed current". The page now says "CelesTrak has no current elements for this object — it
+  may have re-entered", and does not ask the mirror.
+- **The provenance line belongs to the spacecraft on screen.** It was one page-wide value that a
+  change of spacecraft never reset, so it described whichever object had been checked last:
+  GOES 18's embedded set read "Updated live from CelesTrak" because KNACKSAT-2's had been, and
+  KNACKSAT-2's live set, revisited, read "No live source reachable" because GOES 18's check had
+  failed. Each catalogue entry now carries its own result, and the line is read from the entry
+  actually displayed.
+
+These objects stay in the embedded catalogue for now. Dropping them belongs to the next rebuild;
+doing it by hand would change the catalogue count the regression gate compares.
+`verification/verify-catalogue.js` drives both SGP4 cases through the picker, the window and span
+buttons, the transport and the export buttons, in a fixed window — which objects are decayed
+depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
+The default's fallback is not in the suite: exercising it needs a doctored catalogue.
+
 ## Running it
 
 **The pages need nothing.** No build, no server, no install — open them:
@@ -1014,6 +1069,7 @@ npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
+npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run timeline     # the window rolling forward when playback runs off the end
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one
 npm run snapshot     # (re)write verification/baseline.json

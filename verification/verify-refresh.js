@@ -17,6 +17,11 @@
  * interval the page sets for itself. Phase 5 waits the full 30 s rather than
  * reaching inside, because the wiring of that timer is the thing being checked.
  *
+ * Phases 6 to 8 are the answers that are not a fresher set: the provenance line
+ * has to follow the spacecraft rather than the last fetch, a newer set that
+ * SGP4 cannot propagate has to be refused, and CelesTrak's "No GP data found"
+ * has to be reported as a withdrawal rather than an outage.
+ *
  *   node verification/verify-refresh.js          (needs playwright)
  */
 const path = require('path');
@@ -40,8 +45,16 @@ function withEpoch(l1, days) {                 // same object, epoch shifted
   const body = l1.substring(0, 20) + (ep + days).toFixed(8).padStart(12, '0') + l1.substring(32, 68);
   return body + checksum(body);
 }
+/* Same object, mean motion replaced. 17.5 rev/day is a semi-major axis inside
+   the Earth, which SGP4 answers with error 6 at every instant: the shape of a
+   later element set for an object that has come down. */
+function withMeanMotion(l2, n) {
+  const body = l2.substring(0, 52) + n.toFixed(8).padStart(11, ' ') + l2.substring(63, 68);
+  return body + checksum(body);
+}
 
 let served = null, hits = 0, fails = 0;
+let mine = null, gone = false, altServed = null, altHits = 0;
 const chk = (name, ok, detail) => {
   if (!ok) fails++;
   console.log((ok ? '  PASS  ' : '  FAIL  ') + name + (detail ? '   ' + detail : ''));
@@ -53,13 +66,24 @@ const chk = (name, ok, detail) => {
   const pageErrs = [];
   page.on('pageerror', e => pageErrs.push(e.message));
 
-  await page.route(ALT, r => r.abort());               // one source under test
+  /* One source under test. The mirror is counted, and answers only in phase 8,
+     where the point is that it is not asked at all. */
+  await page.route(ALT, r => {
+    altHits++;
+    return altServed ? r.fulfill({ status: 200, contentType: 'application/json', body: altServed })
+                     : r.abort();
+  });
   /* The globe's NASA imagery is nothing to do with this check, and letting it
      run costs seconds of wall clock that the timings here are measured against.
      Blocked, so the page takes its documented fallback to the drawn coastlines. */
   await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
-  await page.route(GP, r => {
+  await page.route(GP, async r => {
+    /* Any other spacecraft (phase 6) gets a slow failure, so there is a moment
+       in which its own check is visibly still running. */
+    const id = new URL(r.request().url()).searchParams.get('CATNR');
+    if (mine && id !== mine) { await new Promise(res => setTimeout(res, 1500)); return r.abort(); }
     hits++;
+    if (gone) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'No GP data found' });
     return served ? r.fulfill({ status: 200, contentType: 'text/plain', body: served })
                   : r.abort();
   });
@@ -75,6 +99,7 @@ const chk = (name, ok, detail) => {
     return { satnum: e.satnum, name: e.name, l1: e.l1, l2: e.l2,
              next: e.__next, now: Date.now(), epoch: __gt.D.E.epoch.getTime() };
   });
+  mine = base.satnum;
   console.log('\nspacecraft     : ' + base.name + '  (NORAD ' + base.satnum + ')');
   console.log('embedded epoch : ' + new Date(base.epoch).toISOString() + '\n');
 
@@ -156,6 +181,91 @@ const chk = (name, ok, detail) => {
   for (let i = 0; i < 330 && hits === idleBefore; i++) await page.waitForTimeout(100);
   chk('the 30 s interval re-checks with no user action at all', hits > idleBefore,
       'requests ' + idleBefore + ' -> ' + hits);
+  await page.waitForTimeout(700);
+
+  // ---- phase 6: the line belongs to the spacecraft on screen ---------------
+  /* The provenance used to be one page-wide variable that nothing reset on a
+     change of spacecraft, so the line described whichever object had been
+     checked last. Confirm this one, move to another whose check is slow and
+     then fails, and come back - through the picker, as a user would. */
+  const pick = async q => {
+    await page.click('#satsearch');
+    await page.fill('#satsearch', q);
+    await page.keyboard.press('Enter');
+  };
+  const cur = await page.evaluate(() => ({ l1: __gt.D.entry.l1, l2: __gt.D.entry.l2 }));
+  served = cur.l1 + '\n' + cur.l2;
+  await tick();
+  st = await state();
+  chk('(set up) the spacecraft is confirmed current', /[Cc]onfirmed current/.test(st.meta),
+      st.meta.slice(0, 60));
+  const epoch6 = st.epoch;
+  const other = await page.evaluate(n => __gt.CAT.find(c => c.satnum !== n && /^GOES 18$/.test(c.name))
+                                      || __gt.CAT.find(c => c.satnum !== n), base.satnum);
+  await pick(other.satnum);
+  await page.waitForTimeout(400);
+  const mid = await page.evaluate(() => ({ name: __gt.D.entry.name,
+    meta: document.getElementById('tlemeta').textContent.replace(/\s+/g, ' ').trim() }));
+  chk('another spacecraft does not inherit that verdict while its own check runs',
+      mid.name === other.name && /Checking for a newer element set/.test(mid.meta),
+      mid.name + ': ' + mid.meta.slice(0, 60));
+  await page.waitForTimeout(2500);
+  const failed = await page.evaluate(() =>
+    document.getElementById('tlemeta').textContent.replace(/\s+/g, ' ').trim());
+  chk('...and reports its own failure once that check ends', /No live source reachable/.test(failed),
+      failed.slice(0, 60));
+  const hitsBack = hits;
+  await pick(base.satnum);
+  await page.waitForTimeout(800);
+  st = await state();
+  chk('coming back shows this spacecraft\'s own result, not the last one fetched',
+      /[Cc]onfirmed current/.test(st.meta) && st.epoch === epoch6,
+      st.meta.slice(0, 60));
+  chk('...without asking again, since its check is not due', hits === hitsBack,
+      'requests ' + hitsBack + ' -> ' + hits);
+
+  // ---- phase 7: a newer set SGP4 cannot propagate --------------------------
+  /* What a mirror serves for an object that has come down: a later element
+     set, with the orbit inside the Earth. Adopting it used to throw out of the
+     reload with the entry already rewritten, and every span change after that
+     threw again. */
+  const heldNow = await page.evaluate(() => ({ l1: __gt.D.entry.l1, epoch: __gt.D.E.epoch.getTime() }));
+  served = withEpoch(cur.l1, 1) + '\n' + withMeanMotion(cur.l2, 17.5);
+  const errsBefore = pageErrs.length;
+  await tick();
+  st = await state();
+  const kept = await page.evaluate(() => __gt.D.entry.l1);
+  chk('a newer set SGP4 cannot propagate is not adopted', st.epoch === heldNow.epoch
+      && kept === heldNow.l1, 'epoch still ' + new Date(st.epoch).toISOString());
+  chk('...and the page says why, in SGP4\'s terms',
+      /cannot propagate/.test(st.meta) && /error 6: decayed/.test(st.meta) && /re-entered/.test(st.meta),
+      st.meta.slice(0, 90));
+  await page.click('.bar-window .span[data-h="72"]');
+  await page.waitForTimeout(1200);
+  const span72 = await page.evaluate(() => __gt.D.hours);
+  await page.click('.bar-window .span[data-h="24"]');
+  await page.waitForTimeout(900);
+  chk('...and the span still changes afterwards, without a page error',
+      span72 === 72 && pageErrs.length === errsBefore,
+      span72 + ' h; ' + (pageErrs.slice(errsBefore).join(' | ') || 'no errors'));
+
+  // ---- phase 8: CelesTrak no longer carries the object ---------------------
+  /* A 404 with "No GP data found" is CelesTrak's answer for an object it has
+     withdrawn - for something in this catalogue, nearly always a re-entry. The
+     mirror here would happily confirm the set on screen; it must not be asked. */
+  gone = true;
+  altServed = JSON.stringify({ line1: cur.l1, line2: cur.l2 });
+  const altBefore = altHits;
+  await tick();
+  st = await state();
+  chk('CelesTrak\'s "No GP data found" is reported as such, not as an outage',
+      /CelesTrak has no current elements/.test(st.meta) && /re-entered/.test(st.meta),
+      st.meta.slice(0, 80));
+  chk('...and the mirror is not asked to overrule it', altHits === altBefore
+      && !/[Cc]onfirmed current/.test(st.meta), 'mirror requests ' + altBefore + ' -> ' + altHits);
+  chk('...and it is re-checked on the normal interval', Math.abs((st.next - st.now) - TTL) < 60e3,
+      'due in ' + ((st.next - st.now) / HOUR).toFixed(2) + ' h (expect 3.00)');
+  gone = false; altServed = null;
 
   console.log('\npage errors: ' + (pageErrs.length ? pageErrs.join(' | ') : 'none'));
   console.log('mocked requests served: ' + hits);

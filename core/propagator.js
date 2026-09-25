@@ -26,6 +26,15 @@
 function sgp4Track(body, entry, sat){
   let satrec = null;
   try { satrec = sat.twoline2satrec(entry.l1, entry.l2); } catch(e){ satrec = null; }
+  /* Why the most recent refused request was refused. SGP4 does not fail
+     quietly - it sets satrec.error and returns nothing - but at() used to turn
+     that into a bare null, so a page asked to show an object SGP4 has decayed
+     could say only that there were no positions, not that the orbit had reached
+     the ground. The code is satellite.js's own (1-4: elements out of range,
+     6: decayed); 0 means it refused without naming a reason, null that nothing
+     has been refused yet. Recorded on failure only, so the success path - and
+     the r and v it hands through - is exactly what it was. */
+  let lastError = null;
 
   return {
     kind: 'sgp4',
@@ -40,10 +49,14 @@ function sgp4Track(body, entry, sat){
     at(ms){
       if(!satrec) return null;
       let pv = null;
-      try { pv = sat.propagate(satrec, new Date(ms)); } catch(e){ return null; }
-      if(!pv || !pv.position || !isFinite(pv.position.x)) return null;
+      try { pv = sat.propagate(satrec, new Date(ms)); } catch(e){ lastError = 0; return null; }
+      if(!pv || !pv.position || !isFinite(pv.position.x)){
+        lastError = satrec.error || 0;
+        return null;
+      }
       return { r: pv.position, v: pv.velocity };
     },
+    get lastError(){ return lastError; },
 
     /* SGP4 recovers the Brouwer semi-major axis during initialisation and
        leaves it in satrec.a, normalised to WGS-72 Earth radii. The TLE's own

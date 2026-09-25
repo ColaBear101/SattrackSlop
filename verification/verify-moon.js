@@ -1,19 +1,26 @@
 const path = require('path');
 /* Validate Body.Moon()'s rotation against JPL Horizons.
  *
- * Two requests, deliberately matched in time system:
+ * Two requests, both in UTC - the page's own clock:
  *   VECTORS   LRO relative to the Moon, REF_PLANE='FRAME' (ICRF equatorial,
  *             which is what the IAU rotation expects - the DEFAULT is ECLIPTIC
  *             and using it silently tilts everything by the obliquity).
  *   OBSERVER  the Moon as seen FROM LRO, QUANTITIES='14' - the sub-observer
  *             point, which IS the sub-spacecraft point, with Horizons' own
- *             full libration applied. TIME_TYPE='TT' so the epochs line up with
- *             the TDB-labelled vectors to ~2 ms instead of 69 s. At 7009 s per
- *             revolution, 69 s is 3.5 degrees of orbit - it would swamp the
- *             very error being measured.
+ *             full libration applied.
+ * Both carry TIME_TYPE='UT'. VECTORS epochs default to TDB and OBSERVER to UT,
+ * 69 s apart, and at 7009 s per revolution 69 s is 3.5 degrees of orbit - it
+ * would swamp the very error being measured. This check used to line the two
+ * up in TT instead, which was self-consistent and exactly why it never noticed
+ * that the page runs on UTC while its baked epochs were TDB. Asking for UTC
+ * here means the Date handed to the rotation is the one the page would build.
  */
 const fs = require('fs');
-const TMP = process.env.CLAUDE_JOB_DIR + '/tmp/';
+const os = require('os');
+/* Horizons responses are cached here; delete the files to force a refetch. */
+const TMP = path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp')
+                                                 : path.join(os.tmpdir(), 'gtc-lunar'), '/');
+fs.mkdirSync(TMP, { recursive: true });
 require(path.join(__dirname, '..', 'core/body.js'));
 const M = globalThis.Body.Moon();
 const DEG = 180/Math.PI;
@@ -28,25 +35,38 @@ const base = 'https://ssd.jpl.nasa.gov/api/horizons.api?format=text&OBJ_DATA=NO&
 
 async function get(url, file){
   if (fs.existsSync(TMP+file)) return fs.readFileSync(TMP+file, 'utf8');
-  const r = await fetch(url);
-  const t = await r.text();
-  fs.writeFileSync(TMP+file, t);
-  return t;
+  /* JPL resets or times out the odd connection; three tries, then fail loudly */
+  for (let k = 1; ; k++) {
+    try {
+      const r = await fetch(url);
+      const t = await r.text();
+      fs.writeFileSync(TMP+file, t);
+      return t;
+    } catch (e) {
+      if (k === 3) throw e;
+      console.log(file + ': ' + e.message + ', retrying');
+    }
+  }
 }
 
 (async () => {
   const vecs = await get(base + "&EPHEM_TYPE=VECTORS&COMMAND='-85'&CENTER='500@301'" +
-    "&REF_PLANE='FRAME'&VEC_TABLE='2'&OUT_UNITS='KM-S'" +
-    `&START_TIME=${START}&STOP_TIME=${STOP}&STEP_SIZE=${STEP}`, 'lro_vec.txt');
+    "&REF_PLANE='FRAME'&VEC_TABLE='2'&OUT_UNITS='KM-S'&TIME_TYPE='UT'" +
+    `&START_TIME=${START}&STOP_TIME=${STOP}&STEP_SIZE=${STEP}`, 'lro_vec_ut.txt');
   const obs = await get(base + "&EPHEM_TYPE=OBSERVER&COMMAND='301'&CENTER='500@-85'" +
-    "&QUANTITIES='14'&ANG_FORMAT=DEG&EXTRA_PREC=YES&TIME_TYPE='TT'" +
-    `&START_TIME=${START}&STOP_TIME=${STOP}&STEP_SIZE=${STEP}`, 'lro_sub.txt');
+    "&QUANTITIES='14'&ANG_FORMAT=DEG&EXTRA_PREC=YES&TIME_TYPE='UT'" +
+    `&START_TIME=${START}&STOP_TIME=${STOP}&STEP_SIZE=${STEP}`, 'lro_sub_ut.txt');
 
   const body = s => s.slice(s.indexOf('$$SOE')+5, s.indexOf('$$EOE'));
-  if (vecs.indexOf('$$SOE') < 0) { console.log('VECTORS failed:\n' + vecs.slice(0,900)); return; }
-  if (obs.indexOf('$$SOE') < 0) { console.log('OBSERVER failed:\n' + obs.slice(0,900)); return; }
+  if (vecs.indexOf('$$SOE') < 0) { console.log('VECTORS failed:\n' + vecs.slice(0,900)); process.exitCode = 1; return; }
+  if (obs.indexOf('$$SOE') < 0) { console.log('OBSERVER failed:\n' + obs.slice(0,900)); process.exitCode = 1; return; }
+  /* Refuse anything but UTC time tags: a cached TT or TDB table would bring
+     back exactly the self-consistent blind spot described above. */
+  if (!/^JDUT/m.test(vecs) || !/Date__\(UT\)/.test(obs)) {
+    console.log('expected UT time tags from both tables'); process.exitCode = 1; return;
+  }
 
-  /* "JD = A.D. date TDB" on one line, " X = .. Y = .. Z = .." on the next */
+  /* "JD = A.D. date UTC" on one line, " X = .. Y = .. Z = .." on the next */
   const V = [];
   const lines = body(vecs).split('\n');
   for (let i = 0; i < lines.length; i++) {

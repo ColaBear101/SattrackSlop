@@ -95,6 +95,9 @@ h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; letter-spacing:-.01
 .dv{display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:2.5px 0}
 .dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--muted); margin:0}
+/* Symbols keep their case: upper-casing turns λ / β into Λ / Β, a different
+   pair of letters (and Β reads as a Latin B). */
+.dv dt .sym{text-transform:none; letter-spacing:0; font-size:12px}
 .dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace;
   font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink)}
 dl{margin:0}
@@ -207,7 +210,7 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
         <div class="dv"><dt>vs mean</dt><dd id="d-vsmean">—</dd></div>
         <div class="dv"><dt>Angular size</dt><dd id="d-ang">—</dd></div>
         <div class="dv"><dt>RA / Dec</dt><dd id="d-radec">—</dd></div>
-        <div class="dv"><dt>Ecl. λ / β</dt><dd id="d-ecl">—</dd></div>
+        <div class="dv"><dt>Ecl. <span class="sym">λ / β</span></dt><dd id="d-ecl">—</dd></div>
         <div class="dv"><dt>Phase</dt><dd id="d-phase">—</dd></div>
         <div class="dv"><dt>Illuminated</dt><dd id="d-illum">—</dd></div>
       </dl>
@@ -402,7 +405,13 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
   three-body problem · <a href="index.html">ground track console</a>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Pinned by content as well as by version: the hash is sha512 of the r128
+     bytes cdnjs serves, so a changed file is refused rather than run. A refusal
+     leaves THREE undefined, which the page already answers with its no-WebGL
+     notice; every number stays in the panel and tables. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        integrity="sha512-dLxUelApnYxpLt6K2iomGngnHO83iUvZytA3YjDUCjT0HDOHKXnVYdf3hU4JjM8uEhxf9nD1/ey98U3t2vZ0qQ=="
+        crossorigin="anonymous"></script>
 <script src="moon/lunar.js"></script>
 <script src="moon/moonviz.js"></script>
 <script>

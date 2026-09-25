@@ -520,8 +520,11 @@ barycentre by 1.2 km — visible at the resolution this page quotes.
 
 Written from sources rather than memory, and three claims did not survive:
 
-- **Queqiao-2 is not an EML2 spacecraft.** It flies a frozen lunar orbit, ~300 km periselene,
-  inclination ~118°. Only **Queqiao-1** holds a halo about EML2, which it has done since 2018 —
+- **Queqiao-2 is not an EML2 spacecraft.** It flies a frozen elliptical lunar orbit, about
+  200 × 16 000 km with a 24-hour period as CNSA announced it, **retrograde at ~118°** to the lunar
+  equator per the mission's VLBI team (independent amateur tracking found 119.25°). The 62.4°
+  quoted before launch was a prograde plan it did not fly. Only **Queqiao-1** holds a halo about
+  EML2, which it has done since 2018 —
   the only long-duration operational libration-point spacecraft in the Earth–Moon system.
   CAPSTONE flew an NRHO *about* EML2, which is an orbit around the point rather than the point,
   and its mission ended in June 2026.
@@ -572,7 +575,7 @@ Five objects, and the page's job is to say **how well each one is actually known
 
 | Grade | Objects | What it means |
 |---|---|---|
-| **tracked** | LRO, Chandrayaan-2, Danuri | 740 daily osculating element sets baked from JPL Horizons, which ingests the operating agencies' own navigation solutions |
+| **tracked** | LRO, Chandrayaan-2, Danuri | 740 daily osculating element sets baked from JPL Horizons trajectories, which are fit to the operating agencies' own tracking up to a date each record states and **predicted** after it — the page marks every anchor past that date |
 | **published** | Queqiao-2 | no ephemeris exists publicly; the orbit is rebuilt from published mission parameters. Size, shape and inclination are right — the **phase** is not knowable |
 | **schematic** | Queqiao-1 | a halo orbit is not a conic and cannot be drawn from orbital elements at all. Listed, not propagated |
 
@@ -608,28 +611,65 @@ Period error integrates into along-track error, so one element set puts the spac
 wrong side of the Moon within weeks.
 
 Adding J2 does not rescue it — J2 captures nodal regression and misses the mascon-driven evolution
-of ω and e, which is the part that hurts. A fresh anchor does. Checked against Horizons' own
-sub-observer point, 289 samples over six days:
+of ω and e, which is the part that hurts. A fresh anchor does. Checked against Horizons at the
+same UTC instants, 289 samples at 30-minute spacing over 14–20 September 2026 (`npm run
+moon:chain`, on the element sets the page ships):
 
-| Hours from anchor | Median error |
-|---|---|
-| 0 – 2 | 1.0 km |
-| 2 – 4 | 4.0 km |
-| 4 – 6 | 7.5 km |
-| 6 – 8 | 11.0 km |
-| 8 – 10 | 14.2 km |
-| 10 – 12 | 17.9 km |
+| Hours from anchor | LRO on the ground | LRO in space | Chandrayaan-2 in space | Danuri in space |
+|---|---|---|---|---|
+| 0 – 2 | 1.4 km | 1.3 km | 1.6 km | 1.5 km |
+| 2 – 4 | 4.7 km | 5.0 km | 8.7 km | 6.0 km |
+| 4 – 6 | 8.2 km | 8.5 km | 15.5 km | 10.5 km |
+| 6 – 8 | 12.3 km | 13.1 km | 22.1 km | 15.5 km |
+| 8 – 10 | 16.2 km | 17.4 km | 28.5 km | 20.4 km |
+| 10 – 12 | 20.2 km | 21.2 km | 35.1 km | 24.9 km |
 
-Against **32–56 km** for a single element set held for days. The panel shows the anchor epoch,
-the hours since it, and the error that implies, rather than printing a position as if it were
-exact.
+"On the ground" is the sub-spacecraft point against Horizons' own sub-observer point, so it
+includes the rotation model; "in space" is the position against Horizons' state vectors. Against
+**32–57 km** for a single element set held for days. Chandrayaan-2's orbit loosens faster between
+anchors than LRO's, and the single LRO curve that used to stand in for all three said 17 km at ten
+to twelve hours where Chandrayaan-2 is at 35. Each craft now carries its own fit, and the chain
+check fails if the panel's figure strays from the measured one by more than 20 % (or 1 km). The
+panel shows the anchor epoch, the hours since it, and the error that implies, rather than printing
+a position as if it were exact.
+
+**This table once read 1.0 km near an anchor while the page was 113 km out.** Horizons gives
+osculating elements in TDB only — asking for `TIME_TYPE='UT'` is refused — and the bake turned
+those Julian dates into Unix milliseconds as if they were UTC. The page's clock is UTC, so every
+anchor sat 69.184 s late (37 leap seconds, plus TT − TAI = 32.184 s), and LRO covers 3.5° of orbit
+in that time. The checks missed it because they fetched their reference in TT and compared it with
+TDB epochs: consistent with each other to 2 ms, and blind to the one conversion the page actually
+makes. The bake now converts — TAI − UTC is 37 s through June 2027 by IERS Bulletin C 72, and it
+warns past that — and writes `moon/moondata.js` itself, so there is no hand-copied step between
+Horizons and the page. Both checks run in UTC, and the chain check fails above 3 km near an anchor:
+on the old data it reads 107 km.
+
+### Fit, then prediction
+
+All of the above is agreement **with Horizons**. A Horizons spacecraft trajectory is fit to the
+operating agency's tracking up to some date and is a prediction after it, and a prediction cannot
+know about the next manoeuvre or orbit determination. Each record's header says where the join is,
+in wording that differs by mission, and the bake keeps it:
+
+| | Record header | Anchors past it, as baked 25 Sep 2026 |
+|---|---|---|
+| LRO | "prediction after 2026-Aug-04" | 487 of 487 |
+| Chandrayaan-2 | "tracking data through 2026-Sep-13" | 26 of 40 |
+| Danuri | "Tag-up w/data through September 21" | 191 of 213 |
+
+How far a prediction wanders is not published, but it can be measured after the fact. The anchors
+baked on 14 September, set against Horizons' later fits to tracking, had drifted **104 km** for
+Chandrayaan-2 by 13 September, twelve days after that record was revised, and **21 km** for Danuri
+by 21 September, thirteen days after its revision. So
+the page grades those anchors *tracked · predicted*, says how many days past the data the instant
+is, and labels the ± "error vs Horizons" rather than calling it the error.
 
 ### The rotation, and why libration is not optional
 
 Earth's GMST is a smooth polynomial. The Moon's orientation is a polynomial **plus a 13-term
 libration series**, applied to the pole's right ascension and declination *and* to the prime
-meridian. Leave it out and the sub-spacecraft point is wrong by **44 km**. With it, **0.15 km**
-against Horizons over 289 epochs — a factor of 300.
+meridian. Leave it out and the sub-spacecraft point is wrong by **44 km**. With it, **0.17 km**
+against Horizons over 289 epochs in UTC (max 0.45 km) — a factor of about 260.
 
 Three traps, each found by measurement rather than by reading:
 
@@ -641,8 +681,10 @@ Three traps, each found by measurement rather than by reading:
   straight at the pole.
 - **Horizons' `VECTORS` defaults to the ecliptic plane** while the IAU rotation wants ICRF
   equatorial. `REF_PLANE='FRAME'` is required; without it everything tilts by the obliquity.
-- **`VECTORS` epochs are TDB, `OBSERVER` epochs are UT** — 69 s apart, and LRO covers 3.5° of
-  orbit in 69 s, enough to swamp the error being measured.
+- **`VECTORS` and `ELEMENTS` epochs are TDB, `OBSERVER` epochs are UT** — 69 s apart, and LRO
+  covers 3.5° of orbit in 69 s, enough to swamp the error being measured. The rotation check first
+  lined the two up in TT, which hid the same trap in the bake (above). It now asks for both tables
+  with `TIME_TYPE='UT'`, which `VECTORS` accepts and `ELEMENTS` does not.
 
 A fourth, about the API rather than the physics: **date parameters must not be quoted while
 `STEP_SIZE` must be**, and a wrongly-quoted parameter is *silently ignored* rather than rejected.
@@ -665,6 +707,10 @@ The surface is the real **LRO Wide Angle Camera global mosaic**, pulled from NAS
 WMTS tiles. Level 1 is a 4×2 grid of 256 px tiles — 1024×512 for about 400 KB — and it is the
 one imagery source that sends `Access-Control-Allow-Origin: *`, which is the only reason a page
 with no backend can use it at all.
+
+three.js itself comes from cdnjs pinned by version **and** by a sha512 subresource-integrity
+hash, so a changed file is refused rather than run. A refusal leaves `THREE` undefined, which the
+page already treats as "no WebGL" and answers with the flat map.
 
 Tiles are painted to a **second** canvas rather than the live one. Drawing a cross-origin image
 taints a canvas, and a tainted canvas throws at texture-upload time rather than at draw time —
@@ -698,6 +744,11 @@ small without punishing anyone. It has to stay `visible: true`, incidentally: th
 invisible objects quite happily, so hiding it would leave a ghost target behind — a bug already
 paid for once on the Earth console's catalogue cloud.
 
+Site labels are **de-cluttered** by a fixed priority — the selected spacecraft, the sub-Earth
+point, then sites in catalogue order — and a label that would overlap one already placed is
+dropped for that frame; its pin stays and the surface table names it. On a 390 px phone the near
+side otherwise printed fourteen overlapping pairs, "Chang'e-6Chang'e-3" among them.
+
 And the drag guard measures **displacement from pointerdown**, not the sum of the moves. Summing
 every delta lets ordinary hand jitter exceed any sane threshold and silently kills the click —
 also already paid for once.
@@ -710,17 +761,31 @@ anchor, period, apsis altitudes, specific orbital energy, specific angular momen
 and one-way light time, Earth elevation from the spacecraft, the sub-Earth point, solar elevation
 and shadow state.
 
+The elements are referred to the **lunar equator of date** — Z along the IAU pole, X at its
+ascending node on the ICRF equator — and so is the fleet table. The baked sets are in ICRF, the
+Earth's mean equator, because that is what the rotation model takes, and the two poles are 22–25°
+apart. Quoted in ICRF on 25 September, LRO reads 104.4° where it is 83.9° to the lunar equator,
+Danuri 103.1° for 90.2°, Chandrayaan-2 96.5° for 91.2°: a polar lunar orbit looks retrograde there.
+The page used to show the ICRF values under a lunar-equator label, and to hand Queqiao-2's
+published elements straight to the ICRF propagator, which drew that orbit at 40° to the lunar
+equator. Those elements are now stored as lunar-equatorial, and the propagated state is rotated
+out to ICRF at each instant.
+
 And for every landing site, **whether the Earth is above its horizon at all**. From a far-side
 site the Earth never rises — the elevation is permanently negative, not merely low. Chang'e-4 and
 Chang'e-6 both landed there and neither could have returned a single bit directly, which is the
 entire reason Queqiao exists. The table computes it rather than asserting it.
 
-### Frames, and an accepted error
+### Frames, and why they agree
 
-Landing-site coordinates are published in the **mean Earth / polar axis** frame; the IAU series
-implemented here is closer to the **principal axis** frame. The two differ by about 0.03°, roughly
-**860 m** on the surface — below the anchoring error everywhere except within an hour or two of an
-anchor epoch. It is accepted rather than corrected, and stated rather than buried.
+Landing-site coordinates are published in the **mean Earth / polar axis** (ME) frame, the
+cartographic standard. The IAU/WGCCRE series implemented here approximates that same frame —
+`pck00011.tpc` calls it "a trigonometric polynomial approximation yielding the orientation of the
+lunar Mean Earth/Polar Axis (ME) reference frame" — valid to about **150 m** (Archinal et al.
+2011). Sites and rotation therefore share a frame, which fits the 0.17 km agreement with Horizons
+above. The **principal axis** (PA) frame, the one lunar ephemerides integrate in, differs from ME
+by about 0.029°, roughly **875 m** (NAIF lunar frame kernels), and this page does not use it. An
+earlier version of this section had that backwards and called the 860 m an accepted error.
 
 One more difference from Earth worth knowing: the Moon's surface rotates beneath an orbiter at
 only about **4.6 m/s** against roughly **1.56 km/s** of orbital ground speed — 0.3 %, where a LEO

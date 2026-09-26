@@ -194,6 +194,18 @@ Elevation is scanned every 4 s and each crossing of the 5° mask is then bracket
 worth reporting: bisection only refines a crossing it has already bracketed, so at a 10 s step a
 6-second pass is not merely imprecise, it is invisible.
 
+The page dates each pass in UTC, as the table above does, and a local time that falls on another
+calendar day carries that day. It used to tag times with "+Nd" counted in whole 24 h periods from
+the window start, which begins at whatever the clock said — so a pass at 03:07Z the next morning
+had no tag, and "+1d" could mean two calendar days on. A pass already above the mask when the
+window opens, or still above it when the window closes, is marked `*`: its AOS or LOS there is the
+window edge, not a horizon crossing, and its duration counts only the part inside the window. A
+geostationary spacecraft is the whole-window case, and the countdown says it is still up at the
+window end rather than that it sets. After the window's last pass the countdown searches the 48 h
+beyond the window for the real next pass. It used to count down to the window's first pass as if
+the ground track repeated every window, which in the case that found it was 66.6 minutes late and
+promised 74.2° for a 19.7° pass.
+
 Geometry only — no refraction, terrain or link budget, and no daylight/eclipse condition (this is
 radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 5° it is about
 9.9 arcminutes, which adds roughly **8.4 s (+0.93 %)** to the total and moves each horizon crossing
@@ -801,6 +813,13 @@ elevation, so a phone says "KNACKSAT-2 — 68° NE" rather than nothing at all.
 Both are built in the page and handed over as a Blob, which works from `file://` where this page
 mostly lives.
 
+A pass cut by the window edge is flagged in both, because its AOS or LOS is where the analysis
+stopped and the files otherwise present it as a horizon crossing. The CSV's last two columns,
+`aos_clipped` and `los_clipped`, are `true` or `false` — last, so every column a reader already
+finds by name stays where it was. The calendar event carries `X-GT-CLIPPED`, says in its summary
+and description which end is the window's, and its alarm no longer announces an AOS that is really
+the window opening.
+
 Parsing them back, rather than looking at them, found two bugs that look identical to correct
 output on screen:
 
@@ -853,7 +872,9 @@ The last few sites come back as chips, so returning to one is a click.
 
 The timezone follows the site, and it is **not one number**. A site with a zone is asked for its
 offset *at the instant being displayed*, so summer time is right on both sides of a transition —
-a 7-day window of passes can straddle one. A site typed in as bare coordinates has no discoverable
+a 7-day window of passes can straddle one. Each pass time is converted at the offset in force at
+that pass, and the label beside it now says the same: it used to follow the clock, so after the
+change London printed 03:14:51Z as "03:14:51 UTC+1". A site typed in as bare coordinates has no discoverable
 zone, so it keeps the nearest hour of solar time, editable, and the note says which of the two is
 on screen. That guess is worth replacing: China keeps one zone across sixty degrees of longitude,
 so Kashgar came out three hours adrift, and India and Nepal are on half and quarter hours.
@@ -1111,7 +1132,7 @@ npm run optical      # shadow cone geometry and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
-npm run timeline     # the window rolling forward when playback runs off the end
+npm run timeline     # the window rolling forward past its end, and the next pass beyond it
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL

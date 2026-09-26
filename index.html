@@ -395,7 +395,16 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
   font-size:14.5px; color:var(--ink)}
 .ro dd.hot{color:var(--contact); font-weight:600}
 
-.access{display:grid; grid-template-columns:minmax(0,1fr); gap:22px; align-items:start}
+.access{display:grid; grid-template-columns:minmax(0,1fr) 236px; gap:22px; align-items:start}
+/* The table's own copy of the sky plot. Sticky, so a row clicked halfway down
+   a 7-day list still has its plot beside it. */
+.tablesky{margin:0; position:sticky; top:14px; display:flex; flex-direction:column; gap:9px;
+  align-items:center; background:var(--panel); border:1px solid var(--rule); border-radius:4px;
+  padding:12px; scroll-margin:80px 0}
+canvas#sky2{width:100%; max-width:236px; aspect-ratio:1; height:auto; display:block}
+.tablesky figcaption{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
+  line-height:1.5; color:var(--ink2); text-align:center; font-variant-numeric:tabular-nums}
+.passnote{font-size:11.5px; color:var(--muted); margin:8px 0 0; line-height:1.5}
 .skybox{display:grid; grid-template-columns:auto minmax(0,1fr); gap:22px; align-items:center;
   background:var(--panel); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
 .rail .skybox{grid-template-columns:minmax(0,1fr); gap:10px; padding:0;
@@ -537,6 +546,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .seglabel{display:none}
   .hint-drag{display:none}
   .access{grid-template-columns:minmax(0,1fr)}
+  .tablesky{position:static; justify-self:center; width:min(268px,100%)}
   .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:560px){
@@ -729,7 +739,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="tp-win"></div>
         <div id="tppasses"></div>
         <input type="range" id="time" min="0" max="8640" value="0" step="1"
-               aria-label="Time within the 24-hour analysis window, in 10-second steps from the element set epoch">
+               aria-label="Time within the analysis window">
       </div>
       <div class="tp-ticks" id="tpticks"></div>
     </div>
@@ -831,7 +841,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <div class="access">
       <div>
         <p style="margin-bottom:12px;color:var(--muted);font-size:12.5px">
-          The sky track for the selected pass is plotted in the panel beside the globe above.</p>
+          Click a row to plot that pass's sky track here, and in the Sky track panel at the top of the page.</p>
         <dl class="derived" style="margin-bottom:14px">
           <div class="dv"><dt>Passes</dt><dd id="npasses">—</dd></div>
           <div class="dv"><dt>Longest</dt><dd id="longest">—</dd></div>
@@ -841,19 +851,28 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="tablewrap">
           <table>
             <thead><tr>
-              <th>#</th><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Duration</th>
+              <th>#</th><th>Date (UTC)</th><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Duration</th>
               <th>Max elev.</th><th>Az at max</th><th>Min range</th><th>AOS→LOS az</th>
             </tr></thead>
             <tbody id="passbody"></tbody>
             <tfoot id="passfoot"></tfoot>
           </table>
         </div>
+        <p class="passnote" id="passnote" hidden>* Clipped by the window edge. The spacecraft is
+          already above 5° when the window opens, or still above it when the window closes, so the
+          true AOS or LOS lies outside the window and the duration counts only the part inside it.
+          The CSV and calendar exports carry the same flag.</p>
         <div class="exportbar">
           <button class="btn" id="exp-csv">Export CSV</button>
           <button class="btn" id="exp-ics">Export calendar</button>
           <span class="exphint" id="exphint"></span>
         </div>
       </div>
+      <figure class="tablesky" id="tablesky">
+        <canvas id="sky2" width="536" height="536"
+                aria-label="Sky track of the selected pass, azimuth and elevation"></canvas>
+        <figcaption id="sky2cap">—</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -7466,9 +7485,13 @@ function tzAt(ms){
   }
   return TZ;
 }
-const tzNow = () => tzAt(typeof simMs === 'number' && isFinite(simMs) ? simMs : Date.now());
-const tzLabel = () => { const t = tzNow();
+/* The label goes with the instant it labels. Every pass time used to be
+   converted at its own offset and then captioned with the offset at the
+   clock, so across a summer-time change a 7-day window printed 03:14:51Z as
+   "03:14:51 UTC+1" - the right time under the wrong name. */
+const tzLabelAt = ms => { const t = tzAt(ms);
   return 'UTC' + (t < 0 ? '−' : '+') + (Math.abs(t) % 1 ? Math.abs(t).toFixed(1) : Math.abs(t)); };
+const tzLabel = () => tzLabelAt(typeof simMs === 'number' && isFinite(simMs) ? simMs : Date.now());
 
 /* When this catalogue was actually downloaded. Baked in at build time - the page
    has no network access of its own, so it cannot discover this at runtime. */
@@ -7528,11 +7551,16 @@ const pad = (x,n)=>String(x).padStart(n||2,'0');
 const iso = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+
   ' '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds())+'Z';
 const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
-const hmsLocal = d => { const t = new Date(d.getTime()+tzAt(d.getTime())*3600000);
-  return pad(t.getUTCHours())+':'+pad(t.getUTCMinutes())+':'+pad(t.getUTCSeconds()); };
-// the analysis window starts at the epoch, so it usually crosses midnight
-const dayOff = d => Math.floor((d.getTime() - D.start.getTime())/86400000);
-const hmsD = d => hms(d) + (dayOff(d) > 0 ? ' +'+dayOff(d)+'d' : '');
+/* Pass times carry their calendar date. They used to carry "+Nd", counted in
+   whole 24 h periods from the window start - and the window starts at whatever
+   the clock said, so a pass at 03:07Z the next morning got no tag at all and
+   "+1d" meant two calendar days later. The date is now the UTC date, and a
+   local time that falls on another day says which. */
+const ymd = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
+const md  = d => pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
+const whenZ = d => md(d)+' '+hms(d)+'Z';
+const whenLocal = d => { const t = new Date(d.getTime()+tzAt(d.getTime())*3600000);
+  return (md(t) !== md(d) ? md(t)+' ' : '') + hms(t) + ' ' + tzLabelAt(d.getTime()); };
 const mmss = s => {
   const T = Math.round(s);                  // round first, or 59.7 s renders as '60s'
   const hh = Math.floor(T/3600);
@@ -8391,6 +8419,12 @@ function paintClock(force){
   const hu = document.getElementById('o3clock'), hl = document.getElementById('o3clocklocal');
   if(hu) hu.textContent = uStr;
   if(hl) hl.textContent = lStr;
+  // the offset beside the local clock follows the instant, not the last site change
+  const tzl = tzLabelAt(simMs);
+  for(const id of ['lbl-tz1','lbl-tz2']){
+    const e = document.getElementById(id);
+    if(e && e.textContent !== tzl) e.textContent = tzl;
+  }
   utc.closest('.tp-clock').classList.toggle('outwin', !inWindow(simMs));
   const idx = idxAt(simMs), range = document.getElementById('time');
   if(!scrubbing) range.value = idx;           // only yield while actually dragging
@@ -8413,31 +8447,68 @@ function clockTick(ts){
   paintClock(false);
   if(window.__viz && window.OrbitViz) OrbitViz.setTime(new Date(simMs));
 }
+/* The first pass after the window. Past the window's last pass the countdown
+   used to take the window's FIRST pass and add the window length, as though
+   the ground track repeated every window - left over from when the clock
+   looped the day. It does not repeat (15.7 revolutions a day), so it counted
+   down, an hour out, to a 74° pass that was really a 20° one.
+   Searched on demand rather than in compute(): it is needed only once the
+   clock is past the last pass, it costs a scan as long again as a day's, and
+   keeping it off D keeps it out of what the regression gate compares. Keyed
+   weakly on the D it was searched for, so any new analysis drops it. */
+const NEXT_H = 48;
+const nextOut = new WeakMap();
+function passAfterWindow(){
+  if(!nextOut.has(D)){
+    const t1 = winT1();
+    const P = findPasses(D.track, t1, t1 + NEXT_H*3600000, passStepFor(NEXT_H));
+    nextOut.set(D, P.find(p => !p.clipA) || null);
+  }
+  return nextOut.get(D);
+}
 function paintCountdown(){
   const P = D.passes, k = document.getElementById('cdlabel'),
         v = document.getElementById('cdvalue'), w = document.getElementById('cdwhen');
   if(!inWindow(simMs)){
     k.textContent = 'Outside the window';
     v.textContent = '—'; v.className = 'v';
-    w.textContent = 'The 24 h analysis runs from the element set epoch. Press Epoch to return.';
+    w.textContent = 'The clock is outside the ' + spanLabel(D.hours) + ' window from ' +
+                    iso(D.start) + '. Press Now or Epoch to move the window.';
     return;
   }
-  if(!P.length){ k.textContent = 'Next pass'; v.textContent = 'none'; v.className = 'v';
-    w.textContent = 'Nothing clears the 5° mask in this window.'; return; }
+  /* The countdown runs on the transport clock. Scrubbed, sped up or a day
+     back, that is not now - so it says so rather than counting down to a pass
+     that has already happened as though it were the next one. */
+  const sim = Math.abs(simMs - Date.now()) > 5000 ? ' · sim time' : '';
   const now = P.find(p => simMs >= p.t0ms && simMs <= p.t1ms);
-  if(now){
-    k.textContent = 'In view now — sets in';
-    v.textContent = hhmmss(now.t1ms - simMs); v.className = 'v live';
-    w.textContent = 'LOS ' + hms(now.los) + 'Z · culminates ' + now.maxEl.toFixed(1) + '°';
+  if(now && now.clipL){
+    /* Still above the mask when the window closes: the LOS on the table is the
+       window edge, and "sets in" would be a claim about a time nobody looked at.
+       A GEO spacecraft is the whole-window case - it never sets at all. */
+    k.textContent = 'In view now — still up at window end' + sim;
+    v.textContent = '≥ ' + hhmmss(now.t1ms - simMs); v.className = 'v live';
+    w.textContent = 'Above 5° ' + (now.clipA ? 'for the whole window, ' : '') + 'until at least ' +
+                    whenZ(now.los) + ' · max ' + now.maxEl.toFixed(1) + '° in window';
     return;
   }
-  let nxt = P.find(p => p.t0ms > simMs), wrapped = false;
-  if(!nxt){ nxt = P[0]; wrapped = true; }
-  const dt = wrapped ? (winT1()-simMs) + (nxt.t0ms-winT0()) : nxt.t0ms - simMs;
-  k.textContent = 'Next pass in';
-  v.textContent = hhmmss(dt); v.className = 'v';
-  w.textContent = 'AOS ' + hms(nxt.aos) + 'Z · ' + hmsLocal(nxt.aos) + ' ' + tzLabel() + ' · max ' +
-                  nxt.maxEl.toFixed(1) + '°' + (wrapped ? ' (next cycle)' : '');
+  if(now){
+    k.textContent = 'In view now — sets in' + sim;
+    v.textContent = hhmmss(now.t1ms - simMs); v.className = 'v live';
+    w.textContent = 'LOS ' + whenZ(now.los) + ' · culminates ' + now.maxEl.toFixed(1) + '°';
+    return;
+  }
+  const nxt = P.find(p => p.t0ms > simMs) || passAfterWindow();
+  if(!nxt){
+    k.textContent = 'Next pass'; v.textContent = 'none'; v.className = 'v';
+    w.textContent = 'Nothing clears the 5° mask ' + (P.length ? 'in the rest of this window' : 'in this window') +
+                    ' or the ' + NEXT_H + ' h after it.';
+    return;
+  }
+  k.textContent = 'Next pass in' + sim;
+  v.textContent = hhmmss(nxt.t0ms - simMs); v.className = 'v';
+  w.textContent = 'AOS ' + whenZ(nxt.aos) + ' · ' + whenLocal(nxt.aos) + ' · max ' +
+                  (nxt.clipL ? '≥ ' : '') + nxt.maxEl.toFixed(1) + '°' +
+                  (nxt.t0ms > winT1() ? ' · after this window' : '');
 }
 
 let mapVisible = false, lastMapDraw = 0;
@@ -8490,37 +8561,59 @@ function renderAccess(){
 
   // the rail list is the summary; the table below carries the detail
   const pl = document.getElementById('passlist');
+  /* A pass already up when the window opens, or still up when it closes, has a
+     window edge where its AOS or LOS would be. The table marked that with an
+     unexplained "*" and every other view dropped it, so a GEO spacecraft read
+     as rising at the window start and setting a day later. The mark now goes
+     everywhere the time does, with a legend and in words for a screen reader. */
+  const clipSay = p => p.clipA && p.clipL ? 'above the mask for the whole window'
+    : p.clipA ? 'already above the mask when the window opens'
+    : p.clipL ? 'still above the mask when the window closes' : '';
   pl.innerHTML = P.map((p,i)=>
     '<button class="passrow" data-i="'+i+'" aria-current="'+(i===selPass)+'" '+
-    'aria-label="Pass '+(i+1)+', acquisition '+hms(p.aos)+' UTC, '+mmss(p.dur)+
-    ', maximum elevation '+p.maxEl.toFixed(1)+' degrees">'+
+    (clipSay(p) ? 'title="* '+clipSay(p)+'" ' : '')+
+    'aria-label="Pass '+(i+1)+', acquisition '+ymd(p.aos)+' '+hms(p.aos)+' UTC, '+mmss(p.dur)+
+    ', maximum elevation '+p.maxEl.toFixed(1)+' degrees'+(clipSay(p) ? ', '+clipSay(p) : '')+'">'+
     '<span class="n">'+(i+1)+'</span>'+
-    '<span class="t">'+hmsD(p.aos)+'Z<small>'+hmsLocal(p.aos)+' '+tzLabel()+' · '+mmss(p.dur)+'</small></span>'+
+    '<span class="t">'+whenZ(p.aos)+(p.clipA?' *':'')+
+      '<small>'+whenLocal(p.aos)+' · '+mmss(p.dur)+(p.clipL?' *':'')+'</small></span>'+
     '<span class="e">'+p.maxEl.toFixed(0)+'°</span></button>').join('') ||
     '<p style="font-size:12.5px;color:var(--muted)">No pass clears the 5° mask in this window.</p>';
   pl.querySelectorAll('.passrow').forEach(b=>
     b.addEventListener('click', ()=>selectPass(+b.dataset.i, true)));
 
   // table
+  // the date is the AOS's; a LOS past UTC midnight carries its own
   document.getElementById('passbody').innerHTML = P.map((p,i)=>
     '<tr data-i="'+i+'" aria-selected="'+(i===selPass)+'">'+
     '<td>'+(i+1)+'</td>'+
-    '<td>'+hmsD(p.aos)+(p.clipA?' *':'')+'</td>'+
-    '<td>'+hmsD(p.los)+(p.clipL?' *':'')+'</td>'+
+    '<td>'+ymd(p.aos)+'</td>'+
+    '<td'+(p.clipA ? ' title="* already above the mask when the window opens"' : '')+'>'+
+      hms(p.aos)+(p.clipA?' *':'')+'</td>'+
+    '<td'+(p.clipL ? ' title="* still above the mask when the window closes"' : '')+'>'+
+      (ymd(p.los) !== ymd(p.aos) ? md(p.los)+' ' : '')+hms(p.los)+(p.clipL?' *':'')+'</td>'+
     '<td>'+mmss(p.dur)+'</td>'+
     '<td>'+p.maxEl.toFixed(1)+'°</td>'+
     '<td>'+p.maxAz.toFixed(0)+'° '+compass(p.maxAz)+'</td>'+
     '<td>'+p.minRng.toFixed(0)+' km</td>'+
     '<td>'+compass(p.aosAz)+'→'+compass(p.losAz)+'</td></tr>').join('') ||
-    '<tr><td colspan="8">No pass clears the 5° mask in this window.</td></tr>';
+    '<tr><td colspan="9">No pass clears the 5° mask in this window.</td></tr>';
   document.getElementById('passbody').querySelectorAll('tr[data-i]').forEach(tr=>
-    tr.addEventListener('click',()=>selectPass(+tr.dataset.i,true)));
+    tr.addEventListener('click',()=>selectPass(+tr.dataset.i,true,true)));
   document.getElementById('passfoot').innerHTML = P.length ?
-    '<tr><td colspan="3">Cumulative time above 5°</td><td>'+mmss(total)+
+    '<tr><td colspan="4">Cumulative time above 5°</td><td>'+mmss(total)+
     '</td><td colspan="4">'+(total/60).toFixed(1)+' minutes over '+P.length+' passes</td></tr>' : '';
+  document.getElementById('passnote').hidden = !P.some(p => p.clipA || p.clipL);
 }
-function drawSky(p){
-  const c = document.getElementById('sky'), g = c.getContext('2d');
+/* Two copies of the one plot: the rail's, under the pass list, and one beside
+   the pass table. A row clicked at the table used to redraw only the rail's,
+   which by then is a page and a half above the viewport - the one visible
+   change was the row highlight, and it read as a feature that did nothing. */
+const drawSkies = p => { drawSky(p, 'sky'); drawSky(p, 'sky2'); };
+function drawSky(p, id){
+  const c = document.getElementById(id || 'sky');
+  if(!c) return;
+  const g = c.getContext('2d');
   // size the backing store to the CSS box so the labels stay crisp at any DPR
   const S = Math.round(c.getBoundingClientRect().width) || 268;
   const dpr = Math.min(window.devicePixelRatio||1, 2);
@@ -8645,25 +8738,48 @@ function dopRows(p){
   ];
 }
 
-function selectPass(i, scrub){
-  if(!D.passes.length){ drawSky(null); document.getElementById('skyfacts').innerHTML =
-    '<div class="row"><span class="k">Status</span><span class="v">no access</span></div>'; return; }
+function selectPass(i, scrub, fromTable){
+  const cap = document.getElementById('sky2cap');
+  if(!D.passes.length){ drawSkies(null); document.getElementById('skyfacts').innerHTML =
+    '<div class="row"><span class="k">Status</span><span class="v">no access</span></div>';
+    if(cap) cap.textContent = 'No pass clears the 5° mask in this window.';
+    return; }
   selPass = Math.max(0, Math.min(i, D.passes.length-1));
   const p = D.passes[selPass];
   document.querySelectorAll('#passlist .passrow').forEach(b=>b.setAttribute('aria-current', +b.dataset.i===selPass));
   document.querySelectorAll('#passbody tr[data-i]').forEach(tr=>tr.setAttribute('aria-selected', +tr.dataset.i===selPass));
-  drawSky(p);
+  drawSkies(p);
   dopReset(D.entry);
   paintDop();
+  /* On a clipped pass the highest point inside the window can sit on its edge,
+     which is where the window stopped looking, not where the spacecraft
+     peaked - so it is not called a culmination there. */
+  const edge = (p.clipA && p.maxAt.getTime() - p.t0ms < 1000) ||
+               (p.clipL && p.t1ms - p.maxAt.getTime() < 1000);
+  const clip = p.clipA && p.clipL ? 'up the whole window; true AOS and LOS lie outside it'
+    : p.clipA ? 'already up when the window opens; true AOS is earlier'
+    : p.clipL ? 'still up when the window closes; true LOS is later' : null;
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
-    ['AOS', hmsD(p.aos)+'Z · '+hmsLocal(p.aos)+' '+tzLabel()],
-    ['Culmination', hmsD(p.maxAt)+'Z at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
-    ['LOS', hmsD(p.los)+'Z · '+hmsLocal(p.los)+' '+tzLabel()],
+    ['AOS', whenZ(p.aos)+(p.clipA?' *':'')+' · '+whenLocal(p.aos)],
+    [edge ? 'Highest in window' : 'Culmination',
+      whenZ(p.maxAt)+' at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
+    ['LOS', whenZ(p.los)+(p.clipL?' *':'')+' · '+whenLocal(p.los)],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
-  ].concat(opticalRows(p)).concat(dopRows(p))
+  ].concat(clip ? [['* Window edge', clip]] : [])
+   .concat(opticalRows(p)).concat(dopRows(p))
    .map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
+  if(cap) cap.innerHTML = 'Pass '+(selPass+1)+' of '+D.passes.length+' · max '+p.maxEl.toFixed(1)+'° '+
+    compass(p.maxAz)+'<br>AOS '+ymd(p.aos)+' '+hms(p.aos)+'Z'+(p.clipA?' *':'');
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
+  /* Beside the table the plot is sticky and already in view. On a narrow screen
+     it stacks under the table, so bring it up rather than redraw it unseen. */
+  if(fromTable){
+    const f = document.getElementById('tablesky'), r = f && f.getBoundingClientRect();
+    if(r && (r.top < 0 || r.bottom > innerHeight))
+      f.scrollIntoView({block:'nearest',
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  }
 }
 
 /* ---- taking the answer away with you -------------------------------------
@@ -8706,7 +8822,8 @@ function passRows(){
       dopL: f ? dopplerHz(f, rrL)/1000 : null,
       freqMHz: f ? f/1e6 : null,
       eye: o ? (o.both ? 'yes' : 'radio only') : '',
-      sunEl: o ? o.sunEl : null, lit: o ? o.litAtMid : ''
+      sunEl: o ? o.sunEl : null, lit: o ? o.litAtMid : '',
+      clipA: !!p.clipA, clipL: !!p.clipL
     });
   }
   return out;
@@ -8717,13 +8834,17 @@ function exportCSV(){
     'aos_utc','los_utc','duration_s','max_elevation_deg','culmination_utc',
     'max_azimuth_deg','aos_azimuth_deg','los_azimuth_deg','min_range_km',
     'range_rate_aos_kms','range_rate_los_kms','downlink_mhz',
-    'doppler_aos_khz','doppler_los_khz','naked_eye','sun_elevation_deg','spacecraft'];
+    'doppler_aos_khz','doppler_los_khz','naked_eye','sun_elevation_deg','spacecraft',
+    /* A window-edge AOS or LOS is not a horizon crossing, and in the file it was
+       indistinguishable from one. Last, so every column a reader already finds
+       by name stays where it was. */
+    'aos_clipped','los_clipped'];
   const num = (v, d) => v === null || v === undefined ? '' : v.toFixed(d);
   const body = rows.map(r => [r.n, r.sat, r.norad, r.site, r.lat, r.lon,
     isoZ(r.aos), isoZ(r.los), r.dur.toFixed(3), num(r.maxEl,3), isoZ(r.maxAt),
     num(r.maxAz,1), num(r.aosAz,1), num(r.losAz,1), num(r.minRng,1),
     num(r.rrA,6), num(r.rrL,6), num(r.freqMHz,3), num(r.dopA,3), num(r.dopL,3),
-    r.eye, num(r.sunEl,1), r.lit].map(csvEscape).join(','));
+    r.eye, num(r.sunEl,1), r.lit, r.clipA, r.clipL].map(csvEscape).join(','));
   /* A leading comment line would break every CSV reader, so the provenance goes
      in the filename instead - which is the one piece of metadata that survives
      being opened in a spreadsheet and saved again. */
@@ -8763,7 +8884,16 @@ function exportICS(){
     fold('X-WR-CALNAME:' + esc(D.entry.name + ' from ' + OBS.name))];
   const now = stamp(new Date());
   for(const r of rows){
+    /* A pass cut by the window edge still gets its event, but it says so: its
+       DTSTART or DTEND is where the analysis stopped, not a rise or a set, and
+       an alarm announcing an "AOS" that is really the window opening would be
+       the calendar inventing one. */
+    const clipped = r.clipA || r.clipL;
     const desc = [
+      r.clipA ? 'Already above 5 deg when the analysis window opens: DTSTART is the'
+        + ' window start, and the real AOS is earlier' : null,
+      r.clipL ? 'Still above 5 deg when the analysis window closes: DTEND is the'
+        + ' window end, and the real LOS is later' : null,
       'Max elevation ' + r.maxEl.toFixed(1) + ' deg ' + compass(r.maxAz)
         + ' at ' + iso(r.maxAt),
       'AOS azimuth ' + r.aosAz.toFixed(0) + ' deg, LOS azimuth ' + r.losAz.toFixed(0) + ' deg',
@@ -8787,13 +8917,18 @@ function exportICS(){
     ].filter(Boolean).map(esc).join('\\n');
     L.push('BEGIN:VEVENT',
       fold('UID:' + r.norad + '-' + r.aos.getTime() + '@ground-track'),
-      'DTSTAMP:' + now, 'DTSTART:' + stamp(r.aos), 'DTEND:' + stamp(r.los),
+      'DTSTAMP:' + now, 'DTSTART:' + stamp(r.aos), 'DTEND:' + stamp(r.los));
+    if(clipped) L.push('X-GT-CLIPPED:' + [r.clipA ? 'AOS' : '', r.clipL ? 'LOS' : '']
+      .filter(Boolean).join(','));
+    L.push(
       fold('SUMMARY:' + esc(r.sat + ' \u2014 ' + r.maxEl.toFixed(0) + '\u00b0 '
-        + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 visible' : ''))),
+        + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 visible' : '')
+        + (clipped ? ' \u2014 window-clipped' : ''))),
       fold('DESCRIPTION:' + desc),
       fold('LOCATION:' + esc(r.site)),
       'BEGIN:VALARM','TRIGGER:-PT10M','ACTION:DISPLAY',
-      fold('DESCRIPTION:' + esc(r.sat + ' AOS in 10 minutes')),
+      fold('DESCRIPTION:' + esc(r.sat + (r.clipA
+        ? ' already up when the window opens, in 10 minutes' : ' AOS in 10 minutes'))),
       'END:VALARM','END:VEVENT');
   }
   L.push('END:VCALENDAR');
@@ -9170,6 +9305,11 @@ function load(entry, trial){
   selPass = 0;
   const range = document.getElementById('time');
   range.max = D.pts.length-1; range.value = 0;
+  /* Said from the window actually loaded. The static label described the first
+     version - 24 h from the epoch in 10 s steps - and a screen reader heard it
+     whatever the span, start and step had become. */
+  range.setAttribute('aria-label', 'Time within the ' + spanLabel(D.hours) +
+    ' analysis window from ' + iso(D.start) + ', in ' + D.step + '-second steps');
   fitCanvas();
   simMs = D.start.getTime();            // start of the window being analysed
   lastIdx = -1; paintClock(true); paintPlay();
@@ -9396,11 +9536,11 @@ cv.addEventListener('mousemove', e=>{
 let rt = null;
 window.addEventListener('resize', ()=>{ clearTimeout(rt);
   rt = setTimeout(()=>{ fitCanvas(); paintClock(true); drawLife();
-    if(D.passes.length) drawSky(D.passes[selPass]); }, 120); });
+    if(D.passes.length) drawSkies(D.passes[selPass]); }, 120); });
 const mq = window.matchMedia('(prefers-color-scheme: dark)');
 mq.addEventListener && mq.addEventListener('change', ()=>{
   paintClock(true); drawLife();
-  if(D.passes.length) drawSky(D.passes[selPass]);
+  if(D.passes.length) drawSkies(D.passes[selPass]);
   if(global3D()) Orbit3D.retheme();
 });
 
@@ -10197,7 +10337,7 @@ requestAnimationFrame(clockTick);
 // canvas labels are painted, not laid out: repaint once the webfonts land
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{
   paintClock(true);
-  if(D.passes.length) drawSky(D.passes[selPass]);
+  if(D.passes.length) drawSkies(D.passes[selPass]);
 });
 })();
 </script>

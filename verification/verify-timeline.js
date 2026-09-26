@@ -13,6 +13,11 @@
  * The distinguishing evidence is checked here: the window moved, the clock did
  * not go backwards, and the passes were recomputed for the new day rather than
  * being the old day's list shown again.
+ *
+ * The same loop survived in the countdown, which past the last pass of the
+ * window counted down to the window's first pass as though the day repeated.
+ * Parked at the end of the bar, it is checked against the real next pass, and
+ * the pass table against the UTC calendar date of every pass.
  */
 'use strict';
 const path = require('path');
@@ -48,7 +53,10 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
     t1: window.__gt.D.end.getTime(),
     clock: document.getElementById('tpclock').textContent.trim(),
     passes: document.getElementById('npasses').textContent.trim(),
-    aos: (document.querySelector('#passbody tr td:nth-child(2)') || {}).textContent || ''
+    /* the first row's date and AOS: the table carries the date in a column of
+       its own, ahead of the time */
+    aos: [2, 3].map(n => (document.querySelector('#passbody tr td:nth-child(' + n + ')') || {})
+      .textContent || '').join(' ')
   }));
 
   /* Park the scrubber at the far right, which is where the old behaviour used
@@ -63,6 +71,61 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
   console.log('\nat the end of the bar: ' + before.clock);
   console.log('  window ' + iso(before.t0) + ' -> ' + iso(before.t1) +
               '   ' + before.passes + ' passes\n');
+
+  /* Parked at the end of the bar the clock is past the window's last pass, and
+     the countdown has to name the first pass AFTER the window. It used to take
+     the window's own first pass and add the window length, as though the ground
+     track repeated every window - 66.6 min late and 55 deg high in the case that
+     found it. The reference is the page's own findPasses over the 48 h beyond
+     the window; the clock is read off the transport, to the second. */
+  const cd = await page.evaluate(() => {
+    const D = window.__gt.D, t1 = D.end.getTime(), P = D.passes, last = P[P.length - 1];
+    const nx = window.__gt.findPasses(D.track, t1, t1 + 48 * 3600000, window.__gt.passStepFor(48))
+      .find(p => !p.clipA) || null;
+    const clock = Date.parse(document.getElementById('tpclock').textContent.trim().replace(' ', 'T') + 'Z');
+    return { up: !!(last && last.clipL),
+             k: document.getElementById('cdlabel').textContent,
+             v: document.getElementById('cdvalue').textContent,
+             w: document.getElementById('cdwhen').textContent,
+             aos: nx ? nx.aos.toISOString() : null, el: nx ? nx.maxEl.toFixed(1) : null,
+             dt: nx ? nx.t0ms - clock : null };
+  });
+  console.log('  countdown: ' + cd.k + ' | ' + cd.v + ' | ' + cd.w);
+  if (cd.up) {
+    chk('the window ends mid-pass, and the countdown says it is still up rather than setting',
+        /still up at window end/.test(cd.k), cd.k);
+  } else if (cd.aos) {
+    const hms = cd.v.split(':').map(Number);
+    chk('past the last pass, the countdown names the first pass after the window',
+        cd.w.includes(cd.aos.slice(11, 19)) && cd.w.includes(cd.el + '°') && !/next cycle/.test(cd.w),
+        'real next ' + cd.aos.slice(0, 19) + 'Z at ' + cd.el + '°');
+    chk('...and counts down to it', hms.length === 3 &&
+        Math.abs((hms[0] * 3600 + hms[1] * 60 + hms[2]) * 1000 - cd.dt) <= 2000,
+        cd.v + ' against ' + (cd.dt / 1000).toFixed(0) + ' s');
+  } else {
+    chk('no pass in the 48 h after the window, and the countdown says none', cd.v === 'none', cd.v);
+  }
+  chk('...on the transport clock, a day from now, and it says so', /sim time/.test(cd.k), cd.k);
+
+  /* Dates. The table and the rail used to tag times "+Nd" counted in 24 h
+     periods from the window start, so a pass early the next UTC morning carried
+     no date at all. Each pass is now dated by its own UTC calendar day. */
+  const dated = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#passbody tr[data-i]')]
+      .map(tr => tr.children[1].textContent + ' ' + tr.children[2].textContent);
+    const rail = [...document.querySelectorAll('#passlist .passrow .t')]
+      .map(x => x.firstChild.textContent);
+    return window.__gt.D.passes.map((p, i) => ({ iso: p.aos.toISOString(), row: rows[i] || '', rail: rail[i] || '' }));
+  });
+  const undated = dated.filter(d =>
+    !d.row.startsWith(d.iso.slice(0, 10) + ' ' + d.iso.slice(11, 19)) ||
+    !d.rail.startsWith(d.iso.slice(5, 10) + ' ' + d.iso.slice(11, 19) + 'Z'));
+  chk('every pass carries its UTC calendar date, in the table and in the rail',
+      dated.length > 0 && undated.length === 0,
+      undated.length ? JSON.stringify(undated[0]) : dated.map(d => d.row).join(' | '));
+  chk('...and no window-relative "+Nd" tag is left',
+      !dated.some(d => /\+\d+d/.test(d.row + d.rail)));
+  console.log('');
 
   await page.evaluate(() => {
     const r = document.getElementById('tprate');

@@ -86,7 +86,8 @@ function parseCSV(text) {
     const r = __gt.passRows();
     return { n: r.length, sat: __gt.D.entry.name, norad: __gt.D.E.satnum,
              site: __gt.OBS.name,
-             aos: r.map(x => x.aos.getTime()), maxEl: r.map(x => x.maxEl) };
+             aos: r.map(x => x.aos.getTime()), maxEl: r.map(x => x.maxEl),
+             clip: r.map(x => String(x.clipA) + ',' + String(x.clipL)) };
   });
   console.log('\n' + expected.sat + ' from ' + expected.site + ': '
             + expected.n + ' passes to export\n');
@@ -113,6 +114,15 @@ function parseCSV(text) {
       ['aos_utc','los_utc','max_elevation_deg','min_range_km','doppler_aos_khz',
        'naked_eye','site_lat_deg'].every(n => idx(n) >= 0),
       h.length + ' columns');
+
+  /* The window-edge flags go last, so every column a reader finds by name keeps
+     its place - including for anyone reading these files by position. */
+  chk('the clip flags are the last two columns',
+      h.slice(-2).join(',') === 'aos_clipped,los_clipped', h.slice(-3).join(','));
+  const clipBad = expected.clip.findIndex((c, i) =>
+    rows[i+1][idx('aos_clipped')] + ',' + rows[i+1][idx('los_clipped')] !== c);
+  chk('...and agree with the page, pass by pass', clipBad === -1,
+      clipBad === -1 ? expected.clip.join(' ') : 'pass ' + (clipBad + 1));
 
   /* Values, not just shape: the AOS in the file has to be the AOS on the page. */
   let worstT = 0, worstEl = 0;
@@ -211,6 +221,39 @@ function parseCSV(text) {
   chk('every event has a unique UID, so a re-import updates rather than duplicates',
       new Set(uids).size === uids.length && uids.length === expected.n,
       uids.length + ' UIDs, ' + new Set(uids).size + ' distinct');
+
+  /* A window-edge pass, which the default spacecraft rarely has. A GEO seen
+     from Bangkok is above the mask for the whole window, so both of its ends are
+     the window's - and before these flags neither file could tell that apart
+     from a real rise and set. Loaded through the picker, as a reader would. */
+  await page.evaluate(() => {
+    const box = document.getElementById('satsearch');
+    box.value = 'INTELSAT 36';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const o = document.querySelector('#satlist [role=option]');
+    if (o) o.click();
+  });
+  await page.waitForTimeout(2500);
+  const geo = await page.evaluate(() => ({ name: __gt.D.entry.name,
+    clip: __gt.D.passes.map(p => [p.clipA, p.clipL]) }));
+  console.log('\n  a window-edge pass: ' + geo.name);
+  if (geo.clip.length === 1 && geo.clip[0][0] && geo.clip[0][1]) {
+    const gc = parseCSV((await grab('exp-csv')).text);
+    chk('a pass up for the whole window is flagged at both ends in the CSV',
+        gc[1][gc[0].indexOf('aos_clipped')] === 'true' && gc[1][gc[0].indexOf('los_clipped')] === 'true',
+        gc[1].slice(-2).join(','));
+    const gi = (await grab('exp-ics')).text.replace(/\r\n[ \t]/g, '');
+    chk('...and in the calendar, by property and in words',
+        /X-GT-CLIPPED:AOS,LOS/.test(gi) && /DTSTART is the window start/.test(gi)
+        && /DTEND is the window end/.test(gi) && /SUMMARY:.*window-clipped/.test(gi));
+    chk('...whose alarm does not announce an AOS that is really the window opening',
+        !/AOS in 10 minutes/.test(gi) && /already up when the window opens/.test(gi));
+  } else {
+    chk('INTELSAT 36 loads as one pass clipped at both ends', false, JSON.stringify(geo));
+  }
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

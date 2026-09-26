@@ -269,6 +269,42 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('...and the two really are different, so that meant something',
       dst.jan !== dst.jul, dst.jan + ' vs ' + dst.jul);
 
+  /* ...and the label goes with the time it labels. Each pass was converted at
+     its own offset but captioned with the offset at the clock, so across the
+     change a 7-day window printed 03:14:51Z as "03:14:51 UTC+1". A week from
+     23 October holds the end of UK summer time (25 Oct, 01:00Z); every rail
+     row is checked against tzAt at its own AOS. The window start is typed the
+     way a reader would, in this browser's local time. */
+  await page.evaluate(() => document.querySelector('.bar-window .span[data-h="168"]').click());
+  await page.waitForTimeout(2500);
+  await page.evaluate(ms => {
+    const i = document.getElementById('winStartIn');
+    i.value = new Date(ms - new Date(ms).getTimezoneOffset()*60000).toISOString().slice(0, 16);
+    i.dispatchEvent(new Event('change'));
+  }, Date.UTC(2026, 9, 23, 6));
+  await page.waitForTimeout(3000);
+  const week = await page.evaluate(() => {
+    const lab = ms => { const t = window.__gt.tzAt(ms); return 'UTC' + (t < 0 ? '−' : '+') + Math.abs(t); };
+    const rail = [...document.querySelectorAll('#passlist .passrow .t small')].map(x => x.textContent);
+    const P = window.__gt.D.passes;
+    const r = document.getElementById('time'), D = window.__gt.D;
+    const clockAt = ms => { r.value = Math.round((ms - D.start.getTime())/1000/D.step);
+      r.dispatchEvent(new Event('input')); return document.getElementById('lbl-tz2').textContent; };
+    return { start: D.start.toISOString(),
+             offsets: [...new Set(P.map(p => window.__gt.tzAt(p.aos.getTime())))],
+             wrong: P.map((p, i) => [p.aos.toISOString(), lab(p.aos.getTime()), rail[i] || ''])
+                     .filter(x => !x[2].includes(x[1])),
+             n: P.length,
+             clock: [clockAt(Date.UTC(2026, 9, 24, 12)), clockAt(Date.UTC(2026, 9, 26, 12))] };
+  });
+  chk('a week across the change holds passes on both offsets',
+      week.offsets.length === 2, week.start.slice(0, 16) + ', offsets ' + week.offsets.join(' and '));
+  chk('...and every pass is labelled with its own offset, not the clock\'s',
+      week.n > 0 && week.wrong.length === 0,
+      week.wrong.length ? JSON.stringify(week.wrong[0]) : week.n + ' passes');
+  chk('...and so is the clock, either side of the change',
+      week.clock[0] === 'UTC+1' && week.clock[1] === 'UTC+0', week.clock.join(' -> '));
+
   // ---- recents -------------------------------------------------------------
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });

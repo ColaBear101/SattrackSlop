@@ -380,10 +380,13 @@ section{display:flex; flex-direction:column; gap:16px}
    omega into Omega and nu into a Latin N */
 .oscbox{display:flex; flex-direction:column; gap:9px; padding:13px 15px;
   background:var(--sunk); border:1px solid var(--rule); border-radius:4px}
-.osc{grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px 18px}
+.osc{grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px 18px; align-items:end}
 .osc .dv dt{text-transform:none; letter-spacing:0}
 .osc .dv dt i{font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif; font-style:italic;
   font-size:14px; color:var(--track)}
+/* a name beside a symbol that could be misread; it wraps whole, and the row
+   aligns on its values, not its labels */
+.osc .dv dt span{white-space:nowrap}
 .osc .dv dd{font-size:13.5px}
 .dnote{font-size:12px; line-height:1.55; color:var(--muted); margin:0; max-width:92ch}
 
@@ -7863,10 +7866,13 @@ function compute(entry, t0ms, hours){
      i = 0.03 deg the latitude being bisected never gets beyond a few
      hundredths of a degree, and the Moon and Sun move it by as much, so one
      node-to-node time says little about the next. Measured across this
-     catalogue, deep-space objects below 0.3 deg came out anywhere from 1307 min
+     catalogue with the window at the regression baseline's start, 2026-09-13
+     00:00 UTC, deep-space objects below 0.3 deg came out anywhere from 1307 min
      (NUSANTARA TIGA) to 1543 min (JCSAT-18) against a sidereal day of
-     1436.07, GOES 18 read 1461.4, and between 0.5 and 1 deg they still spread
-     over a minute.
+     1436.07, and GOES 18 read 1461.4. Started at each object's own epoch
+     instead, the low end is 724 min (ASTRA 2G), about half a revolution: the
+     spread moves with the window, which is the point. Between 0.3 and 1 deg
+     they still stray up to 1.3 min from the Keplerian period.
      A LEO orbit does not have the problem even at i = 0.23 deg (IXPE agrees
      with SGP4's own mean nodal rate to 0.001 %): J2 is symmetric about the
      equator and leaves an equatorial orbit's latitude alone, and the lunisolar
@@ -7874,7 +7880,9 @@ function compute(entry, t0ms, hours){
      the search found no two nodes at all, the period shown is Keplerian,
      2 pi sqrt(a^3/mu) from the semi-major axis on the card, on the mu that a
      was recovered with - which makes it exactly 2 pi/n'' for SGP4's value -
-     and it is labelled as such. New fields only; E.period does not move. */
+     and it is labelled as such. New fields only; E.period does not move.
+     The two tests are kept too, because the panel's RAAN and phase notes ask
+     the same question: is the node a definite point for this orbit? */
   (function(){
     const mu = E.aSource === 'sgp4' ? SGP4_MU : MU;
     const kepler = 2*Math.PI*Math.sqrt(E.a*E.a*E.a/mu);
@@ -7884,6 +7892,7 @@ function compute(entry, t0ms, hours){
     E.periodShown = nodal ? E.period : kepler;
     E.periodKind  = nodal ? 'nodal' : 'keplerian';
     E.periodWhy   = nodal ? null : planeUnclear ? 'equatorial' : 'nonodes';
+    E.deepSpace = deepSpace; E.planeUnclear = planeUnclear;
   })();
 
   /* Apsis altitudes from the propagation, not from a(1 -+ e) - Re. The mean-
@@ -8008,9 +8017,21 @@ function renderElements(){
   const sunSync = E.inc > 95 && E.inc < 104;
   const osc = osculating(D.track, E.epoch.getTime());
   const nearCirc = E.ecc < 0.002;
-  /* ...and near the equator the node is as ill-defined as the perigee, so the
-     phase that survives is the longitude, measured from the equinox. */
-  const nearEq = E.inc < 1;
+  /* ...and near the equator in deep space the node is as ill-defined as the
+     perigee, so the phase that survives is the longitude, measured from the
+     equinox. It is the test compute() uses to stop timing the node, and for
+     the same reason: at LEO the node stays definite even at i = 0.23 deg
+     (IXPE's mean and osculating RAAN agree to 0.02 deg), so a plain i < 1
+     would call a node barely defined that the period beside it relies on. */
+  const nearEq = !!E.planeUnclear;
+  /* The apsis search runs over E.period. That is one revolution wherever the
+     node-to-node time is the period shown, and for a near-equatorial GEO
+     object it is not: ASTRA 2G's first node-to-node interval from its epoch
+     is 724 min, about half a revolution. A swing sampled over half an orbit is
+     not set against 2ae over a whole one as if the two were comparable. */
+  const spanRevs = E.period/E.periodShown, oneRev = Math.abs(spanRevs - 1) < 0.01;
+  const over = oneRev ? 'over a revolution'
+    : 'over the '+(E.period/60).toFixed(0)+' min sampled ('+spanRevs.toFixed(2)+' of a revolution)';
   // an angle in [0, 360) at dp places - 359.998 must print as 0.00, not 360.00
   const ang = (x, dp) => { const v = ((x % 360) + 360) % 360;
     return (+v.toFixed(dp) >= 360 ? 0 : v).toFixed(dp); };
@@ -8022,23 +8043,56 @@ function renderElements(){
     const swing = E.apogeeAlt - E.perigeeAlt;
     if(!E.altMeasured) return 'Effectively circular: a(1∓e) puts perigee and apogee '+swing.toFixed(1)+' km apart.';
     const rs = E.rMax - E.rMin, ss = E.surfMax - E.surfMin, ae2 = 2*E.a*E.ecc;
-    return 'Effectively circular. Altitude still swings '+swing.toFixed(1)+' km over a revolution. '+
-      'The orbit radius varies '+rs.toFixed(1)+' km (2ae alone gives '+ae2.toFixed(1)+
-      (Math.abs(rs - ae2) >= 0.1 ? '; the difference is SGP4\'s periodic terms)' : ')')+
+    return 'Effectively circular. Altitude still swings '+swing.toFixed(1)+' km '+over+'. '+
+      'The orbit radius varies '+rs.toFixed(1)+' km ('+(oneRev ? '2ae alone gives ' : '2ae over a whole revolution is ')+ae2.toFixed(1)+
+      (oneRev && Math.abs(rs - ae2) >= 0.1 ? '; the difference is SGP4\'s periodic terms)' : ')')+
       (ss >= 0.1 ? ', and the WGS-84 surface beneath the track is '+ss.toFixed(1)+
-        ' km lower at its highest latitude than at the equator.' : '.');
+        ' km lower at its highest latitude than at the equator. The two combine by phase, so the swing is at most their sum.' : '.');
   };
-  /* The ground track's reach, read off the track itself. The orbit plane bounds
-     GEOCENTRIC latitude at i; the map is in geodetic latitude, which runs
-     higher - about 0.18 deg at 51.6 deg and 370 km - so the track the page
-     draws goes past the number the old note printed. */
+  /* How far the ground track reaches, and why that is not i. Read off the
+     track itself, but only when the window holds a whole revolution: a shorter
+     one holds an arc - MMS 1's period is 85 h, and a 24 h window of it reached
+     ±11.5 deg of a 74 deg orbit - and the top of an arc says nothing about the
+     orbit's. Two things separate the reach from i, and both are measured on
+     the same samples rather than assumed. The orbit plane bounds GEOCENTRIC
+     latitude, and the map is geodetic, which runs higher: 0.18 deg at 51.6 deg
+     and 370 km, next to nothing at GEO. And the plane is not tilted at the
+     mean i, which is SGP4's average: its periodic terms put the real plane
+     0.02 deg off at LEO, 1 deg off for MMS 1, and for a GEO object at a few
+     hundredths of a degree off by nearly the whole inclination (ASTRA 2G's
+     plane sat at 0.001 deg against a mean 0.024). */
   const reach = () => {
-    const lim = Math.min(90, E.inc > 90 ? 180 - E.inc : E.inc);
-    let ml = 0;
-    for(const p of D.pts){ const a = Math.abs(p.lat); if(a > ml) ml = a; }
-    const dp = lim < 1 ? 2 : 1;
-    return 'Ground track reaches ±'+ml.toFixed(dp)+'° geodetic latitude'+
-      (ml - lim >= 0.05 ? ', '+(ml - lim).toFixed(1)+'° past i: the plane bounds geocentric latitude, and geodetic runs higher.' : '.');
+    const fold = x => Math.min(90, x > 90 ? 180 - x : x);
+    const lim = fold(E.inc), iName = E.inc > 90 ? '180° − i' : 'i';
+    const dp = lim < 0.1 ? 3 : lim < 1 ? 2 : 1, tol = 0.5/Math.pow(10, dp);
+    const deg = x => x.toFixed(dp)+'°';
+    const body = D.track.body, e2 = body.flattening*(2 - body.flattening);
+    let ml = 0, mc = 0;                   // geodetic and geocentric, same samples
+    for(const p of D.pts){
+      const b = Math.abs(p.lat)*RAD, s = Math.sin(b), c = Math.cos(b);
+      const Nv = body.Re/Math.sqrt(1 - e2*s*s);
+      const g = Math.atan2((Nv*(1 - e2) + p.alt)*s, (Nv + p.alt)*c)*DEG;
+      if(Math.abs(p.lat) > ml) ml = Math.abs(p.lat);
+      if(g > mc) mc = g;
+    }
+    const revs = D.hours*3600/E.periodShown;
+    if(revs < 1){
+      const o = osculating(D.track, D.start.getTime());
+      return 'Over a whole revolution the track would reach about ±'+deg(o ? fold(o.inc) : lim)+' latitude, '+
+        (o ? 'the orbit plane\'s osculating tilt at the window start' : 'the mean '+iName)+'. This '+
+        spanLabel(D.hours)+' window holds '+revs.toFixed(2)+' of a revolution ('+(E.periodShown/3600).toFixed(1)+
+        ' h), and the track drawn in it gets to ±'+deg(ml)+'.';
+    }
+    const why = [];
+    if(Math.abs(mc - lim) >= tol)
+      why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim)+
+        ' — a mean inclination averages out SGP4\'s periodic terms'+(E.deepSpace ? ', the Moon\'s and Sun\'s among them' : ''));
+    if(ml - mc >= tol)
+      why.push('the plane bounds geocentric latitude, and geodetic runs '+(ml - mc).toFixed(Math.max(2, dp))+'° higher');
+    const d = ml - lim;
+    return 'Ground track reaches ±'+deg(ml)+' geodetic latitude'+
+      (Math.abs(d) < tol || !why.length ? '.'
+        : ', '+Math.abs(d).toFixed(dp)+'° '+(d > 0 ? 'past ' : 'short of ')+iName+': '+why.join('; ')+'.');
   };
   const dA = E.aNaive - E.a;
   const cells = [
@@ -8051,7 +8105,7 @@ function renderElements(){
       E.aSource === 'sgp4' ? 'SGP4 Brouwer mean value, WGS-72' : 'derived from line 2 cols 53–63 (n)'],
     ['e','Eccentricity', E.ecc.toFixed(7), '',
       (nearCirc ? swingNote()
-        : 'Altitude runs '+E.perigeeAlt.toFixed(0)+' to '+E.apogeeAlt.toFixed(0)+' km.'),
+        : 'Altitude runs '+E.perigeeAlt.toFixed(0)+' to '+E.apogeeAlt.toFixed(0)+' km'+(oneRev ? '.' : ' '+over+'.')),
       'line 2 cols 27–33, leading decimal implied'],
     ['i','Inclination', E.inc.toFixed(4), '°',
       (E.inc>90?'Retrograde. ':'Prograde. ')+(sunSync?'Sun-synchronous — the node drifts ~0.986°/day to hold a fixed local solar time.':reach()),
@@ -8082,21 +8136,25 @@ function renderElements(){
   /* The same orbit at the same instant, as the state vector says it is. */
   const oscEl = document.getElementById('osc'), oscNote = document.getElementById('oscnote');
   if(oscEl){
+    /* The phases that are not on the cards above carry their names: in the
+       serif italic, and in the sans of the note, ν is hard to tell from a
+       Latin v, and on a page that also deals in velocities it gets read as one. */
     const ov = osc ? [
       ['a', osc.a.toFixed(1)+' km'], ['e', osc.e.toFixed(7)], ['i', osc.inc.toFixed(4)+'°'],
-      ['Ω', ang(osc.raan, 4)+'°'], ['ω', ang(osc.argp, 2)+'°'], ['ν', ang(osc.nu, 2)+'°'],
-      nearEq ? ['l = Ω + ω + ν', ang(osc.raan + osc.u, 2)+'°']
-             : ['u = ω + ν', ang(osc.u, 2)+'°']
+      ['Ω', ang(osc.raan, 4)+'°'], ['ω', ang(osc.argp, 2)+'°'], ['ν', ang(osc.nu, 2)+'°', 'true anomaly'],
+      nearEq ? ['l = Ω + ω + ν', ang(osc.raan + osc.u, 2)+'°', 'true longitude']
+             : ['u = ω + ν', ang(osc.u, 2)+'°', 'argument of latitude']
     ] : [];
     oscEl.innerHTML = ov.map(o=>
-      '<div class="dv"><dt><i>'+o[0]+'</i></dt><dd>'+o[1]+'</dd></div>').join('');
+      '<div class="dv"><dt><i>'+o[0]+'</i>'+(o[2] ? ' <span>'+o[2]+'</span>' : '')+'</dt><dd>'+o[1]+'</dd></div>').join('');
     oscNote.textContent = !osc ? 'SGP4 gives no state at the epoch for this element set.'
       : 'The two-body orbit through SGP4\'s position and velocity at the epoch, on its own μ = 398 600.8 km³/s². '+
         'These are not the TLE\'s elements: the mean elements above have SGP4\'s periodic terms averaged out'+
-        (isFinite(E.oscAMax) ? ', and the osculating a alone moves '+(E.oscAMax - E.oscAMin).toFixed(1)+' km over a revolution' : '')+
+        (isFinite(E.oscAMax) ? ', and the osculating a alone moves '+(E.oscAMax - E.oscAMin).toFixed(1)+' km over '+
+          (oneRev ? 'a revolution' : 'the '+(E.period/60).toFixed(0)+' min sampled') : '')+
         '.'+(!nearCirc ? ''
-          : nearEq ? ' At e and i this small Ω, ω and ν are each poorly defined; l, the true longitude, is the phase to trust.'
-          : ' At e this small ω and ν are each poorly defined; u, measured from the node, is the phase to trust.');
+          : nearEq ? ' At e and i this small Ω, ω and the true anomaly ν are each poorly defined; l, the true longitude, is the phase to trust.'
+          : ' At e this small ω and the true anomaly ν are each poorly defined; u, the argument of latitude, measured from the node, is the phase to trust.');
   }
 
   const P = E.periodShown;
@@ -8116,17 +8174,24 @@ function renderElements(){
      are not: the period and the apsis search run from the start of the
      window, which defaults to now, and the mean altitude is over the whole
      window. Measuring them from the epoch instead would move every number the
-     regression gate compares, so the label moves instead. */
+     regression gate compares, so the label moves instead. Where the period
+     shown is Keplerian the apsis search still runs over E.period - one
+     node-to-node interval, which for a near-equatorial GEO object can be
+     half a revolution or more than one - so the note says how long it was
+     rather than calling it a revolution. */
   const dn = document.getElementById('dnote');
   if(dn){
-    dn.textContent = ((E.periodKind === 'nodal' ? 'The period and the min and max altitude are'
-                                               : 'The min and max altitude are')+
-      ' propagated over the first revolution from the window start, '+iso(D.start)+
-      ', and the mean altitude over the whole '+spanLabel(D.hours)+' window, so they move slightly as the window does. '+
+    dn.textContent = ((E.periodKind === 'nodal'
+        ? 'The period and the min and max altitude are propagated over the first revolution from the window start, '+iso(D.start)
+        : 'The min and max altitude are propagated from the window start, '+iso(D.start)+', over '+
+          (E.periodMeasured ? 'one node-to-node interval: '+(E.period/60).toFixed(1)+' min, '+spanRevs.toFixed(2)+' of a revolution'
+                            : 'one mean-motion period, 86 400 s/n'))+
+      ', and the mean altitude over the whole '+spanLabel(D.hours)+' window, so they move '+
+      (oneRev ? 'slightly ' : '')+'as the window does. '+
       'Revs in 24 h is 86 400 s divided by the period; the mean motion is the TLE\'s own, Kozai\'s. '+
       (E.periodWhy === 'equatorial'
         ? 'At i = '+E.inc.toFixed(4)+'° the ascending node is poorly defined: the Moon and Sun move the latitude being timed by a good fraction of the inclination, '+
-          'so node-to-node times wander ('+(E.period/60).toFixed(1)+' min on this revolution). The period shown is the Keplerian 2π√(a³/μ) from the a above.'
+          'so node-to-node times wander from one revolution to the next. The period shown is the Keplerian 2π√(a³/μ) from the a above.'
         : E.periodWhy === 'nonodes'
         ? 'No two ascending nodes were found, so the period shown is the Keplerian 2π√(a³/μ) from the a above.'
         : '')).trim();

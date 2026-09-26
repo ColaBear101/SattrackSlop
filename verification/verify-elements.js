@@ -23,8 +23,10 @@
  * the method box, which had the opposite problem: every number was readable
  * and several said the wrong thing about themselves - a "nodal period" 25 min
  * off for GEO objects, an altitude swing put down to J2, a latitude limit the
- * drawn track overshoots, a scan step that was the drawing step. Those are
- * checked against figures worked out here, in node.
+ * drawn track overshoots, a scan step that was the drawing step. The first fix
+ * of the latitude limit then read it off whatever track the window held, which
+ * for MMS 1 - an 85 h orbit in a 24 h window - printed ±11.5 deg for an orbit
+ * inclined at 73. Those are checked against figures worked out here, in node.
  *
  * Served over http, because a file:// page has an opaque origin and this suite
  * has been bitten by that before.
@@ -272,17 +274,43 @@ const clipped = m => m.tags.filter(t =>
   }, name).then(() => page.waitForFunction(n => window.__gt.D.entry.name === n, name, { timeout: 20000 }));
   const panel = () => page.evaluate(() => {
     const D = window.__gt.D, E = D.E;
+    // keyed by the symbol where there is one: the osculating row names some
+    // of its symbols in words beside them
     const pairs = sel => [...document.querySelectorAll(sel + ' .dv')].map(d =>
-      [d.querySelector('dt').textContent, d.querySelector('dd').textContent]);
-    return { l1: D.entry.l1, l2: D.entry.l2, start: D.start.getTime(), hours: D.hours,
+      [(d.querySelector('dt i') || d.querySelector('dt')).textContent, d.querySelector('dd').textContent]);
+    return { l1: D.entry.l1, l2: D.entry.l2, start: D.start.getTime(), hours: D.hours, step: D.step,
              period: E.period, ecc: E.ecc, a: E.a, inc: E.inc, epoch: E.epoch.getTime(),
              maxLat: Math.max.apply(null, D.pts.map(p => Math.abs(p.lat))),
              notes: [...document.querySelectorAll('#elgrid .note')].map(n => n.textContent),
+             oscNames: [...document.querySelectorAll('#osc dt')].map(d => d.textContent),
+             dnote: document.getElementById('dnote').textContent,
              derived: pairs('#derived'), mini: pairs('#minigrid'), osc: pairs('#osc'),
              scan: document.getElementById('lbl-scan').textContent,
              sample: document.getElementById('lbl-sample').textContent };
   });
   const val = (pairs, label) => { const p = pairs.find(x => x[0] === label); return p ? parseFloat(p[1]) : NaN; };
+  /* Highest geodetic and geocentric latitude over the window's own sample
+     instants, worked out by satellite.js: its geodetic conversion, not the
+     page's, and asin(z/r), which no rotation about the pole changes. */
+  const trackReach = pn => {
+    const rec = sat.twoline2satrec(pn.l1, pn.l2), N = Math.round(pn.hours*3600/pn.step);
+    let gd = 0, gc = 0;
+    for(let k = 0; k <= N; k++){
+      const t = new Date(pn.start + k*pn.step*1000), pv = sat.propagate(rec, t);
+      if(!pv || !pv.position) continue;
+      const p = pv.position;
+      gd = Math.max(gd, Math.abs(sat.eciToGeodetic(p, sat.gstime(t)).latitude)*180/Math.PI);
+      gc = Math.max(gc, Math.abs(Math.asin(p.z/Math.hypot(p.x, p.y, p.z)))*180/Math.PI);
+    }
+    return { gd, gc };
+  };
+  // the tilt of the osculating plane at one instant, from h = r x v
+  const tiltAt = (pn, ms) => {
+    const pv = sat.propagate(sat.twoline2satrec(pn.l1, pn.l2), new Date(ms)), r = pv.position, v = pv.velocity;
+    const hx = r.y*v.z - r.z*v.y, hy = r.z*v.x - r.x*v.z, hz = r.x*v.y - r.y*v.x;
+    const i = Math.acos(hz/Math.hypot(hx, hy, hz))*180/Math.PI;
+    return i > 90 ? 180 - i : i;
+  };
 
   await pick('KNACKSAT-2');
   let pn = await panel();
@@ -309,11 +337,17 @@ const clipped = m => m.tags.filter(t =>
             ', surface ' + m[3] + ' (mine ' + (sHi - sLo).toFixed(2) + ') km' : pn.notes[1]);
   }
   {
-    const m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic/);
+    const R = trackReach(pn);
+    const m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic.*?geodetic runs ([\d.]+)° higher/);
     chk('the inclination card quotes the geodetic reach of the track it draws, not i',
-        !!m && Math.abs(+m[1] - pn.maxLat) < 0.051 && +m[1] > pn.inc + 0.1,
-        m ? '±' + m[1] + '° against i = ' + pn.inc + '°, track max ' + pn.maxLat.toFixed(3) + '°' : pn.notes[2]);
+        !!m && Math.abs(+m[1] - R.gd) < 0.051 && +m[1] > pn.inc + 0.1,
+        m ? '±' + m[1] + '° against i = ' + pn.inc + '°, track max ' + R.gd.toFixed(3) + '°' : pn.notes[2]);
+    chk('...and says how much of that is geodetic against geocentric, measured on the same samples',
+        !!m && Math.abs(+m[2] - (R.gd - R.gc)) < 0.0051,
+        m ? m[2] + '° (mine ' + (R.gd - R.gc).toFixed(4) + '°: geocentric max ' + R.gc.toFixed(4) + '°)' : pn.notes[2]);
   }
+  chk('...and the osculating row names ν in words, so it is not read as a v',
+      pn.oscNames.some(t => /^ν\s+true anomaly$/.test(t)), pn.oscNames.join(' | '));
   /* Osculating elements at epoch, from the state vector, written out again
      with acos rather than the page's atan2 so the two do not share a route. */
   {
@@ -362,7 +396,59 @@ const clipped = m => m.tags.filter(t =>
         Math.abs(got - kep) < 0.0051 && Math.abs(val(pn.mini, 'Kepler period') - kep) < 0.051
           && !pn.derived.some(d => d[0] === 'Nodal period'),
         got + ' min (2π/n″ = ' + kep.toFixed(3) + '; node to node measured ' + (pn.period/60).toFixed(1) + ')');
+    /* The apsis search still runs over that node-to-node time, and the
+       panel has to say how long it was instead of calling it a revolution. */
+    const frac = pn.period/60/kep, one = Math.abs(frac - 1) < 0.01;
+    const dm = pn.dnote.match(/one node-to-node interval: ([\d.]+) min, ([\d.]+) of a revolution/);
+    chk('...and says the altitudes were sampled over one node-to-node interval, and what fraction of an orbit that is',
+        !!dm && Math.abs(+dm[1] - pn.period/60) < 0.051 && Math.abs(+dm[2] - frac) < 0.0051
+          && (one ? /over a revolution/.test(pn.notes[1])
+                  : /min sampled/.test(pn.notes[1]) && !/periodic terms/.test(pn.notes[1])),
+        dm ? dm[1] + ' min, ' + dm[2] + ' rev (mine ' + frac.toFixed(4) + ')' : pn.dnote);
+    /* At i = 0.035 deg SGP4's periodic terms tilt the real plane by most of
+       the inclination, so the track falls short of i - and says why. */
+    const R = trackReach(pn);
+    const m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic latitude/);
+    const t = pn.notes[2].match(/orbit plane is tilted at most ([\d.]+)°/);
+    const needs = Math.abs(R.gc - pn.inc) >= 0.0006;
+    chk('...and a GEO object\'s reach is its drawn track, with the plane\'s real tilt when that is not the mean i',
+        !!m && Math.abs(+m[1] - R.gd) < 0.00051 && (!needs || !!t) && (!t || Math.abs(+t[1] - R.gc) < 0.00051),
+        (m ? '±' + m[1] + '° (mine ' + R.gd.toFixed(4) + ')' : 'no reach') + ', tilt ' + (t ? t[1] : '-') +
+          '° (mine ' + R.gc.toFixed(4) + ') against i = ' + pn.inc + '°');
+    chk('...and its RAAN note says the node is barely defined',
+        /barely defined/.test(pn.notes[3]), pn.notes[3]);
   }
+
+  /* MMS 1's period is 85 h. A 24 h window holds an arc of it, and the top of
+     that arc used to be printed as the orbit's reach - ±11.5 deg for an orbit
+     inclined at 73. */
+  await pick('MMS 1');
+  pn = await panel();
+  {
+    const tilt = tiltAt(pn, pn.start), R = trackReach(pn), n = +pn.l2.slice(52, 63);
+    const m = pn.notes[2].match(/whole revolution the track would reach about ±([\d.]+)°.*?holds ([\d.]+) of a revolution.*?gets to ±([\d.]+)°/);
+    chk('a window shorter than a revolution gives the plane\'s tilt, not the top of its arc, as the reach',
+        !!m && Math.abs(+m[1] - tilt) < 0.051 && Math.abs(+m[2] - pn.hours*n/24) < 0.006
+          && Math.abs(+m[3] - R.gd) < 0.051 && !/Ground track reaches/.test(pn.notes[2]),
+        m ? '±' + m[1] + '° (osculating tilt ' + tilt.toFixed(3) + '°), ' + m[2] + ' rev, arc ±' + m[3] +
+            '° (mine ' + R.gd.toFixed(3) + '°)' : pn.notes[2]);
+  }
+
+  /* A retrograde orbit's plane bounds latitude at 180 - i, and the card has
+     to name that, not i. */
+  await pick('IPEX');
+  pn = await panel();
+  {
+    const R = trackReach(pn), m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic latitude, [\d.]+° past 180° − i:/);
+    chk('a retrograde orbit\'s reach is measured against 180° − i',
+        !!m && Math.abs(+m[1] - R.gd) < 0.051, m ? '±' + m[1] + '° (mine ' + R.gd.toFixed(3) + '°)' : pn.notes[2]);
+  }
+  /* IXPE at 0.23 deg is near-equatorial but in LEO, where the period logic
+     treats its node as definite; the RAAN note must agree. */
+  await pick('IXPE');
+  pn = await panel();
+  chk('a near-equatorial LEO orbit keeps its measured node, and the RAAN note does not call it barely defined',
+      pn.derived.some(d => d[0] === 'Nodal period') && !/barely defined/.test(pn.notes[3]), pn.notes[3]);
 
   /* A long window relaxes both steps, and the prose has to follow. */
   await pick('KNACKSAT-2');

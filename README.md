@@ -172,11 +172,16 @@ its figures move a little with the window, and it says so under them.
 
 For a near-equatorial object in deep space the node-to-node period is not a usable number. At
 i = 0.03° the latitude being timed never exceeds a few hundredths of a degree, and the Moon and Sun
-move it by as much, so GEO objects in the catalogue below 0.3° measured anywhere from 1307 to 1543
-min against a sidereal day of 1436.07 (GOES 18: 1461.4). LEO orbits are unaffected even at 0.23°,
-because J2 is symmetric about the equator; SGP4 applies lunisolar terms only past 225 min. For
-deep-space orbits below 1°, and wherever no two nodes are found, the page shows the Keplerian
-2π√(a³/μ) from SGP4's a instead and labels it "Kepler period" — 1436.13 min for GOES 18.
+move it by as much. With the window at the regression baseline's start, 2026-09-13 00:00 UTC, GEO
+objects in the catalogue below 0.3° measured anywhere from 1307 to 1543 min against a sidereal day
+of 1436.07 (GOES 18: 1461.4); started at each object's own epoch, the low end is 724 min (ASTRA 2G),
+about half a revolution. LEO orbits are unaffected even at 0.23°, because J2 is symmetric about
+the equator; SGP4 applies lunisolar terms only past 225 min. For deep-space orbits below 1°, and
+wherever no two nodes are found, the page shows the Keplerian 2π√(a³/μ) from SGP4's a instead and
+labels it "Kepler period" — 1436.13 min for GOES 18. The apsis altitudes there are still sampled
+over one node-to-node interval, because the regression baseline is built on it, so the page gives
+that interval's length and the fraction of a revolution it covers instead of calling it one
+revolution, and does not set a radius swing from half an orbit against 2ae.
 
 Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a Landsat's. At
 360 km the atmosphere is still biting, and this element set goes stale fast.
@@ -193,6 +198,16 @@ At 51.63° inclination the track is a band between ±51.8° geodetic latitude �
 geocentric latitude at the inclination, and geodetic latitude runs about 0.2° higher up there.
 Bangkok at 13.75°N sits well inside it, unlike the near-polar Landsat track that crosses the tropics
 almost vertically.
+
+The inclination card reads that reach off the drawn track and gives each reason it differs from i,
+both measured on the same samples: geodetic against geocentric latitude, 0.18° here, and the actual
+plane against the mean i, 0.02° here. The second is SGP4's periodic terms, which a mean element
+averages out. It is about 1° for MMS 1, and for a GEO object at a few hundredths of a degree it is
+nearly the whole inclination: ASTRA 2G's plane sits at 0.001° against a mean 0.024°. The card reads
+the track only when the window holds a whole revolution. MMS 1's period is 85 h, so a 24 h window
+holds about a quarter of one, and the arc in it reached ±11.5° in the case that found this. For
+such a window the card gives the plane's osculating tilt at the window start, about ±74°, and says
+how far the arc got.
 
 ## (c) Visibility from Bangkok (13.75°N, 100.52°E, 5° mask)
 

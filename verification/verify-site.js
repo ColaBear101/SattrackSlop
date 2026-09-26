@@ -17,6 +17,11 @@
  *    obs = Bangkok in its meta, and snapshot.js runs with empty localStorage -
  *    so a stored site must not leak into a fresh page, and reset must restore
  *    the assignment's own numbers exactly.
+ *  - Every label has to follow the site: the flat map, the readout and the
+ *    section hint said Bangkok in static markup wherever the site had gone, and
+ *    a coordinate typed in kept the previous site's UTC offset under a note
+ *    calling it solar time. The window-start field was in the browser's zone,
+ *    unlabelled, while every other local time is the observer's.
  *
  *   node verification/verify-site.js          (needs playwright)
  */
@@ -65,8 +70,24 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
     heading: (document.querySelector('#sec-access h2') || {}).textContent,
     eyebrow: (document.getElementById('lbl-vis') || {}).textContent,
     tz: (document.getElementById('lbl-tz2') || {}).textContent,
-    cam: (document.getElementById('lbl-camsite') || {}).textContent
+    cam: (document.getElementById('lbl-camsite') || {}).textContent,
+    ro: ['lbl-roel', 'lbl-roaz'].map(id => (document.getElementById(id) || {}).textContent),
+    hint: (document.getElementById('lbl-acchint') || {}).textContent,
+    note: (document.getElementById('sitenote') || {}).textContent
   }), T0);
+  /* The flat map's site label is painted, not laid out, so it is read off the
+     canvas: every string filled on #map during one forced redraw. */
+  const mapTexts = () => page.evaluate(async () => {
+    const seen = [], proto = CanvasRenderingContext2D.prototype, orig = proto.fillText;
+    proto.fillText = function (t, ...a) {
+      if (this.canvas && this.canvas.id === 'map') seen.push(String(t));
+      return orig.call(this, t, ...a);
+    };
+    window.dispatchEvent(new Event('resize'));      // refits and repaints the map
+    await new Promise(r => setTimeout(r, 450));
+    proto.fillText = orig;
+    return seen;
+  });
   // the pin is built from GT.OBS at init; read it back out of the scene graph
   const pinLatLon = () => page.evaluate(() => {
     if (!window.Orbit3D || !Orbit3D.ok()) return null;
@@ -92,6 +113,22 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('a fresh page defaults to Bangkok', home.obs.name === 'Bangkok'
       && home.obs.lat === 13.75 && home.obs.lon === 100.52 && home.obs.altKm === 0 && home.obs.tz === 7,
       JSON.stringify(home.obs));
+
+  /* The observer form starts closed. .siteform set display:flex, which beats the
+     UA's [hidden] rule, so it was open on every first load before the button
+     was pressed - and the button's aria-expanded said "false" over it. */
+  const formState = () => page.evaluate(() => ({
+    shown: getComputedStyle(document.getElementById('siteform')).display !== 'none',
+    expanded: document.getElementById('siteopen').getAttribute('aria-expanded') }));
+  const f0 = await formState();
+  await page.click('#siteopen');
+  const f1 = await formState();
+  await page.click('#siteopen');
+  const f2 = await formState();
+  chk('the observer form starts closed, and the button opens and closes it',
+      !f0.shown && f0.expanded === 'false' && f1.shown && f1.expanded === 'true'
+      && !f2.shown && f2.expanded === 'false',
+      [f0, f1, f2].map(f => (f.shown ? 'open' : 'closed') + '/' + f.expanded).join(' -> '));
 
   const pin0 = await pinLatLon();
   chk('...and the 3D pin stands there', pin0 &&
@@ -128,6 +165,13 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('the labels renamed', /Svalbard/.test(moved.heading) && /Svalbard/.test(moved.eyebrow)
       && moved.cam === 'Svalbard', moved.heading);
   chk('...and the clock says the new offset', moved.tz === 'UTC+1', 'shows "' + moved.tz + '"');
+  chk('...and so do the readout and the section hint, which were static markup',
+      moved.ro.every(t => /@ Svalbard$/.test(t)) && /^78\.23° N 15\.41° E, 450 m above sea level/.test(moved.hint),
+      moved.ro.join(' / ') + ' · ' + moved.hint);
+  const movedMap = await mapTexts();
+  chk('...and the flat map labels the site by its own name',
+      movedMap.includes('SVALBARD') && !movedMap.includes('BANGKOK'),
+      movedMap.filter(t => /^[A-Z ]+$/.test(t)).join(', ') || 'nothing drawn');
 
   // ---- it survives a reload ------------------------------------------------
   await boot();
@@ -147,6 +191,11 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('reset restores Bangkok exactly', back.obs.lat === 13.75 && back.obs.lon === 100.52
       && back.obs.altKm === 0 && back.obs.tz === 7 && back.obs.name === 'Bangkok',
       JSON.stringify(back.obs));
+  chk('...and its labels', back.ro.every(t => /@ Bangkok$/.test(t))
+      && back.hint === '13.75° N 100.52° E, sea level, geometric', back.ro.join(' / ') + ' · ' + back.hint);
+  const backMap = await mapTexts();
+  chk('...and the map says BANGKOK again', backMap.includes('BANGKOK') && !backMap.includes('SVALBARD'),
+      backMap.filter(t => /^[A-Z ]+$/.test(t)).join(', ') || 'nothing drawn');
   /* The number the whole README is built on. Not "close to" - the same double. */
   chk('...and with it the assignment\'s own total, to the bit',
       back.fixed === home.fixed,
@@ -165,7 +214,40 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
       fresh.obs.name === 'Bangkok' && fresh.fixed === home.fixed,
       JSON.stringify(fresh.obs) + '  ' + fresh.fixed + ' s at the pinned window');
   console.log('\n  (that is the condition snapshot.js depends on: it runs in a fresh');
-  console.log('   context, so the baseline keeps describing Bangkok)');
+  console.log('   context, so the baseline keeps describing Bangkok)\n');
+
+  // ---- the window-start field is in the observer's time --------------------
+  /* Whatever the browser's own zone. It used to follow the browser: with the
+     browser in London the field read 08:26 for a window opening at 07:26Z, the
+     zone was said only in the aria-label, and typing 14:00 opened the window at
+     13:00Z - 14:00 neither in UTC nor in Bangkok, whose times fill the rest of
+     the page. */
+  const ctx3 = await browser.newContext({ timezoneId: 'Europe/London' });
+  const p3 = await ctx3.newPage();
+  await p3.route('**celestrak.org/**', r => r.abort());
+  await p3.route('**tle.ivanstanojevic.me/**', r => r.abort());
+  await p3.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
+  await p3.goto(PAGE, { waitUntil: 'load' });
+  await p3.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+  const w0 = await p3.evaluate(() => ({ field: document.getElementById('winStartIn').value,
+    start: __gt.D.start.getTime(), zone: document.getElementById('winTz').textContent,
+    aria: document.getElementById('winStartIn').getAttribute('aria-label'),
+    browser: -new Date(__gt.D.start).getTimezoneOffset() / 60 }));
+  const inBkk = new Date(w0.start + 7 * 3600e3).toISOString().slice(0, 16);
+  chk('the window-start field shows the observer\'s time, not the browser\'s',
+      w0.field === inBkk && w0.browser !== 7,
+      'field ' + w0.field + ', Bangkok ' + inBkk + ', browser at UTC+' + w0.browser);
+  chk('...and says which zone that is, beside the field', w0.zone === 'UTC+7' && /UTC\+7/.test(w0.aria),
+      '"' + w0.zone + '" · ' + w0.aria);
+  await p3.evaluate(() => {
+    const i = document.getElementById('winStartIn');
+    i.value = '2026-09-13T14:00'; i.dispatchEvent(new Event('change'));
+  });
+  await p3.waitForTimeout(1500);
+  const w1 = await p3.evaluate(() => __gt.D.start.toISOString());
+  chk('...and a time typed there is read in it', w1 === '2026-09-13T07:00:00.000Z',
+      '14:00 typed, window opens ' + w1);
+  await ctx3.close();
 
   // ========================================================================
   // the place picker
@@ -274,14 +356,17 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
      change a 7-day window printed 03:14:51Z as "03:14:51 UTC+1". A week from
      23 October holds the end of UK summer time (25 Oct, 01:00Z); every rail
      row is checked against tzAt at its own AOS. The window start is typed the
-     way a reader would, in this browser's local time. */
+     way a reader would, in the observer's time the field is labelled with -
+     London's, UTC+1 on the 23rd, worked out here from Intl rather than from the
+     page - and has to open the window at the instant meant. */
+  const WEEK0 = Date.UTC(2026, 9, 23, 6);
   await page.evaluate(() => document.querySelector('.bar-window .span[data-h="168"]').click());
   await page.waitForTimeout(2500);
-  await page.evaluate(ms => {
+  await page.evaluate(v => {
     const i = document.getElementById('winStartIn');
-    i.value = new Date(ms - new Date(ms).getTimezoneOffset()*60000).toISOString().slice(0, 16);
+    i.value = v;
     i.dispatchEvent(new Event('change'));
-  }, Date.UTC(2026, 9, 23, 6));
+  }, new Date(WEEK0 + oracle('Europe/London', WEEK0) * 3600e3).toISOString().slice(0, 16));
   await page.waitForTimeout(3000);
   const week = await page.evaluate(() => {
     const lab = ms => { const t = window.__gt.tzAt(ms); return 'UTC' + (t < 0 ? '−' : '+') + Math.abs(t); };
@@ -290,13 +375,16 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
     const r = document.getElementById('time'), D = window.__gt.D;
     const clockAt = ms => { r.value = Math.round((ms - D.start.getTime())/1000/D.step);
       r.dispatchEvent(new Event('input')); return document.getElementById('lbl-tz2').textContent; };
-    return { start: D.start.toISOString(),
+    return { start: D.start.toISOString(), zone: document.getElementById('winTz').textContent,
              offsets: [...new Set(P.map(p => window.__gt.tzAt(p.aos.getTime())))],
              wrong: P.map((p, i) => [p.aos.toISOString(), lab(p.aos.getTime()), rail[i] || ''])
                      .filter(x => !x[2].includes(x[1])),
              n: P.length,
              clock: [clockAt(Date.UTC(2026, 9, 24, 12)), clockAt(Date.UTC(2026, 9, 26, 12))] };
   });
+  chk('a London time typed in the field opens the window at that instant',
+      week.start === new Date(WEEK0).toISOString() && week.zone === 'UTC+1',
+      week.start + ', field labelled ' + week.zone);
   chk('a week across the change holds passes on both offsets',
       week.offsets.length === 2, week.start.slice(0, 16) + ', offsets ' + week.offsets.join(' and '));
   chk('...and every pass is labelled with its own offset, not the clock\'s',
@@ -361,6 +449,33 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
       manual.obs.name + ' ' + manual.obs.lat + ', ' + manual.obs.lon);
   chk('...clearing the zone, since a hand-typed coordinate is not a place',
       manual.obs.zone === null, String(manual.obs.zone));
+
+  /* A coordinate typed in with the offset left alone takes the nearest hour of
+     solar time for ITS longitude. The field used to keep the last site's offset
+     and Apply passed it on, so London typed in after Chiang Mai came out in
+     UTC+7 under a note saying the offset was solar time. Typed with page.fill,
+     so the page sees the keystrokes a reader would make. */
+  await page.fill('#s-name', 'London by hand');
+  await page.fill('#s-lat', '51.5074');
+  await page.fill('#s-lon', '-0.1278');
+  await page.fill('#s-alt', '0.02');
+  const offered = await page.inputValue('#s-tz');
+  await page.click('#siteapply');
+  await page.waitForTimeout(2000);
+  const byHand = await state();
+  chk('a typed coordinate takes solar time at its own longitude, not the last site\'s offset',
+      offered === '0' && byHand.obs.tz === 0 && byHand.tz === 'UTC+0',
+      'field offered ' + offered + ', applied UTC+' + byHand.obs.tz + '; Chiang Mai was UTC+7');
+  chk('...and the note calls that an estimate', /estimate: the nearest hour of solar time/.test(byHand.note),
+      byHand.note.replace(/^.*?(No timezone)/, '$1'));
+  await page.fill('#s-tz', '1');
+  await page.fill('#s-name', 'London BST');
+  await page.click('#siteapply');
+  await page.waitForTimeout(2000);
+  const typedTz = await state();
+  chk('...while an offset typed in is taken as typed, and not called solar time',
+      typedTz.obs.tz === 1 && typedTz.tz === 'UTC+1' && /offset as entered/.test(typedTz.note)
+      && !/solar time/.test(typedTz.note), typedTz.note.replace(/^.*?(No timezone)/, '$1'));
 
   // ---- this device ---------------------------------------------------------
   const gctx = page.context();

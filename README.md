@@ -68,13 +68,22 @@ first — so the warning cannot quietly go out of date.
 
 Select a satellite from CelesTrak's Earth Resources group and build a web program that reports its
 orbital elements, plots a day of ground track, and totals its visibility from Bangkok above a 5°
-mask. Parts (a), (b) and (c) below are that answer.
+mask. Parts (a), (b) and (c) below work it for KNACKSAT-2, which is **not** in that group — see
+**Satellite**. LANDSAT 9, which is, is worked under **For comparison**.
 
 ## Satellite
 
 **KNACKSAT-2** — NORAD 67683, international designator 1998-067XZ — a Thai CubeSat. That
 designator is the giveaway: `1998-067` is the ISS, so KNACKSAT-2 was deployed from the station
 and shares its 51.63° orbit at roughly 360 km, not a sun-synchronous one.
+
+**KNACKSAT-2 is outside the brief.** It is not in CelesTrak's Earth Resources group:
+`verification/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
+came into this catalogue from SatNOGS rather than from a CelesTrak group (see **Data
+provenance**). The figures in (a) to (c) are correct for KNACKSAT-2, but they are not an answer
+from the group the brief names. LANDSAT 9 (NORAD 49260) is in the group, and is the in-brief
+answer, worked under **For comparison** below. KNACKSAT-2 stays the page's default; while it is on
+screen the answer block says it is outside the brief, with a button that loads LANDSAT 9.
 
 ```
 KNACKSAT-2
@@ -84,9 +93,18 @@ KNACKSAT-2
 
 Epoch: **2026-09-12 07:29:09.993 UTC** (day 255.31192122 of 2026).
 
-Every figure quoted in this README is computed from *that* element set, so the numbers stay
-checkable. The live page fetches a newer one on load (see **Staying current** below), so what it
-shows will differ — and should.
+Every figure quoted in this README is computed from *that* element set, with the window opening
+at its epoch, so the numbers stay checkable. The live page does neither: it fetches a newer set on
+load (see **Staying current** below) and opens the window at the reader's clock, so what it shows
+will differ — and should. The line under the headline total says which window and which set it
+used, so two readers an hour apart can see why their numbers disagree.
+
+To reproduce the README on the page, open it with `?tle=embedded` — the **assignment snapshot**
+link under *Element set*. That keeps the embedded element sets, asks no source for a newer one,
+and opens each spacecraft's window at its own epoch. KNACKSAT-2 then reads 899.7 s over 2 passes
+("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set epoch 2026-09-12 07:29Z,
+embedded"), and LANDSAT 9, one click away, 37.74 minutes over 4, as below.
+`verification/verify-refresh.js` checks both, with a newer set on offer that must not be asked for.
 
 The picker at the top right searches **2,158 spacecraft** by name or NORAD ID — type `knack`,
 `landsat`, `iss`, or `43722`. Everything on the page recomputes on selection.
@@ -213,8 +231,9 @@ by about 2 s. Worth knowing when reading a figure quoted to 0.1 s.
 
 ## For comparison — LANDSAT 9 (the Earth Resources answer)
 
-Selectable in the picker. NORAD 49260, epoch 2026-09-12 04:49:46.684 UTC, sun-synchronous at
-98.2207°:
+Selectable in the picker, or from the answer block's "Show LANDSAT 9" while KNACKSAT-2 is on
+screen; the assignment snapshot opens it at its own epoch and reproduces these figures. NORAD
+49260, epoch 2026-09-12 04:49:46.684 UTC, sun-synchronous at 98.2207°:
 
 - a = 7077.743 km, e = 0.0001484, i = 98.2207°, Ω = 324.2909°, ω = 100.3913°, M = 259.7453°
 - **37.74 minutes over 4 passes**, best elevation 31.50° at 14:47 UTC
@@ -930,12 +949,24 @@ offset *at the instant being displayed*, so summer time is right on both sides o
 a 7-day window of passes can straddle one. Each pass time is converted at the offset in force at
 that pass, and the label beside it now says the same: it used to follow the clock, so after the
 change London printed 03:14:51Z as "03:14:51 UTC+1". A site typed in as bare coordinates has no discoverable
-zone, so it keeps the nearest hour of solar time, editable, and the note says which of the two is
-on screen. That guess is worth replacing: China keeps one zone across sixty degrees of longitude,
+zone, so the offset field follows the longitude being typed — the nearest hour of solar time —
+until someone types in the field itself, and an offset typed there is taken as typed. It used to
+keep the previous site's offset, and Apply passed that on: London entered by hand came out in
+UTC+7, Bangkok's, under a note calling it solar time, and every local time was seven hours out.
+The note now says which of the three is on screen — a zone, a solar-time estimate, or an offset as
+entered. The estimate is worth replacing: China keeps one zone across sixty degrees of longitude,
 so Kashgar came out three hours adrift, and India and Nepal are on half and quarter hours.
 
-A note under the form also says which regime the page is in — the assignment's site, or moved, in
-which case the README's own figures no longer describe what is on screen.
+The window-start field is in the observer's time too, with its offset printed beside it. It was
+in the browser's own zone, said only in its aria-label, while every other local time on the page
+is the observer's: with the browser in London and the site in Bangkok it read 08:00 for a window
+opening at 07:00Z, and typing 14:00 opened the window at 13:00Z — 14:00 nowhere the page shows.
+
+A note under the form also says which regime the page is in: the assignment's site, where the
+README's figures need the assignment snapshot to reproduce, or moved, in which case they no
+longer describe what is on screen. The flat map's marker, the readout's elevation and azimuth and
+the visibility section's hint follow the site as well; they were static, and said Bangkok wherever
+the site had gone.
 
 Moving to Svalbard (78.23°N) returns **0 passes**, which is the right answer and a useful check:
 KNACKSAT-2's 51.6° orbit never reaches that latitude, so a site there cannot see it at all.
@@ -1226,6 +1257,9 @@ The default's fallback is not in the suite: exercising it needs a doctored catal
 index.html   moon-track.html   moon.html
 ```
 
+`index.html?tle=embedded` is the assignment snapshot: the embedded element sets, each window at
+its set's epoch, which is how the README's figures are computed.
+
 The `package.json` in the root is for the *checks*, not the pages. Several of them drive a real
 browser through Playwright, which was previously required with nothing declaring it — so running
 the gate on a fresh clone meant setting `NODE_PATH` by hand. Now:
@@ -1242,7 +1276,7 @@ live-refresh check, in that order. Individually:
 npm run verify       # independent second implementation of elements/elevation/visibility
 npm run report       # the LANDSAT 9 answer, printed as the page computes it
 npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
-npm run refresh      # the live TLE refresh, against mocked sources
+npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry, brightness, and naked-eye passes

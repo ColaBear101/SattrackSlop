@@ -22,6 +22,10 @@
  * SGP4 cannot propagate has to be refused, and CelesTrak's "No GP data found"
  * has to be reported as a withdrawal rather than an outage.
  *
+ * Phase 9 is the refresh switched off on purpose: ?tle=embedded, the assignment
+ * snapshot, which keeps the embedded sets and opens each window at its set's
+ * epoch so that the README's figures can be reproduced on the page itself.
+ *
  *   node verification/verify-refresh.js          (needs playwright)
  */
 const path = require('path');
@@ -266,6 +270,61 @@ const chk = (name, ok, detail) => {
   chk('...and it is re-checked on the normal interval', Math.abs((st.next - st.now) - TTL) < 60e3,
       'due in ' + ((st.next - st.now) / HOUR).toFixed(2) + ' h (expect 3.00)');
   gone = false; altServed = null;
+
+  // ---- phase 9: the assignment snapshot ------------------------------------
+  /* ?tle=embedded pins the embedded element sets and opens each window at its
+     set's epoch, which is how the README's figures were computed. A newer set
+     is on offer here, and must not even be asked for. The figures checked are
+     the README's own: KNACKSAT-2's (c), and the LANDSAT 9 comparison reached
+     through the answer block's "Show LANDSAT 9" - the one-click way from the
+     default, which is outside the brief's Earth Resources group, to an object
+     inside it. A new page is a new browser context, so nothing cached above
+     carries over. */
+  const pin = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  pin.on('pageerror', e => pageErrs.push(e.message));
+  let pinHits = 0;
+  const newer = withEpoch(base.l1, 1) + '\n' + base.l2;
+  await pin.route(GP, r => { pinHits++; return r.fulfill({ status: 200, contentType: 'text/plain', body: newer }); });
+  await pin.route(ALT, r => { pinHits++; return r.abort(); });
+  await pin.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
+  await pin.goto(PAGE + '?tle=embedded', { waitUntil: 'load' });
+  await pin.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+  await pin.waitForTimeout(1500);
+  const pinState = () => pin.evaluate(() => ({
+    name: __gt.D.entry.name, l1: __gt.D.entry.l1,
+    start: __gt.D.start.getTime(), epoch: __gt.D.E.epoch.getTime(),
+    totalS: __gt.D.totalS, passes: __gt.D.passes.length,
+    brief: !document.getElementById('briefnote').hidden,
+    sub: document.getElementById('totalsub').textContent,
+    meta: document.getElementById('tlemeta').textContent.replace(/\s+/g, ' ').trim() }));
+  let ps = await pinState();
+  chk('the assignment snapshot keeps the embedded set and asks no source',
+      ps.name === base.name && ps.l1 === base.l1 && pinHits === 0,
+      ps.name + ', requests ' + pinHits);
+  chk('...opens the window at the element set epoch', ps.start === ps.epoch,
+      new Date(ps.start).toISOString());
+  chk('...and gives the README\'s answer to (c): 899.7 s over 2 passes',
+      ps.totalS.toFixed(1) === '899.7' && ps.passes === 2, ps.totalS + ' s, ' + ps.passes + ' passes');
+  chk('...saying which window and which set, under the answer and in the provenance',
+      /over 24 h from 2026-09-12 14:29 UTC\+7/.test(ps.sub) && /epoch 2026-09-12 07:29Z, embedded/.test(ps.sub)
+      && /Assignment snapshot/.test(ps.meta), ps.sub);
+  await pin.evaluate(() => {
+    __gt.D.entry.__next = 0;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await pin.waitForTimeout(800);
+  chk('...and a due re-check still asks nothing', pinHits === 0, 'requests ' + pinHits);
+  chk('the default is flagged in the answer block as outside the brief', ps.brief, ps.name);
+  await pin.click('#briefgo');
+  await pin.waitForTimeout(1500);
+  ps = await pinState();
+  chk('"Show LANDSAT 9" loads it, at its own epoch, and the flag goes',
+      ps.name === 'LANDSAT 9' && ps.start === ps.epoch && !ps.brief,
+      ps.name + ' from ' + new Date(ps.start).toISOString());
+  chk('...giving the README\'s comparison: 37.74 min over 4 passes',
+      (ps.totalS / 60).toFixed(2) === '37.74' && ps.passes === 4,
+      (ps.totalS / 60).toFixed(3) + ' min, ' + ps.passes + ' passes');
+  await pin.context().close();
 
   console.log('\npage errors: ' + (pageErrs.length ? pageErrs.join(' | ') : 'none'));
   console.log('mocked requests served: ' + hits);

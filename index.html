@@ -191,6 +191,13 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   color:var(--contact); margin-top:6px}
 .answer .big span{font-size:18px; font-weight:600; letter-spacing:-.01em}
 .answer .sub{font-size:12.5px; color:var(--ink2); margin-top:5px; line-height:1.5}
+/* Said beside the answer it qualifies: the brief asks for a spacecraft from
+   CelesTrak's Earth Resources group, and the default is not one. */
+.answer .brief{font-size:11.5px; color:var(--ink2); margin:8px 0 0; padding:6px 9px;
+  border-left:3px solid var(--rule); background:var(--chrome2); border-radius:0 3px 3px 0;
+  line-height:1.5}
+.answer .brief .btn{margin-top:5px; display:block}
+.answer .brief .btn[hidden]{display:none}
 .livel{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
   margin-top:11px; padding-top:10px; border-top:1px solid var(--chromerule)}
 .livel .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
@@ -251,6 +258,11 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px; color:var(--chromeink);
   background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
   padding:6px 9px; min-height:32px}
+/* The zone the field above is read and written in, kept on the field's line when
+   the bar wraps. Not a .seglabel: those fold away on a narrow screen, and this
+   is the one that changes what the number means. */
+.winstart{display:inline-flex; align-items:center; gap:6px}
+.wintz{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:var(--chromeink)}
 .winnote{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
   letter-spacing:.06em; color:var(--muted); margin-left:auto}
 .winnote.warn{color:var(--contact)}
@@ -433,8 +445,14 @@ canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:blo
 .siteform input{font:inherit; font-size:12px; width:104px; text-align:right; text-transform:none;
   letter-spacing:0; background:var(--panel); color:var(--ink);
   border:1px solid var(--rule); border-radius:4px; padding:3px 5px}
+/* An author display rule beats the UA's [hidden]{display:none}, so a flex
+   container with the attribute set still showed. The form opened on first load,
+   before "Change observer" was pressed, and the recent-places row showed its
+   margin with nothing in it. */
+.siteform[hidden], .siterecent[hidden]{display:none}
 .siterow{display:flex; gap:7px; margin-top:3px}
 .sitenote{font-size:11px; color:var(--muted); margin:2px 0 0; line-height:1.45}
+.sitenote a{color:inherit}
 /* The place picker. Search first, because the question "where am I" has a much
    better answer than five number fields, and the number fields fold away behind
    a disclosure rather than going: an arbitrary point on the Earth still has to
@@ -652,6 +670,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <p class="eyebrow" id="lbl-vis">Visible from Bangkok · 5° mask</p>
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
+        <p class="brief" id="briefnote" hidden><b>Outside the brief.</b> KNACKSAT-2, the
+          default, is not in CelesTrak’s Earth Resources group, which the assignment asks for.
+          LANDSAT 9 is.
+          <button class="btn" id="briefgo" type="button">Show LANDSAT 9</button></p>
         <div class="livel">
           <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
           <span class="v" id="o3el">—</span>
@@ -759,8 +781,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <span class="seglabel">Window</span>
     <button class="btn" id="winPrevD" aria-label="Back one day">‹‹ 1 d</button>
     <button class="btn" id="winPrevH" aria-label="Back six hours">‹ 6 h</button>
-    <input type="datetime-local" id="winStartIn" step="60"
-           aria-label="Start of the analysis window, in your local time">
+    <span class="winstart">
+      <input type="datetime-local" id="winStartIn" step="60"
+             aria-label="Start of the analysis window, in the observer's time (UTC+7)">
+      <span class="wintz" id="winTz" aria-hidden="true">UTC+7</span>
+    </span>
     <button class="btn" id="winNextH" aria-label="Forward six hours">6 h ›</button>
     <button class="btn" id="winNextD" aria-label="Forward one day">1 d ››</button>
     <button class="btn" id="tpnow">Now</button>
@@ -825,8 +850,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="ro"><dt>Latitude</dt><dd id="r-lat">—</dd></div>
         <div class="ro"><dt>Longitude</dt><dd id="r-lon">—</dd></div>
         <div class="ro"><dt>Altitude</dt><dd id="r-alt">—</dd></div>
-        <div class="ro"><dt>Elevation @ BKK</dt><dd id="r-el">—</dd></div>
-        <div class="ro"><dt>Azimuth @ BKK</dt><dd id="r-az">—</dd></div>
+        <div class="ro"><dt id="lbl-roel">Elevation @ Bangkok</dt><dd id="r-el">—</dd></div>
+        <div class="ro"><dt id="lbl-roaz">Azimuth @ Bangkok</dt><dd id="r-az">—</dd></div>
         <div class="ro"><dt>Slant range</dt><dd id="r-rng">—</dd></div>
       </dl>
     </div>
@@ -836,7 +861,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   <section id="sec-access">
     <div class="shead">
       <h2>Visibility from Bangkok · 5° elevation mask</h2>
-      <p class="hint">13.75°N 100.52°E, sea level, geometric</p>
+      <p class="hint" id="lbl-acchint">13.75° N 100.52° E, sea level, geometric</p>
     </div>
     <div class="access">
       <div>
@@ -7459,6 +7484,15 @@ const MASK = 5;                                  // deg
    lasts minutes, so 30 s still brackets every crossing. */
 let spanH = 24;                                  // window length, hours
 let winStart = null;                             // window start, ms (null = now)
+/* The assignment snapshot, ?tle=embedded. The README's figures come from the
+   element sets embedded in this page, with each window opening at its set's
+   epoch. The live page does neither - it takes a newer set as soon as one is
+   published and opens the window at the reader's clock - so without this the
+   README could be checked against the page only with the network blocked.
+   Opened with the flag, refreshTLE() leaves the embedded set alone and a
+   window opens at the epoch of whichever spacecraft is loaded. A URL rather
+   than a switch, so the pinned view can itself be linked to. */
+const PINNED = /(?:^|[?&])tle=embedded(?:&|$)/.test(location.search);
 const stepFor = hrs => hrs <= 48 ? 10 : 30;      // display sample step, seconds
 /* The horizon scan runs finer than the display sampling: bisection only refines
    a crossing it has already bracketed, so a pass shorter than the step is not
@@ -8449,13 +8483,19 @@ function haloText(s, x, y, fill, halo){
 }
 function drawMarkers(cur){
   const ob = tok('--observer'), ink = tok('--ink'), panel = tok('--panel'), sea = tok('--ocean');
-  // Bangkok
+  /* The observer, under its own name. This said BANGKOK wherever the site had
+     moved to, so a map of London's passes labelled London as Bangkok. A name
+     that would run off the right edge - a site near the antimeridian - is set
+     to the left of the ring instead. */
   const bx = px(OBS.lon), by = py(OBS.lat);
   ctx.beginPath(); ctx.arc(bx,by,5.5,0,7); ctx.fillStyle = panel; ctx.fill();
   ctx.lineWidth = 2.5; ctx.strokeStyle = ob; ctx.stroke();
   ctx.font = '600 11px "IBM Plex Mono", monospace';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  haloText('BANGKOK', bx+10, by+0.5, ob, sea);
+  ctx.textBaseline = 'middle';
+  const siteTxt = OBS.name.toUpperCase();
+  const flip = bx + 10 + ctx.measureText(siteTxt).width > W - 4;
+  ctx.textAlign = flip ? 'right' : 'left';
+  haloText(siteTxt, flip ? bx-10 : bx+10, by+0.5, ob, sea);
   // spacecraft
   if(cur){
     const sx = px(cur.lon), sy = py(cur.lat);
@@ -8648,9 +8688,17 @@ function renderAccess(){
   big.innerHTML = (total/60).toFixed(1)+'<span> min</span>';
   const T = Math.round(total);                          // same carry trap as mmss()
   const h = Math.floor(T/3600), m = Math.floor(T%3600/60), s = T%60;
+  /* Which window, and which element set. "In view over 24 h" read the same for
+     every window, so two readers loading the page an hour apart quoted different
+     totals with nothing beside them to say why, and neither matched the README,
+     whose figures open at the epoch of the embedded set. */
+  const ws = D.start.getTime(), wl = new Date(ws + tzAt(ws)*3600000);
+  const hm = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());
   document.getElementById('totalsub').textContent =
     (h ? h+' h '+m+' min' : m+' min '+pad(s)+' s')+' in view over '+spanLabel(D.hours)+
-    ' — '+(total/(D.hours*36)).toFixed(2)+'% of the window.';
+    ' from '+ymd(wl)+' '+hm(wl)+' '+tzLabelAt(ws)+
+    ' — '+(total/(D.hours*36)).toFixed(2)+'% of the window. Element set epoch '+
+    ymd(D.E.epoch)+' '+hm(D.E.epoch)+'Z'+(PINNED ? ', embedded (assignment snapshot).' : '.');
   document.getElementById('npasses').textContent = String(P.length);
   document.getElementById('longest').textContent = P.length ? mmss(Math.max(...P.map(p=>p.dur))) : '—';
   document.getElementById('bestel').textContent = P.length ? Math.max(...P.map(p=>p.maxEl)).toFixed(1)+'°' : '—';
@@ -9197,6 +9245,13 @@ function paintSite(){
   set('lbl-camsite', nm);
   set('lbl-tz1',     tzLabel());
   set('lbl-tz2',     tzLabel());
+  /* The readout, the map and the section hint said Bangkok in static markup,
+     beside numbers computed for wherever the site had moved to. */
+  set('lbl-roel',    'Elevation @ '+nm);
+  set('lbl-roaz',    'Azimuth @ '+nm);
+  const m = Math.round(OBS.altKm*1000);
+  set('lbl-acchint', pos+', '+(m ? Math.abs(m)+' m '+(m > 0 ? 'above' : 'below')+' sea level'
+                                 : 'sea level')+', geometric');
   const ha = document.querySelector('#sec-access h2');
   if(ha) ha.textContent = 'Visibility from '+nm+' · '+MASK+'° elevation mask';
   const note = document.getElementById('sitenote');
@@ -9205,18 +9260,44 @@ function paintSite(){
     const home = (OBS.lat === HOME.lat && OBS.lon === HOME.lon && OBS.altKm === HOME.altKm);
     /* Which of the two offsets is on screen, and why. A reader comparing a pass
        time against their own watch needs to know whether the page knows about
-       summer time here or is rounding longitude. */
+       summer time here or is rounding longitude - and it is only "solar time"
+       when it is: the sentence used to say so for any bare coordinate, including
+       one entered while the field still held the last site's offset. */
+    const tzl = tzLabel();
     const zone = OBS.zone
       ? OBS.zone + ', so the offset follows summer time where it is kept.'
-      : 'No timezone for a bare coordinate — the offset is the nearest hour of solar time, and is editable.';
-    note.textContent = (home
-      ? 'The assignment site. Every figure in the README is computed here.'
-      : 'Moved from Bangkok — the README’s figures no longer describe this page.')
-      + ' ' + zone;
+      : (home && OBS.tz === HOME.tz) ? tzl + ', which ' + HOME.name + ' keeps all year.'
+      : OBS.tz === (Math.round(OBS.lon/15) || 0)
+        ? 'No timezone for a bare coordinate, so ' + tzl + ' is an estimate: the nearest hour'
+          + ' of solar time. Correct it under Enter coordinates.'
+        : 'No timezone for a bare coordinate — ' + tzl + ' is the offset as entered, and does'
+          + ' not follow summer time.';
+    /* "Every figure in the README is computed here" was true only with the
+       network off and the window moved to the epoch: the page takes a newer
+       element set as soon as one exists and opens the window at the reader's
+       clock. The snapshot link is the way to the README's own inputs. */
+    note.textContent = '';
+    const say = t => note.appendChild(document.createTextNode(t));
+    if(!home) say('Moved from ' + HOME.name + ' — the README’s figures no longer describe this page. ');
+    else if(PINNED) say('The assignment site, in the assignment snapshot: the embedded element set'
+      + ' and a window opening at its epoch, which is what the README’s figures use. ');
+    else {
+      say('The assignment site. The README’s figures use it with the element set embedded in this'
+        + ' page and a window opening at that set’s epoch — the ');
+      const a = document.createElement('a');
+      a.href = '?tle=embedded'; a.textContent = 'assignment snapshot';
+      note.appendChild(a);
+      say(' reproduces them. The live set and your own window give different numbers. ');
+    }
+    say(zone);
   }
+  /* A bare coordinate's offset field follows longitude until it is typed in
+     (see bootSite), so the page remembers the value it wrote: "edited" is
+     "differs from that", however the value was changed. */
   const f = id => document.getElementById(id);
   if(f('s-name')){ f('s-name').value = OBS.name; f('s-lat').value = OBS.lat;
-    f('s-lon').value = OBS.lon; f('s-alt').value = OBS.altKm; f('s-tz').value = OBS.tz; }
+    f('s-lon').value = OBS.lon; f('s-alt').value = OBS.altKm; f('s-tz').value = OBS.tz;
+    f('s-tz').dataset.auto = f('s-tz').value; }
   paintRecent();
 }
 
@@ -9367,12 +9448,35 @@ function bootSite(){
     });
   });
 
-  /* ---- coordinates, unchanged ------------------------------------------- */
+  /* ---- coordinates ------------------------------------------------------ *
+   * A bare coordinate has no timezone, so the offset field follows longitude -
+   * the nearest hour of solar time, applySite's own default - until someone
+   * types in it. It used to keep whatever the last site had, and Apply passed
+   * that along: London entered by hand came out in UTC+7, Bangkok's, under a
+   * note saying the offset was solar time, and every local time was seven hours
+   * out. Typed in, the offset is taken as typed. A rename that leaves the
+   * position alone keeps the offset, and the zone, the site already had.      */
   const g = id => parseFloat((document.getElementById(id)||{}).value);
+  const tzIn = document.getElementById('s-tz');
+  const tzTyped = () => !!tzIn && tzIn.value !== (tzIn.dataset.auto || '');
+  const movedTo = (lat, lon) => lat !== OBS.lat || lon !== OBS.lon;
+  const suggestTz = () => {
+    const lat = g('s-lat'), lon = g('s-lon');
+    if(tzTyped() || !isFinite(lon) || Math.abs(lon) > 180) return;
+    tzIn.value = movedTo(lat, lon) ? (Math.round(lon/15) || 0) : OBS.tz;
+    tzIn.dataset.auto = tzIn.value;
+  };
+  ['s-lat', 's-lon'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el && tzIn) el.addEventListener('input', suggestTz);
+  });
   const apply = document.getElementById('siteapply');
   if(apply) apply.addEventListener('click', ()=>{
+    const lat = g('s-lat'), lon = g('s-lon'), typed = tzTyped(), moved = movedTo(lat, lon);
     const ok = applySite({ name: (document.getElementById('s-name')||{}).value,
-      lat: g('s-lat'), lon: g('s-lon'), altKm: g('s-alt'), tz: g('s-tz') }, true);
+      lat, lon, altKm: g('s-alt'),
+      tz: typed ? g('s-tz') : moved ? undefined : OBS.tz,
+      zone: typed || moved ? null : OBS.zone }, true);
     if(ok){ remember(null); closeHits(); siteChanged(); }
     else siteMsg('Latitude must be within ±90° and longitude within ±180°.', true);
   });
@@ -9400,6 +9504,11 @@ function bootSite(){
    trial: the caller has its own account of a failure (refreshTLE trying a newer
    element set) and wants only the answer, which is left in load.failed.      */
 function load(entry, trial){
+  /* In the assignment snapshot a window opens at the element set's epoch, on a
+     change of spacecraft too: the README times each one from its own. Reloading
+     the same spacecraft - a site or span change, the window rolling on - keeps
+     the window that is on screen. */
+  if(PINNED && (!D || D.entry !== entry)) winStart = elements(entry.l1, entry.l2).epoch.getTime();
   if(winStart === null) winStart = Date.now();
   let nd;
   try { nd = compute(entry, winStart, spanH); }
@@ -9471,6 +9580,7 @@ function load(entry, trial){
   }
   renderElements();
   renderAccess();
+  paintBrief();
   paintReentry();
   paintAges();
   paintWindow();
@@ -9514,6 +9624,24 @@ function paintReentry(){
     ' — under the ' + REENTRY_KM + ' km entry interface. It has re-entered or is about to' +
     (D.passes.length ? ', so the passes listed will not happen and are not exported.' : '.');
 }
+/* The brief asks for a spacecraft from CelesTrak's Earth Resources group, and
+   the default is not in it: KNACKSAT-2 came into this catalogue from SatNOGS,
+   and verification/resource.txt, a copy of that group, has no entry for it. It
+   stays the default, so while it is the one on screen the answer block says so
+   and offers LANDSAT 9, which is in the group, rather than presenting its
+   figures as the assignment's answer without qualification. */
+const OUT_OF_BRIEF = /^KNACKSAT[- ]?2\b/i, IN_BRIEF = /^LANDSAT 9\b/i;
+function paintBrief(){
+  const n = document.getElementById('briefnote');
+  if(!n) return;
+  n.hidden = !OUT_OF_BRIEF.test(D.entry.name);
+  const b = document.getElementById('briefgo');
+  if(b) b.hidden = CAT.findIndex(c => IN_BRIEF.test(c.name)) < 0;
+}
+document.getElementById('briefgo').addEventListener('click', () => {
+  const i = CAT.findIndex(c => IN_BRIEF.test(c.name));
+  if(i >= 0) choose(i);                 // exactly what picking it by name does
+});
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---- searchable spacecraft picker ---------------------------------------- *
@@ -9640,9 +9768,25 @@ document.getElementById('tprate').addEventListener('input', e=>{
 /* ---- the analysis window -------------------------------------------------- *
  * Moving the window changes the pass solution, so every control here funnels
  * through one reload rather than trying to patch the existing result.          */
-function toLocalInput(ms){
-  const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000);
-  return d.toISOString().slice(0,16);
+/* The window start is typed and shown in the observer's time, with its offset
+   printed beside the field. It used to be the browser's own zone, said nowhere
+   but in the aria-label, while every other local time on the page is the
+   observer's: with the browser in London the field read 08:00 for a window
+   opening at 07:00Z - 14:00 in Bangkok - and typing 14:00 opened it at 13:00Z,
+   which is 14:00 nowhere the page shows. A datetime-local value carries no zone
+   of its own, so both directions are done here. */
+function toSiteInput(ms){
+  return new Date(ms + tzAt(ms)*3600000).toISOString().slice(0,16);
+}
+function fromSiteInput(v){
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || '');
+  if(!m) return NaN;
+  const wall = Date.UTC(+m[1], m[2]-1, +m[3], +m[4], +m[5]);
+  /* The offset belongs to the instant being solved for. Taken first at the wall
+     time read as UTC, then again at that first answer, which settles it on
+     whichever side of a summer-time change the instant falls. */
+  const t = wall - tzAt(wall)*3600000;
+  return wall - tzAt(t)*3600000;
 }
 function setWindow(ms){ winStart = ms; stop(); load(CAT[curIdx]); }
 
@@ -9677,7 +9821,10 @@ function rollWindow(){
 }
 function paintWindow(){
   const inp = document.getElementById('winStartIn');
-  if(inp && document.activeElement !== inp) inp.value = toLocalInput(D.start.getTime());
+  if(inp && document.activeElement !== inp) inp.value = toSiteInput(D.start.getTime());
+  const wz = tzLabelAt(D.start.getTime()), wzEl = document.getElementById('winTz');
+  if(wzEl) wzEl.textContent = wz;
+  if(inp) inp.setAttribute('aria-label', 'Start of the analysis window, in the observer’s time ('+wz+')');
   document.querySelectorAll('.bar-window .span').forEach(b=>
     b.setAttribute('aria-pressed', +b.dataset.h === D.hours));
   // a TLE is only good for a few days either side of its epoch - say so plainly
@@ -9696,8 +9843,8 @@ document.getElementById('winNextD').addEventListener('click', ()=>setWindow(D.st
 document.getElementById('winPrevH').addEventListener('click', ()=>setWindow(D.start.getTime()-21600000));
 document.getElementById('winNextH').addEventListener('click', ()=>setWindow(D.start.getTime()+21600000));
 document.getElementById('winStartIn').addEventListener('change', e=>{
-  const t = new Date(e.target.value);              // datetime-local reads as local time
-  if(!isNaN(t)) setWindow(t.getTime());
+  const t = fromSiteInput(e.target.value);         // the observer's time, as labelled
+  if(isFinite(t)) setWindow(t);
 });
 document.querySelectorAll('.bar-window .span').forEach(b=>b.addEventListener('click', ()=>{
   spanH = +b.dataset.h; stop(); load(CAT[curIdx]);
@@ -9835,6 +9982,8 @@ async function fetchTLE(satnum){
 }
 
 async function refreshTLE(entry){
+  /* Pinned to the embedded set on purpose; said so, rather than "checking". */
+  if(PINNED){ entry.__prov = {pinned:true}; if(D && D.entry === entry) paintAges(); return; }
   if(entry.__next && Date.now() < entry.__next) return;
   entry.__next = Date.now() + TLE_RETRY;          // also guards re-entry
   const got = await fetchTLE(entry.satnum);
@@ -10325,6 +10474,7 @@ document.querySelector('.viewport').addEventListener('mousedown', e=>{
 function liveLine(now){
   const tleLive = provOnScreen();
   if(!tleLive) return ['checking', 'Checking for a newer element set…'];
+  if(tleLive.pinned)  return ['snap', 'Assignment snapshot — the <b>embedded</b> element set, not refreshed.'];
   /* When the check happened, not merely that it happened. The page re-checks
      while it is open, so on a console left running "confirmed current" would
      otherwise read exactly the same after four hours as after four seconds -
@@ -10367,7 +10517,12 @@ function paintAges(){
     ' — <b>' + ago(now - FETCHED.getTime()) + '</b> ago.<br>' +
     'This element set’s epoch is <span class="' + (stale?'stale':'') + '">' +
     ago(epochAgeMs) + ' old</span>' +
-    (stale ? ' — accuracy degrades with age; re-fetch before quoting pass times.' : '.');
+    (stale ? ' — accuracy degrades with age; re-fetch before quoting pass times.' : '.') + '<br>' +
+    (PINNED
+      ? 'Pinned to the embedded sets, each window opening at its set’s epoch, as the README’s ' +
+        'figures are computed. <a href="?">Back to the live element sets</a>.'
+      : 'The README’s figures come from the embedded sets, each window opening at its set’s ' +
+        'epoch: the <a href="?tle=embedded">assignment snapshot</a> reproduces them.');
 }
 /* The age readout already ticks every 30 s; the element set is re-checked on
    the same beat. refreshTLE's __next guard makes all but one call in 360 a

@@ -18,8 +18,10 @@
  * Both are driven here through the controls a user has - the picker, the
  * window buttons, the span buttons, the transport and the export button - in a
  * FIXED window, because which objects are decayed depends on when you ask. The
- * browser runs in UTC so the window's datetime-local field means what it says.
- * The live refresh is blocked: it would swap element sets mid-run.
+ * window's datetime-local field is in the observer's time - Bangkok, UTC+7 -
+ * whatever the browser's zone, so an instant goes in and comes out seven hours
+ * on; the browser runs in UTC so that nothing here agrees with the field by
+ * accident. The live refresh is blocked: it would swap element sets mid-run.
  *
  * The objects and instants are the embedded catalogue's own - ODIN, and COSMOS
  * 2558, whose set SGP4 last propagates at 11:39:50 on 2026-09-15. A rebuild
@@ -33,6 +35,7 @@ const { chromium } = require('playwright');
 
 const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
 const DAY = 86400e3;
+const BKK = 7 * 3600e3;                         // the field reads Bangkok time
 const W0 = Date.UTC(2026, 8, 14, 0, 0, 0);     // COSMOS 2558 still up; ODIN long gone
 
 let fails = 0;
@@ -79,7 +82,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   const setWindow = ms => page.evaluate(v => {
     const inp = document.getElementById('winStartIn');
     inp.value = v; inp.dispatchEvent(new Event('change'));
-  }, new Date(ms).toISOString().slice(0, 16));
+  }, new Date(ms + BKK).toISOString().slice(0, 16));
 
   await setWindow(W0);
   await page.waitForTimeout(900);
@@ -152,7 +155,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   await page.waitForTimeout(1200);
   s = await state();
   chk('a window SGP4 cannot fill is refused, not half-applied',
-      s.start === W0 + DAY && s.shown === 'COSMOS 2558' && s.winIn === '2026-09-15T00:00',
+      s.start === W0 + DAY && s.shown === 'COSMOS 2558' && s.winIn === '2026-09-15T07:00',
       'window ' + iso(s.start) + ', field ' + s.winIn);
   chk('...and says so', /Window not changed/.test(s.note) && /error 6: decayed/.test(s.note), s.note);
 

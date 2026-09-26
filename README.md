@@ -347,7 +347,9 @@ line of sight, and the marker while a pass is up. The orbit ring used to be oran
 Satellite camera it runs edge-on straight through the marker, and read as the stretch of orbit
 Bangkok can see; it is a neutral blue-grey now, as reference geometry rather than data. A key sits
 in the bottom-left corner, which it gives up to the POV minimap, and on a phone it is dropped for the
-same lack of room.
+same lack of room. While the orbital-elements layer is on, the key also names its symbols. The layer
+draws Ω, i, ω, θ, h, e and v as bare letters and gives the full sentence only under the pointer,
+which a newcomer has no reason to go looking for; the key lists each one in its label's colour.
 
 The spacecraft's name and the catalogue's hover name are HTML over the canvas, so they have no depth:
 the marker behind the planet was hidden by the depth test while its name went on being drawn over
@@ -369,6 +371,45 @@ copy the first load starts with; POV always wants the best the GPU holds, since 
 ground. Save-Data, or a connection the browser rates 3G or slower, keeps the coarse rung throughout,
 and the note under the picker says so. `npm run globe` checks each of those against a rung it works
 out itself from the canvas and the camera.
+
+### Finding your way round the page
+
+The console fills the first screen, and at 1440×900 nothing on it said that the analysis the
+assignment asks for — the elements, the ground-track map, the pass table — was underneath. The one
+pointer was a link at the foot of the rail, which scrolls on its own, about 1000 px out of view,
+and the two Moon pages were linked beside it. The header now has a line of links to each section
+below and to both Moon pages. It costs the globe 6 px at that size.
+
+Below 900 px the console stacks, and on a 390×844 phone three things were wrong with it:
+
+- **The layers panel** hung open over half the globe, the clock and the trail row, and nothing
+  closed it. It now folds behind a Layers button, closed to begin with, which reports its state in
+  `aria-expanded` and closes on Escape. Opened, it stops short of the trail and camera rows and
+  scrolls within the height that leaves. Above 900 px it is the open panel it always was.
+- **The transport bar** was sticky at the foot of the screen, where it wraps to four rows, 193 px,
+  so the camera and trail buttons along the globe's lower edge were under it: a tap on Free landed
+  on the transport. The window bar had no place in the stacking order, so it sat between the header
+  and the globe and pushed the globe down into it. It now follows the transport, as on a desktop.
+  The header and the transport stay sticky only where they fit round the globe, from 641 to 900 px
+  wide on a screen taller than 700 px. Everywhere narrower or shorter they are ordinary bars, one
+  either side of the globe. Held sideways, the phone's sticky header used to cover the Layers button
+  and the clock whenever the camera row was in view.
+- **The captions** over the button rows were all hidden below 900 px. That left three rows of
+  "6 h" and "24 h", for trail length, window step and window length, with nothing to say which was
+  which. They stay now, and on a phone the camera and trail captions sit above their rows.
+
+No text on the page is smaller than 11 px, including the labels drawn into the sky plot and the
+decay chart. It used to go down to 9 px, the layers panel's heading. Twenty labels were 9.5 px, and
+the local time of every pass in the rail was 10 px, though it is the figure a reader most wants.
+The degree sign on the element cards now sits on its number rather than a space away.
+
+The page's vocabulary is spelled out in a **Terms** section at the foot of the page: AOS and LOS,
+Z, NORAD and COSPAR IDs, TEME, B* in 1/ER, standard magnitude, penumbra, POV, FOV and GSD, the
+entry interface, and the brief's Earth Resources group. The abbreviations in the header, over the
+globe, in the rail and in the pass table carry their expansion as a tooltip, and the notes that lean
+on a term, the outside-the-brief note and the re-entry warning, link to its entry. `npm run layout` checks all of this at four sizes. It tests
+whether a button is covered with `elementFromPoint` at its centre, with the globe's lower edge
+scrolled to the foot of the screen, rather than by reading z-indices.
 
 ## Architecture: the central body is a parameter
 
@@ -1370,6 +1411,8 @@ npm run timeline     # the window rolling forward past its end, and the next pas
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
+npm run layout       # phone, tablet and desktop: nothing over the globe's buttons, the layers
+                     # toggle, captions, the header's links, an 11 px floor, the Terms section
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

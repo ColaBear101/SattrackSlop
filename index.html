@@ -71,14 +71,32 @@ p{margin:0}
 .bar-top{border-bottom:1px solid var(--chromerule); flex-wrap:wrap; row-gap:8px}
 .ident{display:flex; align-items:baseline; gap:10px 14px; flex-wrap:wrap; min-width:0; flex:1 1 320px}
 .ident h1{font-size:clamp(19px,2.4vw,26px); font-weight:700; letter-spacing:-.025em; line-height:1.1}
-.ident .ids{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline;
+.ident .ids{display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px; color:var(--muted)}
 .ident .ids .sep{opacity:.5}
 .ident .ids b{color:var(--ink2); font-weight:500}
 .age-chip{display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:20px;
-  border:1px solid var(--chromerule); font-size:10.5px; letter-spacing:.06em; color:var(--muted)}
+  border:1px solid var(--chromerule); font-size:11px; letter-spacing:.06em; color:var(--muted)}
 .age-chip.stale{border-color:var(--contact); color:var(--contact)}
 .age-chip .dot{width:5px; height:5px; border-radius:50%; background:currentColor}
+/* Where the rest of the page is. The console fills the first screen, and the
+   analysis under it - the elements, the ground-track map, the pass table the
+   assignment asks for - had no cue on that screen but a link at the foot of a
+   rail that scrolls on its own, a thousand pixels down. Its own row under the
+   name, which the header already has room for beside the search box. Ink with
+   an underline in the track colour: the track colour as text is 3.4:1 on the
+   chrome, too faint at this size. */
+.jump{display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 12px; flex:1 1 100%;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11.5px}
+.jump a{color:var(--ink2); text-decoration:underline; text-decoration-color:var(--track);
+  text-underline-offset:3px}
+.jump a:hover{color:var(--ink)}
+.jump .jk{color:var(--muted); letter-spacing:.04em}
+/* the Moon pages wrap as one group, so "in testing" stays with what it is about */
+.jump .jmoon{display:inline-flex; flex-wrap:wrap; align-items:baseline; gap:3px 12px}
+/* An abbreviation says what it stands for under the pointer. The Terms section
+   at the foot of the page says it for a finger, and says what it means. */
+abbr[title]{text-decoration:underline dotted; text-underline-offset:2px; cursor:help}
 
 /* ---- stage: viewport + rail ---------------------------------------------- */
 .stage{display:grid; grid-template-columns:minmax(0,1fr) 336px; min-height:0}
@@ -100,7 +118,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   font-size:16px; letter-spacing:-.01em}
 .hud .t2{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:12px; color:#AFC3CE}
-.hud .zone{font-size:9.5px; letter-spacing:.14em; color:#8AA0AC; margin-left:6px}
+.hud .zone{font-size:11px; letter-spacing:.14em; color:#8AA0AC; margin-left:6px}
 /* The POV lens readout. Its own row so it can appear and vanish with the mode
    without shifting the clock above it. */
 .hud .t3{margin-top:5px; display:flex; align-items:baseline; gap:7px;
@@ -108,7 +126,8 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   font-size:12.5px; color:#CFE3EE}
 .hud .t3[hidden]{display:none}
 .hud .t3 .zone{margin-left:0}
-.hud .t3 .mm{font-size:10.5px; color:#8AA0AC}
+.hud .t3 .mm{font-size:11px; color:#8AA0AC}
+.hud abbr[title]{pointer-events:auto}         /* the HUD lets drags through; its titles need the pointer */
 .hud .elev{margin-top:7px; display:flex; align-items:baseline; gap:7px;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:#8AA0AC}
 .hud .elev .k{letter-spacing:.1em; text-transform:uppercase}
@@ -120,6 +139,13 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
   align-items:flex-end; gap:5px}
 .viewport .layerseg .seglabel{margin-right:2px}
+/* The phone's way in to the same panel. Below 900 px the panel used to hang
+   open over half the globe and the clock with nothing that closed it; there it
+   folds behind this button, closed to begin with. Above 900 px the button is
+   not drawn and the panel stays open, as it always was. */
+.layertoggle{display:none}
+.layertoggle::after{content:"▾"; margin-left:6px}
+.layertoggle[aria-expanded="true"]::after{content:"▴"}
 /* The POV minimap. Looking out of a spacecraft through a narrow lens tells you
    nothing about where the spacecraft IS, which is the one thing the other camera
    modes give away for free. Bottom right, over the globe, only while in POV. */
@@ -154,7 +180,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
    its palette out through the sRGB encode, which lifts every one of them. */
 .o3-key{position:absolute; left:14px; bottom:32px; margin:0; padding:0; list-style:none;
   display:flex; flex-direction:column; gap:2px; pointer-events:none;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.05em;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.05em;
   color:#9DB1BC; text-shadow:0 0 5px #05090C,0 0 5px #05090C}
 .o3-key li{display:flex; align-items:center; gap:7px; white-space:nowrap}
 .o3-key i{flex:none; width:16px; display:flex; justify-content:center}
@@ -165,6 +191,19 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .o3-key .k-site::before{width:9px; height:9px; border-radius:50%; border:1.5px dashed #F29CBB}
 .o3-key .k-view::before{width:16px; border-top:3px solid #E8BC5A}
 .o3-key .k-cat::before{width:6px; height:6px; border-radius:50%; background:#3A93A3}
+/* The orbital-elements layer puts bare symbols on the globe - Ω, i, ω, θ, h,
+   e, v - and the full sentence only under the pointer, which a newcomer has
+   no reason to go looking for. While the layer is on, the key names them, each
+   in the colour of its label (the label textures are sRGB-tagged, so unlike
+   the lines they land on screen at orbitviz's own hex values). */
+.o3-key li.kel{display:block}
+.o3-key li.kel[hidden]{display:none}
+.o3-key .kel-h{margin-top:5px; color:#7E94A0}
+.o3-key .kel b{display:inline-block; min-width:16px; margin-right:7px; text-align:center;
+  font-family:"IBM Plex Serif",Georgia,serif; font-style:italic; font-size:13px; font-weight:600}
+.o3-key .s-raan{color:#F5C842} .o3-key .s-inc{color:#A98BFF} .o3-key .s-argp{color:#FF9230}
+.o3-key .s-nu{color:#FF4FA3} .o3-key .s-h{color:#4FC3FF} .o3-key .s-e{color:#FF5555}
+.o3-key .s-v{color:#4DF0A0}
 .o3-mini:not([hidden]) ~ .o3-key{display:none}
 @media (max-width:640px){ .o3-key{display:none} }
 .layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
@@ -179,15 +218,15 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
    rule, because it is a different kind of control: one choice of what the
    planet is made of, not a set of things to draw on top of it. */
 .layerhead{margin:2px 0 1px; padding:0 8px; font-family:"IBM Plex Mono",ui-monospace,monospace;
-  font-size:9px; letter-spacing:.15em; text-transform:uppercase; color:#7C919C}
+  font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:#7C919C}
 .layerrule{height:1px; margin:6px 4px 3px; background:rgba(180,200,212,.22)}
 .layernote{margin:1px 8px 2px; max-width:210px; white-space:normal;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; line-height:1.45;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; line-height:1.45;
   color:#7C919C}
 .layernote.warn{color:#D69A5C}
 /* two variants: over the globe it needs a dark casing and a fixed light ink;
    in the chrome bars it must read against a light surface instead */
-.seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:9.5px; letter-spacing:.13em;
+.seglabel{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.13em;
   text-transform:uppercase; color:var(--muted)}
 .viewport .seglabel{color:#8AA0AC; text-shadow:0 0 6px #05090C}
 .seg{display:flex}
@@ -206,7 +245,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .viewport .btn[aria-pressed="true"]{background:#E8EFF2; border-color:#E8EFF2; color:#0A1016}
 .o3-fallback{position:absolute; inset:auto 16px 16px 16px; color:#AFC3CE; font-size:13px}
 .hint-drag{position:absolute; left:14px; bottom:12px; font-family:"IBM Plex Mono",monospace;
-  font-size:10.5px; letter-spacing:.08em; color:#7E94A0; text-shadow:0 0 6px #05090C;
+  font-size:11px; letter-spacing:.08em; color:#7E94A0; text-shadow:0 0 6px #05090C;
   pointer-events:none}
 
 /* ---- rail: the answer, then the passes ----------------------------------- */
@@ -224,17 +263,20 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   border-left:3px solid var(--rule); background:var(--chrome2); border-radius:0 3px 3px 0;
   line-height:1.5}
 .answer .brief .btn{margin-top:5px; display:block}
+/* into the Terms section; ink, as the header's links are, since the track
+   colour as text is too faint on the chrome */
+.answer .brief a, .reentry a{color:inherit; text-decoration-color:var(--track); text-underline-offset:2px}
 .answer .brief .btn[hidden]{display:none}
 .livel{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
   margin-top:11px; padding-top:10px; border-top:1px solid var(--chromerule)}
-.livel .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+.livel .k{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .livel .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
   font-size:16px; color:var(--ink)}
 .livel .v.up{color:var(--contact); font-weight:600}
 .countdown{margin-top:12px; padding-top:11px; border-top:1px solid var(--chromerule);
   display:flex; flex-direction:column; gap:2px}
-.countdown .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.13em;
+.countdown .k{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.13em;
   text-transform:uppercase; color:var(--muted)}
 .countdown .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
   font-size:21px; color:var(--ink); letter-spacing:-.01em}
@@ -251,12 +293,12 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   font-variant-numeric:tabular-nums; min-height:40px}
 .passrow:hover{background:var(--chrome2)}
 .passrow[aria-current="true"]{background:var(--chrome2); border-color:var(--contact)}
-.passrow .n{color:var(--muted); font-size:10.5px}
+.passrow .n{color:var(--muted); font-size:11px}
 .passrow .t{color:var(--ink)}
-.passrow .t small{color:var(--muted); display:block; font-size:10px; letter-spacing:.04em}
+.passrow .t small{color:var(--muted); display:block; font-size:11px; letter-spacing:.04em}
 .passrow .e{color:var(--contact); font-weight:600}
 .minigrid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px}
-.minigrid .dv dt{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+.minigrid .dv dt{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .minigrid .dv dd{margin:0; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
   font-size:13.5px; color:var(--ink)}
@@ -286,11 +328,14 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
   background:var(--chrome2); border:1px solid var(--chromerule); border-radius:3px;
   padding:6px 9px; min-height:32px}
 /* The zone the field above is read and written in, kept on the field's line when
-   the bar wraps. Not a .seglabel: those fold away on a narrow screen, and this
-   is the one that changes what the number means. */
+   the bar wraps. Not a .seglabel: those are captions, and this is part of the
+   value - the one thing beside it that changes what the number means. */
 .winstart{display:inline-flex; align-items:center; gap:6px}
+/* The span caption travels with its buttons: loose in the bar, a wrap could
+   leave "Span" at the end of one row and the lengths it names on the next. */
+.winspan{display:flex; align-items:center; gap:8px}
 .wintz{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:var(--chromeink)}
-.winnote{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+.winnote{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
   letter-spacing:.06em; color:var(--muted); margin-left:auto}
 .winnote.warn{color:var(--contact)}
 .pickconfirm{position:absolute; z-index:60; min-width:212px; padding:11px 12px 10px;
@@ -322,7 +367,7 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .tp-pass{position:absolute; top:9px; height:8px; min-width:3px; border-radius:2px;
   background:var(--contact); pointer-events:none; z-index:2; box-shadow:0 0 0 1px var(--chrome2)}
 .tp-ticks{display:flex; justify-content:space-between;
-  font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--muted)}
+  font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted)}
 .tp-clock{display:flex; flex-direction:column; line-height:1.25; min-width:150px}
 .tp-clock .a{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
   font-size:14px; color:var(--chromeink)}
@@ -349,7 +394,7 @@ section{display:flex; flex-direction:column; gap:16px}
   letter-spacing:-.01em; line-height:1.15}
 .lifehero .sub{display:block; margin-top:3px; font-size:12px; color:var(--muted)}
 .lifelegend{display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:2px;
-  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; color:var(--muted)}
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:var(--muted)}
 .lifelegend i{display:inline-block; width:15px; height:2px; vertical-align:middle;
   margin-right:5px; border-radius:1px}
 .lifenote{font-size:12px; line-height:1.62; color:var(--muted); margin:0}
@@ -395,11 +440,11 @@ section{display:flex; flex-direction:column; gap:16px}
   font-size:23px; font-weight:500; letter-spacing:-.025em; line-height:1.22; word-break:break-word}
 .el .val span{font-size:13px; font-weight:400; color:var(--ink2); letter-spacing:0}
 .el .note{font-size:12px; color:var(--ink2); line-height:1.45}
-.el .src{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; color:var(--muted);
+.el .src{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; color:var(--muted);
   letter-spacing:.05em; margin-top:auto; padding-top:6px}
 .derived{display:grid; grid-template-columns:repeat(auto-fit,minmax(146px,1fr)); gap:13px 22px; margin:0}
 .dv{display:flex; flex-direction:column; gap:1px; min-width:0}
-.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.12em;
+.dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:14.5px; color:var(--ink)}
@@ -431,7 +476,7 @@ canvas#map{width:100%; height:100%; display:block; border-radius:2px; cursor:cro
   background:linear-gradient(90deg,var(--swday) 0 50%,var(--swnight) 50% 100%)}
 .readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:10px 18px;
   background:var(--sunk); border:1px solid var(--rule); border-radius:3px; padding:11px 14px; margin:0}
-.ro dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.12em;
+.ro dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--muted)}
 .ro dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
   font-size:14.5px; color:var(--ink)}
@@ -454,7 +499,6 @@ canvas#sky2{width:100%; max-width:236px; aspect-ratio:1; height:auto; display:bl
 .rail canvas#sky{width:min(200px,100%)}
 .rail .skyfacts{width:100%}
 .rail .skyfacts .row{font-size:12px}
-.rail .skyfacts .k{font-size:10px}
 canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:block}
 .skyfacts{display:flex; flex-direction:column; gap:7px; min-width:0}
 .skyfacts .row{display:flex; justify-content:space-between; gap:20px; font-size:13px; flex-wrap:wrap;
@@ -501,7 +545,7 @@ canvas#sky{width:268px; aspect-ratio:1; height:auto; max-width:100%; display:blo
   border-bottom:1px solid var(--rule)}
 .sitehits li:last-child button{border-bottom:0}
 .sitehits button:hover, .sitehits button:focus-visible{background:var(--rule)}
-.sitehits .hw{display:block; font-size:10.5px; color:var(--muted); margin-top:1px}
+.sitehits .hw{display:block; font-size:11px; color:var(--muted); margin-top:1px}
 .siterecent{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 5px}
 .siterecent button{font:inherit; font-size:11px; padding:3px 7px; border:1px solid var(--rule);
   border-radius:99px; background:none; color:var(--muted); cursor:pointer}
@@ -528,7 +572,7 @@ table{border-collapse:collapse; width:100%; font-family:"IBM Plex Mono",ui-monos
   font-variant-numeric:tabular-nums; font-size:13px}
 th,td{padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--rule)}
 th:first-child,td:first-child{text-align:left}
-thead th{font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink2); font-weight:500;
+thead th{font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink2); font-weight:500;
   position:sticky; top:0; background:var(--panel)}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--sunk)}
@@ -542,6 +586,15 @@ tfoot td{font-weight:600; color:var(--ink); border-top:1px solid var(--rule)}
 .method p{font-size:13.5px; color:var(--ink2); line-height:1.6}
 .method code{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px;
   background:var(--sunk); padding:1px 5px; border-radius:2px; color:var(--ink)}
+.terms{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px 28px; margin:0}
+.terms dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; font-weight:600;
+  color:var(--ink); margin:0 0 3px}
+.terms dd{margin:0; font-size:13px; line-height:1.58; color:var(--ink2)}
+.terms > div{scroll-margin-top:24px}
+/* arrived at from a note: say which entry, in the links' underline, not in
+   contact-orange, which belongs to the data */
+.terms > div:target dt{text-decoration:underline; text-decoration-color:var(--track);
+  text-decoration-thickness:2px; text-underline-offset:4px}
 footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padding-top:16px;
   display:flex; flex-wrap:wrap; gap:6px 18px}
 
@@ -565,7 +618,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 .combo-list li.note{cursor:default; color:var(--muted); font-size:11.5px; justify-content:flex-start;
   border-top:1px solid var(--rule); border-radius:0; margin-top:3px; padding-top:8px}
 .combo-list li.note:only-child{border-top:0; margin-top:0}
-.combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px;
+.combo-hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px;
   letter-spacing:.06em; color:var(--muted); width:290px; max-width:100%}
 /* a spacecraft that could not be loaded - said where it was asked for */
 .combo-hint.loadnote{color:var(--contact); letter-spacing:.02em; line-height:1.45; margin-top:4px}
@@ -583,20 +636,57 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .app{display:flex; flex-direction:column; height:auto; max-height:none; min-height:0}
   .stage{display:contents}
   .bar-top{order:0; position:sticky; top:0; z-index:50; background:var(--chrome)}
+  /* a jump from the header lands below it, not under it */
+  .wrap > section{scroll-margin-top:200px}
+  .terms > div{scroll-margin-top:210px}
   .viewport{order:1; height:52vh; min-height:290px}
   .bar-transport{order:2; position:sticky; bottom:0; z-index:45}
+  /* The window bar had no order of its own, so it took 0 and sat between the
+     header and the globe: on a phone, 196 px of buttons above the view, which
+     pushed the globe's lower edge - and the camera buttons along it - under
+     the sticky transport bar. It follows the transport, as on the desktop. */
+  .bar-window{order:2}
   .rail{order:3; border-left:0; border-top:1px solid var(--chromerule); overflow:visible}
   .viewport .camseg{top:auto; bottom:10px; right:10px}
   .viewport .trailseg{top:auto; bottom:48px; right:10px}
-  .viewport .layerseg{top:10px; right:10px}
+  /* Opened, the panel stops short of the trail and camera rows rather than
+     covering them, and scrolls inside what that leaves: held sideways, a
+     phone's globe is 290 px tall. */
+  .viewport .layerseg{top:10px; right:10px; max-height:calc(100% - 100px)}
+  /* Of the captions only Layers folds away here, into its button. The rest
+     used to go too, and left three rows of "6 h" and "24 h" - trail length,
+     window step, window length - with nothing to say which was which. */
+  .layerseg > .seglabel{display:none}
+  .layertoggle{display:inline-flex; align-items:center}
+  .layerseg:not(.open) .layerpanel{display:none}
+  .layerpanel{min-height:0; overflow-y:auto; overscroll-behavior:contain}
   .layerpanel label{font-size:11px; min-height:28px; padding:5px 7px}
-
-  .seglabel{display:none}
   .hint-drag{display:none}
   .o3-key{bottom:12px}                          /* no drag hint to sit above */
   .access{grid-template-columns:minmax(0,1fr)}
   .tablesky{position:static; justify-self:center; width:min(268px,100%)}
   .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* Sticky only where the bars fit around the globe. On a phone the transport
+   wraps to four rows, 193 px, and pinned to the foot of an 844 px screen it sat
+   over the globe's lower edge and every camera and trail button on it; the
+   header, five rows there, held a quarter of the screen over everything
+   scrolled beneath it. Held sideways, the globe's 290 px floor alone is taller
+   than the screen, and the header covered its top - the Layers button and the
+   clock - whenever the camera row was in view. Header, globe and transport
+   need about 700 px of height between them at the narrow end of this range.
+   Below that both are ordinary bars, one either side of the globe. */
+@media (max-width:640px), (max-width:900px) and (max-height:700px){
+  .bar-top, .bar-transport{position:static}
+  .wrap > section, .terms > div{scroll-margin-top:16px}
+}
+@media (max-width:640px){
+  /* Each caption over its row rather than beside it: beside, the camera row
+     with a moved site's name in it runs off the left of the screen. */
+  .viewport .camseg, .viewport .trailseg{flex-direction:column; align-items:flex-end; gap:2px}
+  .viewport .trailseg{bottom:70px}
+  .viewport .layerseg{max-height:calc(100% - 140px)}
+  .viewport #lbl-camsite{max-width:8.5em; overflow:hidden; text-overflow:ellipsis}
 }
 @media (max-width:560px){
   .elements{grid-template-columns:minmax(0,1fr)}
@@ -617,11 +707,23 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <div class="ident">
       <h1 id="satname">—</h1>
       <div class="ids">
-        <span>NORAD <b id="idnorad">—</b></span><span class="sep">·</span>
-        <span>COSPAR <b id="idcospar">—</b></span><span class="sep">·</span>
+        <span><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">—</b></span><span class="sep">·</span>
+        <span><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">—</b></span><span class="sep">·</span>
         <span>Epoch <b id="idepoch">—</b></span>
         <span class="age-chip" id="agechip"><span class="dot"></span><span id="agetext">—</span></span>
       </div>
+      <nav class="jump" aria-label="Sections below, and the Moon pages">
+        <span class="jk" aria-hidden="true">Below ↓</span>
+        <a href="#sec-elements">Elements</a>
+        <a href="#sec-track">Ground track</a>
+        <a href="#sec-access">Passes</a>
+        <a href="#sec-life">Decay</a>
+        <a href="#sec-method">Method</a>
+        <a href="#sec-terms">Terms</a>
+        <span class="jmoon"><span class="jk">Moon, in testing:</span>
+          <a href="moon-track.html" title="Lunar track console: orbiters and landers">Lunar track →</a>
+          <a href="moon.html" title="Earth–Moon system and the Lagrange points">Earth–Moon →</a></span>
+      </nav>
     </div>
     <div>
       <div class="combo">
@@ -651,10 +753,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="t1"><span id="o3clock">—</span><span class="zone">UTC</span></div>
         <div class="t2"><span id="o3clocklocal">—</span><span class="zone" id="lbl-tz1">ICT</span></div>
         <div class="t3" id="o3fovrow" hidden>
-          <span class="zone">FOV</span><span id="o3fov3">—</span><span class="mm" id="o3fovmm">—</span>
+          <span class="zone"><abbr title="field of view, the width of the lens">FOV</abbr></span><span id="o3fov3">—</span><span class="mm" id="o3fovmm">—</span>
         </div>
         <div class="t3" id="o3gsdrow" hidden>
-          <span class="zone">GSD</span><span id="o3gsd">—</span><span class="mm" id="o3gsdu">m/px</span>
+          <span class="zone"><abbr title="ground sample distance, the ground one screen pixel covers">GSD</abbr></span><span id="o3gsd">—</span><span class="mm" id="o3gsdu">m/px</span>
         </div>
 
       </div>
@@ -664,7 +766,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
           <button class="btn cam" data-mode="free" aria-pressed="false">Free</button>
           <button class="btn cam" data-mode="sat" aria-pressed="true">Satellite</button>
           <button class="btn cam" data-mode="site" aria-pressed="false" id="lbl-camsite">Bangkok</button>
-          <button class="btn cam" data-mode="pov" aria-pressed="false">POV</button>
+          <button class="btn cam" data-mode="pov" aria-pressed="false"><abbr title="point of view: ride the spacecraft, looking along its track">POV</abbr></button>
         </div>
       </div>
       <div class="trailseg">
@@ -679,6 +781,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
       <div class="layerseg">
         <span class="seglabel">Layers</span>
+        <button class="btn layertoggle" id="layerstoggle" type="button"
+                aria-expanded="false" aria-controls="layersMenu">Layers</button>
         <div class="layerpanel" id="layersMenu" role="group" aria-label="Scene layers"></div>
       </div>
       <canvas id="o3mini" class="o3-mini" width="480" height="240" hidden
@@ -690,6 +794,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <li><i class="k-foot"></i>Footprint (ground above 5°)</li>
         <li><i class="k-site"></i><span id="lbl-keysite">Bangkok 5° access circle</span></li>
         <li><i class="k-cat"></i>Rest of the catalogue</li>
+        <li class="kel kel-h" hidden>Orbital elements · point at one for its value</li>
+        <li class="kel" hidden><b class="s-raan">Ω</b>RAAN, from ♈︎ · <b class="s-raan">☊</b>ascending node</li>
+        <li class="kel" hidden><b class="s-inc">i</b>inclination · <b class="s-argp">ω</b>argument of perigee</li>
+        <li class="kel" hidden><b class="s-nu">θ</b>true anomaly · <b class="s-e">e</b>eccentricity vector</li>
+        <li class="kel" hidden><b class="s-h">h</b>angular momentum · <b class="s-v">v</b>velocity (vt, vn)</li>
       </ul>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
@@ -710,8 +819,8 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <p class="big" id="totalbig">—</p>
         <p class="sub" id="totalsub">—</p>
         <p class="brief" id="briefnote" hidden><b>Outside the brief.</b> KNACKSAT-2, the
-          default, is not in CelesTrak’s Earth Resources group, which the assignment asks for.
-          LANDSAT 9 is.
+          default, is not in CelesTrak’s <a href="#t-brief">Earth Resources group</a>, which the
+          assignment asks for. LANDSAT 9 is.
           <button class="btn" id="briefgo" type="button">Show LANDSAT 9</button></p>
         <div class="livel">
           <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
@@ -753,7 +862,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
 
       <div class="railsec">
-        <p class="eyebrow">Access windows</p>
+        <p class="eyebrow">Access windows · Z = UTC</p>
         <div class="passlist" id="passlist"></div>
       </div>
 
@@ -779,10 +888,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 
       <div class="railfoot">
         <a href="#report">Full analysis, elements and method ↓</a>
-        <a href="moon-track.html">Lunar track console — orbiters &amp; landers →</a>
-        <a href="moon.html">Earth–Moon system &amp; Lagrange points →</a>
-        <span style="font-family:'IBM Plex Mono',monospace; font-size:10px;
-          color:var(--muted)">both in testing — this console is not</span>
       </div>
     </aside>
   </main>
@@ -829,12 +934,14 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <button class="btn" id="winNextD" aria-label="Forward one day">1 d ››</button>
     <button class="btn" id="tpnow">Now</button>
     <button class="btn" id="tpepoch">Epoch</button>
-    <span class="seglabel">Span</span>
-    <div class="seg" role="group" aria-label="Window length">
-      <button class="btn span" data-h="6" aria-pressed="false">6 h</button>
-      <button class="btn span" data-h="24" aria-pressed="true">24 h</button>
-      <button class="btn span" data-h="72" aria-pressed="false">3 d</button>
-      <button class="btn span" data-h="168" aria-pressed="false">7 d</button>
+    <div class="winspan">
+      <span class="seglabel">Span</span>
+      <div class="seg" role="group" aria-label="Window length">
+        <button class="btn span" data-h="6" aria-pressed="false">6 h</button>
+        <button class="btn span" data-h="24" aria-pressed="true">24 h</button>
+        <button class="btn span" data-h="72" aria-pressed="false">3 d</button>
+        <button class="btn span" data-h="168" aria-pressed="false">7 d</button>
+      </div>
     </div>
     <span class="winnote" id="winnote"></span>
   </div>
@@ -857,7 +964,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   <section id="sec-elements">
     <div class="shead">
       <h2>Orbital elements at epoch</h2>
-      <p class="hint">SGP4 mean elements from the TLE (Kozai n, Brouwer a), angles in the TEME frame of epoch</p>
+      <p class="hint">SGP4 mean elements from the <abbr title="two-line element set">TLE</abbr> (Kozai n, Brouwer a), angles in the <abbr title="true equator, mean equinox: the inertial frame SGP4 works in">TEME</abbr> frame of epoch</p>
     </div>
     <div class="elements" id="elgrid"></div>
     <div class="oscbox">
@@ -915,7 +1022,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <div class="tablewrap">
           <table>
             <thead><tr>
-              <th>#</th><th>Date (UTC)</th><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Duration</th>
+              <th>#</th><th>Date (UTC)</th><th><abbr title="acquisition of signal: the spacecraft rises through the 5° mask">AOS</abbr> (UTC)</th><th><abbr title="loss of signal: the spacecraft sets through the 5° mask">LOS</abbr> (UTC)</th><th>Duration</th>
               <th>Max elev.</th><th>Az at max</th><th>Min range</th><th>AOS→LOS az</th>
             </tr></thead>
             <tbody id="passbody"></tbody>
@@ -1005,12 +1112,100 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         walks west each revolution. Same propagation, two frames — one clock drives both.</p>
       </div>
     </div>
-    <footer>
-      <span id="footepoch">—</span>
-      <span>SGP4 (WGS-72) · geodetic on WGS-84 · angles in degrees</span>
-      <span>Element sets degrade with age; re-fetch before quoting pass times far from epoch.</span>
-    </footer>
   </section>
+
+  <!-- The vocabulary the page is written in, for a reader who has the basics of
+       a TLE and not much more. Each entry has an id, so a note elsewhere can
+       point at the term it leans on. -->
+  <section id="sec-terms">
+    <div class="shead">
+      <h2>Terms used on this page</h2>
+      <p class="hint">Abbreviations also spell themselves out under the pointer</p>
+    </div>
+    <dl class="terms">
+      <div id="t-aos"><dt>AOS, LOS</dt><dd>Acquisition and loss of signal: the instants a pass
+        rises through the elevation mask and sets back through it. Here they are geometric crossings
+        of 5°, found to the millisecond, not a radio event. A time marked * is the edge of the window
+        instead, for a pass already up when it opens or still up when it closes.</dd></div>
+      <div id="t-el"><dt>Elevation (el), azimuth, mask</dt><dd>Elevation is the angle above the
+        observer's horizon; azimuth the compass bearing, from north through east. The mask is the
+        elevation a pass must clear to count, 5° here, standing in for terrain and buildings. The
+        highest point of a pass is its culmination.</dd></div>
+      <div id="t-z"><dt>Z, UTC, UTC+7</dt><dd>Z after a time means UTC, which every figure is
+        computed in. UTC+7 is the observer's local time, Bangkok's unless another site is chosen;
+        the window-start field is read and written in it. Dates without a year are month-day:
+        09-26 is 26 September.</dd></div>
+      <div id="t-circle"><dt>Access circle, footprint</dt><dd>The access circle is centred on the
+        observer: a spacecraft at the window's mean altitude is above the mask while the point
+        beneath it is inside the circle. The footprint is centred beneath the spacecraft: the ground
+        it can be seen from above the mask at that moment.</dd></div>
+      <div id="t-window"><dt>Window, sim time</dt><dd>The span the analysis covers, 24 h from now
+        unless moved. The clock that drives the globe, the map and the countdown can be scrubbed or
+        sped up; "sim time" beside a readout means it is not showing the present.</dd></div>
+      <div id="t-ids"><dt>NORAD ID, COSPAR ID</dt><dd>Two catalogue numbers for one object. The NORAD
+        number is the US Space Force's sequential catalogue number. The COSPAR ID, or international
+        designator, is the launch year, the launch's number in that year and a letter code for the
+        piece.</dd></div>
+      <div id="t-tle"><dt>TLE, element set, epoch</dt><dd>A two-line element set: an orbit published
+        as SGP4 mean elements in fixed columns of text. Its epoch is the instant the elements
+        describe; predictions are best near it and drift with distance from it, which is what the
+        age chip in the header is counting.</dd></div>
+      <div id="t-sgp4"><dt>SGP4, SDP4</dt><dd>Simplified General Perturbations 4, the analytic
+        propagator TLEs are fitted to and the only one they are meaningful with. SDP4 is its
+        deep-space branch, which takes over for periods of 225 min or more. When SGP4 finds an orbit
+        has decayed into the Earth it stops with error 6.</dd></div>
+      <div id="t-mean"><dt>Mean and osculating elements</dt><dd>Mean elements, a TLE's, have SGP4's
+        periodic terms averaged out and mean something only inside SGP4. Osculating elements are the
+        two-body orbit through the actual position and velocity at one instant. Kozai and Brouwer
+        are two conventions for the mean motion; a TLE carries Kozai's.</dd></div>
+      <div id="t-frames"><dt>TEME, ECI, ♈︎</dt><dd>ECI is any Earth-centred inertial frame, whose axes
+        are fixed against the stars rather than turning with the Earth. The globe's puts its x axis on
+        the First Point of Aries, ♈︎: the direction of the Sun at the March equinox, which right
+        ascensions are measured from. TEME, true equator and mean equinox, is the one SGP4 works in.</dd></div>
+      <div id="t-angles"><dt>Ω, i, ω, M, θ or ν</dt><dd>RAAN, the right ascension of the ascending
+        node: the angle east from ♈︎ to where the orbit crosses the equator going north (☊).
+        Inclination, the tilt of the orbit plane to the equator. Argument of perigee, from the node
+        to perigee within the plane. Mean anomaly, the phase an evenly moving point would have; true
+        anomaly, the actual angle from perigee, θ on the globe and ν in the tables.</dd></div>
+      <div id="t-vectors"><dt>h, e, v on the globe</dt><dd>h is the specific angular momentum r × v,
+        normal to the orbit plane, in km²/s. e is the eccentricity vector, which points at perigee and
+        is as long as the eccentricity. v is the velocity; vt is its transverse part, at right angles to the
+        radius, and vn its radial part.</dd></div>
+      <div id="t-period"><dt>Nodal and Kepler period</dt><dd>The nodal period is measured, from one
+        ascending node to the next. The Kepler period is 2π√(a³/μ) from the semi-major axis. The page
+        shows the nodal one, except where the node is too poorly defined to time, as for a
+        near-equatorial geostationary orbit.</dd></div>
+      <div id="t-bstar"><dt>B*, 1/ER</dt><dd>SGP4's drag term. Its unit is the inverse Earth
+        radius, 1/ER. It is fitted along with the elements and soaks up whatever else the fit could
+        not model, so it is not a measured area-to-mass ratio.</dd></div>
+      <div id="t-mag"><dt>Magnitude, std mag, phase</dt><dd>Astronomical brightness, where smaller is
+        brighter and 5 magnitudes is a factor of 100. About +6 is the faintest the naked eye sees in a
+        dark sky, and the page's threshold. The standard magnitude is an object's brightness at
+        1,000 km with half its face lit; the estimate scales it by the range and by the phase angle,
+        at the spacecraft between the observer and the Sun.</dd></div>
+      <div id="t-shadow"><dt>Umbra, penumbra</dt><dd>Earth's shadow, where the Sun is wholly hidden,
+        and the fringe around it where it is partly hidden. The naked-eye verdict counts only moments
+        in full sunlight; penumbral ones are reported on their own.</dd></div>
+      <div id="t-pov"><dt>POV, FOV, GSD</dt><dd>Point of view: the camera that rides the spacecraft,
+        looking along its track. Field of view: the width of that lens, in degrees. Ground sample
+        distance: the ground one screen pixel covers.</dd></div>
+      <div id="t-reentry"><dt>Decay, entry interface</dt><dd>Decay is the slow loss of altitude to
+        atmospheric drag. The entry interface, taken as 120 km, is the height below which an orbit
+        lasts a revolution or two at most; an object SGP4 takes below it has re-entered or is about to.</dd></div>
+      <div id="t-brief"><dt>Earth Resources group, the brief</dt><dd>CelesTrak's list of
+        Earth-observation spacecraft. The assignment asks for a spacecraft from it; KNACKSAT-2, the
+        default here, is not in it, and LANDSAT 9 is.</dd></div>
+      <div id="t-wgs"><dt>WGS-72, WGS-84, R⊕</dt><dd>Two editions of the World Geodetic System's
+        model of the Earth. SGP4 is defined on WGS-72; latitudes and altitudes here are geodetic on
+        WGS-84. R⊕ is the equatorial radius, 6378.137 km.</dd></div>
+    </dl>
+  </section>
+
+  <footer>
+    <span id="footepoch">—</span>
+    <span>SGP4 (WGS-72) · geodetic on WGS-84 · angles in degrees</span>
+    <span>Element sets degrade with age; re-fetch before quoting pass times far from epoch.</span>
+  </footer>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/6.0.1/satellite.min.js"></script>
@@ -7632,6 +7827,13 @@ const hms = d => pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUT
 const ymd = d => d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
 const md  = d => pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
 const whenZ = d => md(d)+' '+hms(d)+'Z';
+/* The abbreviations the pass readouts are written in, spelled out under the
+   pointer wherever they are generated. The Terms section says the rest. */
+const ABBR = {
+  AOS: '<abbr title="acquisition of signal: the spacecraft rises through the 5° mask">AOS</abbr>',
+  LOS: '<abbr title="loss of signal: the spacecraft sets through the 5° mask">LOS</abbr>',
+  STD: '<abbr title="standard magnitude: its brightness at 1,000 km, half lit">std mag</abbr>'
+};
 const whenLocal = d => { const t = new Date(d.getTime()+tzAt(d.getTime())*3600000);
   return (md(t) !== md(d) ? md(t)+' ' : '') + hms(t) + ' ' + tzLabelAt(d.getTime()); };
 const mmss = s => {
@@ -8166,7 +8368,10 @@ function renderElements(){
   ];
   document.getElementById('elgrid').innerHTML = cells.map(c=>
     '<div class="el"><p class="sym"><i>'+c[0]+'</i>'+c[1]+'</p>'+
-    '<p class="val">'+c[2]+(c[3]?'<span> '+c[3]+'</span>':'')+'</p>'+
+    /* The degree sign sits on its number, as it does everywhere else on the
+       page; a unit word is bound to it by a no-break space. It used to be a
+       plain space for both, which printed "51.6256 °". */
+    '<p class="val">'+c[2]+(c[3]?'<span>'+(c[3] === '°' ? '' : ' ')+c[3]+'</span>':'')+'</p>'+
     '<p class="note">'+c[4]+'</p><p class="src">'+c[5]+'</p></div>').join('');
 
   /* The same orbit at the same instant, as the state vector says it is. */
@@ -8201,7 +8406,7 @@ function renderElements(){
     ['Min altitude', D.E.perigeeAlt.toFixed(1)+' km'],
     ['Max altitude', D.E.apogeeAlt.toFixed(1)+' km'],
     ['Revs in 24 h', (86400/P).toFixed(2)],
-    ['B* drag term', D.E.bstar.toExponential(4)+' 1/ER'],
+    ['B* drag term', D.E.bstar.toExponential(4)+' <abbr title="per Earth radius, the unit SGP4 carries B* in">1/ER</abbr>'],
     ['Rev. no. @ epoch', String(D.E.rev)]
   ];
   document.getElementById('derived').innerHTML = dv.map(d=>
@@ -8793,7 +8998,7 @@ function paintCountdown(){
   if(now){
     k.textContent = 'In view now — sets in' + sim;
     v.textContent = hhmmss(now.t1ms - simMs); v.className = 'v live';
-    w.textContent = 'LOS ' + whenZ(now.los) + ' · culminates ' + now.maxEl.toFixed(1) + '°';
+    w.innerHTML = ABBR.LOS + ' ' + whenZ(now.los) + ' · culminates ' + now.maxEl.toFixed(1) + '°';
     return;
   }
   const nxt = P.find(p => p.t0ms > simMs) || passAfterWindow();
@@ -8805,7 +9010,7 @@ function paintCountdown(){
   }
   k.textContent = 'Next pass in' + sim;
   v.textContent = hhmmss(nxt.t0ms - simMs); v.className = 'v';
-  w.textContent = 'AOS ' + whenZ(nxt.aos) + ' · ' + whenLocal(nxt.aos) + ' · max ' +
+  w.innerHTML = ABBR.AOS + ' ' + whenZ(nxt.aos) + ' · ' + whenLocal(nxt.aos) + ' · max ' +
                   (nxt.clipL ? '≥ ' : '') + nxt.maxEl.toFixed(1) + '°' +
                   (nxt.t0ms > winT1() ? ' · after this window' : '');
 }
@@ -8943,7 +9148,7 @@ function drawSky(p, id){
   ['N','E','S','W'].forEach((d,i)=>{ const a=i*90*RAD;
     halo(d, cx+(R+12)*Math.sin(a), cy-(R+12)*Math.cos(a), tok('--ink2'), panel); });
   // ring labels sit on the SW diagonal, clear of the N cardinal where AOS/LOS cluster
-  g.font = '500 10px "IBM Plex Mono", monospace';
+  g.font = '500 11px "IBM Plex Mono", monospace';
   const ringLabel = (txt, e) => { const r = R*(90-e)/90, a = 225*RAD;
     halo(txt, cx + r*Math.sin(a), cy - r*Math.cos(a), tok('--muted'), tok('--sunk')); };
   ringLabel('30°', 30); ringLabel('60°', 60);
@@ -8957,7 +9162,7 @@ function drawSky(p, id){
   g.fillStyle = tok('--contact');
   g.beginPath(); g.arc(M[0],M[1],5,0,7); g.fill();
   g.lineWidth=2; g.strokeStyle = panel; g.stroke();
-  g.font = '600 10px "IBM Plex Mono", monospace'; g.textAlign='center';
+  g.font = '600 11px "IBM Plex Mono", monospace'; g.textAlign='center';
   // AOS/LOS sit on the mask ring — pull the labels inward so they clear the cardinals
   const inward = (q,d)=>{ const vx = cx-q[0], vy = cy-q[1], m = Math.hypot(vx,vy)||1;
     return [q[0]+vx/m*d, q[1]+vy/m*d]; };
@@ -9042,7 +9247,7 @@ function opticalRows(p){
     : 'radio only \u2014 ' + why;
   return [['Naked eye', v]]
     .concat(o.peak ? [['Brightness', magText(o.peak) + '\u00a0·  '
-      + nobreak('std mag ' + magStr(o.std.mag) + (o.std.known ? ', Heavens-Above' : ' assumed'))
+      + ABBR.STD + nobreak(' ' + magStr(o.std.mag) + (o.std.known ? ', Heavens-Above' : ' assumed'))
       + (o.std.via ? '\u00a0·  ' + nobreak('docked to ' + o.std.via) : '')]] : [])
     /* Both figures here are the mid-pass ones, and the row says so. It was
        "Sun at site", and its unqualified "spacecraft eclipsed" read as a
@@ -9092,10 +9297,10 @@ function selectPass(i, scrub, fromTable){
     : p.clipL ? 'still up when the window closes; true LOS is later' : null;
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
-    ['AOS', whenZ(p.aos)+(p.clipA?' *':'')+' · '+whenLocal(p.aos)],
+    [ABBR.AOS, whenZ(p.aos)+(p.clipA?' *':'')+' · '+whenLocal(p.aos)],
     [edge ? 'Highest in window' : 'Culmination',
       whenZ(p.maxAt)+' at '+p.maxEl.toFixed(1)+'° '+compass(p.maxAz)],
-    ['LOS', whenZ(p.los)+(p.clipL?' *':'')+' · '+whenLocal(p.los)],
+    [ABBR.LOS, whenZ(p.los)+(p.clipL?' *':'')+' · '+whenLocal(p.los)],
     ['Duration', mmss(p.dur)+'  ·  min range '+p.minRng.toFixed(0)+' km']
   ].concat(clip ? [['* Window edge', clip]] : [])
    .concat(opticalRows(p)).concat(dopRows(p))
@@ -9781,7 +9986,7 @@ function paintReentry(){
   n.innerHTML = '<b>Re-entry.</b> Propagated from the start of this window, SGP4 takes ' +
     esc(D.entry.name) + ' down to ' + R.minAlt.toFixed(1) + ' km' +
     (R.groundAt !== null ? ', and below the surface at ' + iso(new Date(R.groundAt)) + ' (error 6)' : '') +
-    ' — under the ' + REENTRY_KM + ' km entry interface. It has re-entered or is about to' +
+    ' — under the ' + REENTRY_KM + ' km <a href="#t-reentry">entry interface</a>. It has re-entered or is about to' +
     (D.passes.length ? ', so the passes listed will not happen and are not exported.' : '.');
 }
 /* The brief asks for a spacecraft from CelesTrak's Earth Resources group, and
@@ -9983,7 +10188,10 @@ function paintWindow(){
   const inp = document.getElementById('winStartIn');
   if(inp && document.activeElement !== inp) inp.value = toSiteInput(D.start.getTime());
   const wz = tzLabelAt(D.start.getTime()), wzEl = document.getElementById('winTz');
-  if(wzEl) wzEl.textContent = wz;
+  if(wzEl){
+    wzEl.textContent = wz;
+    wzEl.title = 'The observer’s local time, which the window start is read and written in';
+  }
   if(inp) inp.setAttribute('aria-label', 'Start of the analysis window, in the observer’s time ('+wz+')');
   document.querySelectorAll('.bar-window .span').forEach(b=>
     b.setAttribute('aria-pressed', +b.dataset.h === D.hours));
@@ -10500,7 +10708,7 @@ function drawLife(){
   const Y = v => T + (hMax - v)/(hMax - hMin)*(Hc-T-B);
 
   // grid + y labels
-  g.strokeStyle = rule; g.lineWidth = 1; g.font = '10px "IBM Plex Mono",monospace';
+  g.strokeStyle = rule; g.lineWidth = 1; g.font = '11px "IBM Plex Mono",monospace';
   g.fillStyle = muted; g.textAlign = 'right'; g.textBaseline = 'middle';
   const nTick = 5;
   for(let i=0;i<=nTick;i++){
@@ -10829,7 +11037,8 @@ document.addEventListener('visibilitychange', () => {
                       viewport: () => Orbit3D.renderer.domElement,
                       occluder: () => Orbit3D.earth ? 1 : 0 });
       // every layer starts off - the default view was deliberately decluttered,
-      // and the Layers button is right there for anyone who wants the geometry
+      // and the Layers panel is right there (behind its button on a phone) for
+      // anyone who wants the geometry
       OrbitViz.layers().forEach(l => OrbitViz.show(l.key, false));
       /* The star field is switched on here and left out of the panel. It is not
          a layer in the sense the others are - they are annotation drawn over the
@@ -10844,8 +11053,9 @@ document.addEventListener('visibilitychange', () => {
       const menu = document.getElementById('layersMenu');
       menu.insertAdjacentHTML('beforeend', OrbitViz.layers()
         .filter(l => l.key !== 'stars' && l.key !== 'planets').map(l =>
-        '<label><input type="checkbox" data-layer="'+l.key+'"'+(l.on?' checked':'')+'> '+
-        esc(l.label)+'</label>').join(''));
+        '<label><input type="checkbox" data-layer="'+l.key+'"'+(l.on?' checked':'')+'> <span>'+
+        esc(l.label).replace(/\bECI\b/, '<abbr title="Earth-centred inertial: axes fixed '+
+          'against the stars, x towards the First Point of Aries">ECI</abbr>')+'</span></label>').join(''));
       menu.addEventListener('change', e=>{
         const k = e.target.dataset.layer;
         if(!k) return;
@@ -10854,11 +11064,13 @@ document.addEventListener('visibilitychange', () => {
            element annotations - so it rides the same checkbox rather than
            needing a control of its own. */
         if(k === 'elements' && global3D()) Orbit3D.showRVector(e.target.checked);
+        if(k === 'elements') elementKey(e.target.checked);
       });
-      if(global3D()){
-        const el = OrbitViz.layers().find(l => l.key === 'elements');
-        Orbit3D.showRVector(!!(el && el.on));
-      }
+      /* the symbols' names in the globe key, for as long as the symbols are drawn */
+      const elementKey = on => document.querySelectorAll('#o3key .kel').forEach(li => li.hidden = !on);
+      const el0 = OrbitViz.layers().find(l => l.key === 'elements');
+      elementKey(!!(el0 && el0.on));
+      if(global3D()) Orbit3D.showRVector(!!(el0 && el0.on));
       window.__viz = true;
     } catch(err){ hideLayersIfEmpty(); }
   } else hideLayersIfEmpty();
@@ -10869,6 +11081,22 @@ document.addEventListener('visibilitychange', () => {
     if(m && m.children.length) return;
     const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
   }
+  /* The panel's button, drawn only below 900 px (see .layertoggle). It opens
+     and closes the panel and says which in aria-expanded. Escape inside the
+     open panel closes it and hands the focus back, so a keyboard is not left
+     on a checkbox that has just been hidden. */
+  const lsg = document.querySelector('.layerseg'), ltg = document.getElementById('layerstoggle');
+  const setLayersOpen = open => {
+    lsg.classList.toggle('open', open);
+    ltg.setAttribute('aria-expanded', String(open));
+  };
+  ltg.addEventListener('click', () => setLayersOpen(!lsg.classList.contains('open')));
+  lsg.addEventListener('keydown', e => {
+    if(e.key !== 'Escape' || !lsg.classList.contains('open')
+       || getComputedStyle(ltg).display === 'none') return;
+    setLayersOpen(false);
+    ltg.focus();
+  });
 
   const trls = [...document.querySelectorAll('.trailseg .trl')];
   function applyTrail(){

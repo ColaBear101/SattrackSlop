@@ -173,18 +173,52 @@ function parseCSV(text) {
       provBad.length ? provBad.slice(0, 3).join(' | ')
         : 'epoch ' + expected.prov.tle_epoch_utc + ', embedded, window ' + expected.prov.window_start_utc
           + ' + ' + expected.prov.window_span_h + ' h, mask ' + expected.prov.mask_deg + ' deg');
-  /* And they are enough: the file alone, handed back to the propagator with
-     the site in its own columns, gives the same passes. */
-  const rep = await page.evaluate(({ l1, l2, start, span }) => {
+  /* And they are enough: the file alone gives the same passes. The observer is
+     first moved to the other side of the world, then put back from the file's
+     own columns - site_lat_deg, site_lon_deg and site_alt_km - so the site is
+     the file's and not merely the page's, which it matches. compute() reads the
+     site from the page's observer, so it is applied there and restored after. */
+  const rep = await page.evaluate(({ l1, l2, start, span, lat, lon, alt }) => {
+    const O = __gt.OBS, was = { name: O.name, lat: O.lat, lon: O.lon, altKm: O.altKm, tz: O.tz, zone: O.zone };
+    __gt.applySite({ name: 'elsewhere', lat: -33.9, lon: 18.4, altKm: 1.2 }, false);
+    __gt.applySite({ name: 'from the file', lat: +lat, lon: +lon, altKm: +alt }, false);
+    const site = [O.lat, O.lon, O.altKm];
     const d = __gt.compute({ name: 'from the file', l1, l2, satnum: l1.substring(2, 7).trim() },
                            Date.parse(start), +span);
-    return d.passes.map(p => p.aos.getTime());
+    __gt.applySite(was, false);
+    return { site, aos: d.passes.map(p => p.aos.getTime()), los: d.passes.map(p => p.los.getTime()),
+             maxEl: d.passes.map(p => p.maxEl) };
   }, { l1: rows[1][idx('tle_line1')], l2: rows[1][idx('tle_line2')],
-       start: rows[1][idx('window_start_utc')], span: rows[1][idx('window_span_h')] });
+       start: rows[1][idx('window_start_utc')], span: rows[1][idx('window_span_h')],
+       lat: rows[1][idx('site_lat_deg')], lon: rows[1][idx('site_lon_deg')], alt: rows[1][idx('site_alt_km')] });
   const fileAos = rows.slice(1).map(r => Date.parse(r[idx('aos_utc')]));
-  chk('...and are enough to reproduce the table: the same passes, from the file alone',
-      rep.length === fileAos.length && rep.every((t, i) => Math.abs(t - fileAos[i]) <= 1),
-      rep.length + ' passes recomputed for ' + fileAos.length + ' in the file');
+  const fileLos = rows.slice(1).map(r => Date.parse(r[idx('los_utc')]));
+  const fileEl = rows.slice(1).map(r => parseFloat(r[idx('max_elevation_deg')]));
+  chk('...and are enough to reproduce the table: the same passes, from the file alone, site included',
+      rep.site.join(',') === [rows[1][idx('site_lat_deg')], rows[1][idx('site_lon_deg')], rows[1][idx('site_alt_km')]].map(Number).join(',')
+      && rep.aos.length === fileAos.length
+      && rep.aos.every((t, i) => Math.abs(t - fileAos[i]) <= 1 && Math.abs(rep.los[i] - fileLos[i]) <= 1
+                               && Math.abs(rep.maxEl[i] - fileEl[i]) <= 0.0005),
+      rep.aos.length + ' passes recomputed for ' + fileAos.length + ' in the file, AOS, LOS and peak elevation'
+        + ' from site ' + rep.site.join(', '));
+  const back = await page.evaluate(() => [__gt.OBS.name, __gt.OBS.lat, __gt.OBS.lon].join(', '));
+  chk('...and the observer is put back afterwards', back === expected.site + ', ' + rows[1][idx('site_lat_deg')]
+      + ', ' + rows[1][idx('site_lon_deg')], back);
+
+  /* An object CelesTrak no longer carries. The page says "no current elements
+     for this object - it may have re-entered" under the element set; the file
+     wrote plain "embedded". The check's outcome is set on the entry directly,
+     as refreshTLE() records it, since the network is blocked here. */
+  const gone = await page.evaluate(() => {
+    const e = __gt.D.entry, held = e.__prov, at = Date.parse('2026-09-20T06:00:00Z');
+    e.__prov = { gone: 'CelesTrak', at };
+    return held;
+  });
+  const gc = parseCSV((await grab('exp-csv')).text);
+  await page.evaluate(held => { __gt.D.entry.__prov = held; }, gone);
+  chk('a set CelesTrak no longer carries is recorded as such in tle_source',
+      gc.slice(1).every(r => r[idx('tle_source')] === 'embedded; CelesTrak reports no current set 2026-09-20T06:00:00.000Z'),
+      gc[1][idx('tle_source')]);
 
   /* Values, not just shape: the AOS in the file has to be the AOS on the page. */
   let worstT = 0, worstEl = 0;

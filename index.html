@@ -9375,14 +9375,22 @@ function passRows(){
 function tleSource(){
   const e = D.entry, pv = provOnScreen();
   const at = t => isoZ(new Date(t));
+  /* And what the last check said against it, when that was not a newer set:
+     CelesTrak answering "No GP data found", or offering a newer set SGP4 cannot
+     propagate - both, in practice, an object that has come down. The page says
+     so under the element set; the file wrote plain "embedded", and a table read
+     later showed no sign that its spacecraft might no longer be there. */
+  const said = !pv ? ''
+    : pv.gone ? '; ' + pv.gone + ' reports no current set ' + at(pv.at)
+    : pv.dead ? '; ' + pv.dead + ' has a newer set SGP4 cannot propagate ' + at(pv.at) : '';
   if(RAWTLE.indexOf(e.l1) >= 0 && RAWTLE.indexOf(e.l2) >= 0)
-    return 'embedded' + (pv && pv.src ? ', confirmed current by ' + pv.src + ' ' + at(pv.at) : '');
+    return 'embedded' + (pv && pv.src ? ', confirmed current by ' + pv.src + ' ' + at(pv.at) : '') + said;
   if(pv && pv.src) return pv.src + ', fetched ' + at(pv.at);
   try {
     const c = JSON.parse(localStorage.getItem('tle:' + e.satnum) || 'null');
-    if(c && c.l1 === e.l1 && c.l2 === e.l2 && c.src) return c.src + ', fetched ' + at(c.at);
+    if(c && c.l1 === e.l1 && c.l2 === e.l2 && c.src) return c.src + ', fetched ' + at(c.at) + said;
   } catch(err){}
-  return 'fetched live, source not recorded';
+  return 'fetched live, source not recorded' + said;
 }
 function exportCSV(){
   const rows = passRows();
@@ -10436,7 +10444,11 @@ let lifeState = null, lifeReq = 0;
    quoting a single "+/- some days" for every forecast would be a fiction.
    Where the bias has a direction, the date moved by it is given as a month:
    the headline stays the model's own figure, which the README quotes, and a
-   month is as fine as a median from one fortnight of re-entries will bear. */
+   month is as fine as a median from one fortnight of re-entries will bear.
+   The median is the one measured at the nearest horizon the backtest has, and
+   it is applied across the band around it - a 135-day forecast is moved by the
+   180-day figure - so the note names that horizon rather than implying the
+   shift was measured at this exact range. */
 const LIFE_MONTHS = ['January','February','March','April','May','June','July',
   'August','September','October','November','December'];
 function lifeAccuracy(days, date){
@@ -10451,12 +10463,13 @@ function lifeAccuracy(days, date){
   if(days <= 220)
     return 'Backtested against objects that really re-entered, a forecast at this range ran ' +
       '<b>about two months early</b> (median −63 d at a 180-day horizon). The real date is ' +
-      'more likely after this one than before it: moved by that median, it falls in <b>' +
-      moved(63) + '</b>.' + caveat;
+      'more likely after this one than before it: moved by that median, the one measured at the ' +
+      'nearest horizon the backtest has, it falls in <b>' + moved(63) + '</b>.' + caveat;
   if(days <= 330)
     return 'Backtested at this range the method ran <b>about five months early</b> ' +
       '(median −144 d at a 270-day horizon), so read this as a lower bound rather than ' +
-      'a date — moved by that median, <b>' + moved(144) + '</b>.' + caveat;
+      'a date — moved by that median, measured at the nearest horizon the backtest has, <b>' +
+      moved(144) + '</b>.' + caveat;
   return 'Beyond a year this is <b>not a forecast</b>. The backtest at a 365-day horizon ' +
     'scattered by half a year either way, because it depends on solar activity that ' +
     'nobody can predict that far out.' + caveat;
@@ -10575,11 +10588,28 @@ function paintLife(r, P){
      than at the mean altitude the model integrates. Three cases, by where that
      perigee is: already under the re-entry line, above the top of the model's
      atmosphere, or in between - where a date would be a circular-orbit answer
-     to an eccentric question. */
+     to an eccentric question.
+
+     And two, by how far out the apogee reaches (Lifetime.HA_DRAG). Every
+     eccentric orbit in between was told it "comes down apogee first, with
+     perigee holding nearly still", which is drag's doing and true only where
+     drag is what shapes the orbit: ARKTIKA-M 1, perigee 789 km and apogee
+     39,572 km, read it too, and a Molniya orbit's perigee is the Moon's and the
+     Sun's to move. Above 1,000 km the same thing held in reverse - "what moves
+     a perigee this high is the Moon and the Sun" went to orbits too small for
+     them to move it much.
+
+     The e beside the perigee is that element set's own; the eccentricity the
+     refusal quotes is the 45-day median it was made on, which for an orbit
+     rounding out can be above the cap while the latest set is under it. */
   if(r.verdict === 'eccentric'){
     const km = x => Math.round(x).toLocaleString('en-US');
     const e = r.ecc.toFixed(3), cap = Lifetime.ECC_MAX;
     const pg = r.hp < 0 ? 'perigee below the surface' : 'perigee ' + km(r.hp) + ' km';
+    const far = r.ha >= Lifetime.HA_DRAG;
+    const moon = 'the Moon and the Sun pull on an orbit that reaches this far, and walk its ' +
+      'perigee up or down by more the farther out it goes — on the highest orbits by hundreds of ' +
+      'kilometres in months, which is how a dead one usually comes down.';
     if(r.hp <= Lifetime.FLOOR){
       lifeSet('Re-entering', pg + ' · e ' + e,
         'The latest element sets put perigee <b>' + (r.hp < 0 ? km(-r.hp) + ' km below the surface'
@@ -10591,17 +10621,24 @@ function paintLife(r, P){
       lifeSet('No drag decay', pg + ' · e ' + e,
         'This orbit is eccentric, and drag acts at perigee: <b>' + km(r.hp) + ' km</b> up, above the ' +
         'top of the atmosphere this model knows, which ends at 1,000 km. The mean altitude on the ' +
-        'chart is not being pulled down by air, and no re-entry date is offered. What moves a ' +
-        'perigee this high is the Moon and the Sun, which a drag model does not see.', span);
+        'chart is not being pulled down by air, and no re-entry date is offered. ' + (far
+          ? 'With apogee at <b>' + km(r.ha) + ' km</b>, ' + moon + ' A drag model does not see them.'
+          : 'What air there is at this height takes centuries or longer to bring an orbit down.'), span);
     } else {
+      const med = r.eccMed.toFixed(3);
       lifeSet('Eccentric orbit', pg + ' · e ' + e,
         'Drag acts at perigee, <b>' + km(r.hp) + ' km</b> up, not at the <b>' + km(r.hNow) +
         ' km</b> mean altitude on the chart. This estimate is for near-circular orbits: it applies ' +
-        'drag at the mean altitude, so at an eccentricity of <b>' + e + '</b> it would be timing the ' +
-        'wrong height, and above ' + cap + ' no date is offered. An eccentric orbit comes down apogee ' +
-        'first, now <b>' + km(r.ha) + ' km</b>, with perigee holding nearly still until the orbit is ' +
-        'close to circular; forecasting that needs an integration on perigee height, which this ' +
-        'page does not do.', span);
+        'drag at the mean altitude, so at an eccentricity of <b>' + med + '</b>, the median over the ' +
+        'last 45 days, it would be timing the wrong height, and above ' + cap + ' no date is offered.' +
+        (r.ecc <= cap ? ' The latest sets are down to e <b>' + e + '</b>, under that line, but the ' +
+          'test reads the median so that no one element set can flip it.' : '') + ' ' + (far
+          ? 'With apogee at <b>' + km(r.ha) + ' km</b>, drag is not all that moves this perigee: ' +
+            moon + ' A drag model does not see them, and this page models nothing else.'
+          : 'With apogee at <b>' + km(r.ha) + ' km</b>, drag is what shapes this orbit: it comes ' +
+            'down apogee first, with perigee holding nearly still until the orbit is close to ' +
+            'circular. Forecasting that needs an integration on perigee height, which this page ' +
+            'does not do.'), span);
     }
     drawLife(); return;
   }
@@ -10761,10 +10798,16 @@ function drawLife(){
   g.setLineDash([]); g.globalAlpha = 1;
   g.fillStyle = track; g.beginPath(); g.arc(xn, Y(r.hNow), 3.2, 0, 7); g.fill();
 
+  /* A key only for what can be seen. A record that ends hours short of its own
+     forecast - ICEYE-X34's, 2.5 years long and projected 0.06 days on, now read
+     as probably re-entered - drew a projection and a band a twentieth of a pixel
+     wide, and the key still offered swatches for both. */
+  const seen = a => !!a && X(r.tNow + a[a.length-1].t*86400000) - xn >= 3;
   document.getElementById('lifelegend').innerHTML =
     '<span><i style="background:'+track+'"></i>observed (' + P.length + ' element sets)</span>' +
-    (proj ? '<span><i style="background:'+contact+'"></i>projected decay</span>' : '') +
-    (r.simpleTrack && r.trendTrack ? '<span><i style="background:'+contact+';opacity:.35"></i>model disagreement</span>' : '');
+    (seen(proj) ? '<span><i style="background:'+contact+'"></i>projected decay</span>' : '') +
+    (r.simpleTrack && r.trendTrack && (seen(r.simpleTrack) || seen(r.trendTrack))
+      ? '<span><i style="background:'+contact+';opacity:.35"></i>model disagreement</span>' : '');
   cv.__geom = {X, Y, L, R, T, B, Wc, Hc, t0, tEnd, hMin, hMax};
 }
 

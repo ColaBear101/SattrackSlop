@@ -579,8 +579,9 @@ is compared with what really happened:
 Usable to about four months. Beyond that it runs **months early**, and past a year it is not a
 forecast at all. The page says which of those regimes it is in rather than printing one number and
 leaving the reader to assume it means the same thing at every range. Where the bias has a
-direction — the 180-day and 270-day rows — it also gives the month the median moves the date to.
-The headline stays the model's own figure, and a month is as fine as the median will bear, for the
+direction — the 180-day and 270-day rows — it also gives the month the median moves the date to,
+and says the median is the nearest row's: a 135-day forecast is moved by the 180-day figure. The
+headline stays the model's own figure, and a month is as fine as the median will bear, for the
 reason below.
 
 The two models are named on the page, fixed atmosphere and fitted trend, with the headline the
@@ -611,16 +612,32 @@ A drag model applied to a spacecraft under thrust produces fiction, so the estim
 - **Eccentric** — a median eccentricity above 0.02 over the last 45 days. The model applies drag at
   the mean altitude, where a near-circular orbit spends its time; an eccentric one loses its energy
   at perigee, a·e lower, which at e = 0.02 is about 135 km down in low orbit, where the air is ten
-  to twenty times denser. Such an orbit comes down apogee first, perigee holding nearly still until
-  it is close to circular, and forecasting it means integrating on perigee height, which is not
-  done here. Eccentricity was read with every row and never used: ION SCV-016 (e 0.057, perigee
-  303 km, mean altitude 711 km) got a date, and SLS DEB (e 0.15) and OV3-3 (e 0.10), whose mean
-  altitude sits above the 1,000 km top of the density table, were "no measurable decay" — SLS DEB
-  with 25 km of mean altitude gone in its last 45 days. The page now gives the perigee instead, from
-  the latest element sets: under 120 km it says the object is re-entering, above 1,000 km that drag
-  is not what is moving the orbit, and between the two that a circular-orbit date would answer the
-  wrong question. KNACKSAT-2, at e 0.0008, and every near-circular object take the same path as
-  before, to the bit.
+  to twenty times denser. Eccentricity was read with every row and never used: ION SCV-016 (e 0.057,
+  perigee 303 km, mean altitude 711 km) got a date, and SLS DEB (e 0.15) and OV3-3 (e 0.10), whose
+  mean altitude sits above the 1,000 km top of the density table, were "no measurable decay" — SLS
+  DEB with 25 km of mean altitude gone in its last 45 days. The page now gives the perigee instead,
+  from the latest element sets: under 120 km it says the object is re-entering, above 1,000 km that
+  drag is not what is moving the orbit, and between the two that a circular-orbit date would answer
+  the wrong question. The eccentricity it quotes for that refusal is the 45-day median it was made
+  on, not the latest set's, which for an orbit rounding out can already be under 0.02. KNACKSAT-2,
+  at e 0.0008, and every near-circular object take the same path as before, to the bit.
+
+  How an eccentric orbit comes down depends on its apogee, and the page says which case it is in.
+  With a low one, drag shapes it: it comes down apogee first, perigee holding nearly still until it
+  is close to circular, and forecasting that means integrating on perigee height, which is not done
+  here. ION SCV-016, OV3-3 and SLS DEB, apogees 1,100 to 2,800 km, each kept perigee within 3 km
+  over their last 180 days while apogee fell by 30 to 250 km. With a high one it does not hold. The
+  Moon and the Sun pull harder on a larger orbit while the J2 precession that averages their pull
+  away slows, so the swing they give perigee grows roughly as the sixth power of the semi-major axis:
+  CLUSTER II-FM8's perigee fell 1,340 km in its last 180 days, to below the surface, and a dead
+  high orbit usually comes down when they lower perigee into the air. The first version said
+  "apogee first" for every eccentric orbit with a perigee between 120 and 1,000 km, including
+  ARKTIKA-M 1 on a Molniya orbit (perigee 789 km, apogee 39,572 km); it now says it only below a
+  5,000 km apogee, where the swing is a few km, and above that says the Moon and the Sun move
+  perigee as well, which a drag model does not see. The same split applies above 1,000 km, where
+  every such orbit was told the Moon and the Sun were moving its perigee. The line between the two
+  cases is not sharp — near the critical inclination of 63.4°, where perigee stands still, their
+  pull accumulates even on a smaller orbit — and 5,000 km sits on the low side of it.
 
 And one answer it will not give: a date already past. The forecast runs from the last element set
 in CelesTrak's record, and CelesTrak publishes none for an object once it is down, so a record that
@@ -983,9 +1000,13 @@ Eight columns now close every row — `tle_epoch_utc`, `tle_line1`, `tle_line2`,
 `window_start_utc`, `window_span_h`, `mask_deg` and `site_alt_km` — with the same values on each,
 since a header block would break CSV readers and a value on every row survives sorting and
 filtering. `tle_source` is `embedded`, for the snapshot built into the page, with the source that
-last confirmed it current if one has, or the source a newer set was fetched from and when. The site
-is already in `site`, `site_lat_deg` and `site_lon_deg`. `verification/verify-export.js` hands the
-two lines and the window from the file back to the propagator and gets the same passes.
+last confirmed it current if one has, or the source a newer set was fetched from and when. When the
+last check found no current set at CelesTrak, or a newer one SGP4 cannot propagate — in practice an
+object that has come down — that is appended with its time, as the page says it under the element
+set. The site is already in `site`, `site_lat_deg` and `site_lon_deg`.
+`verification/verify-export.js` moves the observer away, applies the site from those columns and
+`site_alt_km`, hands the two lines and the window from the file back to the propagator, and gets
+the same passes: AOS, LOS and peak elevation.
 
 `spacecraft` is the spacecraft's illumination at mid-pass — `sun`, `penumbra` or `umbra` — the value
 the calendar description prints as "spacecraft sun". It keeps its short name because columns are

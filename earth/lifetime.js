@@ -184,25 +184,43 @@ function boosted(P){
    the right drop to the wrong height, and the endgame would run on air the
    object never meets.
 
-   Such an orbit decays apogee first, with perigee holding nearly still until
-   the orbit is close to circular, so forecasting it means integrating on
-   perigee height. That is not done here, and an eccentric history is refused
-   rather than forecast. This was not being checked: eccentricity was read
-   with every row and never used, and ION SCV-016 (e 0.057, perigee 303 km,
-   mean altitude 711 km) got a circular-orbit date. Every near-circular case is
-   untouched - KNACKSAT-2 sits at e 0.0008.
+   How such an orbit comes down depends on how far out it reaches, and neither
+   way is modelled here: an eccentric history is refused rather than forecast.
+   This was not being checked: eccentricity was read with every row and never
+   used, and ION SCV-016 (e 0.057, perigee 303 km, mean altitude 711 km) got a
+   circular-orbit date. Every near-circular case is untouched - KNACKSAT-2 sits
+   at e 0.0008.
 
    The test is the median over the 45 days calibrate() looks at first, so one
-   bad element set cannot flip the verdict either way. Rows with no
+   bad element set cannot flip the verdict either way. It is returned as
+   eccMed, since the page has to quote the number it refused on: the latest
+   set of an orbit rounding out can already be under the cap. Rows with no
    eccentricity are left out; a history with none at all is taken as circular,
    as it always was.
 
+   With a low apogee, drag is what shapes the orbit: it comes down apogee
+   first, perigee holding nearly still until the orbit is close to circular,
+   and forecasting that means integrating on perigee height. ION SCV-016, OV3-3
+   and SLS DEB, apogees 1,100 to 2,800 km, each kept perigee within 3 km over
+   their last 180 days while apogee fell by 30 to 250 km. With a high apogee
+   that is not so. The Moon and the Sun pull on the orbit harder the larger it
+   is, while the J2 precession of perigee that averages their pull away slows,
+   so the swing they give perigee grows about as the sixth power of the
+   semi-major axis - CLUSTER II-FM8's fell 1,340 km in its last 180 days, to
+   below the surface - and it is usually they that bring a dead high orbit
+   down, by lowering perigee into the air. HA_DRAG is the apogee where the
+   page stops saying the first and says the second. Below 5,000 km the swing
+   is a few km or less, except near the critical inclination of 63.4 degrees,
+   where perigee stands still and their pull accumulates; the page's wording
+   for the high side claims only that they move perigee as well, which holds
+   anywhere above it.
+
    The perigee reported is the latest, not that median: the Moon and the Sun
    walk a high eccentric perigee by hundreds of kilometres in a few weeks -
-   CLUSTER II-FM7's 45-day median put it 25 km underground, the last element
-   set 209 km up. So it is the middle of the last five sets, by perigee
+   CLUSTER II-FM8's 45-day median put it 46 km up, its last element set
+   143 km underground. So it is the middle of the last five sets, by perigee
    height, with that set's eccentricity and apogee beside it.               */
-const ECC_MAX = 0.02;
+const ECC_MAX = 0.02, HA_DRAG = 5000;
 function eccNow(P, winDays){
   const tEnd = P[P.length-1].t;
   const e = P.filter(p => p.t >= tEnd - winDays*DAYMS && isFinite(p.ecc)).map(p => p.ecc);
@@ -228,7 +246,7 @@ function predict(P){
   if(ecc !== null && ecc > ECC_MAX){
     const pg = perigeeNow(P);
     return {verdict:'eccentric', hNow, tNow, span, n:P.length, rate:null,
-            ecc:pg.ecc, hp:pg.hp, ha:pg.ha};
+            ecc:pg.ecc, eccMed:ecc, hp:pg.hp, ha:pg.ha};
   }
   const rise = boosted(P);
   const c45 = calibrate(P, 45) || calibrate(P, 90);
@@ -353,5 +371,5 @@ async function fetchHistory(satnum){
 }
 
 global.Lifetime = {rho, integrate, marchT, calibrate, fitTrend, predict, parsePlot, readPlot,
-                   history, cached, boosted, RE, MU, FLOOR, ECC_MAX, SMA_MIN, SMA_MAX};
+                   history, cached, boosted, RE, MU, FLOOR, ECC_MAX, HA_DRAG, SMA_MIN, SMA_MAX};
 })(typeof window !== 'undefined' ? window : globalThis);

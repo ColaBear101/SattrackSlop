@@ -806,19 +806,21 @@ data for exactly this reason.
 
 Two formats, because they answer different questions. The **CSV** is the whole pass table at full
 precision — AOS and LOS as RFC 3339, duration, elevations, azimuths, range, range rate, Doppler,
-and the naked-eye verdict — for anything that wants to compute with it. The **calendar** is for
-turning up: one `VEVENT` per pass with a 10-minute alarm, titled with the spacecraft and its peak
-elevation, so a phone says "KNACKSAT-2 — 68° NE" rather than nothing at all.
+and the naked-eye verdict with the magnitude estimate behind it — for anything that wants to
+compute with it. The **calendar** is for turning up: one `VEVENT` per pass with a 10-minute alarm,
+titled with the spacecraft and its peak elevation, so a phone says "KNACKSAT-2 — 68° NE" rather
+than nothing at all.
 
 Both are built in the page and handed over as a Blob, which works from `file://` where this page
 mostly lives.
 
 A pass cut by the window edge is flagged in both, because its AOS or LOS is where the analysis
-stopped and the files otherwise present it as a horizon crossing. The CSV's last two columns,
-`aos_clipped` and `los_clipped`, are `true` or `false` — last, so every column a reader already
-finds by name stays where it was. The calendar event carries `X-GT-CLIPPED`, says in its summary
-and description which end is the window's, and its alarm no longer announces an AOS that is really
-the window opening.
+stopped and the files otherwise present it as a horizon crossing. The CSV's `aos_clipped` and
+`los_clipped` are `true` or `false`, appended after every column that was already there, so each
+one a reader finds by name — or by position — stays where it was; `est_magnitude` went on after
+them for the same reason. The calendar event carries `X-GT-CLIPPED`, says in its summary and
+description which end is the window's, and its alarm no longer announces an AOS that is really the
+window opening.
 
 Parsing them back, rather than looking at them, found two bugs that look identical to correct
 output on screen:
@@ -891,10 +893,72 @@ Every pass figure in this README is **radio** visibility: geometry above a 5° m
 The page used to say so in a disclaimer. It computes the difference now.
 
 Seeing a pass needs two more conditions that pull against each other — the spacecraft lit while the
-observer is not. That is why satellites are watched in the hour after dusk and before dawn, and why
-most radio passes are not watchable at all. Both of KNACKSAT-2's passes on the reference day are
-radio-only, for opposite reasons: the 18:12Z pass has the sun 67° below Bangkok's horizon but the
-spacecraft **in eclipse**; the 07:20Z pass has it sunlit and the sun **55.8° up**.
+observer is not — and a third that the first version left out: it has to be bright enough. The
+first two are why satellites are watched in the hour after dusk and before dawn, and why most radio
+passes are not watchable at all. Both of KNACKSAT-2's passes on the reference day are radio-only,
+for opposite reasons: the 18:12Z pass has the sun 67° below Bangkok's horizon but the spacecraft
+**in eclipse**; the 07:20Z pass has it sunlit and the sun **55.8° up**.
+
+### Lit is not the same as bright
+
+The first version stopped at geometry, and said "naked eye: yes" whenever part of a pass was lit
+against a dark sky. At LEO that is most of the answer. Further out it is none of it: an object
+fades by 5·log₁₀(range) magnitudes, ten between 1,000 km and 100,000 km, and the page was calling
+CLUSTER II-FM8 at 124,000 km, INTELSAT 36 at 37,000 km and MERIDIAN 10 at 12,000 km visible to the
+eye — and writing "— visible" into their calendar events.
+
+The verdict now rests on an estimated magnitude, in the usual convention. A **standard magnitude**
+is an object's brightness at 1,000 km with half its face lit (the Sun 90° away, as seen from it).
+The estimate scales that by range and by the phase function of a diffusely reflecting sphere,
+normalised to 1 at 90°:
+
+```
+m = m_std + 5·log10(range / 1000 km) − 2.5·log10 F(φ)
+F(φ) = (π − φ)·cos φ + sin φ        π face-on to the Sun (1.24 mag brighter), 0 backlit
+```
+
+φ is the phase angle, at the spacecraft between the observer and the Sun. Range and phase are taken
+in the body-fixed frame, where the site is a constant vector and the Sun rotates like anything
+else. **Yes** means fully sunlit, the Sun below −6° at the site, and magnitude +6 or brighter.
+
+**The standard magnitude is the weak term.** A TLE carries no size and the catalogue carries
+nothing else, so an object gets **5.0** — an intact satellite a few metres across — unless its
+figure is published. Heavens-Above quotes an "intrinsic brightness" in exactly this convention, and
+the page uses it for the ISS (**−1.8**), HST (**2.2**) and the Chinese station (**0.0**, for each of
+its three catalogue entries, which share one element set). Before those went in, 5.0 called the ISS
+too faint on a low pass at 1,800 km, where it is around magnitude 0.
+
+The assumption can be wrong by several magnitudes either way, which is why it is printed beside
+every estimate — "std mag 5.0 assumed", or "std mag −1.8, Heavens-Above". KNACKSAT-2 is itself a
+CubeSat, several magnitudes fainter than 5.0 and a binocular object at best, so its "yes" passes are
+optimistic, and the label is the only thing on screen that says so.
+
+What the estimate does get right is the dependence on range and phase, and that is what separates
+the cases above. Over the week from 2026-09-15, as `verification/verify-optical.js` computes it:
+
+| | Standard magnitude | Brightest estimate, lit against a dark sky | Verdicts |
+|---|---|---|---|
+| INTELSAT 36 | 5.0 assumed | **11.6** at 37,082 km | too faint on its one (window-long) pass |
+| MERIDIAN 10 | 5.0 assumed | **8.6** at 7,567 km | too faint on all 7 |
+| CLUSTER II-FM8 | 5.0 assumed | **7.0** at 3,399 km | too faint on the 9 lit ones |
+| NOAA 15 | 5.0 assumed | **4.0** at 895 km | yes on 3, too faint on 6 |
+| HST | 2.2 published | **1.0** at 888 km | yes on 10 of 53 |
+
+The GEO verdict does not hang on the assumption: to reach +6 from 37,000 km INTELSAT 36 would need a
+standard magnitude of −0.6, brighter than the Chinese station. MERIDIAN 10 and CLUSTER II-FM8 are
+closer calls — they would need 2.4 and 4.0. NOAA 15 is the case a range term exists for: the same
+spacecraft, yes on some passes and too faint on others.
+
+Penumbra is reported on its own. A satellite in it is dimmed by an amount this does not model, so a
+penumbral sample never counts towards yes, and its undimmed estimate is only a ceiling. That makes
+four verdicts — **yes**, **penumbra only** (bright enough only while partly shadowed), **too faint**
+and **radio only** — the same words on screen, in the CSV's `naked_eye` column and in the calendar
+description. The estimate travels with them: a Brightness row on screen, an `est_magnitude` column,
+and a calendar summary that ends "— naked eye (est. mag 3.1)" on yes passes and on no others.
+
++6 is the eye's limit under a genuinely dark sky. From a city, or in the civil twilight that the −6°
+cut admits, the practical limit is two or three magnitudes brighter — so yes is the best case, and
+the number is printed for a reader to hold against their own sky.
 
 ### The shadow is a cone
 
@@ -1128,7 +1192,7 @@ npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
-npm run optical      # shadow cone geometry and naked-eye passes
+npm run optical      # shadow cone geometry, brightness, and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports

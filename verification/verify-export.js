@@ -87,7 +87,9 @@ function parseCSV(text) {
     return { n: r.length, sat: __gt.D.entry.name, norad: __gt.D.E.satnum,
              site: __gt.OBS.name,
              aos: r.map(x => x.aos.getTime()), maxEl: r.map(x => x.maxEl),
-             clip: r.map(x => String(x.clipA) + ',' + String(x.clipL)) };
+             clip: r.map(x => String(x.clipA) + ',' + String(x.clipL)),
+             eye: r.map(x => x.eye), mag: r.map(x => x.mag),
+             lim: __gt.NAKED_EYE_MAG };
   });
   console.log('\n' + expected.sat + ' from ' + expected.site + ': '
             + expected.n + ' passes to export\n');
@@ -112,17 +114,40 @@ function parseCSV(text) {
   const idx = n => h.indexOf(n);
   chk('the columns a reader would look for are present',
       ['aos_utc','los_utc','max_elevation_deg','min_range_km','doppler_aos_khz',
-       'naked_eye','site_lat_deg'].every(n => idx(n) >= 0),
+       'naked_eye','est_magnitude','site_lat_deg'].every(n => idx(n) >= 0),
       h.length + ' columns');
 
-  /* The window-edge flags go last, so every column a reader finds by name keeps
-     its place - including for anyone reading these files by position. */
-  chk('the clip flags are the last two columns',
-      h.slice(-2).join(',') === 'aos_clipped,los_clipped', h.slice(-3).join(','));
+  /* Columns are only ever appended, so every column a reader finds by name
+     keeps its place - including for anyone reading these files by position.
+     The window-edge flags went on after 'spacecraft', and the magnitude
+     estimate the naked-eye verdict rests on after them. */
+  chk('the clip flags follow the columns before them, and the magnitude estimate closes the row',
+      idx('aos_clipped') === idx('spacecraft') + 1
+      && h.slice(-3).join(',') === 'aos_clipped,los_clipped,est_magnitude', h.slice(-4).join(','));
   const clipBad = expected.clip.findIndex((c, i) =>
     rows[i+1][idx('aos_clipped')] + ',' + rows[i+1][idx('los_clipped')] !== c);
   chk('...and agree with the page, pass by pass', clipBad === -1,
       clipBad === -1 ? expected.clip.join(' ') : 'pass ' + (clipBad + 1));
+
+  /* The verdict is one of four words now, not a bare yes, and it is only as
+     good as the number under it - so both go out, and both have to agree. */
+  const EYE = ['yes', 'penumbra only', 'too faint', 'radio only'];
+  const eyeBad = expected.eye.findIndex((e, i) =>
+    rows[i+1][idx('naked_eye')] !== e || EYE.indexOf(e) < 0);
+  chk('the naked-eye verdict is one of the four, and matches the page', eyeBad === -1,
+      eyeBad === -1 ? EYE.map(e => e + ' ' + expected.eye.filter(x => x === e).length).join(', ')
+                    : 'pass ' + (eyeBad + 1) + ': ' + rows[eyeBad+1][idx('naked_eye')]);
+  const magBad = expected.mag.findIndex((m, i) => {
+    const v = rows[i+1][idx('est_magnitude')];
+    return m === null ? v !== '' : Math.abs(parseFloat(v) - m) > 0.005;
+  });
+  const yesBad = expected.eye.findIndex((e, i) =>
+    e === 'yes' && !(parseFloat(rows[i+1][idx('est_magnitude')]) <= expected.lim));
+  chk('...with the magnitude estimate beside it, and no yes fainter than the limit',
+      magBad === -1 && yesBad === -1,
+      magBad !== -1 ? 'pass ' + (magBad + 1) + ' magnitude differs'
+        : yesBad !== -1 ? 'pass ' + (yesBad + 1) + ' is yes at ' + rows[yesBad+1][idx('est_magnitude')]
+        : expected.mag.filter(m => m !== null).length + ' of ' + expected.n + ' passes carry one');
 
   /* Values, not just shape: the AOS in the file has to be the AOS on the page. */
   let worstT = 0, worstEl = 0;
@@ -216,6 +241,20 @@ function parseCSV(text) {
   chk('the description carries the numbers worth having',
       /Minimum range/.test(unfolded) && /Naked eye/.test(unfolded)
       && /Element set epoch/.test(unfolded));
+  /* The summary used to end "— visible" whenever the spacecraft was lit against
+     a dark sky, at any range. It now says "naked eye" with the estimate, on
+     exactly the passes the page calls yes, and the description gives the
+     standard magnitude the estimate was scaled from on every pass that has one. */
+  const sums = evs.map(e => (e.match(/SUMMARY:([^\r\n]*)/) || [])[1] || '');
+  const sumBad = sums.findIndex((s, i) =>
+    /naked eye \(est\. mag -?\d+\.\d\)/.test(s) !== (expected.eye[i] === 'yes') || /visible/.test(s));
+  const descBad = evs.findIndex((e, i) => (expected.mag[i] !== null)
+    !== /Estimated magnitude -?\d+\.\d.*standard magnitude of -?\d+\.\d/.test(e));
+  chk('the summary says naked eye, with the estimate, on the yes passes and no others',
+      sumBad === -1 && descBad === -1,
+      sumBad !== -1 ? 'event ' + (sumBad + 1) + ': ' + sums[sumBad]
+        : descBad !== -1 ? 'event ' + (descBad + 1) + ' description'
+        : expected.eye.filter(e => e === 'yes').length + ' naked-eye event(s) of ' + expected.n);
 
   const uids = (unfolded.match(/UID:(\S+)/g) || []);
   chk('every event has a unique UID, so a re-import updates rather than duplicates',
@@ -242,10 +281,21 @@ function parseCSV(text) {
   console.log('\n  a window-edge pass: ' + geo.name);
   if (geo.clip.length === 1 && geo.clip[0][0] && geo.clip[0][1]) {
     const gc = parseCSV((await grab('exp-csv')).text);
+    const gcol = n => gc[1][gc[0].indexOf(n)];
     chk('a pass up for the whole window is flagged at both ends in the CSV',
-        gc[1][gc[0].indexOf('aos_clipped')] === 'true' && gc[1][gc[0].indexOf('los_clipped')] === 'true',
-        gc[1].slice(-2).join(','));
+        gcol('aos_clipped') === 'true' && gcol('los_clipped') === 'true',
+        gcol('aos_clipped') + ',' + gcol('los_clipped'));
+    /* The finding's own case: 37,000 km away, lit against Bangkok's night sky,
+       and exported as naked_eye=yes and "— visible". From that range it would
+       take something brighter than the Chinese space station to reach +6. */
+    const gm = parseFloat(gcol('est_magnitude'));
+    chk('...and is not exported as naked-eye visible from 37,000 km',
+        gcol('naked_eye') !== 'yes' && (gcol('est_magnitude') === '' || gm > 6),
+        'naked_eye=' + gcol('naked_eye') + ', est_magnitude=' + gcol('est_magnitude'));
     const gi = (await grab('exp-ics')).text.replace(/\r\n[ \t]/g, '');
+    chk('...in the calendar either', !/SUMMARY:.*(visible|naked eye)/.test(gi)
+        && /Naked eye: (too faint|radio only)/.test(gi),
+        (gi.match(/Naked eye: [a-z ]+/) || ['no verdict'])[0]);
     chk('...and in the calendar, by property and in words',
         /X-GT-CLIPPED:AOS,LOS/.test(gi) && /DTSTART is the window start/.test(gi)
         && /DTEND is the window end/.test(gi) && /SUMMARY:.*window-clipped/.test(gi));
@@ -254,6 +304,48 @@ function parseCSV(text) {
   } else {
     chk('INTELSAT 36 loads as one pass clipped at both ends', false, JSON.stringify(geo));
   }
+
+  /* And the other side: a spacecraft that IS visible, so the "naked eye"
+     summary and the estimate beside it are written at all. The default
+     spacecraft's 24 hours from now rarely has such a pass, so this pins a week
+     that does - HST from 2026-09-15, on its published standard magnitude. */
+  await page.evaluate(() => {
+    const box = document.getElementById('satsearch');
+    box.value = 'HST';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const o = [...document.querySelectorAll('#satlist [role=option]')]
+      .find(li => /^HST$/.test((li.querySelector('.nm') || li).textContent.trim()));
+    if (o) o.click();
+    const w = document.getElementById('winStartIn');
+    w.value = '2026-09-15T00:00';
+    w.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(2500);
+  await page.click('.bar-window .span[data-h="168"]');
+  await page.waitForTimeout(3000);
+  const hst = await page.evaluate(() => {
+    const r = __gt.passRows();
+    return { name: __gt.D.entry.name, n: r.length, eye: r.map(x => x.eye), mag: r.map(x => x.mag) };
+  });
+  const yesN = hst.eye.filter(e => e === 'yes').length;
+  console.log('\n  a visible spacecraft: ' + hst.name + ', ' + hst.n + ' passes, ' + yesN + ' naked-eye');
+  const hc = parseCSV((await grab('exp-csv')).text);
+  const hcol = (i, n) => hc[i+1][hc[0].indexOf(n)];
+  const hBad = hst.eye.findIndex((e, i) => hcol(i, 'naked_eye') !== e
+    || (e === 'yes' && !(parseFloat(hcol(i, 'est_magnitude')) <= 6)));
+  chk('its naked-eye passes are exported as yes, each within the limit',
+      hst.name === 'HST' && yesN > 0 && hBad === -1,
+      hBad === -1 ? yesN + ' of ' + hst.n + ', brightest est. mag '
+        + Math.min(...hst.mag.filter(m => m !== null)).toFixed(1) : 'pass ' + (hBad + 1));
+  const hi = (await grab('exp-ics')).text.replace(/\r\n[ \t]/g, '');
+  const hs = (hi.match(/SUMMARY:[^\r\n]*/g) || []);
+  chk('...and their calendar events say naked eye, with the estimate and its source',
+      hs.filter(s => /naked eye \(est\. mag -?\d+\.\d\)/.test(s)).length === yesN
+      && /standard magnitude of 2\.2 \(Heavens-Above\)/.test(hi),
+      (hs.find(s => /naked eye/.test(s)) || 'none').replace(/^SUMMARY:/, ''));
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

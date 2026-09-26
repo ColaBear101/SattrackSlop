@@ -7722,9 +7722,12 @@ window.__gt = {
   compute, elements, findPasses, sample, sampleMs, stateAt, elevationAt,
   rangeRateMs, dopplerHz, C_KMS, passRows,
   sunEci, subsolar, sunElevation, sunlitState, opticalAt, passOptical,
-  /* a const declared further down the file, so it has to be deferred the way
+  estMagnitude, viewGeometry, stdMagOf,
+  /* consts declared further down the file, so they have to be deferred the way
      D and CAT are - the object literal itself is evaluated up here. */
   get DARK_SUN_EL(){ return DARK_SUN_EL; },
+  get STD_MAG(){ return STD_MAG; },
+  get NAKED_EYE_MAG(){ return NAKED_EYE_MAG; },
   stepFor, passStepFor, OBS, MASK, RE, MU, tzAt, applySite,
   get D(){ return D; },
   get CAT(){ return CAT; }
@@ -8201,32 +8204,139 @@ function sunlitState(rEci, date){
    reads against it; the often-quoted -18 deg is astronomical twilight, which is
    what a telescope wants, not an eye looking for a moving point. */
 const DARK_SUN_EL = -6;
+
+/* ---- and is it bright enough? --------------------------------------------
+ * Lit against a dark sky is geometry, and geometry is not enough. It said
+ * "naked eye: yes" for CLUSTER II-FM8 at 124,000 km and INTELSAT 36 at 37,000.
+ * An object fades by 5 log10(range) magnitudes - ten between 1,000 km and
+ * 100,000 km - and from GEO range it would take something brighter than the
+ * Chinese space station to reach the eye's +6.
+ *
+ * So the verdict carries an estimated magnitude, in the usual convention: a
+ * STANDARD magnitude is what the object would show at 1,000 km with the Sun 90
+ * deg away as seen from it (half its face lit), and the estimate scales that by
+ * range and by the phase function of a diffusely reflecting sphere,
+ *   F(phase) = (pi - phase) cos(phase) + sin(phase),
+ * normalised to 1 at 90 deg: pi (1.24 mag brighter) face-on to the Sun, falling
+ * to nothing as the object comes between observer and Sun.
+ *
+ * The standard magnitude is the weak term. A TLE carries no size, and this
+ * catalogue carries nothing else, so an object gets 5.0 - an intact satellite
+ * a few metres across - unless it is one of the few whose figure is published
+ * and watched enough to be worth looking up. The assumption is printed beside
+ * the estimate, because it is often wrong by several magnitudes: a CubeSat is
+ * that much fainter, a binocular object at best, and a large platform that much
+ * brighter. What the estimate does get right is the range and phase
+ * dependence, which is what separates a LEO pass at dusk from a GEO slot at
+ * midnight. +6 is the eye's limit under a genuinely dark sky; from a city, or
+ * in twilight, it is two or three magnitudes brighter, so "yes" is the best
+ * case and the number is printed beside it for a reader to hold against their
+ * own sky.                                                                   */
+const STD_MAG = 5.0;
+const NAKED_EYE_MAG = 6;
+/* The looked-up few: Heavens-Above's published "intrinsic brightness", which
+   is quoted in exactly this convention (1,000 km, 50% illuminated), read
+   2026-09. Keyed by NORAD number. Without them the uniform 5.0 called the ISS
+   too faint on a low pass at 1,800 km, where it is still around magnitude 0.
+   The three CSS entries share one element set because they are one docked
+   station, so they share its figure. */
+const STD_MAG_KNOWN = {
+  '25544': -1.8,                               // ISS (ZARYA)
+  '20580':  2.2,                               // HST
+  '48274':  0.0, '53239': 0.0, '54216': 0.0    // CSS: Tianhe, Wentian, Mengtian
+};
+function stdMagOf(track){
+  const id = track.entry && track.entry.satnum;
+  return Object.prototype.hasOwnProperty.call(STD_MAG_KNOWN, id)
+    ? { mag: STD_MAG_KNOWN[id], known: true } : { mag: STD_MAG, known: false };
+}
+function estMagnitude(rngKm, phase, stdMag){
+  const f = (Math.PI - phase)*Math.cos(phase) + Math.sin(phase);
+  // f reaches 0 only with the unlit face turned squarely to the observer
+  return f > 0 ? stdMag + 5*Math.log10(rngKm/1000) - 2.5*Math.log10(f) : Infinity;
+}
+/* Range and phase angle - the angle at the spacecraft between the observer and
+   the Sun. Taken in the body-fixed frame, where the site is a constant vector:
+   the Sun goes through the same rotation as the spacecraft (a rotation is
+   linear, so its position rotates like any other), and the range is then the
+   same subtraction ecfToLookAngles does. The Sun is placed at its own distance
+   rather than at infinity: it costs nothing, and at the 124,000 km this
+   catalogue reaches the difference is already 0.05 deg. */
+function viewGeometry(track, s){
+  const b = track.body;
+  if(!b.siteFixed) return null;                  // a body with no surface sites
+  const rf = b.toFixed(s.r, s.theta), sf = b.siteFixed(OBS);
+  const S = sunEci(s.t), k = S.distKm;
+  const sun = b.toFixed({ x: S.x*k, y: S.y*k, z: S.z*k }, s.theta);
+  const ox = sf.x - rf.x, oy = sf.y - rf.y, oz = sf.z - rf.z;   // to the observer
+  const qx = sun.x - rf.x, qy = sun.y - rf.y, qz = sun.z - rf.z; // to the Sun
+  const rng = Math.hypot(ox, oy, oz);
+  const c = (ox*qx + oy*qy + oz*qz)/(rng*Math.hypot(qx, qy, qz));
+  return { rng, phase: Math.acos(Math.max(-1, Math.min(1, c))) };
+}
+/* `visible` is the naked-eye test in full: fully sunlit, dark sky, and bright
+   enough. Penumbra is left out of it deliberately - the object is dimmed there
+   by an amount this does not model, so its estimate is only a ceiling - and is
+   reported on its own instead. The magnitude is given wherever any sunlight
+   reaches the spacecraft, penumbra included, undimmed. */
 function opticalAt(track, ms){
-  const st = track.at(ms);
-  if(!st) return null;
-  const d = new Date(ms);
-  const lit = sunlitState(st.r, d);
-  const sunEl = sunElevation(OBS, d);
-  return { lit, sunEl, visible: lit !== 'umbra' && sunEl < DARK_SUN_EL };
+  const s = fix(track, ms);
+  if(!s) return null;
+  const lit = sunlitState(s.r, s.t);
+  const sunEl = sunElevation(OBS, s.t);
+  const dark = sunEl < DARK_SUN_EL;
+  const g = lit === 'umbra' ? null : viewGeometry(track, s);
+  const mag = g ? estMagnitude(g.rng, g.phase, stdMagOf(track).mag) : null;
+  return { lit, sunEl, dark, rng: g ? g.rng : null, phase: g ? g.phase : null, mag,
+           visible: lit === 'sun' && dark && mag !== null && mag <= NAKED_EYE_MAG };
 }
 /* Scan the pass rather than testing one instant: a pass can begin in shadow and
    climb into sunlight, which is exactly the terminator-crossing case worth
-   catching. 60 samples puts the resolution near 7 s on a typical LEO pass. */
+   catching. 60 samples puts the resolution near 7 s on a typical LEO pass.
+
+   The verdict, `eye`, is one of four, in this order:
+     'yes'            fully sunlit against a dark sky at +6 or brighter
+     'penumbra only'  bright enough only while partly shadowed, by an amount
+                      not modelled - so possibly, and not promised
+     'too faint'      lit against a dark sky, and fainter than +6 throughout
+     'radio only'     never lit while the site is dark
+   `peak` is the brightest estimate behind it: among the fully sunlit samples
+   for a yes, otherwise the brightest lit-against-dark sample of either kind;
+   `std` is the standard magnitude it was scaled from, and where that came from. */
 function passOptical(track, p){
   const t0 = p.aos.getTime(), t1 = p.los.getTime();
-  let lit = 0, dark = 0, both = 0, n = 0, first = null, last = null;
+  let lit = 0, dark = 0, both = 0, geo = 0, pen = 0, n = 0, first = null, last = null;
+  let bestSun = null, bestPen = null;
   for(let k = 0; k <= 60; k++){
-    const o = opticalAt(track, t0 + (t1-t0)*k/60);
+    const ms = t0 + (t1-t0)*k/60;
+    const o = opticalAt(track, ms);
     if(!o) continue;
     n++;
     if(o.lit !== 'umbra') lit++;
-    if(o.sunEl < DARK_SUN_EL) dark++;
-    if(o.visible){ both++; if(first === null) first = t0 + (t1-t0)*k/60; last = t0 + (t1-t0)*k/60; }
+    if(o.dark) dark++;
+    if(o.dark && o.lit !== 'umbra'){
+      const pn = o.lit === 'penumbra';
+      if(pn) pen++; else geo++;
+      const best = pn ? bestPen : bestSun;
+      if(Number.isFinite(o.mag) && (!best || o.mag < best.mag)){
+        const b = { mag: o.mag, rng: o.rng, phase: o.phase, ms, pen: pn };
+        if(pn) bestPen = b; else bestSun = b;
+      }
+    }
+    if(o.visible){ both++; if(first === null) first = ms; last = ms; }
   }
   if(!n) return null;
   const mid = opticalAt(track, (t0+t1)/2);
-  return { n, lit, dark, both, first, last,
-           frac: both/n, sunEl: mid ? mid.sunEl : null, litAtMid: mid ? mid.lit : null };
+  const eye = both ? 'yes'
+    : bestPen && bestPen.mag <= NAKED_EYE_MAG ? 'penumbra only'
+    : geo || pen ? 'too faint'
+    : 'radio only';
+  const peak = both ? bestSun
+    : bestSun && bestPen ? (bestPen.mag < bestSun.mag ? bestPen : bestSun)
+    : bestSun || bestPen;
+  return { n, lit, dark, both, geo, pen, first, last, eye, peak, std: stdMagOf(track),
+           frac: both/n, penFrac: pen/n,
+           sunEl: mid ? mid.sunEl : null, litAtMid: mid ? mid.lit : null };
 }
 // Day/night: the terminator is the locus where the sun sits on the horizon.
 // Both hemispheres are painted — darkening alone is invisible on a black ocean,
@@ -8705,22 +8815,40 @@ function paintDop(){
   });
 }
 /* Naked-eye visibility, said plainly. A pass that is radio-only is the normal
-   case and should not read like a failure. */
+   case and should not read like a failure.
+
+   The magnitude goes on screen with the standard magnitude it came from, and
+   says whether that was looked up or assumed (see STD_MAG). "mag 3.1" printed
+   bare would claim a precision it does not have; printed with its source, a
+   reader who knows the object can correct it in their head. The row is long
+   for the narrow rail, so each figure is bound to its unit with a no-break
+   space and the line wraps between phrases, not inside "std mag / 5.0". */
+const magStr = v => (v <= -0.05 ? '\u2212' : '') + Math.abs(v).toFixed(1);
+const nobreak = s => s.replace(/ /g, '\u00a0');
+const magText = pk => nobreak('mag ' + magStr(pk.mag)) + (pk.pen ? ' or fainter' : '')
+  + ' at ' + nobreak(pk.rng.toFixed(0) + ' km')
+  + ', ' + nobreak('phase ' + (pk.phase*DEG).toFixed(0) + '\u00b0');
 function opticalRows(p){
   const o = passOptical(D.track, p);
   if(!o) return [];
-  const why = o.both ? null
-    : o.lit === 0 ? 'spacecraft in eclipse'
+  const pct = f => Math.round(100*f) + '%';
+  const why = o.lit === 0 ? 'spacecraft in eclipse'
     : o.dark === 0 ? 'daylight at the site'
     : 'not lit and dark together';
-  const v = o.both
-    ? 'yes \u2014 ' + Math.round(100*o.frac) + '% of the pass'
+  const v = o.eye === 'yes'
+      ? 'yes \u2014 ' + pct(o.frac) + ' of the pass'
+        + (o.pen ? ', ' + pct(o.penFrac) + ' more in penumbra' : '')
+    : o.eye === 'penumbra only' ? 'penumbra only \u2014 partly shadowed at its brightest'
+    : o.eye === 'too faint'
+      ? 'too faint \u2014 lit against a dark sky, but fainter than mag ' + NAKED_EYE_MAG
     : 'radio only \u2014 ' + why;
-  return [['Naked eye', v],
-          ['Sun at site', o.sunEl.toFixed(1) + '\u00b0'
+  return [['Naked eye', v]]
+    .concat(o.peak ? [['Brightness', magText(o.peak) + '\u00a0·  '
+      + nobreak('std mag ' + magStr(o.std.mag) + (o.std.known ? ', Heavens-Above' : ' assumed'))]] : [])
+    .concat([['Sun at site', o.sunEl.toFixed(1) + '\u00b0'
             + (o.litAtMid === 'sun' ? '  ·  spacecraft sunlit'
              : o.litAtMid === 'penumbra' ? '  ·  spacecraft in penumbra'
-             : '  ·  spacecraft eclipsed')]];
+             : '  ·  spacecraft eclipsed')]]);
 }
 
 /* Doppler at the three instants that matter, and the total swing - which is what
@@ -8821,7 +8949,9 @@ function passRows(){
       dopA: f ? dopplerHz(f, rrA)/1000 : null,
       dopL: f ? dopplerHz(f, rrL)/1000 : null,
       freqMHz: f ? f/1e6 : null,
-      eye: o ? (o.both ? 'yes' : 'radio only') : '',
+      eye: o ? o.eye : '',
+      mag: o && o.peak ? o.peak.mag : null, magPen: !!(o && o.peak && o.peak.pen),
+      std: o ? o.std : null,
       sunEl: o ? o.sunEl : null, lit: o ? o.litAtMid : '',
       clipA: !!p.clipA, clipL: !!p.clipL
     });
@@ -8838,13 +8968,17 @@ function exportCSV(){
     /* A window-edge AOS or LOS is not a horizon crossing, and in the file it was
        indistinguishable from one. Last, so every column a reader already finds
        by name stays where it was. */
-    'aos_clipped','los_clipped'];
+    'aos_clipped','los_clipped',
+    /* The estimate naked_eye now rests on - brightest while lit against a dark
+       sky, before any penumbral dimming, from the standard magnitude, published
+       or assumed. After the clip flags for the same reason they went last. */
+    'est_magnitude'];
   const num = (v, d) => v === null || v === undefined ? '' : v.toFixed(d);
   const body = rows.map(r => [r.n, r.sat, r.norad, r.site, r.lat, r.lon,
     isoZ(r.aos), isoZ(r.los), r.dur.toFixed(3), num(r.maxEl,3), isoZ(r.maxAt),
     num(r.maxAz,1), num(r.aosAz,1), num(r.losAz,1), num(r.minRng,1),
     num(r.rrA,6), num(r.rrL,6), num(r.freqMHz,3), num(r.dopA,3), num(r.dopL,3),
-    r.eye, num(r.sunEl,1), r.lit, r.clipA, r.clipL].map(csvEscape).join(','));
+    r.eye, num(r.sunEl,1), r.lit, r.clipA, r.clipL, num(r.mag,2)].map(csvEscape).join(','));
   /* A leading comment line would break every CSV reader, so the provenance goes
      in the filename instead - which is the one piece of metadata that survives
      being opened in a spreadsheet and saved again. */
@@ -8901,6 +9035,13 @@ function exportICS(){
       r.freqMHz ? 'Doppler ' + r.dopA.toFixed(2) + ' to ' + r.dopL.toFixed(2)
         + ' kHz at ' + r.freqMHz.toFixed(3) + ' MHz' : null,
       'Naked eye: ' + r.eye + ' (sun ' + r.sunEl.toFixed(0) + ' deg, spacecraft ' + r.lit + ')',
+      /* The number the verdict rests on, and the assumption under it. Without
+         both, a calendar entry reading "yes" would promise what the page is
+         careful not to. */
+      r.mag !== null ? 'Estimated magnitude ' + r.mag.toFixed(1) + (r.magPen ? ' or fainter' : '')
+        + ' at best, from ' + (r.std.known ? 'a standard magnitude of ' + r.std.mag.toFixed(1)
+          + ' (Heavens-Above)' : 'an assumed standard magnitude of ' + r.std.mag.toFixed(1))
+        + '; naked-eye limit ' + NAKED_EYE_MAG.toFixed(1) : null,
       'Site ' + r.site + ' ' + latStr(r.lat) + ' ' + lonStr(r.lon),
       'Element set epoch ' + iso(D.E.epoch)
     /* Escaped per LINE, not after the join. RFC 5545 section 3.3.11 makes
@@ -8922,7 +9063,7 @@ function exportICS(){
       .filter(Boolean).join(','));
     L.push(
       fold('SUMMARY:' + esc(r.sat + ' \u2014 ' + r.maxEl.toFixed(0) + '\u00b0 '
-        + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 visible' : '')
+        + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 naked eye (est. mag ' + r.mag.toFixed(1) + ')' : '')
         + (clipped ? ' \u2014 window-clipped' : ''))),
       fold('DESCRIPTION:' + desc),
       fold('LOCATION:' + esc(r.site)),

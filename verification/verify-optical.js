@@ -1,5 +1,6 @@
 /*
- * Naked-eye visibility: is the spacecraft sunlit, and is the ground dark?
+ * Naked-eye visibility: is the spacecraft sunlit, is the ground dark, and is
+ * it bright enough?
  *
  * A pass in this program has always meant RADIO visibility - geometry above a
  * 5 deg mask, day or night. Seeing one needs two more conditions that pull in
@@ -19,6 +20,22 @@
  *    lit almost continuously - the same code has to produce both.
  *  - Solar elevation is checked against the sub-solar point directly: the Sun
  *    must be overhead at its own sub-point, 90 deg, wherever that lands.
+ *
+ * And then brightness, because lit against a dark sky is not the same as
+ * visible. The page said "naked eye: yes" for CLUSTER II-FM8 at 124,000 km and
+ * INTELSAT 36 at 37,000; the verdict now carries an estimated magnitude.
+ *
+ *  - The magnitude model is held to its own convention: the standard magnitude
+ *    comes back exactly at 1,000 km and 90 deg phase, doubling the range costs
+ *    5 log10 2, and full phase gains 2.5 log10 pi.
+ *  - Range and phase angle are recomputed by a different route - the range
+ *    from the look angles, the phase in the inertial frame with the site
+ *    turned back out of the fixed one - so a Sun left unrotated shows up.
+ *  - The objects the finding named are never "yes" over a week, and are lit
+ *    against a dark sky while they are not, so the check is not vacuous.
+ *  - A LEO object does come out "yes": a gate that refused everything would
+ *    pass the check above.
+ *  - Penumbra never counts towards "yes", and does occur in the sample.
  *
  *   node verification/verify-optical.js
  */
@@ -136,8 +153,75 @@ const chk = (name, ok, detail) => {
     out.passes = gt.D.passes.map(p => {
       const o = gt.passOptical(gt.D.track, p);
       return { aos: p.aos.toISOString().substr(11, 8), maxEl: p.maxEl,
-               sunEl: o.sunEl, lit: o.litAtMid, frac: o.frac, both: o.both };
+               sunEl: o.sunEl, lit: o.litAtMid, frac: o.frac, both: o.both,
+               eye: o.eye, mag: o.peak ? o.peak.mag : null };
     });
+
+    /* 8. The magnitude model against its own convention. */
+    const S0 = gt.STD_MAG;
+    out.conv = {
+      std: gt.estMagnitude(1000, Math.PI/2, S0) - S0,
+      dbl: gt.estMagnitude(2000, Math.PI/2, S0) - gt.estMagnitude(1000, Math.PI/2, S0),
+      full: gt.estMagnitude(1000, 0, S0) - S0,
+      back: gt.estMagnitude(1000, Math.PI, S0),
+      lim: gt.NAKED_EYE_MAG, S0
+    };
+
+    /* 9. Range and phase by a second route. The page takes both in the fixed
+          frame; here the range comes from the look angles (stateAt) and the
+          phase from the inertial frame, with the site rotated back out of the
+          fixed one by hand. Samples every 20 s across a week of passes. */
+    const week = 7*24;
+    const knackD = gt.compute(gt.CAT.find(c => c.name === 'KNACKSAT-2'), T, week);
+    let worstRng = 0, worstPh = 0, nGeom = 0;
+    for (const p of knackD.passes) {
+      for (let ms = p.aos.getTime(); ms <= p.los.getTime(); ms += 20000) {
+        const o = gt.opticalAt(knackD.track, ms);
+        if (!o || o.rng === null) continue;
+        const st = gt.stateAt(knackD.track, ms);
+        worstRng = Math.max(worstRng, Math.abs(o.rng - st.rng));
+        const b = knackD.track.body, d = new Date(ms), th = b.spin(d);
+        const sf = b.siteFixed(gt.OBS), c = Math.cos(th), s = Math.sin(th);
+        const obs = { x: sf.x*c - sf.y*s, y: sf.x*s + sf.y*c, z: sf.z };   // fixed -> inertial
+        const r = knackD.track.at(ms).r, Sd = gt.sunEci(d), k = Sd.distKm;
+        const ox = obs.x - r.x, oy = obs.y - r.y, oz = obs.z - r.z;
+        const qx = Sd.x*k - r.x, qy = Sd.y*k - r.y, qz = Sd.z*k - r.z;
+        const ph = Math.acos((ox*qx + oy*qy + oz*qz)/(Math.hypot(ox, oy, oz)*Math.hypot(qx, qy, qz)));
+        worstPh = Math.max(worstPh, Math.abs(o.phase - ph));
+        nGeom++;
+      }
+    }
+    out.geom = { worstRng, worstPh, n: nGeom };
+
+    /* 10-12. A week of verdicts for the objects the finding named, and for two
+          LEO objects that should come out visible at least once: HST on its
+          published standard magnitude, NOAA 15 on the assumed one. (The ISS
+          has no dark-sky pass over Bangkok this particular week.) */
+    const verdicts = name => {
+      const e = gt.CAT.find(c => c.name === name);
+      const Dx = gt.compute(e, T, week);
+      let penBad = 0, penSeen = 0;
+      const ps = Dx.passes.map(p => {
+        const o = gt.passOptical(Dx.track, p);
+        /* every sample the page counts as naked-eye visible must be fully
+           sunlit - re-derived here sample by sample, not read off the counts */
+        const t0 = p.aos.getTime(), t1 = p.los.getTime();
+        for (let k = 0; k <= 60; k++) {
+          const s = gt.opticalAt(Dx.track, t0 + (t1-t0)*k/60);
+          if (!s) continue;
+          if (s.visible && s.lit !== 'sun') penBad++;
+          if (s.dark && s.lit === 'penumbra') penSeen++;
+        }
+        return { eye: o.eye, both: o.both, geo: o.geo, pen: o.pen,
+                 mag: o.peak ? o.peak.mag : null, pk: !!(o.peak && o.peak.pen),
+                 rng: o.peak ? o.peak.rng : null };
+      });
+      return { name, n: ps.length, ps, penBad, penSeen, std: gt.stdMagOf(Dx.track) };
+    };
+    out.far = ['INTELSAT 36 (IS-36)', 'MERIDIAN 10', 'CLUSTER II-FM8'].map(verdicts);
+    out.near = ['HST', 'NOAA 15'].map(verdicts);
+    out.stds = ['HST', 'ISS (ZARYA)', 'CSS (TIANHE-1)', 'KNACKSAT-2'].map(name =>
+      Object.assign({ name }, gt.stdMagOf({ entry: gt.CAT.find(c => c.name === name) })));
     out.RE = RE;
     return out;
   });
@@ -193,7 +277,75 @@ const chk = (name, ok, detail) => {
     console.log('   AOS ' + p.aos + '  maxEl ' + p.maxEl.toFixed(1).padStart(5)
       + '   sun at site ' + p.sunEl.toFixed(1).padStart(6) + ' deg'
       + '   spacecraft ' + p.lit.padEnd(8)
-      + '  -> ' + (p.both ? 'naked eye ' + Math.round(100*p.frac) + '%' : 'radio only'));
+      + '  -> ' + (p.both ? 'naked eye ' + Math.round(100*p.frac) + '%' : p.eye)
+      + (p.mag !== null ? ', mag ' + p.mag.toFixed(1) : ''));
+
+  // ---- brightness ---------------------------------------------------------
+  const c = r.conv;
+  console.log('\n  magnitude model: standard ' + c.S0.toFixed(1) + ' assumed, naked-eye limit ' + c.lim);
+  chk('the standard magnitude comes back at 1000 km and 90 deg phase',
+      Math.abs(c.std) < 1e-12, 'residual ' + c.std.toExponential(1));
+  chk('...doubling the range costs 5 log10 2',
+      Math.abs(c.dbl - 5*Math.log10(2)) < 1e-12, c.dbl.toFixed(4) + ' mag');
+  chk('...full phase gains 2.5 log10 pi',
+      Math.abs(c.full + 2.5*Math.log10(Math.PI)) < 1e-12, c.full.toFixed(4) + ' mag');
+  chk('...and a spacecraft backlit square-on is far out of sight',
+      !(c.back <= c.lim + 20), 'mag ' + (isFinite(c.back) ? c.back.toFixed(1) : c.back));
+
+  const g = r.geom;
+  chk('range agrees with the look angles', g.n > 100 && g.worstRng < 1e-6,
+      'worst ' + g.worstRng.toExponential(2) + ' km over ' + g.n + ' samples');
+  /* 1e-7 rad, not 1e-12: acos near 0 and pi amplifies the last bits of the dot
+     product the same way asin does for the solar elevation above. */
+  chk('...and the phase angle with an inertial-frame recomputation', g.n > 100 && g.worstPh < 1e-7,
+      'worst ' + g.worstPh.toExponential(2) + ' rad');
+
+  const tally = v => { const o = {}; v.ps.forEach(p => { o[p.eye] = (o[p.eye] || 0) + 1; }); return o; };
+  console.log('\n  a week of verdicts from 2026-09-15');
+  for (const v of r.far.concat(r.near)) {
+    const best = v.ps.filter(p => p.mag !== null).sort((a, b) => a.mag - b.mag)[0];
+    console.log('   ' + v.name.padEnd(20) + ' std ' + v.std.mag.toFixed(1).padStart(4)
+      + (v.std.known ? ' (published)' : ' (assumed) ')
+      + '  ' + JSON.stringify(tally(v))
+      + (best ? '   brightest ' + best.mag.toFixed(1) + ' at ' + best.rng.toFixed(0) + ' km' : ''));
+  }
+  for (const v of r.far) {
+    const litDark = v.ps.filter(p => p.geo + p.pen > 0);
+    const yes = v.ps.filter(p => p.eye === 'yes');
+    const mags = litDark.filter(p => p.mag !== null).map(p => p.mag);
+    chk(v.name + ' is never called naked-eye visible',
+        v.n > 0 && yes.length === 0 && litDark.length > 0,
+        litDark.length + ' of ' + v.n + ' passes lit against a dark sky, brightest est. mag '
+        + (mags.length ? Math.min(...mags).toFixed(1) : '-'));
+  }
+  chk('...and each of those passes says too faint, above the limit',
+      r.far.every(v => v.ps.every(p => p.geo + p.pen === 0
+        || (p.eye === 'too faint' && p.mag > c.lim))));
+
+  for (const v of r.near)
+    chk(v.name + ' still comes out naked-eye visible on some pass',
+        v.ps.some(p => p.eye === 'yes'), JSON.stringify(tally(v)));
+  /* The same object both ways is the point of a range term: NOAA 15 is the
+     same spacecraft on every pass, and only range and phase separate them. */
+  const noaa = r.near[1];
+  chk('...and too faint on others, which only range and phase can decide',
+      noaa.ps.some(p => p.eye === 'too faint') && noaa.ps.some(p => p.eye === 'yes'),
+      noaa.name + ' ' + JSON.stringify(tally(noaa)));
+  const std = n => r.stds.find(s => s.name === n);
+  chk('the published standard magnitudes are the ones used, and 5.0 otherwise',
+      std('HST').known && std('HST').mag === 2.2 && std('ISS (ZARYA)').known
+      && std('ISS (ZARYA)').mag === -1.8 && std('CSS (TIANHE-1)').known
+      && !std('KNACKSAT-2').known && std('KNACKSAT-2').mag === c.S0,
+      r.stds.map(s => s.name + ' ' + s.mag + (s.known ? '' : ' assumed')).join(', '));
+
+  const all = r.far.concat(r.near), allP = [].concat(...all.map(v => v.ps));
+  chk('a verdict of yes always rests on a fully sunlit estimate within the limit',
+      allP.every(p => p.eye !== 'yes' || (p.mag <= c.lim && !p.pk && p.both <= p.geo)));
+  chk('penumbra never counts towards naked-eye visible',
+      all.every(v => v.penBad === 0), all.reduce((s, v) => s + v.penBad, 0) + ' penumbral samples counted');
+  chk('...and was there to be excluded',
+      all.reduce((s, v) => s + v.penSeen, 0) > 0,
+      all.reduce((s, v) => s + v.penSeen, 0) + ' penumbral samples against a dark sky');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

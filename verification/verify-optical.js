@@ -36,6 +36,10 @@
  *  - A LEO object does come out "yes": a gate that refused everything would
  *    pass the check above.
  *  - Penumbra never counts towards "yes", and does occur in the sample.
+ *  - A station's published figure reaches every catalogue entry on its
+ *    element set - modules and docked vehicles, each under its own number -
+ *    and nothing else; the pairing survives a refresh that moves one of them
+ *    a day on, and the entries of one station agree pass by pass.
  *
  *   node verification/verify-optical.js
  */
@@ -222,6 +226,60 @@ const chk = (name, ok, detail) => {
     out.near = ['HST', 'NOAA 15'].map(verdicts);
     out.stds = ['HST', 'ISS (ZARYA)', 'CSS (TIANHE-1)', 'KNACKSAT-2'].map(name =>
       Object.assign({ name }, gt.stdMagOf({ entry: gt.CAT.find(c => c.name === name) })));
+
+    /* 13. A station is several catalogue entries: its modules and the vehicles
+           docked to it, each under its own number and all published on the
+           station's own element set. Keyed by number, ISS (NAUKA) - the entry
+           a search for "ISS" loads - got the assumed 5.0 and read "too faint"
+           on a pass where ISS (ZARYA) read "yes". Which entries share a set is
+           re-derived here from the parsed elements rather than the page's
+           column test: the same epoch, and each element within one unit of
+           the TLE's last printed digit. */
+    const ulp = { inc: 1e-4, raan: 1e-4, ecc: 1e-7, argp: 1e-4, ma: 1e-4, n: 1e-8 };
+    const hosts = ['ISS (ZARYA)', 'HST', 'CSS (TIANHE-1)'].map(n => gt.CAT.find(c => c.name === n));
+    const onSet = (c, h) => {
+      const a = gt.elements(c.l1, c.l2), b = gt.elements(h.l1, h.l2);
+      return a.epoch.getTime() === b.epoch.getTime()
+        && Object.keys(ulp).every(k => Math.abs(a[k] - b[k]) <= 1.5*ulp[k]);
+    };
+    out.docked = gt.CAT.map(c => {
+      const h = hosts.find(h => h !== c && onSet(c, h));
+      const s = gt.stdMagOf({ entry: c });
+      return { name: c.name, host: h ? h.name : null, mag: s.mag, known: s.known, via: s.via };
+    }).filter(x => x.host || x.known);
+
+    /* 14. ...and stays paired through a live refresh, which replaces the set of
+           the one entry on screen and leaves the station's copy as it was.
+           Stood in for by moving CREW DRAGON 12's epoch a day on, so that its
+           set no longer matches the station's and only the snapshot's pairing
+           can carry it. And the converse: an entry that was on no station's
+           set in the snapshot, handed the ISS's set under its own number, is
+           picked up from the sets as they stand. Both put back afterwards. */
+    const swap = (name, l1, l2, fn) => {
+      const e = gt.CAT.find(c => c.name === name), keep = { l1: e.l1, l2: e.l2 };
+      try { e.l1 = l1(e); e.l2 = l2(e); return fn(e); }
+      finally { e.l1 = keep.l1; e.l2 = keep.l2; }
+    };
+    const iss = hosts[0], num = (l, e) => l.substring(0, 2) + e.satnum.padStart(5) + l.substring(7);
+    out.refresh = {
+      moved: swap('CREW DRAGON 12', e => e.l1.substring(0, 20) + '256' + e.l1.substring(23), e => e.l2,
+        e => Object.assign({ epoch: e.l1.substring(18, 32) }, gt.stdMagOf({ entry: e }))),
+      joined: swap('NOAA 15', e => num(iss.l1, e), e => num(iss.l2, e),
+        e => Object.assign({ satnum: e.l2.substring(2, 7) }, gt.stdMagOf({ entry: e }))),
+      after: ['CREW DRAGON 12', 'NOAA 15'].map(n => gt.stdMagOf({ entry: gt.CAT.find(c => c.name === n) }))
+    };
+
+    /* 15. The same station, the same verdict: every entry on the ISS set and
+           on Tianhe's over the day the finding's pass fell in, 2026-09-29. */
+    const T2 = Date.UTC(2026, 8, 29, 12, 0, 0);
+    out.groups = hosts.filter(h => h.name !== 'HST').map(h =>
+      [h.name].concat(out.docked.filter(d => d.host === h.name).map(d => d.name)).map(name => {
+        const Dx = gt.compute(gt.CAT.find(c => c.name === name), T2, 24);
+        return { name, ps: Dx.passes.map(p => {
+          const o = gt.passOptical(Dx.track, p);
+          return { aos: p.aos.getTime(), eye: o.eye, mag: o.peak ? o.peak.mag : null };
+        }) };
+      }));
     out.RE = RE;
     return out;
   });
@@ -337,6 +395,48 @@ const chk = (name, ok, detail) => {
       && std('ISS (ZARYA)').mag === -1.8 && std('CSS (TIANHE-1)').known
       && !std('KNACKSAT-2').known && std('KNACKSAT-2').mag === c.S0,
       r.stds.map(s => s.name + ' ' + s.mag + (s.known ? '' : ' assumed')).join(', '));
+
+  console.log('\n  entries on a station\'s element set');
+  const hostMag = { 'ISS (ZARYA)': -1.8, 'HST': 2.2, 'CSS (TIANHE-1)': 0.0 };
+  for (const d of r.docked)
+    console.log('   ' + d.name.padEnd(22) + (d.host ? 'on ' + d.host + '\'s set' : 'published').padEnd(26)
+      + ' std ' + d.mag.toFixed(1).padStart(4) + (d.via ? '  via ' + d.via : ''));
+  const onIt = r.docked.filter(d => d.host);
+  chk('every entry on a station\'s element set takes the station\'s published figure',
+      onIt.length >= 9 && onIt.every(d => d.known && d.mag === hostMag[d.host] && d.via === d.host),
+      onIt.length + ' entries: ' + onIt.map(d => d.name).join(', '));
+  const nauka = r.docked.find(d => d.name === 'ISS (NAUKA)');
+  chk('...ISS (NAUKA), which a search for "ISS" loads, among them at -1.8',
+      !!nauka && nauka.mag === -1.8 && nauka.via === 'ISS (ZARYA)',
+      nauka ? 'std ' + nauka.mag + ' via ' + nauka.via : 'not paired');
+  chk('...and no entry off those sets takes a figure but the three it was published for',
+      r.docked.every(d => d.host || (d.name in hostMag && d.via === null)),
+      r.docked.filter(d => !d.host).map(d => d.name).join(', '));
+  const rf = r.refresh;
+  chk('a docked vehicle keeps the figure when a refresh moves its set off the station\'s',
+      rf.moved.epoch !== '26255.20788499' && rf.moved.mag === -1.8 && rf.moved.via === 'ISS (ZARYA)',
+      'epoch ' + rf.moved.epoch + ': std ' + rf.moved.mag + ' via ' + rf.moved.via);
+  chk('...and an entry handed the station\'s set after the snapshot takes it up',
+      rf.joined.satnum === '25338' && rf.joined.mag === -1.8 && rf.joined.via === 'ISS (ZARYA)',
+      'NORAD ' + rf.joined.satnum + ': std ' + rf.joined.mag + ' via ' + rf.joined.via);
+  chk('...both put back as they were',
+      rf.after[0].via === 'ISS (ZARYA)' && !rf.after[1].known && rf.after[1].mag === c.S0);
+  let gBad = null, gYes = 0, gN = 0;
+  for (const g of r.groups) {
+    const ref = g[0];
+    gYes += ref.ps.filter(p => p.eye === 'yes').length; gN += ref.ps.length;
+    for (const o of g.slice(1)) {
+      const i = ref.ps.findIndex((p, k) => !o.ps[k] || o.ps[k].eye !== p.eye
+        || Math.abs(o.ps[k].aos - p.aos) > 1000
+        || (p.mag === null) !== (o.ps[k].mag === null) || Math.abs(o.ps[k].mag - p.mag) > 0.05);
+      if ((i !== -1 || o.ps.length !== ref.ps.length) && !gBad)
+        gBad = o.name + ' against ' + ref.name + ', pass ' + (i + 1);
+    }
+  }
+  chk('the entries of one station agree pass by pass, verdict and estimate',
+      !gBad && gYes > 0,
+      gBad || r.groups.map(g => g.length + ' entries on ' + g[0].name).join(', ')
+        + '; ' + gYes + ' naked-eye of ' + gN + ' passes on 2026-09-29');
 
   const all = r.far.concat(r.near), allP = [].concat(...all.map(v => v.ps));
   chk('a verdict of yes always rests on a fully sunlit estimate within the limit',

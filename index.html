@@ -8335,19 +8335,67 @@ const STD_MAG = 5.0;
 const NAKED_EYE_MAG = 6;
 /* The looked-up few: Heavens-Above's published "intrinsic brightness", which
    is quoted in exactly this convention (1,000 km, 50% illuminated), read
-   2026-09. Keyed by NORAD number. Without them the uniform 5.0 called the ISS
-   too faint on a low pass at 1,800 km, where it is still around magnitude 0.
-   The three CSS entries share one element set because they are one docked
-   station, so they share its figure. */
+   2026-09. Keyed by the NORAD number Heavens-Above lists each under. Without
+   them the uniform 5.0 called the ISS too faint on a low pass at 1,800 km,
+   where it is still around magnitude 0. */
 const STD_MAG_KNOWN = {
   '25544': -1.8,                               // ISS (ZARYA)
   '20580':  2.2,                               // HST
-  '48274':  0.0, '53239': 0.0, '54216': 0.0    // CSS: Tianhe, Wentian, Mengtian
+  '48274':  0.0                                // CSS (TIANHE-1)
 };
+/* A station is not one catalogue entry. Every module and every visiting
+   vehicle keeps its own NORAD number, and while it is attached 18 SDS
+   publishes it on the station's own element set: in this catalogue ISS
+   (NAUKA), POISK, CREW DRAGON 12, CYGNUS NG-24 and PROGRESS-MS 34 fly the ISS
+   set, and CSS (WENTIAN), CSS (MENGTIAN), SHENZHOU-23 and TIANZHOU-10 fly
+   Tianhe's. In the sky each group is one object, so each member takes the
+   station's figure. Looked up by number, all but the two CSS modules listed
+   beside Tianhe got 5.0, and ISS (NAUKA) - the entry a search for "ISS"
+   loads - read "too faint", mag 6.2, on the pass where ISS (ZARYA) read "yes"
+   at -0.5.
+
+   So the figure goes by element set. The same set is the same epoch and the
+   same six elements, each to within one in its last printed digit: the copies
+   are not byte-identical (POISK and the three vehicles carry the ISS
+   eccentricity as 0004952, against ZARYA's 0004953), and the revolution count,
+   like the number, is each object's own bookkeeping.
+
+   The test is made twice: on the sets as they stand, and on the embedded
+   snapshot, where every set was fetched together. The second is what survives
+   a live refresh, which replaces the set of the entry on screen and no other:
+   CREW DRAGON 12 refreshed to this week's set no longer matches the ISS's
+   snapshot copy - not because it has left, but because the two sets are of
+   different days. The price is that a vehicle which has undocked since the
+   snapshot still takes the station's figure. Telling a departure from a
+   refresh would take a current copy of the station's set as well, and the
+   page fetches only the entry on screen; the source printed beside the
+   estimate names the station, so the assumption is at least in view. */
+const tleDigits = (l, i, j) => +l.substring(i, j).replace('.', '');  // in units of the last digit
+function sameElementSet(a, b){
+  if(!a.l1 || !b.l1 || a.l1.substring(18, 32) !== b.l1.substring(18, 32)) return false;  // epoch
+  // inclination, RAAN, eccentricity, argument of perigee, mean anomaly, mean motion
+  return [[8, 16], [17, 25], [26, 33], [34, 42], [43, 51], [52, 63]]
+    .every(([i, j]) => Math.abs(tleDigits(a.l2, i, j) - tleDigits(b.l2, i, j)) <= 1);
+}
+const STD_MAG_HOSTS = Object.keys(STD_MAG_KNOWN)
+  .map(id => CAT.find(c => c.satnum === id)).filter(Boolean);
+/* Paired here, while every set is still the embedded one: refreshTLE()
+   replaces a set only after an await, so never before this script has run.
+   Keyed by the entry object, which a refresh updates in place. */
+const DOCKED_AT_SNAPSHOT = new Map();
+for(const c of CAT){
+  if(Object.prototype.hasOwnProperty.call(STD_MAG_KNOWN, c.satnum)) continue;
+  const h = STD_MAG_HOSTS.find(h => sameElementSet(c, h));
+  if(h) DOCKED_AT_SNAPSHOT.set(c, h);
+}
+/* `via` names the station whose figure a docked entry has taken, or is null. */
 function stdMagOf(track){
-  const id = track.entry && track.entry.satnum;
-  return Object.prototype.hasOwnProperty.call(STD_MAG_KNOWN, id)
-    ? { mag: STD_MAG_KNOWN[id], known: true } : { mag: STD_MAG, known: false };
+  const e = track.entry || {};
+  if(Object.prototype.hasOwnProperty.call(STD_MAG_KNOWN, e.satnum))
+    return { mag: STD_MAG_KNOWN[e.satnum], known: true, via: null };
+  const h = STD_MAG_HOSTS.find(h => sameElementSet(e, h)) || DOCKED_AT_SNAPSHOT.get(e);
+  return h ? { mag: STD_MAG_KNOWN[h.satnum], known: true, via: h.name }
+           : { mag: STD_MAG, known: false, via: null };
 }
 function estMagnitude(rngKm, phase, stdMag){
   const f = (Math.PI - phase)*Math.cos(phase) + Math.sin(phase);
@@ -8931,7 +8979,8 @@ function paintDop(){
    case and should not read like a failure.
 
    The magnitude goes on screen with the standard magnitude it came from, and
-   says whether that was looked up or assumed (see STD_MAG). "mag 3.1" printed
+   says whether that was looked up or assumed (see STD_MAG) - and, for a module
+   or vehicle docked to a station, whose figure it took. "mag 3.1" printed
    bare would claim a precision it does not have; printed with its source, a
    reader who knows the object can correct it in their head. The row is long
    for the narrow rail, so each figure is bound to its unit with a no-break
@@ -8957,11 +9006,16 @@ function opticalRows(p){
     : 'radio only \u2014 ' + why;
   return [['Naked eye', v]]
     .concat(o.peak ? [['Brightness', magText(o.peak) + '\u00a0·  '
-      + nobreak('std mag ' + magStr(o.std.mag) + (o.std.known ? ', Heavens-Above' : ' assumed'))]] : [])
-    .concat([['Sun at site', o.sunEl.toFixed(1) + '\u00b0'
-            + (o.litAtMid === 'sun' ? '  ·  spacecraft sunlit'
-             : o.litAtMid === 'penumbra' ? '  ·  spacecraft in penumbra'
-             : '  ·  spacecraft eclipsed')]]);
+      + nobreak('std mag ' + magStr(o.std.mag) + (o.std.known ? ', Heavens-Above' : ' assumed'))
+      + (o.std.via ? '\u00a0·  ' + nobreak('docked to ' + o.std.via) : '')]] : [])
+    /* Both figures here are the mid-pass ones, and the row says so. It was
+       "Sun at site", and its unqualified "spacecraft eclipsed" read as a
+       contradiction of the "yes" above it, on a pass lit against the dark
+       only before or after its middle. */
+    .concat([['At mid-pass', nobreak('sun ' + o.sunEl.toFixed(1) + '\u00b0') + '  ·  '
+            + nobreak(o.litAtMid === 'sun' ? 'spacecraft sunlit'
+             : o.litAtMid === 'penumbra' ? 'spacecraft in penumbra'
+             : 'spacecraft eclipsed')]]);
 }
 
 /* Doppler at the three instants that matter, and the total swing - which is what
@@ -9180,13 +9234,16 @@ function exportICS(){
       'Minimum range ' + r.minRng.toFixed(0) + ' km',
       r.freqMHz ? 'Doppler ' + r.dopA.toFixed(2) + ' to ' + r.dopL.toFixed(2)
         + ' kHz at ' + r.freqMHz.toFixed(3) + ' MHz' : null,
-      'Naked eye: ' + r.eye + ' (sun ' + r.sunEl.toFixed(0) + ' deg, spacecraft ' + r.lit + ')',
+      // both figures are the mid-pass ones, as in the page's At mid-pass row
+      'Naked eye: ' + r.eye + ' (mid-pass: sun ' + r.sunEl.toFixed(0) + ' deg, spacecraft ' + r.lit + ')',
       /* The number the verdict rests on, and the assumption under it. Without
          both, a calendar entry reading "yes" would promise what the page is
          careful not to. */
-      r.mag !== null ? 'Estimated magnitude ' + r.mag.toFixed(1) + (r.magPen ? ' or fainter' : '')
-        + ' at best, from ' + (r.std.known ? 'a standard magnitude of ' + r.std.mag.toFixed(1)
-          + ' (Heavens-Above)' : 'an assumed standard magnitude of ' + r.std.mag.toFixed(1))
+      r.mag !== null ? 'Estimated magnitude ' + r.mag.toFixed(1) + ' at best'
+        + (r.magPen ? ' (in penumbra, so fainter by an amount not modelled)' : '')
+        + ', from ' + (r.std.known ? 'a standard magnitude of ' + r.std.mag.toFixed(1)
+          + ' (Heavens-Above' + (r.std.via ? ', for ' + r.std.via + ', to which it is docked' : '') + ')'
+          : 'an assumed standard magnitude of ' + r.std.mag.toFixed(1))
         + '; naked-eye limit ' + NAKED_EYE_MAG.toFixed(1) : null,
       'Site ' + r.site + ' ' + latStr(r.lat) + ' ' + lonStr(r.lon),
       'Element set epoch ' + iso(D.E.epoch)

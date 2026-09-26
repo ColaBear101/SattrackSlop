@@ -391,6 +391,44 @@ function parseCSV(text) {
       && /standard magnitude of 2\.2 \(Heavens-Above\)/.test(hi),
       (hs.find(s => /naked eye/.test(s)) || 'none').replace(/^SUMMARY:/, ''));
 
+  /* A docked module, loaded the way a reader most often would: "ISS" and
+     Enter, which takes the first match - ISS (NAUKA), not ISS (ZARYA). With
+     the published figure looked up by number alone, it fell back to the
+     assumed 5.0 and was exported "too faint" for the evening pass of
+     2026-09-29 (12:30Z) that ISS (ZARYA) was exported "yes" for. */
+  await page.fill('#satsearch', 'ISS');
+  await page.waitForTimeout(600);
+  await page.press('#satsearch', 'Enter');
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => {
+    const w = document.getElementById('winStartIn');
+    w.value = '2026-09-29T12:00';                   // the observer's time: 05:00Z
+    w.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(2500);
+  await page.click('.bar-window .span[data-h="24"]');
+  await page.waitForTimeout(2500);
+  const dock = await page.evaluate(() => {
+    const r = __gt.passRows();
+    const i = r.findIndex(x => x.aos.toISOString().startsWith('2026-09-29T12:3'));
+    return { name: __gt.D.entry.name, i, n: r.length,
+             eye: i >= 0 ? r[i].eye : null, mag: i >= 0 ? r[i].mag : null };
+  });
+  console.log('\n  a docked module: ' + dock.name + ', ' + dock.n + ' passes');
+  const dc = parseCSV((await grab('exp-csv')).text);
+  const dEv = ((await grab('exp-ics')).text.replace(/\r\n[ \t]/g, '')
+    .split('BEGIN:VEVENT').slice(1))[dock.i] || '';
+  chk('a docked module is exported on its station\'s figure: yes for ISS (NAUKA) at 12:30Z',
+      dock.name === 'ISS (NAUKA)' && dock.i >= 0 && dock.eye === 'yes'
+      && dc[dock.i + 1][dc[0].indexOf('naked_eye')] === 'yes'
+      && parseFloat(dc[dock.i + 1][dc[0].indexOf('est_magnitude')]) <= 6,
+      dock.i >= 0 ? 'naked_eye=' + dc[dock.i + 1][dc[0].indexOf('naked_eye')]
+        + ', est_magnitude=' + dc[dock.i + 1][dc[0].indexOf('est_magnitude')] : 'no 12:30Z pass');
+  chk('...and its calendar event says naked eye, and whose figure it took',
+      /SUMMARY:.*naked eye \(est\. mag -?\d+\.\d\)/.test(dEv)
+      && /standard magnitude of -1\.8 \(Heavens-Above\\, for ISS \(ZARYA\)\\, to which it is docked\)/.test(dEv),
+      ((dEv.match(/standard magnitude of [^;]*/) || ['no estimate'])[0]).replace(/\\/g, ''));
+
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));
   await browser.close();

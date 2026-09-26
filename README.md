@@ -1023,14 +1023,37 @@ else. **Yes** means fully sunlit, the Sun below −6° at the site, and magnitud
 **The standard magnitude is the weak term.** A TLE carries no size and the catalogue carries
 nothing else, so an object gets **5.0** — an intact satellite a few metres across — unless its
 figure is published. Heavens-Above quotes an "intrinsic brightness" in exactly this convention, and
-the page uses it for the ISS (**−1.8**), HST (**2.2**) and the Chinese station (**0.0**, for each of
-its three catalogue entries, which share one element set). Before those went in, 5.0 called the ISS
-too faint on a low pass at 1,800 km, where it is around magnitude 0.
+the page uses it for the ISS (**−1.8**), HST (**2.2**) and the Chinese station (**0.0**). Before
+those went in, 5.0 called the ISS too faint on a low pass at 1,800 km, where it is around
+magnitude 0. Only the convention is shared, not the phase law: Heavens-Above's own "maximum
+brightness" figures (−5.6, −1.1 and −4.1, at perigee and fully lit) imply, taking the range as the
+perigee height, a gain of 1.7 to 2.0 magnitudes from half lit to fully lit, where the diffuse sphere
+gives 1.24. Near full phase the estimate here is the fainter of the two, by about half a magnitude.
+
+A station is more than one catalogue entry. Each module and each visiting vehicle keeps its own
+NORAD number, and while attached is published on the station's own element set: in this catalogue
+ISS (NAUKA), POISK, CREW DRAGON 12, CYGNUS NG-24 and PROGRESS-MS 34 are on the ISS's, and CSS
+(WENTIAN), CSS (MENGTIAN), SHENZHOU-23 and TIANZHOU-10 on Tianhe's. Looked up by number, all but the
+other two CSS modules got 5.0 — and ISS (NAUKA), which is what typing "ISS" and pressing Enter
+loads, read **too faint** at magnitude 6.2 on the 2026-09-29 12:30Z pass that ISS (ZARYA) called
+**yes** at −0.5. The figure now goes by element set. An entry with the same epoch and the same six
+elements as a station's, each to within one unit in its last printed digit, is that station: the
+copies are close but not byte-identical (POISK and the three vehicles carry the ISS eccentricity as
+0004952 against ZARYA's 0004953), and the revolution count is each object's own.
+
+The comparison is made on the sets as they stand and again on the embedded snapshot, where every
+set was fetched together. The second is what survives a live refresh, which replaces the set of the
+spacecraft on screen and no other: a docked Dragon refreshed to this week's set no longer matches
+the station's snapshot copy, because the two are of different days, not because it has left. The
+cost is the opposite case. A vehicle that has undocked since the snapshot keeps the station's
+figure, since telling a departure from a refresh would need a current copy of the station's set as
+well, and the page fetches only the spacecraft on screen.
 
 The assumption can be wrong by several magnitudes either way, which is why it is printed beside
-every estimate — "std mag 5.0 assumed", or "std mag −1.8, Heavens-Above". KNACKSAT-2 is itself a
-CubeSat, several magnitudes fainter than 5.0 and a binocular object at best, so its "yes" passes are
-optimistic, and the label is the only thing on screen that says so.
+every estimate — "std mag 5.0 assumed", "std mag −1.8, Heavens-Above", or for a docked entry
+"std mag −1.8, Heavens-Above · docked to ISS (ZARYA)". KNACKSAT-2 is itself a CubeSat, several
+magnitudes fainter than 5.0 and a binocular object at best, so its "yes" passes are optimistic, and
+the label is the only thing on screen that says so.
 
 What the estimate does get right is the dependence on range and phase, and that is what separates
 the cases above. Over the week from 2026-09-15, as `verification/verify-optical.js` computes it:
@@ -1058,6 +1081,10 @@ and a calendar summary that ends "— naked eye (est. mag 3.1)" on yes passes an
 +6 is the eye's limit under a genuinely dark sky. From a city, or in the civil twilight that the −6°
 cut admits, the practical limit is two or three magnitudes brighter — so yes is the best case, and
 the number is printed for a reader to hold against their own sky.
+
+The row below the estimate gives the Sun's elevation and the spacecraft's illumination at mid-pass,
+and is labelled **At mid-pass** to say so. It was "Sun at site", and read "spacecraft eclipsed"
+directly under a yes whenever the lit stretch of the pass fell before or after its middle.
 
 ### The shadow is a cone
 

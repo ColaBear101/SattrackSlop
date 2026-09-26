@@ -8266,8 +8266,11 @@ function renderElements(){
      node-to-node time is the period shown, and for a near-equatorial GEO
      object it is not: ASTRA 2G's first node-to-node interval from its epoch
      is 724 min, about half a revolution. A swing sampled over half an orbit is
-     not set against 2ae over a whole one as if the two were comparable. */
-  const spanRevs = E.period/E.periodShown, oneRev = Math.abs(spanRevs - 1) < 0.01;
+     not set against 2ae over a whole one as if the two were comparable.
+     Whether it is one revolution is judged on the fraction the note under the
+     derived values prints, so the two cannot disagree: at |f - 1| < 0.01 the
+     e card said "over a revolution" beside a note printing 1.01. */
+  const spanRevs = E.period/E.periodShown, oneRev = spanRevs.toFixed(2) === '1.00';
   const over = oneRev ? 'over a revolution'
     : 'over the '+(E.period/60).toFixed(0)+' min sampled ('+spanRevs.toFixed(2)+' of a revolution)';
   // an angle in [0, 360) at dp places - 359.998 must print as 0.00, not 360.00
@@ -8295,10 +8298,19 @@ function renderElements(){
      the same samples rather than assumed. The orbit plane bounds GEOCENTRIC
      latitude, and the map is geodetic, which runs higher: 0.18 deg at 51.6 deg
      and 370 km, next to nothing at GEO. And the plane is not tilted at the
-     mean i, which is SGP4's average: its periodic terms put the real plane
-     0.02 deg off at LEO, 1 deg off for MMS 1, and for a GEO object at a few
-     hundredths of a degree off by nearly the whole inclination (ASTRA 2G's
-     plane sat at 0.001 deg against a mean 0.024). */
+     mean i - which is the mean AT THE EPOCH - for two reasons. SGP4's periodic
+     terms, which a mean element averages out, put it 0.02 deg off at LEO and
+     about 1 deg off for MMS 1; at its epoch ASTRA 2G's plane sat at 0.001 deg
+     against a mean 0.024. And in deep space SGP4 moves the mean inclination
+     itself at a steady rate under the Moon's and Sun's pull (inclm = inclo +
+     didt t), which near the equator soon outweighs the periodic terms: GOES
+     18's mean went from 0.035 deg at its epoch to 0.007 deg 14.9 days on,
+     where its plane peaked at 0.008. This card used to credit that whole gap
+     to periodic terms. So where SGP4 drifts the mean, the mean in force when
+     the track peaks is worked out from SGP4's own rate, and the periodic terms
+     get only what is left. For an arc, the plane's tilt is geocentric and the
+     arc's top geodetic, and both are labelled so: QZS-1R's arc at 6 h can top
+     the tilt by the geodetic offset alone. */
   const reach = () => {
     const fold = x => Math.min(90, x > 90 ? 180 - x : x);
     const lim = fold(E.inc), iName = E.inc > 90 ? '180° − i' : 'i';
@@ -8306,31 +8318,57 @@ function renderElements(){
     const deg = x => x.toFixed(dp)+'°';
     const body = D.track.body, e2 = body.flattening*(2 - body.flattening);
     let ml = 0, mc = 0;                   // geodetic and geocentric, same samples
+    let tPeak = D.start.getTime();        // when the geocentric one peaks
     for(const p of D.pts){
       const b = Math.abs(p.lat)*RAD, s = Math.sin(b), c = Math.cos(b);
       const Nv = body.Re/Math.sqrt(1 - e2*s*s);
       const g = Math.atan2((Nv*(1 - e2) + p.alt)*s, (Nv + p.alt)*c)*DEG;
       if(Math.abs(p.lat) > ml) ml = Math.abs(p.lat);
-      if(g > mc) mc = g;
+      if(g > mc){ mc = g; tPeak = p.t.getTime(); }
     }
     const revs = D.hours*3600/E.periodShown;
     if(revs < 1){
-      const o = osculating(D.track, D.start.getTime());
-      return 'Over a whole revolution the track would reach about ±'+deg(o ? fold(o.inc) : lim)+' latitude, '+
-        (o ? 'the orbit plane\'s osculating tilt at the window start' : 'the mean '+iName)+'. This '+
-        spanLabel(D.hours)+' window holds '+revs.toFixed(2)+' of a revolution ('+(E.periodShown/3600).toFixed(1)+
-        ' h), and the track drawn in it gets to ±'+deg(ml)+'.';
+      /* A period a few minutes over the window's length printed "holds 1.00 of
+         a revolution (24.0 h)" in a 24 h window and was then treated as an
+         arc; it is said as what it is. */
+      const o = osculating(D.track, D.start.getTime()), tilt = o ? fold(o.inc) : lim;
+      return 'Over a whole revolution the track would reach about ±'+deg(tilt)+
+        (o ? ' geocentric latitude, the orbit plane\'s osculating tilt at the window start'
+           : ' latitude, the mean '+iName)+'. This '+spanLabel(D.hours)+' window '+
+        (revs.toFixed(2) === '1.00'
+          ? 'is just short of one revolution ('+(E.periodShown/60).toFixed(1)+' min)'
+          : 'holds '+revs.toFixed(2)+' of a revolution ('+(E.periodShown/3600).toFixed(1)+' h)')+
+        ', and the track drawn in it gets to ±'+deg(ml)+' geodetic'+
+        // judged on the printed figures, so that the sentence agrees with itself
+        (deg(mc) !== deg(ml) ? ', ±'+deg(mc)+' geocentric' : '')+
+        // geocentric latitude never exceeds the tilt of the plane at that instant
+        (o && +mc.toFixed(dp) > +tilt.toFixed(dp) ? ', so the plane tilts further as the window runs' : '')+'.';
     }
-    const why = [];
-    if(Math.abs(mc - lim) >= tol)
-      why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim)+
-        ' — a mean inclination averages out SGP4\'s periodic terms'+(E.deepSpace ? ', the Moon\'s and Sun\'s among them' : ''));
+    const why = [], more = [];
+    if(Math.abs(mc - lim) >= tol){
+      const sr = D.track.raw;
+      const days = (tPeak - E.epoch.getTime())/86400000;
+      const mNow = sr && sr.method === 'd' && isFinite(sr.didt) && isFinite(sr.inclo)
+        ? fold(Math.abs(sr.inclo + sr.didt*days*1440)*DEG) : lim;
+      if(Math.abs(mNow - lim) < tol)
+        why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim)+
+          ' — a mean inclination averages out SGP4\'s periodic terms'+(E.deepSpace ? ', the Moon\'s and Sun\'s among them' : ''));
+      else {
+        const gap = mc - mNow;
+        why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim));
+        more.push('That i is the mean at the epoch, and SGP4 moves the mean inclination at a steady rate under the Moon\'s and Sun\'s pull: '+
+          'where the track peaks, '+Math.abs(days).toFixed(1)+' days '+(days < 0 ? 'before' : 'after')+' the epoch, it is '+deg(mNow)+
+          (Math.abs(gap) >= tol
+            ? ', and SGP4\'s periodic terms put the plane '+Math.abs(gap).toFixed(dp)+'° '+(gap > 0 ? 'above' : 'below')+' that.'
+            : ', so that drift is the whole of the difference.'));
+      }
+    }
     if(ml - mc >= tol)
       why.push('the plane bounds geocentric latitude, and geodetic runs '+(ml - mc).toFixed(Math.max(2, dp))+'° higher');
-    const d = ml - lim;
+    const d = ml - lim, said = Math.abs(d) >= tol && why.length > 0;
     return 'Ground track reaches ±'+deg(ml)+' geodetic latitude'+
-      (Math.abs(d) < tol || !why.length ? '.'
-        : ', '+Math.abs(d).toFixed(dp)+'° '+(d > 0 ? 'past ' : 'short of ')+iName+': '+why.join('; ')+'.');
+      (said ? ', '+Math.abs(d).toFixed(dp)+'° '+(d > 0 ? 'past ' : 'short of ')+iName+': '+why.join('; ')+'.' : '.')+
+      (said && more.length ? ' '+more.join(' ') : '');
   };
   const dA = E.aNaive - E.a;
   const cells = [

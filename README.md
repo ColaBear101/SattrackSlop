@@ -201,13 +201,22 @@ almost vertically.
 
 The inclination card reads that reach off the drawn track and gives each reason it differs from i,
 both measured on the same samples: geodetic against geocentric latitude, 0.18° here, and the actual
-plane against the mean i, 0.02° here. The second is SGP4's periodic terms, which a mean element
-averages out. It is about 1° for MMS 1, and for a GEO object at a few hundredths of a degree it is
-nearly the whole inclination: ASTRA 2G's plane sits at 0.001° against a mean 0.024°. The card reads
-the track only when the window holds a whole revolution. MMS 1's period is 85 h, so a 24 h window
-holds about a quarter of one, and the arc in it reached ±11.5° in the case that found this. For
-such a window the card gives the plane's osculating tilt at the window start, about ±74°, and says
-how far the arc got.
+plane against the mean i, 0.02° here. At LEO the second is SGP4's periodic terms, which a mean
+element averages out. In deep space there is more to it. The i in the element set is the mean
+inclination *at the epoch*, and SGP4 moves the mean inclination itself at a steady rate under the
+Moon's and Sun's pull, so a fortnight later the mean in force is a different number — and near the
+equator that drift can be most of the inclination. In a 24 h window from 2026-09-27 00:00 UTC,
+GOES 18's plane peaks at 0.008° against the element set's 0.035°. At that instant, 14.9 days after
+the epoch, SGP4's own mean inclination is 0.007°, and the periodic terms put the plane 0.001°
+above it. ASTRA 2G in the same window goes the other way: its mean has risen to 0.029°, and the
+periodic terms hold the plane at 0.002°. At its epoch there is no drift yet, and its plane sits at
+0.001° against a mean 0.024°. So the card works out the mean in force where the track peaks from
+SGP4's own rate, and credits the periodic terms only with the rest: for MMS 1 over a week from the
+same date, 0.9° of periodic terms on 0.1° of drift. The card reads the track only when the window
+holds a whole revolution. MMS 1's period is 85 h, so a 24 h window holds about a quarter of one,
+and the arc in it reached ±11.5° in the case that found this. For such a window the card gives the
+plane's osculating tilt at the window start, about ±74° — a geocentric figure, as the plane's bound
+is — and says how far the arc got, in geodetic latitude like the map.
 
 ## (c) Visibility from Bangkok (13.75°N, 100.52°E, 5° mask)
 

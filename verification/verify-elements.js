@@ -26,7 +26,10 @@
  * drawn track overshoots, a scan step that was the drawing step. The first fix
  * of the latitude limit then read it off whatever track the window held, which
  * for MMS 1 - an 85 h orbit in a 24 h window - printed ±11.5 deg for an orbit
- * inclined at 73. Those are checked against figures worked out here, in node.
+ * inclined at 73; the next put a GEO plane's whole departure from the epoch's
+ * mean i down to periodic terms, when most of it two weeks on was SGP4's
+ * steady drift of the mean inclination itself. Those are checked against
+ * figures worked out here, in node.
  *
  * Served over http, because a file:// page has an opaque origin and this suite
  * has been bitten by that before.
@@ -392,18 +395,19 @@ const clipped = m => m.tags.filter(t =>
   const val = (pairs, label) => { const p = pairs.find(x => x[0] === label); return p ? parseFloat(p[1]) : NaN; };
   /* Highest geodetic and geocentric latitude over the window's own sample
      instants, worked out by satellite.js: its geodetic conversion, not the
-     page's, and asin(z/r), which no rotation about the pole changes. */
+     page's, and asin(z/r), which no rotation about the pole changes. tc is
+     the instant the geocentric one peaks. */
   const trackReach = pn => {
     const rec = sat.twoline2satrec(pn.l1, pn.l2), N = Math.round(pn.hours*3600/pn.step);
-    let gd = 0, gc = 0;
+    let gd = 0, gc = 0, tc = pn.start;
     for(let k = 0; k <= N; k++){
       const t = new Date(pn.start + k*pn.step*1000), pv = sat.propagate(rec, t);
       if(!pv || !pv.position) continue;
-      const p = pv.position;
+      const p = pv.position, g = Math.abs(Math.asin(p.z/Math.hypot(p.x, p.y, p.z)))*180/Math.PI;
       gd = Math.max(gd, Math.abs(sat.eciToGeodetic(p, sat.gstime(t)).latitude)*180/Math.PI);
-      gc = Math.max(gc, Math.abs(Math.asin(p.z/Math.hypot(p.x, p.y, p.z)))*180/Math.PI);
+      if(g > gc){ gc = g; tc = t.getTime(); }
     }
-    return { gd, gc };
+    return { gd, gc, tc };
   };
   // the tilt of the osculating plane at one instant, from h = r x v
   const tiltAt = (pn, ms) => {
@@ -499,8 +503,10 @@ const clipped = m => m.tags.filter(t =>
         got + ' min (2π/n″ = ' + kep.toFixed(3) + '; node to node measured ' + (pn.period/60).toFixed(1) + ')');
     /* The apsis search still runs over that node-to-node time, and the
        panel has to say how long it was instead of calling it a revolution. */
-    const frac = pn.period/60/kep, one = Math.abs(frac - 1) < 0.01;
+    const frac = pn.period/60/kep;
     const dm = pn.dnote.match(/one node-to-node interval: ([\d.]+) min, ([\d.]+) of a revolution/);
+    // the e card calls the span a revolution exactly when the note prints 1.00
+    const one = !!dm && dm[2] === '1.00';
     chk('...and says the altitudes were sampled over one node-to-node interval, and what fraction of an orbit that is',
         !!dm && Math.abs(+dm[1] - pn.period/60) < 0.051 && Math.abs(+dm[2] - frac) < 0.0051
           && (one ? /over a revolution/.test(pn.notes[1])
@@ -516,6 +522,26 @@ const clipped = m => m.tags.filter(t =>
         !!m && Math.abs(+m[1] - R.gd) < 0.00051 && (!needs || !!t) && (!t || Math.abs(+t[1] - R.gc) < 0.00051),
         (m ? '±' + m[1] + '° (mine ' + R.gd.toFixed(4) + ')' : 'no reach') + ', tilt ' + (t ? t[1] : '-') +
           '° (mine ' + R.gc.toFixed(4) + ') against i = ' + pn.inc + '°');
+    /* The i on the card is the mean AT THE EPOCH, and in deep space SGP4
+       moves the mean inclination itself at a steady rate (inclm = inclo +
+       didt t). In the default window, a fortnight or more from the snapshot's
+       epoch, that drift and not any periodic term is most of the gap, and the
+       card used to credit periodic terms with all of it. SGP4's mean
+       inclination at the instant the track peaks is read here from
+       satellite.js's own meanElements, not from didt as the page takes it. */
+    const mi = Math.abs(sat.propagate(sat.twoline2satrec(pn.l1, pn.l2), new Date(R.tc)).meanElements.im)*180/Math.PI;
+    const days = (R.tc - pn.epoch)/86400000, gap = R.gc - mi, drifted = Math.abs(mi - pn.inc) >= 0.0006;
+    const dr = pn.notes[2].match(/where the track peaks, ([\d.]+) days (after|before) the epoch, it is ([\d.]+)°(?:, and SGP4's periodic terms put the plane ([\d.]+)° (above|below) that)?/);
+    // clear of the half-unit boundary, where the page and this could round apart
+    chk('...and splits that gap into SGP4\'s drift of the mean inclination since the epoch and its periodic terms',
+        !drifted ? /averages out SGP4's periodic terms/.test(pn.notes[2])
+          : !!dr && !/averages out/.test(pn.notes[2]) && Math.abs(+dr[3] - mi) < 0.00051
+            && Math.abs((dr[2] === 'before' ? -dr[1] : +dr[1]) - days) < 0.051
+            && (Math.abs(gap) < 0.0004 ? !dr[4]
+                : Math.abs(gap) > 0.0006 ? !!dr[4] && Math.abs(+dr[4] - Math.abs(gap)) < 0.00051 && dr[5] === (gap > 0 ? 'above' : 'below')
+                : true),
+        'mean i at the peak, ' + days.toFixed(2) + ' d from the epoch: ' + mi.toFixed(4) + '° (TLE ' + pn.inc +
+          '°), plane ' + R.gc.toFixed(4) + '°; card: ' + (dr ? dr[0] : pn.notes[2]));
     chk('...and its RAAN note says the node is barely defined',
         /barely defined/.test(pn.notes[3]), pn.notes[3]);
   }
@@ -527,12 +553,32 @@ const clipped = m => m.tags.filter(t =>
   pn = await panel();
   {
     const tilt = tiltAt(pn, pn.start), R = trackReach(pn), n = +pn.l2.slice(52, 63);
-    const m = pn.notes[2].match(/whole revolution the track would reach about ±([\d.]+)°.*?holds ([\d.]+) of a revolution.*?gets to ±([\d.]+)°/);
+    const m = pn.notes[2].match(/whole revolution the track would reach about ±([\d.]+)° geocentric latitude.*?holds ([\d.]+) of a revolution.*?gets to ±([\d.]+)° geodetic(?:, ±([\d.]+)° geocentric)?/);
+    /* The tilt bounds geocentric latitude and the arc is quoted geodetic, as
+       the map is; QZS-1R at 6 h printed an arc 0.1 deg past the "whole
+       revolution" reach with neither labelled. So both carry their names, and
+       the arc's geocentric figure comes too wherever the two differ. */
     chk('a window shorter than a revolution gives the plane\'s tilt, not the top of its arc, as the reach',
         !!m && Math.abs(+m[1] - tilt) < 0.051 && Math.abs(+m[2] - pn.hours*n/24) < 0.006
-          && Math.abs(+m[3] - R.gd) < 0.051 && !/Ground track reaches/.test(pn.notes[2]),
-        m ? '±' + m[1] + '° (osculating tilt ' + tilt.toFixed(3) + '°), ' + m[2] + ' rev, arc ±' + m[3] +
-            '° (mine ' + R.gd.toFixed(3) + '°)' : pn.notes[2]);
+          && Math.abs(+m[3] - R.gd) < 0.051 && !/Ground track reaches/.test(pn.notes[2])
+          && (m[4] ? Math.abs(+m[4] - R.gc) < 0.051 : R.gd - R.gc < 0.1),
+        m ? '±' + m[1] + '° geocentric (osculating tilt ' + tilt.toFixed(3) + '°), ' + m[2] + ' rev, arc ±' + m[3] +
+            '° geodetic (mine ' + R.gd.toFixed(3) + '°)' + (m[4] ? ', ±' + m[4] + '° geocentric (mine ' + R.gc.toFixed(3) + '°)' : '')
+          : pn.notes[2]);
+  }
+
+  /* INMARSAT 3-F3's period is 1440.1 min, a few seconds over a 24 h window,
+     which printed "holds 1.00 of a revolution (24.0 h)" for what the card
+     then treated as an arc. */
+  await pick('INMARSAT 3-F3');
+  pn = await panel();
+  {
+    const kep = 2*Math.PI/sat.twoline2satrec(pn.l1, pn.l2).no;
+    const m = pn.notes[2].match(/is just short of one revolution \(([\d.]+) min\)/);
+    chk('a window a few minutes short of the period says so, not "1.00 of a revolution"',
+        pn.hours*60 < pn.period/60 ? !!m && Math.abs(+m[1] - pn.period/60) < 0.051 && !/1\.00 of a revolution/.test(pn.notes[2])
+                                   : /Ground track reaches/.test(pn.notes[2]),
+        (m ? m[0] : pn.notes[2]) + ' (2π/n″ = ' + kep.toFixed(2) + ' min)');
   }
 
   /* A retrograde orbit's plane bounds latitude at 180 - i, and the card has

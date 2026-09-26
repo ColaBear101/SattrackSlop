@@ -176,11 +176,60 @@ function boosted(P){
   return worst;
 }
 
+/* How eccentric an orbit the model above will speak for. It applies drag at the
+   MEAN altitude, which is where a near-circular orbit spends its time. An
+   eccentric one loses its energy near perigee instead, a*e below the mean: at
+   e = 0.02 that is about 135 km down in low orbit, two to three scale heights,
+   where the air is ten to twenty times denser. The calibration would then fit
+   the right drop to the wrong height, and the endgame would run on air the
+   object never meets.
+
+   Such an orbit decays apogee first, with perigee holding nearly still until
+   the orbit is close to circular, so forecasting it means integrating on
+   perigee height. That is not done here, and an eccentric history is refused
+   rather than forecast. This was not being checked: eccentricity was read
+   with every row and never used, and ION SCV-016 (e 0.057, perigee 303 km,
+   mean altitude 711 km) got a circular-orbit date. Every near-circular case is
+   untouched - KNACKSAT-2 sits at e 0.0008.
+
+   The test is the median over the 45 days calibrate() looks at first, so one
+   bad element set cannot flip the verdict either way. Rows with no
+   eccentricity are left out; a history with none at all is taken as circular,
+   as it always was.
+
+   The perigee reported is the latest, not that median: the Moon and the Sun
+   walk a high eccentric perigee by hundreds of kilometres in a few weeks -
+   CLUSTER II-FM7's 45-day median put it 25 km underground, the last element
+   set 209 km up. So it is the middle of the last five sets, by perigee
+   height, with that set's eccentricity and apogee beside it.               */
+const ECC_MAX = 0.02;
+function eccNow(P, winDays){
+  const tEnd = P[P.length-1].t;
+  const e = P.filter(p => p.t >= tEnd - winDays*DAYMS && isFinite(p.ecc)).map(p => p.ecc);
+  return e.length ? med(e) : null;
+}
+function perigeeNow(P){
+  const s = P.filter(p => isFinite(p.ecc)).slice(-5).map(p => {
+    const a = RE + p.sma;
+    return {ecc:p.ecc, hp:a*(1-p.ecc) - RE, ha:a*(1+p.ecc) - RE};
+  }).sort((x,y) => x.hp - y.hp);
+  return s[Math.floor(s.length/2)];
+}
+
 function predict(P){
   if(!P || P.length < 25) return {verdict:'thin', n: P ? P.length : 0};
   const span = (P[P.length-1].t - P[0].t)/DAYMS;
   if(span < 45) return {verdict:'thin', n:P.length, span};
   const hNow = P[P.length-1].sma, tNow = P[P.length-1].t;
+  const ecc = eccNow(P, 45);
+  /* Ahead of the boost and decay tests, which read the mean altitude as if it
+     were the height drag acts at. rate is left out: a mean-altitude slope is
+     not a decay rate for this orbit, and the page would print it as one. */
+  if(ecc !== null && ecc > ECC_MAX){
+    const pg = perigeeNow(P);
+    return {verdict:'eccentric', hNow, tNow, span, n:P.length, rate:null,
+            ecc:pg.ecc, hp:pg.hp, ha:pg.ha};
+  }
   const rise = boosted(P);
   const c45 = calibrate(P, 45) || calibrate(P, 90);
   const rate = c45 ? c45.rate : 0;
@@ -212,21 +261,35 @@ function predict(P){
 }
 
 /* ---- data ---------------------------------------------------------------- */
-function parsePlot(txt){
+/* The mean altitudes a row may have and still be read. The bounds are there to
+   throw out garbage, not orbits: the ceiling was 60,000 km, which threw out
+   every row of every high eccentric orbit - XMM-NEWTON's mean altitude is
+   60,550 km, the Cluster II spacecraft's about 65,600 - and the page then
+   reported the history as missing. Nothing past the Moon's distance is an
+   Earth orbit worth reading.                                                  */
+const SMA_MIN = 80, SMA_MAX = 400000;
+
+/* The run of rows, and how many rows there were before the bounds above. A
+   history that arrived and was all filtered out is a different answer from one
+   that never arrived, and the page says which. */
+function readPlot(txt){
   const m = txt.match(/var plotData = "([^"]*)"/);
-  if(!m) return null;
+  if(!m) return {P:null, rows:0, found:false};
   const rows = m[1].split('|'); rows.shift();          // header line
   const P = [];
+  let n = 0;
   for(const r of rows){
     const f = r.split(',');
     if(f.length < 6) continue;
+    n++;
     const t = Date.parse(f[0] + 'Z'), sma = parseFloat(f[4]);
-    if(isFinite(t) && isFinite(sma) && sma > 80 && sma < 60000)
+    if(isFinite(t) && isFinite(sma) && sma > SMA_MIN && sma < SMA_MAX)
       P.push({t, sma, ecc: parseFloat(f[5])});
   }
   P.sort((a,b)=>a.t-b.t);
-  return P.length ? P : null;
+  return {P: P.length ? P : null, rows:n, found:true};
 }
+function parsePlot(txt){ return readPlot(txt).P; }
 
 const HIST_TTL = 12*3600*1000;
 
@@ -237,7 +300,16 @@ const HIST_TTL = 12*3600*1000;
      - concurrent calls for the same object must share one request, or a couple
        of clicks queue several half-minute fetches;
      - it must never fire on its own for every spacecraft a user clicks through.
-   Hence cached() below, and a button in the page for the uncached case. */
+   Hence cached() below, and a button in the page for the uncached case.
+
+   history() answers {P, why}: P the run of element sets, or null with why
+   saying which way there is none - 'timeout' (no answer inside 75 s),
+   'unreachable' (the request itself failed: offline, blocked, refused),
+   'http' (an error status, in status), 'unreadable' (an answer with no history
+   in it that this can find), 'empty' (a history with no rows) or 'outside'
+   (rows, every one outside SMA_MIN..SMA_MAX, counted in rows). It used to
+   answer P or null, and the page said "no history, or it could not be reached"
+   for all six. */
 function cached(satnum){
   try {
     const c = JSON.parse(localStorage.getItem('hist:'+satnum) || 'null');
@@ -248,7 +320,7 @@ function cached(satnum){
 const inflight = {};
 async function history(satnum){
   const hit = cached(satnum);
-  if(hit) return hit;
+  if(hit) return {P:hit, why:null};
   if(inflight[satnum]) return inflight[satnum];       // share one request
   const p = fetchHistory(satnum).finally(()=>{ delete inflight[satnum]; });
   inflight[satnum] = p;
@@ -262,21 +334,24 @@ async function fetchHistory(satnum){
     const r = await fetch('https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR='
                           + satnum, {signal: ctl.signal});
     clearTimeout(bail);
-    if(!r.ok) return null;
-    const P = parsePlot(await r.text());
-    if(P){
-      /* Keep the cache small — some objects carry 3700 points and localStorage
-         is a per-origin budget. Thin the old end, keep the recent end intact,
-         since that is what the fit actually uses. */
-      const keep = P.length > 700
-        ? P.filter((_,i) => i % Math.ceil(P.length/500) === 0 || i >= P.length-250)
-        : P;
-      try { localStorage.setItem(key, JSON.stringify({at:Date.now(), P:keep})); } catch(e){}
-    }
-    return P;
-  } catch(e){ clearTimeout(bail); return null; }
+    if(!r.ok) return {P:null, why:'http', status:r.status};
+    const got = readPlot(await r.text()), P = got.P;
+    if(!P) return {P:null, why: !got.found ? 'unreadable' : got.rows ? 'outside' : 'empty',
+                   rows:got.rows};
+    /* Keep the cache small — some objects carry 3700 points and localStorage
+       is a per-origin budget. Thin the old end, keep the recent end intact,
+       since that is what the fit actually uses. */
+    const keep = P.length > 700
+      ? P.filter((_,i) => i % Math.ceil(P.length/500) === 0 || i >= P.length-250)
+      : P;
+    try { localStorage.setItem(key, JSON.stringify({at:Date.now(), P:keep})); } catch(e){}
+    return {P, why:null};
+  } catch(e){
+    clearTimeout(bail);
+    return {P:null, why: ctl.signal.aborted ? 'timeout' : 'unreachable'};
+  }
 }
 
-global.Lifetime = {rho, integrate, marchT, calibrate, fitTrend, predict, parsePlot,
-                   history, cached, boosted, RE, MU, FLOOR};
+global.Lifetime = {rho, integrate, marchT, calibrate, fitTrend, predict, parsePlot, readPlot,
+                   history, cached, boosted, RE, MU, FLOOR, ECC_MAX, SMA_MIN, SMA_MAX};
 })(typeof window !== 'undefined' ? window : globalThis);

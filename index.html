@@ -8958,12 +8958,32 @@ function passRows(){
   }
   return out;
 }
+/* Where the element set on screen came from, for the CSV: "embedded" for the
+   snapshot built into this page, with the source that last confirmed it
+   current if one has; otherwise the source it was fetched from, and when.
+   Read off the lines themselves as well as off __prov, which records the last
+   CHECK - a set taken live and then re-checked with the network down is still
+   the live set, and would otherwise be written up as the embedded one. */
+function tleSource(){
+  const e = D.entry, pv = provOnScreen();
+  const at = t => isoZ(new Date(t));
+  if(RAWTLE.indexOf(e.l1) >= 0 && RAWTLE.indexOf(e.l2) >= 0)
+    return 'embedded' + (pv && pv.src ? ', confirmed current by ' + pv.src + ' ' + at(pv.at) : '');
+  if(pv && pv.src) return pv.src + ', fetched ' + at(pv.at);
+  try {
+    const c = JSON.parse(localStorage.getItem('tle:' + e.satnum) || 'null');
+    if(c && c.l1 === e.l1 && c.l2 === e.l2 && c.src) return c.src + ', fetched ' + at(c.at);
+  } catch(err){}
+  return 'fetched live, source not recorded';
+}
 function exportCSV(){
   const rows = passRows();
   const head = ['pass','satellite','norad','site','site_lat_deg','site_lon_deg',
     'aos_utc','los_utc','duration_s','max_elevation_deg','culmination_utc',
     'max_azimuth_deg','aos_azimuth_deg','los_azimuth_deg','min_range_km',
     'range_rate_aos_kms','range_rate_los_kms','downlink_mhz',
+    /* 'spacecraft' is its illumination at mid-pass - sun, penumbra or umbra -
+       under a short name that is kept because columns are found by name. */
     'doppler_aos_khz','doppler_los_khz','naked_eye','sun_elevation_deg','spacecraft',
     /* A window-edge AOS or LOS is not a horizon crossing, and in the file it was
        indistinguishable from one. Last, so every column a reader already finds
@@ -8972,16 +8992,29 @@ function exportCSV(){
     /* The estimate naked_eye now rests on - brightest while lit against a dark
        sky, before any penumbral dimming, from the standard magnitude, published
        or assumed. After the clip flags for the same reason they went last. */
-    'est_magnitude'];
+    'est_magnitude',
+    /* What the table was computed from. None of it was in the file: the element
+       set is replaced as soon as a newer one is published and the window opens
+       at the reader's clock, so a pass table could be neither reproduced nor
+       cited - the filename carried the date, and nothing else. Every row
+       carries the same values, which is what survives a spreadsheet sorting or
+       filtering the rows, and they are appended so no column moves.
+       tle_source says where the set came from; see tleSource(). */
+    'tle_epoch_utc','tle_line1','tle_line2','tle_source',
+    'window_start_utc','window_span_h','mask_deg','site_alt_km'];
   const num = (v, d) => v === null || v === undefined ? '' : v.toFixed(d);
+  const prov = [isoZ(D.E.epoch), D.entry.l1, D.entry.l2, tleSource(),
+    isoZ(D.start), D.hours, MASK, OBS.altKm];
   const body = rows.map(r => [r.n, r.sat, r.norad, r.site, r.lat, r.lon,
     isoZ(r.aos), isoZ(r.los), r.dur.toFixed(3), num(r.maxEl,3), isoZ(r.maxAt),
     num(r.maxAz,1), num(r.aosAz,1), num(r.losAz,1), num(r.minRng,1),
     num(r.rrA,6), num(r.rrL,6), num(r.freqMHz,3), num(r.dopA,3), num(r.dopL,3),
-    r.eye, num(r.sunEl,1), r.lit, r.clipA, r.clipL, num(r.mag,2)].map(csvEscape).join(','));
+    r.eye, num(r.sunEl,1), r.lit, r.clipA, r.clipL, num(r.mag,2)].concat(prov)
+    .map(csvEscape).join(','));
   /* A leading comment line would break every CSV reader, so the provenance goes
-     in the filename instead - which is the one piece of metadata that survives
-     being opened in a spreadsheet and saved again. */
+     in the columns above rather than a header block. The filename keeps the
+     spacecraft, the site and the window's date: the part in view before the
+     file is opened. */
   download(head.join(',') + '\r\n' + body.join('\r\n') + '\r\n',
     'passes-' + slug(D.entry.name) + '-' + slug(OBS.name) + '-'
       + iso(D.start).slice(0,10) + '.csv', 'text/csv');
@@ -9883,22 +9916,30 @@ let lifeState = null, lifeReq = 0;
 /* What the backtest actually measured, at the horizon being shown. Objects that
    really re-entered, history truncated at a fixed lead time, prediction compared
    with the recorded decay date. The bias is one-sided and grows with range, so
-   quoting a single "+/- some days" for every forecast would be a fiction. */
-function lifeAccuracy(days){
+   quoting a single "+/- some days" for every forecast would be a fiction.
+   Where the bias has a direction, the date moved by it is given as a month:
+   the headline stays the model's own figure, which the README quotes, and a
+   month is as fine as a median from one fortnight of re-entries will bear. */
+const LIFE_MONTHS = ['January','February','March','April','May','June','July',
+  'August','September','October','November','December'];
+function lifeAccuracy(days, date){
   const caveat = ' Every object in that check re-entered within the same fortnight, ' +
     'so they all met the same solar weather — the spread understates how wrong ' +
     'this can be in a different phase of the cycle.';
+  const moved = d => { const m = new Date(date.getTime() + d*86400000);
+    return LIFE_MONTHS[m.getUTCMonth()] + ' ' + m.getUTCFullYear(); };
   if(days <= 130)
     return 'Backtested against objects that really re-entered, a forecast at this range ' +
       'ran <b>within about three weeks</b> of the truth (median −20 to +12 d).' + caveat;
   if(days <= 220)
     return 'Backtested against objects that really re-entered, a forecast at this range ran ' +
       '<b>about two months early</b> (median −63 d at a 180-day horizon). The real date is ' +
-      'more likely after this one than before it.' + caveat;
+      'more likely after this one than before it: moved by that median, it falls in <b>' +
+      moved(63) + '</b>.' + caveat;
   if(days <= 330)
     return 'Backtested at this range the method ran <b>about five months early</b> ' +
       '(median −144 d at a 270-day horizon), so read this as a lower bound rather than ' +
-      'a date.' + caveat;
+      'a date — moved by that median, <b>' + moved(144) + '</b>.' + caveat;
   return 'Beyond a year this is <b>not a forecast</b>. The backtest at a 365-day horizon ' +
     'scattered by half a year either way, because it depends on solar activity that ' +
     'nobody can predict that far out.' + caveat;
@@ -9939,6 +9980,37 @@ function lifeOffer(entry){
   if(b) b.addEventListener('click', () => runLife(entry, my));
 }
 
+/* Why there is no history to fit, in the words of what actually happened. One
+   sentence - "returned no element-set history, or it could not be reached in
+   time" - used to cover every case, including a history that arrived whole and
+   was thrown away: XMM-NEWTON's 779 element sets came back in a second and
+   were all above the old 60,000 km ceiling. A failed request is worth trying
+   again; an answer is not, so only the first kind gets the button. */
+function lifeWhyNot(entry, got){
+  const id = 'NORAD ' + entry.satnum;
+  const why = got ? got.why : 'unreachable';
+  if(why === 'timeout')
+    return ['Not received', 'CelesTrak did not answer for ' + id + ' within 75 seconds. Its history ' +
+      'endpoint rebuilds the record on every request and is sometimes slower than that. Nothing ' +
+      'arrived to extrapolate from.', true];
+  if(why === 'http')
+    return ['Not received', 'CelesTrak answered the request for ' + id + ' with HTTP ' + got.status +
+      ', an error rather than a history. Nothing arrived to extrapolate from.', true];
+  if(why === 'unreadable')
+    return ['Not received', 'CelesTrak answered for ' + id + ', but not with the page of element-set ' +
+      'history this reads. Nothing to extrapolate from.', true];
+  if(why === 'empty')
+    return ['No history', 'CelesTrak answered, and holds no element-set history for ' + id +
+      '. Nothing to extrapolate from.', false];
+  if(why === 'outside')
+    return ['Out of range', 'CelesTrak returned <b>' + got.rows + '</b> element sets for ' + id +
+      ', and none has a mean altitude between ' + Lifetime.SMA_MIN + ' km and ' +
+      Lifetime.SMA_MAX.toLocaleString('en-US') + ' km, the range this estimate reads. The history ' +
+      'arrived; there is nothing in it to fit.', false];
+  return ['Not received', 'CelesTrak could not be reached for ' + id + ' — offline, blocked, or ' +
+    'refusing the request. Nothing arrived to extrapolate from.', true];
+}
+
 async function runLife(entry, my){
   if(my !== lifeReq) return;
   const t0 = Date.now();
@@ -9947,14 +10019,15 @@ async function runLife(entry, my){
     'Reading this object&rsquo;s element-set history from CelesTrak. This usually takes about ' +
     '30 seconds — the archive is rebuilt on each request.', '');
   say(); tick = setInterval(say, 1000);
-  let P = null;
-  try { P = await Lifetime.history(entry.satnum); } catch(e){ P = null; }
+  let got = null;
+  try { got = await Lifetime.history(entry.satnum); } catch(e){ got = null; }
   clearInterval(tick);
   if(my !== lifeReq) return;                       // user moved on
+  const P = got && got.P;
   if(!P){
-    lifeSet('No history', '', 'CelesTrak returned no element-set history for NORAD ' +
-      entry.satnum + ', or it could not be reached in time. Nothing to extrapolate from.' +
-      '<br><br><button class="btn" id="lifego" type="button">Try again</button>', '');
+    const [big, why, retry] = lifeWhyNot(entry, got);
+    lifeSet(big, '', why + (retry
+      ? '<br><br><button class="btn" id="lifego" type="button">Try again</button>' : ''), '');
     const b = document.getElementById('lifego');
     if(b) b.addEventListener('click', () => runLife(entry, my));
     return;
@@ -9981,6 +10054,40 @@ function paintLife(r, P){
       '. A decay fit needs a couple of months of record to separate the trend from TLE scatter.', span);
     drawLife(); return;
   }
+  /* Refused by lifetime.js above e = 0.02, where drag acts at perigee rather
+     than at the mean altitude the model integrates. Three cases, by where that
+     perigee is: already under the re-entry line, above the top of the model's
+     atmosphere, or in between - where a date would be a circular-orbit answer
+     to an eccentric question. */
+  if(r.verdict === 'eccentric'){
+    const km = x => Math.round(x).toLocaleString('en-US');
+    const e = r.ecc.toFixed(3), cap = Lifetime.ECC_MAX;
+    const pg = r.hp < 0 ? 'perigee below the surface' : 'perigee ' + km(r.hp) + ' km';
+    if(r.hp <= Lifetime.FLOOR){
+      lifeSet('Re-entering', pg + ' · e ' + e,
+        'The latest element sets put perigee <b>' + (r.hp < 0 ? km(-r.hp) + ' km below the surface'
+          : 'at ' + km(r.hp) + ' km') + '</b>, under the ' + Lifetime.FLOOR + ' km line this page ' +
+        'calls re-entry. An eccentric orbit comes down at perigee, and one reaching that deep does ' +
+        'not come round many more times; it may already have come down. The drag model here is for ' +
+        'near-circular orbits and has nothing to add, so no date is offered.', span);
+    } else if(r.hp > 1000){
+      lifeSet('No drag decay', pg + ' · e ' + e,
+        'This orbit is eccentric, and drag acts at perigee: <b>' + km(r.hp) + ' km</b> up, above the ' +
+        'top of the atmosphere this model knows, which ends at 1,000 km. The mean altitude on the ' +
+        'chart is not being pulled down by air, and no re-entry date is offered. What moves a ' +
+        'perigee this high is the Moon and the Sun, which a drag model does not see.', span);
+    } else {
+      lifeSet('Eccentric orbit', pg + ' · e ' + e,
+        'Drag acts at perigee, <b>' + km(r.hp) + ' km</b> up, not at the <b>' + km(r.hNow) +
+        ' km</b> mean altitude on the chart. This estimate is for near-circular orbits: it applies ' +
+        'drag at the mean altitude, so at an eccentricity of <b>' + e + '</b> it would be timing the ' +
+        'wrong height, and above ' + cap + ' no date is offered. An eccentric orbit comes down apogee ' +
+        'first, now <b>' + km(r.ha) + ' km</b>, with perigee holding nearly still until the orbit is ' +
+        'close to circular; forecasting that needs an integration on perigee height, which this ' +
+        'page does not do.', span);
+    }
+    drawLife(); return;
+  }
   if(r.verdict === 'maneuvered'){
     lifeSet('Not drag-limited', 'orbit is being raised',
       'This orbit has climbed by up to <b>' + r.rise.toFixed(1) + ' km</b> inside a fortnight, so ' +
@@ -10004,20 +10111,50 @@ function paintLife(r, P){
   }
 
   const date = new Date(r.tNow + r.days*86400000);
+  const day = x => ymd(new Date(r.tNow + x*86400000));
+  /* A forecast already in the past. CelesTrak stops publishing element sets
+     for an object once it is down, so a record that ends before its own
+     forecast date is the record of one that has most likely come down.
+     ICEYE-X34's panel read "2026-09-14 - 0 days from the last element set"
+     eleven days after that date, with the three-weeks-of-the-truth blurb
+     under it. The accuracy is left out: the backtest measured forecasts of
+     dates still to come. */
+  const past = Date.now() - date.getTime();
+  if(past > 0){
+    const nd = Math.floor(past/86400000);
+    lifeSet('Probably re-entered',
+      'forecast ' + ymd(date) + ', ' + (nd < 1 ? 'less than a day' : nd < 60
+        ? nd + (nd === 1 ? ' day' : ' days') : lifeFmtDays(past/86400000)) + ' ago',
+      'Run from the last element set CelesTrak holds, dated <b>' + ymd(new Date(r.tNow)) +
+      '</b> at <b>' + r.hNow.toFixed(1) + ' km</b>, the model brings this object down on <b>' +
+      ymd(date) + '</b>, a date already past. CelesTrak publishes no element sets for an object ' +
+      'once it has come down, so a record that ends before its own forecast most likely belongs ' +
+      'to one that has. The decay date in the SATCAT, once recorded, is the one to quote.', span);
+    drawLife(); return;
+  }
+  /* The two models are named, not called a bracket. The shading between them
+     is how far they disagree, which says nothing about where the truth is: at
+     a 180-day range the backtest put it about two months past the headline. */
   const both = (r.simple !== null && r.trend !== null);
-  const lo = both ? Math.min(r.simple, r.trend) : r.days;
-  const hi = both ? Math.max(r.simple, r.trend) : r.days;
-  lifeSet(iso(date).slice(0,10),
+  lifeSet(ymd(date),
     lifeFmtDays(r.days) + ' from the last element set',
-    'Both estimators bracket <b>' + iso(new Date(r.tNow + lo*86400000)).slice(0,10) + '</b> to <b>' +
-    iso(new Date(r.tNow + hi*86400000)).slice(0,10) + '</b>. ' +
-    (r.g !== null
-      ? 'The headline figure fits a density trend of <b>' + (r.g*100).toFixed(2) +
-        '%/day</b> from the record — the atmosphere is ' + (r.g < 0 ? 'thinning' : 'thickening') +
-        ', halving every ' + (Math.log(2)/Math.abs(r.g)).toFixed(0) + ' days at that rate — ' +
+    (both
+      ? 'The two models give <b>' + day(r.simple) + '</b> with the atmosphere held still and <b>' +
+        day(r.trend) + '</b> with a density trend fitted to the record; the headline is the ' +
+        'second, and the shading between them on the chart is how far they disagree, not an ' +
+        'error bar. '
+      : '') +
+    (r.trend !== null
+      ? 'The trend is <b>' + (r.g*100).toFixed(2) +
+        '%/day</b> — the atmosphere is ' + (r.g < 0 ? 'thinning' : 'thickening') +
+        (r.g < 0 ? ', halving' : ', doubling') + ' every ' + (Math.log(2)/Math.abs(r.g)).toFixed(0) +
+        ' days at that rate — ' +
         'and matches the observed curve to <b>' + r.rms.toFixed(1) + ' km</b> rms. '
-      : 'Too little history to fit a solar trend, so the atmosphere is assumed to stand still. ') +
-    lifeAccuracy(r.days),
+      : r.g !== null
+        ? 'A density trend was fitted to the record, but its projection does not come down ' +
+          'within the model’s horizon, so the headline holds the atmosphere still. '
+        : 'Too little history to fit a solar trend, so the atmosphere is assumed to stand still. ') +
+    lifeAccuracy(r.days, date),
     span);
   drawLife();
 }
@@ -10076,7 +10213,10 @@ function drawLife(){
     g.fillStyle = obs; g.textAlign = 'left'; g.textBaseline = 'bottom';
     g.fillText('120 km — re-entry', L+5, Y(120)-3);
   }
-  // projection band between the two estimators
+  /* The band between the two models. It is how far they disagree, and it is
+     labelled so: it was "estimator spread", which reads as an uncertainty band,
+     and at a 180-day range the backtest put the truth about two months past
+     the headline - outside the band, when the atmosphere is thinning. */
   if(r.simpleTrack && r.trendTrack){
     const a = r.simpleTrack, b = r.trendTrack;
     g.fillStyle = contact; g.globalAlpha = .13; g.beginPath();
@@ -10107,7 +10247,7 @@ function drawLife(){
   document.getElementById('lifelegend').innerHTML =
     '<span><i style="background:'+track+'"></i>observed (' + P.length + ' element sets)</span>' +
     (proj ? '<span><i style="background:'+contact+'"></i>projected decay</span>' : '') +
-    (r.simpleTrack && r.trendTrack ? '<span><i style="background:'+contact+';opacity:.35"></i>estimator spread</span>' : '');
+    (r.simpleTrack && r.trendTrack ? '<span><i style="background:'+contact+';opacity:.35"></i>model disagreement</span>' : '');
   cv.__geom = {X, Y, L, R, T, B, Wc, Hc, t0, tEnd, hMin, hMax};
 }
 

@@ -391,6 +391,14 @@ perigee, SMA, eccentricity, for every element set CelesTrak has held. For KNACKS
 rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major axis. It sends
 `Access-Control-Allow-Origin: *`, so the browser can read it without a backend.
 
+Rows are read between 80 km and 400,000 km of mean altitude, bounds meant to throw out garbage
+rather than orbits. The ceiling was 60,000 km, which threw out every row of every high eccentric
+orbit — XMM-NEWTON's mean altitude is 60,550 km, the Cluster II spacecraft's about 65,600 — and the
+page then said CelesTrak had returned no history or could not be reached. It now says which of six
+things happened: no answer inside 75 seconds, a request that failed outright, an HTTP error, an
+answer with no history in it, a history with no rows, or rows that all fell outside those bounds.
+The first four offer a retry; the last two are answers, and do not.
+
 It is also **slow — about 35 seconds per object**, measured, because the archive is rebuilt on each
 request. So the fetch does not fire when you pick a spacecraft: clicking through the catalogue
 would queue a dozen half-minute requests against someone else's server. There is a button, one
@@ -454,7 +462,16 @@ is compared with what really happened:
 
 Usable to about four months. Beyond that it runs **months early**, and past a year it is not a
 forecast at all. The page says which of those regimes it is in rather than printing one number and
-leaving the reader to assume it means the same thing at every range.
+leaving the reader to assume it means the same thing at every range. Where the bias has a
+direction — the 180-day and 270-day rows — it also gives the month the median moves the date to.
+The headline stays the model's own figure, and a month is as fine as the median will bear, for the
+reason below.
+
+The two models are named on the page, fixed atmosphere and fitted trend, with the headline the
+second. It used to say both "bracket" the date and label the band between them on the chart
+"estimator spread", which reads as an uncertainty band. It is how far the two models disagree, and
+the chart now says so: at 180 days the backtest put the truth about two months past the headline,
+outside that band whenever the atmosphere is thinning.
 
 **The validation set's own limitation, since it bounds everything above:** all 24 objects re-entered
 between 28 Aug and 12 Sep 2026, so they met the same solar weather on the way down. Their errors are
@@ -475,6 +492,26 @@ A drag model applied to a spacecraft under thrust produces fiction, so the estim
   deorbit burn and is declined outright: its re-entry was a decision, not a deadline.
 - **No measurable decay** — station-kept, or simply too high for drag to bite.
 - **Too little history** — under ~25 element sets or 45 days, TLE scatter swamps the trend.
+- **Eccentric** — a median eccentricity above 0.02 over the last 45 days. The model applies drag at
+  the mean altitude, where a near-circular orbit spends its time; an eccentric one loses its energy
+  at perigee, a·e lower, which at e = 0.02 is about 135 km down in low orbit, where the air is ten
+  to twenty times denser. Such an orbit comes down apogee first, perigee holding nearly still until
+  it is close to circular, and forecasting it means integrating on perigee height, which is not
+  done here. Eccentricity was read with every row and never used: ION SCV-016 (e 0.057, perigee
+  303 km, mean altitude 711 km) got a date, and SLS DEB (e 0.15) and OV3-3 (e 0.10), whose mean
+  altitude sits above the 1,000 km top of the density table, were "no measurable decay" — SLS DEB
+  with 25 km of mean altitude gone in its last 45 days. The page now gives the perigee instead, from
+  the latest element sets: under 120 km it says the object is re-entering, above 1,000 km that drag
+  is not what is moving the orbit, and between the two that a circular-orbit date would answer the
+  wrong question. KNACKSAT-2, at e 0.0008, and every near-circular object take the same path as
+  before, to the bit.
+
+And one answer it will not give: a date already past. The forecast runs from the last element set
+in CelesTrak's record, and CelesTrak publishes none for an object once it is down, so a record that
+ends before its own forecast date is most likely the record of one that has come down. ICEYE-X34's
+panel read "2026-09-14 — 0 days from the last element set" eleven days after that date, over the
+within-three-weeks backtest line. It now reads **Probably re-entered**, with the forecast date and
+how long ago it was, and no accuracy claim: the backtest measured dates still to come.
 
 ### KNACKSAT-2
 
@@ -491,7 +528,8 @@ Roughly seven months. An independent check: propagating the TLE forward with SGP
 term until it reaches 120 km gives **2027-06-09** — a different method, from a different input,
 landing within a day of the trend model's figure when both were run on the same element set. And
 since the backtest says this range runs about two months early, the true date is more likely after
-April than before it.
+April than before it: moved by the 63-day median, into June 2027, which is the month the page now
+gives under the date.
 
 ## The Earth–Moon system page
 
@@ -821,6 +859,21 @@ one a reader finds by name — or by position — stays where it was; `est_magni
 them for the same reason. The calendar event carries `X-GT-CLIPPED`, says in its summary and
 description which end is the window's, and its alarm no longer announces an AOS that is really the
 window opening.
+
+The CSV also says what it was computed from, which it did not. The element set is replaced as soon
+as a newer one is published and the window opens at the reader's clock, so two exports an hour apart
+differ, and neither could be reproduced or cited: the filename carried the date and nothing else.
+Eight columns now close every row — `tle_epoch_utc`, `tle_line1`, `tle_line2`, `tle_source`,
+`window_start_utc`, `window_span_h`, `mask_deg` and `site_alt_km` — with the same values on each,
+since a header block would break CSV readers and a value on every row survives sorting and
+filtering. `tle_source` is `embedded`, for the snapshot built into the page, with the source that
+last confirmed it current if one has, or the source a newer set was fetched from and when. The site
+is already in `site`, `site_lat_deg` and `site_lon_deg`. `verification/verify-export.js` hands the
+two lines and the window from the file back to the propagator and gets the same passes.
+
+`spacecraft` is the spacecraft's illumination at mid-pass — `sun`, `penumbra` or `umbra` — the value
+the calendar description prints as "spacecraft sun". It keeps its short name because columns are
+found by name.
 
 Parsing them back, rather than looking at them, found two bugs that look identical to correct
 output on screen:
@@ -1198,6 +1251,7 @@ npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run timeline     # the window rolling forward past its end, and the next pass beyond it
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one
+npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```

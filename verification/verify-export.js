@@ -89,7 +89,12 @@ function parseCSV(text) {
              aos: r.map(x => x.aos.getTime()), maxEl: r.map(x => x.maxEl),
              clip: r.map(x => String(x.clipA) + ',' + String(x.clipL)),
              eye: r.map(x => x.eye), mag: r.map(x => x.mag),
-             lim: __gt.NAKED_EYE_MAG };
+             lim: __gt.NAKED_EYE_MAG,
+             prov: { tle_epoch_utc: __gt.D.E.epoch.toISOString(),
+                     tle_line1: __gt.D.entry.l1, tle_line2: __gt.D.entry.l2,
+                     window_start_utc: __gt.D.start.toISOString(),
+                     window_span_h: String(__gt.D.hours), mask_deg: String(__gt.MASK),
+                     site_alt_km: String(__gt.OBS.altKm) } };
   });
   console.log('\n' + expected.sat + ' from ' + expected.site + ': '
             + expected.n + ' passes to export\n');
@@ -119,11 +124,16 @@ function parseCSV(text) {
 
   /* Columns are only ever appended, so every column a reader finds by name
      keeps its place - including for anyone reading these files by position.
-     The window-edge flags went on after 'spacecraft', and the magnitude
-     estimate the naked-eye verdict rests on after them. */
-  chk('the clip flags follow the columns before them, and the magnitude estimate closes the row',
+     The window-edge flags went on after 'spacecraft', the magnitude estimate
+     the naked-eye verdict rests on after them, and what the table was computed
+     from after that. */
+  const PROV = ['tle_epoch_utc','tle_line1','tle_line2','tle_source',
+                'window_start_utc','window_span_h','mask_deg','site_alt_km'];
+  chk('the clip flags follow the columns before them, then the magnitude estimate, then the provenance',
       idx('aos_clipped') === idx('spacecraft') + 1
-      && h.slice(-3).join(',') === 'aos_clipped,los_clipped,est_magnitude', h.slice(-4).join(','));
+      && h.slice(idx('aos_clipped'), idx('aos_clipped') + 3).join(',') === 'aos_clipped,los_clipped,est_magnitude'
+      && h.slice(-PROV.length).join(',') === PROV.join(','),
+      h.slice(idx('spacecraft')).join(','));
   const clipBad = expected.clip.findIndex((c, i) =>
     rows[i+1][idx('aos_clipped')] + ',' + rows[i+1][idx('los_clipped')] !== c);
   chk('...and agree with the page, pass by pass', clipBad === -1,
@@ -148,6 +158,33 @@ function parseCSV(text) {
       magBad !== -1 ? 'pass ' + (magBad + 1) + ' magnitude differs'
         : yesBad !== -1 ? 'pass ' + (yesBad + 1) + ' is yes at ' + rows[yesBad+1][idx('est_magnitude')]
         : expected.mag.filter(m => m !== null).length + ' of ' + expected.n + ' passes carry one');
+
+  /* What the table was computed from. None of it used to be in the file - the
+     element set is replaced live and the window opens at the reader's clock -
+     so a pass table could be neither reproduced nor cited. Every row carries
+     it, and it has to be what the page actually used. The network is blocked
+     here, so the set is the embedded one and has to say so. */
+  const provBad = [];
+  for (const k of Object.keys(expected.prov))
+    rows.slice(1).forEach((r, i) => { if (r[idx(k)] !== expected.prov[k]) provBad.push(k + ' row ' + (i + 1) + ': ' + r[idx(k)]); });
+  rows.slice(1).forEach((r, i) => { if (r[idx('tle_source')] !== 'embedded') provBad.push('tle_source row ' + (i + 1) + ': ' + r[idx('tle_source')]); });
+  chk('every row records the element set, its epoch and source, the window, the mask and the site altitude',
+      provBad.length === 0,
+      provBad.length ? provBad.slice(0, 3).join(' | ')
+        : 'epoch ' + expected.prov.tle_epoch_utc + ', embedded, window ' + expected.prov.window_start_utc
+          + ' + ' + expected.prov.window_span_h + ' h, mask ' + expected.prov.mask_deg + ' deg');
+  /* And they are enough: the file alone, handed back to the propagator with
+     the site in its own columns, gives the same passes. */
+  const rep = await page.evaluate(({ l1, l2, start, span }) => {
+    const d = __gt.compute({ name: 'from the file', l1, l2, satnum: l1.substring(2, 7).trim() },
+                           Date.parse(start), +span);
+    return d.passes.map(p => p.aos.getTime());
+  }, { l1: rows[1][idx('tle_line1')], l2: rows[1][idx('tle_line2')],
+       start: rows[1][idx('window_start_utc')], span: rows[1][idx('window_span_h')] });
+  const fileAos = rows.slice(1).map(r => Date.parse(r[idx('aos_utc')]));
+  chk('...and are enough to reproduce the table: the same passes, from the file alone',
+      rep.length === fileAos.length && rep.every((t, i) => Math.abs(t - fileAos[i]) <= 1),
+      rep.length + ' passes recomputed for ' + fileAos.length + ' in the file');
 
   /* Values, not just shape: the AOS in the file has to be the AOS on the page. */
   let worstT = 0, worstEl = 0;
@@ -328,7 +365,8 @@ function parseCSV(text) {
   await page.waitForTimeout(3000);
   const hst = await page.evaluate(() => {
     const r = __gt.passRows();
-    return { name: __gt.D.entry.name, n: r.length, eye: r.map(x => x.eye), mag: r.map(x => x.mag) };
+    return { name: __gt.D.entry.name, n: r.length, eye: r.map(x => x.eye), mag: r.map(x => x.mag),
+             start: __gt.D.start.toISOString(), hours: String(__gt.D.hours) };
   });
   const yesN = hst.eye.filter(e => e === 'yes').length;
   console.log('\n  a visible spacecraft: ' + hst.name + ', ' + hst.n + ' passes, ' + yesN + ' naked-eye');
@@ -340,6 +378,12 @@ function parseCSV(text) {
       hst.name === 'HST' && yesN > 0 && hBad === -1,
       hBad === -1 ? yesN + ' of ' + hst.n + ', brightest est. mag '
         + Math.min(...hst.mag.filter(m => m !== null)).toFixed(1) : 'pass ' + (hBad + 1));
+  /* The window moved and widened, so the file has to say so: a week from a
+     chosen start, not the 24 hours from now of the first export. */
+  chk('...and its rows record the window it was computed over',
+      hst.hours === '168' && hc.slice(1).every(r => r[hc[0].indexOf('window_start_utc')] === hst.start
+        && r[hc[0].indexOf('window_span_h')] === hst.hours),
+      hst.start + ' + ' + hst.hours + ' h');
   const hi = (await grab('exp-ics')).text.replace(/\r\n[ \t]/g, '');
   const hs = (hi.match(/SUMMARY:[^\r\n]*/g) || []);
   chk('...and their calendar events say naked eye, with the estimate and its source',

@@ -292,14 +292,23 @@ looking at the Earth's centre, differing only in how the bearing is chosen. "Sat
 shows the Earth from the spacecraft's **direction**, which is not the same thing as showing it from
 the spacecraft. At 4.2 Earth radii out, the spacecraft is a dot in the middle of the frame.
 
-**POV** sits on the spacecraft. Nadir by default — straight down, which in scene units is simply
-toward the origin — with the along-track direction as screen-up, so the spacecraft flies toward the
-top of the frame, the orientation nadir imagery is published in. Dragging turns the head instead of
-leaving the mode, and the wheel changes the **lens** rather than the range, because there is no
-range to change from on board: 8° is a long telephoto on the limb, 90° takes in the whole horizon.
+**POV** sits on the spacecraft, facing **along-track** by default: forward along the horizontal part
+of the velocity, with the zenith as screen-up, so the horizon runs level across the frame. Nadir is
+pitch −90°, one drag down. It used to open on nadir, the orientation nadir imagery is published in,
+and that was given up for a mechanical reason: with the view axis on the local vertical, a sideways
+drag — which yaws about that vertical — could only roll the picture, and the camera felt stuck.
+Facing forward separates the two, so yaw turns the head and pitch tilts it. Dragging turns the head
+instead of leaving the mode, and the wheel changes the **lens** rather than the range, because there
+is no range to change from on board: 8° is a long telephoto on the limb, 90° takes in the whole
+horizon.
 
-From KNACKSAT-2 at 369.8 km the horizon sits **70.94° off nadir**, so pitching up past about 71°
-takes the Earth out of frame entirely and leaves the star field. The catalogue cloud is still drawn,
+From KNACKSAT-2 at 369.8 km the horizon sits **70.94° off nadir** — 19.06° below the local
+horizontal — so the forward view opens with its centre above the limb: the Earth is a thin band along
+the bottom of the 42° frame with the atmosphere's glow over it, and two degrees of pitch up take the
+planet itself out of the picture. There is no ground at the centre of that view to measure, so the
+GSD readout gives the figure straight down instead and says where that is: **at nadir, below frame**.
+The second half is dropped when nadir is in the picture, which from GEO it can be with the boresight
+already off the disc — the whole Earth is 17° across from there. The catalogue cloud is still drawn,
 which means the other 2,157 objects are visible from orbit as points above the limb — that falls out
 of the existing scene rather than being built.
 
@@ -323,11 +332,43 @@ mode restores the previous camera exactly rather than stranding it wherever the 
 
 `verification/verify-pov.js` measures the camera rather than the picture, because a camera at 0.9999
 of the right place still renders a plausible one: position against the propagated state vector
-(exact, 0.00 km), view direction against nadir and screen-up against the along-track direction (both
-to 1e-9), then the real wheel and drag handlers for the rest. One trap it documents by working
-around it — the page owns the clock and pushes it into the scene every frame, so setting the scene's
-time is silently overwritten on the next animation frame, and at 7.7 km/s that single frame of drift
-reads exactly like a camera-placement bug.
+(exact, 0.00 km), view direction against the along-track direction and screen-up against the zenith
+(both to 1e-6), a full downward drag landing within the one-degree clamp of nadir, then the real
+wheel and drag handlers for the rest. One trap it documents by working around it — the page owns
+the clock and pushes it into the scene every frame, so setting the scene's time is silently
+overwritten on the next animation frame, and at 7.7 km/s that single frame of drift reads exactly
+like a camera-placement bug.
+
+### Reading the globe
+
+The globe uses the flat map's colours for the flat map's meanings: cyan the spacecraft and its track,
+pink the site and its access circle, pale the footprint, and orange **in view from the site** — the
+line of sight, and the marker while a pass is up. The orbit ring used to be orange too. In the
+Satellite camera it runs edge-on straight through the marker, and read as the stretch of orbit
+Bangkok can see; it is a neutral blue-grey now, as reference geometry rather than data. A key sits
+in the bottom-left corner, which it gives up to the POV minimap, and on a phone it is dropped for the
+same lack of room.
+
+The spacecraft's name and the catalogue's hover name are HTML over the canvas, so they have no depth:
+the marker behind the planet was hidden by the depth test while its name went on being drawn over
+the near face — in the Bangkok camera, where the spacecraft is behind the disc for most of every
+orbit, a bold KNACKSAT-2 over the Indian Ocean with the spacecraft over South America. A label is now
+hidden whenever the unit sphere lies between the camera and its point, and the same test gates hover
+and click on the catalogue, which three.js otherwise raycasts straight through the Earth. Only while
+the Earth is drawn: hiding it is how you look at what it was in front of.
+
+The photographic map is sized for the view in front of the reader, not for the GPU. The ladder used
+to stop only at `MAX_TEXTURE_SIZE`, which most phones put at 8192 or more, so a phone at the opening
+zoom fetched the 6.6 MB map for a globe 560 device pixels across. The most magnified point of an
+orbiting camera's view is the middle of the disc, where a unit of surface spans f/(d−1) pixels, so
+a map W = 2πf/(d−1) texels wide puts one texel under each of them; the page takes the smallest rung
+within a quarter of that. At the opening 4.2 Earth radii it is 2.56 times the drawing buffer's height
+— the 0.6 MB rung for a phone or a 1440×900 window, the 2 MB one on a 2× display. Zoom in and the
+sharper rung is fetched once the view has held still for 400 ms, alone, without the coarse insurance
+copy the first load starts with; POV always wants the best the GPU holds, since its lens is on the
+ground. Save-Data, or a connection the browser rates 3G or slower, keeps the coarse rung throughout,
+and the note under the picker says so. `npm run globe` checks each of those against a rung it works
+out itself from the canvas and the camera.
 
 ## Architecture: the central body is a parameter
 
@@ -1326,7 +1367,8 @@ npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run timeline     # the window rolling forward past its end, and the next pass beyond it
-npm run elements     # the element labels: no overlap, nothing clipped, hover expands one
+npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
+                     # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
@@ -1343,7 +1385,7 @@ from JPL Horizons and NASA GIBS and a clean run should not depend on someone els
 npm run moon         # rotation vs Horizons sub-observer point
 npm run moon:chain   # baked elements -> sub-point, end to end
 npm run moon:bake    # re-bake moon/moondata.js from Horizons
-npm run globe        # the globe's NASA imagery: orientation, terminator, city lights
+npm run globe        # the globe's NASA imagery: orientation, terminator, city lights, map size
 ```
 
 `.github/workflows/verify.yml` runs the offline suite on every push, and again weekly — the

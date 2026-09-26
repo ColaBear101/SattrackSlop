@@ -260,6 +260,107 @@ const clipped = m => m.tags.filter(t =>
   chk('the orbit-plane disc is not pickable', discPick.found && !discPick.pickable,
       discPick.found ? 'found, tagKey ' + discPick.pickable : 'disc not found');
 
+  // ---- the globe names only what can be seen --------------------------------
+  /* The spacecraft's name and the catalogue hover name are DOM labels, which
+     have no depth. The marker behind the planet is hidden by the depth test;
+     its name went on being drawn over the near face - in the Bangkok camera,
+     KNACKSAT-2 over the Indian Ocean while the spacecraft was over South
+     America - and a far-side catalogue point under the cursor could be named
+     and clicked through the Earth. Occlusion is worked out here from the
+     camera and the unit sphere, not read from the page. */
+  const OCCL = `(p => { const c = Orbit3D.camera.position, d = p.clone().sub(c), L = d.length();
+    d.divideScalar(L); const b = c.dot(d), q = b*b - (c.lengthSq() - 1);
+    if(q <= 0) return false; const t = -b - Math.sqrt(q); return t > 0 && t < L; })`;
+  const layerEl = on => page.evaluate(v => {
+    const l = document.querySelector('#layersMenu input[data-layer="elements"]');
+    if(l.checked !== v){ l.checked = v; l.dispatchEvent(new Event('change', { bubbles: true })); }
+  }, on);
+  await layerEl(false);                  // its labels win the pointer outright, by design
+  await page.click('.cam[data-mode=site]');
+  await page.waitForTimeout(500);
+  const nameSeen = await page.evaluate(async src => {
+    const occl = eval(src), r = document.getElementById('time'), out = { behind: null, front: null };
+    let dot = null;
+    Orbit3D.scene.traverse(o => { if(o.isMesh && o.geometry.type === 'SphereGeometry'
+      && Math.abs(o.geometry.parameters.radius - 0.016) < 1e-9) dot = o; });
+    for(let v = 0; v <= +r.max && !(out.behind && out.front); v += 37){
+      r.value = v; r.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const pr = dot.position.clone().project(Orbit3D.camera);
+      if(Math.abs(pr.x) > 0.8 || Math.abs(pr.y) > 0.8) continue;     // well inside the frame
+      const hid = occl(dot.position), key = hid ? 'behind' : 'front';
+      if(out[key]) continue;
+      out[key] = { v, el: document.getElementById('o3el').textContent,
+                   shown: document.getElementById('o3name').style.display === 'block' };
+    }
+    return out;
+  }, OCCL);
+  chk('in the site camera, the spacecraft\'s name is hidden while the globe is in front of it',
+      !!nameSeen.behind && !nameSeen.behind.shown,
+      nameSeen.behind ? 'elevation ' + nameSeen.behind.el + ', label ' + (nameSeen.behind.shown ? 'drawn' : 'hidden')
+                      : 'never found behind the globe');
+  chk('...and drawn while it is not', !!nameSeen.front && nameSeen.front.shown,
+      nameSeen.front ? 'elevation ' + nameSeen.front.el : 'never found in front');
+
+  /* Catalogue points that land on the disc and have no neighbour within
+     14 px, so the pointer can be put on one without the raycast being a
+     coin-toss between two. */
+  await page.click('.cam[data-mode=free]');
+  await page.waitForTimeout(600);
+  const pts = await page.evaluate(src => {
+    const occl = eval(src), cam = Orbit3D.camera, R = document.getElementById('globe').getBoundingClientRect();
+    let cloud = null;
+    Orbit3D.scene.traverse(o => { if(o.isPoints && o.geometry.attributes.position.count === __gt.CAT.length) cloud = o; });
+    const a = cloud.geometry.attributes.position, scr = [];
+    for(let i = 0; i < a.count; i++){
+      const p = new THREE.Vector3(a.getX(i), a.getY(i), a.getZ(i));
+      if(p.length() > 1e5){ scr.push(null); continue; }
+      const q = p.clone().project(cam);
+      scr.push({ i, x: (q.x*0.5 + 0.5)*R.width + R.left, y: (-q.y*0.5 + 0.5)*R.height + R.top, p });
+    }
+    const c = cam.position, onDisc = p => { const d = p.clone().sub(c).normalize(), b = c.dot(d);
+      return b*b - (c.lengthSq() - 1) > 0.02; };
+    const out = { behind: [], front: [] };
+    for(const s of scr){
+      if(!s || !onDisc(s.p)) continue;
+      if(scr.some(t => t && t !== s && Math.hypot(t.x - s.x, t.y - s.y) < 14)) continue;
+      const k = occl(s.p) ? 'behind' : 'front';
+      if(out[k].length < 3) out[k].push({ x: s.x, y: s.y, name: __gt.CAT[s.i].name });
+    }
+    return out;
+  }, OCCL);
+  const hoverName = async q => {
+    await page.mouse.move(gb.x + 4, gb.y + 4); await page.waitForTimeout(150);
+    await page.mouse.move(q.x, q.y); await page.waitForTimeout(300);
+    return page.evaluate(() => { const h = document.getElementById('o3hover');
+      return h.style.display === 'block' ? h.textContent : ''; });
+  };
+  const farNamed = [], nearNamed = [];
+  for(const q of pts.behind) if((await hoverName(q)) === q.name) farNamed.push(q.name);
+  for(const q of pts.front) if((await hoverName(q)) === q.name) nearNamed.push(q.name);
+  chk('a catalogue point behind the globe cannot be hovered through it',
+      pts.behind.length > 0 && farNamed.length === 0,
+      pts.behind.length + ' far-side points under the pointer, named: ' + (farNamed.join(', ') || 'none'));
+  chk('...while one in front still can', pts.front.length > 0 && nearNamed.length === pts.front.length,
+      nearNamed.length + ' of ' + pts.front.length + ' near-side points named');
+  if(pts.behind.length){
+    await page.mouse.click(pts.behind[0].x, pts.behind[0].y);   // must load nothing
+    await page.waitForTimeout(300);
+    chk('...nor clicked through it', await page.evaluate(() => document.getElementById('pickconfirm').hidden),
+        pts.behind[0].name);
+    /* Hiding the Earth is how you look at what it was in front of, so with it
+       off the far side is fair game again. */
+    await page.evaluate(() => document.getElementById('o3earth2').click());
+    await page.waitForTimeout(300);
+    chk('...until the Earth is hidden, and then it can',
+        (await hoverName(pts.behind[0])) === pts.behind[0].name, pts.behind[0].name);
+    await page.evaluate(() => document.getElementById('o3earth2').click());
+  }
+  await page.mouse.move(gb.x + 4, gb.y + 4);
+  await page.click('.cam[data-mode=sat]');
+  await layerEl(true);
+  await page.waitForTimeout(500);
+
   // ---- the elements PANEL: does each number say what it is? ----------------
   /* The section (a) cards and the method box beneath them. Each check reads
      the text a student would copy and compares it with a figure worked out

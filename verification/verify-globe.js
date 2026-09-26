@@ -22,6 +22,12 @@
  * the solar elevation there. Points within the twilight band are excluded: the
  * shader deliberately blends across it and there is no right answer inside.
  *
+ * And the SIZE: the map fetched is the one the view can use, not the biggest the
+ * GPU will hold. A phone at the opening zoom used to download the 6.6 MB map
+ * for a globe 560 pixels across. The expected rung is worked out here from the
+ * canvas and the camera, then checked against what was bound and what was
+ * requested - at the opening zoom, zoomed in, on a phone, and under Save-Data.
+ *
  *   node verification/verify-globe.js        (needs playwright and the network)
  */
 const path = require('path');
@@ -61,6 +67,44 @@ const chk = (name, ok, detail) => {
   console.log((ok ? '  PASS  ' : '  FAIL  ') + name + (detail ? '   ' + detail : ''));
 };
 
+/* Which rung a view should get, restated from the geometry rather than read
+   out of orbit3d. For a camera d body radii from the centre, looking at it,
+   the most magnified point of the map is the middle of the disc, where a unit
+   of surface spans f/(d-1) pixels; an equirectangular map W texels wide puts
+   W/2pi texels on that unit. The page takes the smallest rung whose texel is
+   no wider than 1.25 pixels there - the largest the GPU holds if none is -
+   and the coarse rung under Save-Data. */
+const LADDER = [2048, 4096, 8192];
+const view = page => page.evaluate(() => {
+  const cv = Orbit3D.renderer.domElement, gl = Orbit3D.renderer.getContext();
+  return { h: cv.clientHeight * Orbit3D.renderer.getPixelRatio(), fov: Orbit3D.camera.fov,
+           d: Orbit3D.camera.position.length(), max: gl.getParameter(gl.MAX_TEXTURE_SIZE) };
+});
+const rungFor = (v, lean) => {
+  const fit = LADDER.filter(w => w <= v.max);
+  if (lean) return fit[0];
+  const need = 2*Math.PI * (v.h/2 / Math.tan(v.fov*Math.PI/360)) / (v.d - 1);
+  return fit.find(w => w*1.25 >= need) || fit[fit.length - 1];
+};
+const dayWidth = page => page.evaluate(() => {
+  let m = null;
+  Orbit3D.scene.traverse(o => { if (o.material && o.material.uniforms && o.material.uniforms.dayMap) m = o; });
+  const img = m && m.material.uniforms.dayMap.value && m.material.uniforms.dayMap.value.image;
+  return img ? (img.width || img.naturalWidth) : 0;
+});
+/* The wheel, as a reader turns it: one notch at a time, a few frames apart. A
+   burst in one task would jump the camera straight to its end and never test
+   that a zoom passing through a middle rung does not stop to buy it. */
+const zoomIn = (page, notches) => page.evaluate(n => new Promise(res => {
+  const cv = document.getElementById('globe');
+  let k = 0;
+  const step = () => {
+    cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+    if (++k < n) setTimeout(step, 60); else res();
+  };
+  step();
+}), notches);
+
 /* Well inside a continent or well out to sea - never within a few degrees of a
    coast, because the page's coastlines are a generalised outline and the
    imagery is not, and disagreement there would be the test's fault. */
@@ -87,6 +131,13 @@ const SITES = [
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
+  /* Every Blue Marble rung the page asks for, in order, and every GIBS call. */
+  const rungs = [], gibs = [];
+  page.on('request', r => {
+    const m = r.url().match(/bluemarble-(\d+)\.jpg/);
+    if (m) rungs.push(+m[1]);
+    if (/gibs\.earthdata/.test(r.url())) gibs.push(r.url());
+  });
   await page.route('**celestrak.org/**', r => r.abort());
   await page.route('**tle.ivanstanojevic.me/**', r => r.abort());
   await page.goto(PAGE, { waitUntil: 'load' });
@@ -135,7 +186,12 @@ const SITES = [
     console.log('\n' + fails + ' CHECK(S) FAILED');
     await browser.close(); process.exit(1);
   }
-  chk('imagery loads and reaches the size it asked for', /8192|4096/.test(loaded), loaded);
+  const v0 = await view(page), want0 = rungFor(v0);
+  chk('imagery loads, at the rung this view can use',
+      loaded.indexOf(want0 + '×' + want0/2) === 0,
+      loaded + ' - expected ' + want0 + ' for ' + v0.h + ' px of buffer at ' + v0.d.toFixed(2) + ' radii');
+  chk('...and nothing bigger was fetched to get there', rungs.length > 0 && rungs.every(w => w <= want0),
+      'Blue Marble rungs requested: ' + rungs.join(', '));
 
   const shaded = await page.evaluate(() => {
     let found = null;
@@ -193,13 +249,13 @@ const SITES = [
       worstLand < BLUE && worstSea > BLUE,
       'bluest land ' + worstLand.toFixed(1) + ', least blue sea ' + worstSea.toFixed(1)
         + ', threshold ' + BLUE);
-  /* The ladder stops at MAX_TEXTURE_SIZE, so the size to expect is the GPU's,
-     not one written down here: asserting 8192 outright would fail on a phone
-     that caps at 4096 - correctly, and for entirely the wrong reason. */
-  const cap = await page.evaluate(() => {
-    const gl = Orbit3D.renderer.getContext(); return gl.getParameter(gl.MAX_TEXTURE_SIZE); });
-  chk('...at the largest size this GPU will hold',
-      geo[0].W === Math.min(8192, cap) && geo[0].H === geo[0].W/2,
+  /* The size to expect is worked out from the view, not written down here. It
+     used to be the GPU's ceiling outright - min(8192, MAX_TEXTURE_SIZE) - and
+     that rule is what sent a phone the 6.6 MB map for a 560 px globe. The GPU
+     still caps it, inside rungFor. */
+  const cap = v0.max;
+  chk('...and that is the map on the sphere',
+      geo[0].W === want0 && geo[0].H === geo[0].W/2,
       geo[0].W + '×' + geo[0].H + ', MAX_TEXTURE_SIZE ' + cap);
 
   // ---- the terminator -------------------------------------------------------
@@ -428,6 +484,41 @@ const SITES = [
         dayNow.length + ' daylit cities in view, none changed by 4 of 255');
   }
 
+  // ---- zoomed in, the view can use more, and gets it -----------------------
+  /* Twelve notches takes the camera from 4.2 radii to the 1.25 stop, where
+     every rung is short of what the disc can show, so the best the GPU holds
+     is what should arrive. On the way it passes through the band where the
+     4096 would do - and a zoom still moving must not stop to buy it. */
+  const before = rungs.length, gibsBefore = gibs.length;
+  await zoomIn(page, 12);
+  const v1 = await view(page), want1 = rungFor(v1);
+  const sharpAt = Date.now();
+  let w1 = 0;
+  while (Date.now() - sharpAt < 60000){
+    w1 = await dayWidth(page);
+    if (w1 >= want1) break;
+    await page.waitForTimeout(250);
+  }
+  chk('zooming in sharpens the map to the rung the closer view can use',
+      w1 === want1 && want1 > want0,
+      w1 + ' bound, ' + want1 + ' expected at ' + v1.d.toFixed(2) + ' radii (was ' + want0 + ')');
+  const zoomRungs = rungs.slice(before);
+  chk('...fetching that rung alone: no coarse insurance copy, and none of the middle one on the way',
+      zoomRungs.length === 1 && zoomRungs[0] === want1, 'requested: ' + (zoomRungs.join(', ') || 'nothing'));
+  chk('...and not the night lights again', gibs.length === gibsBefore,
+      (gibs.length - gibsBefore) + ' GIBS request(s) while sharpening');
+  /* Zooming back out keeps the sharp map: it is already on the GPU, and
+     stepping down would only be another download the next time in. */
+  await page.evaluate(() => {
+    const cv = document.getElementById('globe');
+    for (let i = 0; i < 12; i++)
+      cv.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(1200);
+  chk('...and zooming back out neither drops it nor fetches again',
+      (await dayWidth(page)) === want1 && rungs.length === before + 1,
+      (await dayWidth(page)) + ' bound, ' + (rungs.length - before) + ' request(s) since the zoom');
+
   // ---- a dead NASA ---------------------------------------------------------
   /* The Blue Marble ships with the page now, so losing GIBS has to cost the
      dated layers and nothing else. This is the check that would notice it
@@ -467,6 +558,57 @@ const SITES = [
         const r = document.querySelector('input[name=globesurf]:checked');
         return r && r.value === 'vector' && Orbit3D.surface === 'vector';
       }));
+
+  // ---- a phone, and a reader saving data ------------------------------------
+  /* Each in a fresh context, with the Blue Marble chosen before the page loads
+     so neither depends on GIBS. The phone is the finding itself: 390x844 at 3x,
+     which the renderer caps to a 2x buffer, 878 px tall. */
+  const fresh = async (ctxOpts, init) => {
+    const ctx = await browser.newContext(ctxOpts);
+    await ctx.addInitScript(init || (() => {}));
+    await ctx.addInitScript(() => { try { localStorage.setItem('gt.surface', 'marble'); } catch (e) {} });
+    const p = await ctx.newPage();
+    const got = [];
+    p.on('pageerror', e => errs.push(e.message));
+    p.on('request', r => { const m = r.url().match(/bluemarble-(\d+)\.jpg/); if (m) got.push(+m[1]); });
+    await p.route('**celestrak.org/**', r => r.abort());
+    await p.route('**tle.ivanstanojevic.me/**', r => r.abort());
+    await p.goto(PAGE, { waitUntil: 'load' });
+    await p.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 40000 });
+    await p.waitForFunction(() => /\d+×\d+/.test(document.getElementById('texnote').textContent)
+      && !/sharpening/.test(document.getElementById('texnote').textContent), null, { timeout: 30000 });
+    await p.waitForTimeout(1500);        // long enough for a sharpening to have started, were one due
+    return { ctx, p, got };
+  };
+
+  {
+    const { ctx, p, got } = await fresh({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3,
+                                          isMobile: true, hasTouch: true });
+    const v = await view(p), want = rungFor(v), w = await dayWidth(p);
+    chk('a phone at the opening zoom gets the rung its view can use', w === want,
+        w + ' bound, ' + want + ' expected for ' + v.h + ' px of buffer');
+    chk('...and never asks for the 6.6 MB map', got.length > 0 && !got.includes(8192),
+        'requested: ' + got.join(', '));
+    await ctx.close();
+  }
+  {
+    /* navigator.connection is Chromium's, and Save-Data is a flag on it; the
+       page must read it and hold the coarse rung however close the reader
+       zooms. */
+    const { ctx, p, got } = await fresh({ viewport: { width: 1100, height: 800 } }, () => {
+      Object.defineProperty(Navigator.prototype, 'connection',
+        { configurable: true, get(){ return { saveData: true, effectiveType: '4g' }; } });
+    });
+    await p.evaluate(() => Orbit3D.freeCam());
+    await zoomIn(p, 12);
+    await p.waitForTimeout(2500);
+    const v = await view(p), w = await dayWidth(p);
+    chk('under Save-Data the coarse rung holds, even zoomed in', w === rungFor(v, true) && got.every(x => x === w),
+        w + ' bound at ' + v.d.toFixed(2) + ' radii, requested: ' + got.join(', '));
+    const note = await p.evaluate(() => document.getElementById('texnote').textContent);
+    chk('...and the note beside the picker says why', /save data/i.test(note), note.trim());
+    await ctx.close();
+  }
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

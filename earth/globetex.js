@@ -167,18 +167,36 @@ function overPixels(base, top, w, h){
   return c;
 }
 
-/* load(key, onStage) -> Promise<{day, night, meta}>
+/* The night mosaic, kept once fetched. It has no date and one size, so every
+   request for it is the same request - and a sharper day map for a globe
+   already wearing one (the `floor` case below) should not pay for the lights a
+   second time. A failed fetch is forgotten, so the next attempt really tries. */
+var nightMemo = {};
+function nightImage(layer){
+  var u = url(layer, 2048, 1024, null);
+  if(!nightMemo[u]) nightMemo[u] = image(u).catch(function(e){ delete nightMemo[u]; throw e; });
+  return nightMemo[u];
+}
+
+/* load(key, onStage, now, cap, floor) -> Promise<{day, night, meta}>
  *
  * onStage is called once per rung of the size ladder with the same shape, so
  * the caller can put a 2048 map on the sphere at three seconds and replace it
  * with the 4096 at eight without knowing that is what is happening. The
  * promise resolves on the last rung.
  *
+ * `cap` is the widest rung wanted: the GPU's ceiling, and below that whatever
+ * the caller's view can actually resolve. `floor` is the width already on the
+ * sphere when the caller is asking for a SHARPER copy of the same surface - the
+ * reader zoomed in. Rungs at or under it are skipped, and so is the coarse
+ * insurance rung: it exists so that something photographic appears quickly,
+ * and something already has.
+ *
  * The night mosaic is fetched once, at the coarse size: it is a field of point
  * sources with no fine structure to lose, and it is the same picture at every
  * rung.
  */
-function load(key, onStage, now, cap){
+function load(key, onStage, now, cap, floor){
   var m = mode(key);
   if(!m) return Promise.reject(new Error('unknown surface: ' + key));
   if(!m.day && !m.local) return Promise.resolve({ day:null, night:null, meta:{ mode:m } });
@@ -194,7 +212,10 @@ function load(key, onStage, now, cap){
   /* A texture wider than the GPU will take is not a sharper globe, it is a
      failed upload - MAX_TEXTURE_SIZE is 8192 on a software renderer and as low
      as 4096 on some phones. The caller passes what its own context reports and
-     the ladder stops there, rather than spending five megabytes to find out. */
+     the ladder stops there, rather than spending five megabytes to find out.
+     It passes less than that when its view could not show more - a phone at
+     the opening zoom was fetching 6.6 MB for a globe 560 pixels across - and
+     comes back with `floor` if the reader zooms in: see texRung in orbit3d.js. */
   var fit = m.steps.filter(function(st){ return !cap || st[0] <= cap; });
   if(!fit.length) fit = [m.steps[0]];
   /* The coarse rung and the best one, and nothing in between. The ladder used
@@ -204,8 +225,13 @@ function load(key, onStage, now, cap){
      an image that is replaced before it is read. The first rung stays as
      insurance for a thin connection. */
   var steps = (fit.length > 2) ? [fit[0], fit[fit.length - 1]] : fit;
+  if(floor){
+    var up = fit.filter(function(st){ return st[0] > floor; });
+    if(!up.length) return Promise.reject(new Error('no sharper rung under ' + (cap || 'the cap')));
+    steps = [up[up.length - 1]];
+  }
 
-  var nightP = m.night ? image(url(m.night, 2048, 1024, null)) : Promise.resolve(null);
+  var nightP = m.night ? nightImage(m.night) : Promise.resolve(null);
 
   return nightP.then(function(night){
     var out = null;
@@ -232,8 +258,11 @@ function load(key, onStage, now, cap){
 }
 
 global.GlobeTex = {
+  /* `sizes` is the ladder's widths, so the caller can decide which rung its view
+     needs without carrying a second copy of the list. */
   modes: function(){ return MODES.map(function(m){
-    return { key:m.key, label:m.label, note:m.note, net: !!m.day }; }); },
+    return { key:m.key, label:m.label, note:m.note, net: !!m.day,
+             sizes: (m.steps || []).map(function(st){ return st[0]; }) }; }); },
   load: load,
   lastFullDay: lastFullDay,
   url: url,

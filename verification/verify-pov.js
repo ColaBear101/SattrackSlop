@@ -10,8 +10,9 @@
  * a plausible picture.
  *
  * So this measures the camera rather than the pixels - position against the
- * propagated state vector, view direction against nadir, screen-up against the
- * along-track direction - and drives the real input handlers for the rest.
+ * propagated state vector, view direction against the along-track direction,
+ * screen-up against the zenith, and that pitching fully down still reaches
+ * nadir - and drives the real input handlers for the rest.
  *
  * One trap worth naming: the PAGE owns the clock and pushes it into the scene
  * every frame, so setting Orbit3D.time is silently overwritten on the next
@@ -270,6 +271,10 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
       analytic(gz) === null, 'off-nadir ' + boreOffNadir(gz).toFixed(1) + ' deg');
   chk('...so it falls back to the figure straight down, and says so',
       /at nadir/.test(gz.unit), gz.text + ' ' + gz.unit);
+  /* ...including that the point it describes is not on screen: facing forward
+     from 370 km, nadir is 90 degrees below the middle of the view. "at nadir"
+     alone was read as a figure for the ground in the picture. */
+  chk('...and that nadir is out of the picture', /below frame/.test(gz.unit), gz.unit);
   {
     const want = (Math.hypot(...gz.pos) - 1)*RE_KM * (2*Math.tan(gz.fov*Math.PI/360)/gz.H) * 1000;
     chk('...which is the altitude times one pixel of angle', near(Number(gz.text), want),
@@ -426,6 +431,34 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
   await page.waitForTimeout(500);
   chk('...and it goes away with the mode',
       await page.evaluate(() => document.getElementById('o3mini').hidden === true));
+
+  // ---- "below frame" is said only when it is true --------------------------
+  /* The fallback above reads "at nadir, below frame" because from low orbit
+     the straight-down point is 90 degrees under the middle of the opening
+     view. That is not a law. From GEO the Earth is a disc 17 degrees across:
+     pitch down to ten degrees off nadir and the boresight passes the limb -
+     so the fallback runs - while nadir itself is ten degrees below the middle
+     of a 42-degree frame, plainly in the picture. The label must drop the
+     claim there rather than contradict the view. */
+  await page.evaluate(n => {
+    const b = document.getElementById('satsearch');
+    b.value = n; b.dispatchEvent(new Event('input', { bubbles: true }));
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }, 'GOES 18');
+  await page.waitForFunction(() => window.__gt.D.entry.name === 'GOES 18', null, { timeout: 20000 });
+  await page.evaluate(() => { Orbit3D.freeCam(); Orbit3D.setPov(true); });
+  await page.waitForTimeout(600);
+  gz = await gsd();
+  chk('from GEO, facing along-track, nadir is still below the frame',
+      /at nadir, below frame$/.test(gz.unit), gz.text + ' ' + gz.unit);
+  await pitchTo(80); await page.waitForTimeout(600);
+  gz = await gsd();
+  chk('...and pitched to ten degrees off nadir the boresight clears the disc',
+      analytic(gz) === null, 'off-nadir ' + boreOffNadir(gz).toFixed(1) + ' deg, horizon '
+        + (Math.asin(1/Math.hypot(...gz.pos))*180/Math.PI).toFixed(1));
+  chk('...while nadir is in the picture, and the label no longer says otherwise',
+      /at nadir$/.test(gz.unit), gz.text + ' ' + gz.unit);
+  await page.evaluate(() => Orbit3D.freeCam());
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

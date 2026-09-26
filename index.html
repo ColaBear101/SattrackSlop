@@ -140,6 +140,33 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
    panel stacked over it, and the map lands on top of all four. Better absent
    than overlapping - POV still works, it just does not get a map. */
 @media (max-width:640px){ .o3-mini{display:none} }
+/* The globe's key. The flat map has always had one and the globe had none, so
+   a newcomer had to guess the cyan, the pink and the pale rings - and read the
+   orbit, drawn in contact-orange, as the part of it Bangkok can see. Orange now
+   means only what it means on the map, and the ring is neutral.
+   Bottom left and stacked, the one corner nothing else uses: the disc is
+   centred and at the opening zoom only grazes it on a narrow viewport, and
+   below 900 px the camera and trail buttons move to the bottom RIGHT. The text
+   carries the drag hint's shadow for when it does sit over the planet - zoomed
+   in, or on the photographic surfaces. It gives the corner to the POV
+   minimap, and on a phone it goes the way the minimap does, for the same
+   reason. Swatches are the colours as they land on screen: the scene writes
+   its palette out through the sRGB encode, which lifts every one of them. */
+.o3-key{position:absolute; left:14px; bottom:32px; margin:0; padding:0; list-style:none;
+  display:flex; flex-direction:column; gap:2px; pointer-events:none;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.05em;
+  color:#9DB1BC; text-shadow:0 0 5px #05090C,0 0 5px #05090C}
+.o3-key li{display:flex; align-items:center; gap:7px; white-space:nowrap}
+.o3-key i{flex:none; width:16px; display:flex; justify-content:center}
+.o3-key i::before{content:""; display:block}
+.o3-key .k-orbit::before{width:16px; border-top:2px solid #768893}
+.o3-key .k-track::before{width:16px; border-top:2px solid #55D1E7}
+.o3-key .k-foot::before{width:9px; height:9px; border-radius:50%; border:1.5px solid #BFC6CA}
+.o3-key .k-site::before{width:9px; height:9px; border-radius:50%; border:1.5px dashed #F29CBB}
+.o3-key .k-view::before{width:16px; border-top:3px solid #E8BC5A}
+.o3-key .k-cat::before{width:6px; height:6px; border-radius:50%; background:#3A93A3}
+.o3-mini:not([hidden]) ~ .o3-key{display:none}
+@media (max-width:640px){ .o3-key{display:none} }
 .layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
   background:rgba(10,16,20,.72); border:1px solid rgba(180,200,212,.28); border-radius:3px;
   backdrop-filter:blur(6px)}
@@ -566,6 +593,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 
   .seglabel{display:none}
   .hint-drag{display:none}
+  .o3-key{bottom:12px}                          /* no drag hint to sit above */
   .access{grid-template-columns:minmax(0,1fr)}
   .tablesky{position:static; justify-self:center; width:min(268px,100%)}
   .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -655,6 +683,14 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       </div>
       <canvas id="o3mini" class="o3-mini" width="480" height="240" hidden
               aria-label="Minimap: the spacecraft's position, its access circle and where the camera is pointed"></canvas>
+      <ul class="o3-key" id="o3key" aria-label="Globe key">
+        <li><i class="k-orbit"></i>Orbit, one revolution</li>
+        <li><i class="k-track"></i>Spacecraft and ground track</li>
+        <li><i class="k-view"></i><span id="lbl-keyview">In view from Bangkok (el ≥ 5°)</span></li>
+        <li><i class="k-foot"></i>Footprint (ground above 5°)</li>
+        <li><i class="k-site"></i><span id="lbl-keysite">Bangkok 5° access circle</span></li>
+        <li><i class="k-cat"></i>Rest of the catalogue</li>
+      </ul>
       <p class="hint-drag">Drag to orbit · scroll to zoom · click a point to load that spacecraft</p>
       <div class="pickconfirm" id="pickconfirm" hidden role="dialog" aria-labelledby="pcname">
         <p class="pcn" id="pcname">—</p>
@@ -9363,6 +9399,8 @@ function paintSite(){
   set('lbl-inview',  'In view from '+nm+' (el ≥ '+MASK+'°)');
   set('lbl-sitepos', nm+' '+pos);
   set('lbl-sitering', nm+' '+MASK+'° access circle');
+  set('lbl-keysite', nm+' '+MASK+'° access circle');   // the globe's key says the same
+  set('lbl-keyview', 'In view from '+nm+' (el ≥ '+MASK+'°)');
   set('lbl-prose',   nm);
   set('lbl-camsite', nm);
   set('lbl-tz1',     tzLabel());
@@ -10702,6 +10740,8 @@ document.addEventListener('visibilitychange', () => {
     if(ls) ls.style.display = 'none';
     const cl = document.querySelector('label[for="o3cloud"]');
     if(cl) cl.style.display = 'none';           // and no cloud to toggle
+    const ky = document.getElementById('o3key');
+    if(ky) ky.style.display = 'none';           // nor a globe to be the key to
     return;
   }
   // the camera has one mode with three values; the exclusion logic already

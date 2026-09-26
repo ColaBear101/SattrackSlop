@@ -23,6 +23,7 @@ const FOV_SEG = 144;                             // segments around the footprin
 let GT, THREE, sat;
 let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
 let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot, fovRing;
+let markHot = null, markCold = null;                         // the marker, in view and out
 let atmo = null, wire = null, reLine = null, reTip = null;   // the globe, and what stands in for it
 let altLine = null, altTip = null;                           // surface -> spacecraft
 let labels = {}, raycaster, mouse = null, hoverIdx = -1;
@@ -33,9 +34,10 @@ let curEntry = null, curRec = null, follow = true, siteLock = false, pov = false
 let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
 let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
 /* POV is a different kind of camera. It has no distance, because it is AT the
-   spacecraft; yaw and pitch are offsets from nadir, and the wheel changes the
-   lens rather than the range. cam0 is deliberately never written while POV is
-   on, so leaving the mode restores the free camera exactly where it was. */
+   spacecraft; yaw and pitch are offsets from the along-track direction (see
+   aimPov - nadir is pitch -90), and the wheel changes the lens rather than the
+   range. cam0 is deliberately never written while POV is on, so leaving the
+   mode restores the free camera exactly where it was. */
 let pov0 = { yaw: 0, pitch: 0, fov: 42 };
 const BASE_FOV = 42;                             // what the other three modes use
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
@@ -62,7 +64,15 @@ const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const SPACE = {
   ocean:'#0B2033', land:'#2C4437', landline:'#496B56', grat:'#27455A', fov:'#E9F2F7',
   track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
-  sunk:'#101A22', panel:'#0A1116', ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1'
+  sunk:'#101A22', panel:'#0A1116', ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
+  /* The orbit ring is geometry, not data, so it is a neutral blue-grey. It was
+     contact-orange, which on the flat map and everywhere else on the page means
+     one thing - in view from the site - so a whole orange loop through the
+     marker read as "the part of the orbit Bangkok can see". r128 writes
+     material colours out through the sRGB encode, which lifts them, so this
+     lands on screen as about #768893: dimmer than the pale footprint ring,
+     which is data, and not to be mistaken for it. */
+  orbit:'#2E3F4A'
 };
 // nudge a theme token toward an earthy target: the flat map's greys read as a
 // grey ball in 3D, where the eye expects a planet
@@ -238,7 +248,9 @@ function applyPhoto(stage){
 
 /* setSurface(key, onStatus)
    onStatus gets {state, key, meta, detail} - 'loading', then 'ready' per rung,
-   or 'failed'. The page owns the wording; this owns the sequence.
+   or 'failed' - and 'ready' twice more whenever the reader zooms in far enough
+   to earn a sharper rung, as it starts and as it lands (see sharpen). The page
+   owns the wording; this owns the sequence.
 
    Every callback is stamped with the request that started it and dropped if a
    later one has begun, because these take seconds and a reader flicking through
@@ -250,29 +262,138 @@ function setSurface(key, onStatus){
     if(seq === surfaceSeq && onStatus) onStatus({ state, key, detail, meta });
   };
   surfaceKey = key;
+  texW = texH = 0; texBusy = false; texNeedWas = -1; texDead = 0; texMeta = null; texSay = say;
   if(key === 'vector' || !global.GlobeTex){
+    texSizes = [];
     if(earth && vectorMat) earth.material = vectorMat;
     say('ready', null, null);
     return;
   }
+  const m = global.GlobeTex.modes().filter(x => x.key === key)[0];
+  texSizes = (m && m.sizes) || [];
   say('loading', null, null);
-  /* The GPU's own ceiling, passed down so the ladder stops there. 8192 on a
-     software renderer, 16384 on a discrete card, as low as 4096 on some
-     phones - and a texture past it is not a sharper globe, it is a failed
-     upload after the bytes have already been paid for. */
-  const cap = (renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || 0;
+  texBusy = true;
+  /* The widest rung this view can use, which is never past the GPU's own
+     ceiling - see texRung. */
+  const cap = texRung();
   global.GlobeTex.load(key, stage => {
     if(seq !== surfaceSeq) return;            // superseded while in flight
     applyPhoto(stage);
-    say('ready', stage.w + '×' + stage.h + (stage.last ? '' : ', sharpening…'), stage.meta);
+    texW = stage.w; texH = stage.h; texMeta = stage.meta;
+    if(stage.last) texBusy = false;
+    say('ready', texDetail(stage.last ? '' : ', sharpening…'), stage.meta);
   }, null, cap).catch(err => {
     /* Falling back rather than leaving a half-dressed globe: whatever went
        wrong, the vector surface always works and the reader is told which one
        they are looking at. */
     if(seq !== surfaceSeq) return;
+    texBusy = false; texW = texH = 0; texSizes = [];
     surfaceKey = 'vector';
     if(earth && vectorMat) earth.material = vectorMat;
     say('failed', (err && err.message) || 'imagery unavailable', null);
+  });
+}
+
+/* ---- how much map the view can use ---------------------------------------- *
+ * The ladder used to stop only at the GPU's ceiling, and most phones report
+ * 8192 or more - so a phone at the opening zoom fetched the 6.6 MB map for a
+ * globe 560 device pixels across, when the 0.6 MB one already put about a
+ * texel under every pixel. The rung is now chosen for the view in front of the
+ * reader, and a sharper one fetched when the view changes to one that can use
+ * it.
+ *
+ * What a view can resolve is set by the one point where the map is most
+ * magnified. For the three orbiting cameras that is the middle of the disc: the
+ * point nearest the eye, and square on to it, where everywhere else is
+ * foreshortened and packs the texels closer. There a unit of surface spans
+ * f/(d-1) pixels - f the focal length in device pixels, d the camera's distance
+ * from the centre in body radii - and an equirectangular map W texels wide puts
+ * W/2pi of them on a unit of the equator, and on a unit of any meridian. So the
+ * view can use a map up to
+ *
+ *        W = 2 pi f / (d - 1)
+ *
+ * wide. At the opening 4.2 radii and 42 degrees that is 2.56 times the drawing
+ * buffer's height: 1811 for a 1440x900 window, 2246 for a phone (878 px of
+ * buffer at its capped 2x), 3621 for the same window on a 2x display.
+ *
+ * A rung counts as enough within a quarter of that - a texel no wider than 1.25
+ * pixels at the single most magnified point, which bilinear filtering does not
+ * show. That is what hands the phone the 2048 rather than the 4096, a 1.4 MB
+ * difference for nothing visible. Zoomed in to 1.25 radii every rung is short,
+ * and the best the GPU takes is fetched.
+ *
+ * POV needs no sum. The lens is on the ground from a few hundred kilometres,
+ * where a screen pixel is a few hundred metres and even the 8192's texel is
+ * 4.9 km.
+ *
+ * Save-Data, or a connection the browser rates 3G or slower, holds the coarse
+ * rung whatever the view: the reader has asked for the bytes not to be spent,
+ * or would wait a minute for them. The note beside the picker says so. */
+let texSizes = [], texW = 0, texH = 0, texBusy = false, texMeta = null, texSay = null;
+let texNeedWas = -1, texStillAt = 0, texDead = 0;
+const TEX_SLACK = 1.25;
+function lean(){
+  const nav = global.navigator || {};
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection;
+  return !!c && (c.saveData === true || /2g|3g/.test(c.effectiveType || ''));
+}
+function texNeed(){
+  if(pov) return Infinity;
+  const cv = renderer && renderer.domElement;
+  /* The layout's height times the pixel ratio rather than canvas.height: the
+     buffer is sized in tick(), and the page asks for its surface before the
+     first frame has run. */
+  const hPx = cv ? cv.clientHeight * renderer.getPixelRatio() : 0;
+  if(!(hPx > 0)) return 0;
+  const f = hPx/2 / Math.tan(BASE_FOV*RAD/2);
+  return 2*Math.PI*f / Math.max(cam0.dist - 1, 1e-3);
+}
+function texRung(){
+  /* The GPU's ceiling first. 8192 on a software renderer, 16384 on a discrete
+     card, as low as 4096 on some phones - and a texture past it is not a
+     sharper globe, it is a failed upload after the bytes have been paid for. */
+  const gpu = (renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || Infinity;
+  let fit = texSizes.filter(w => w <= gpu);
+  if(!fit.length) fit = texSizes.slice(0, 1);
+  if(!fit.length) return 0;
+  if(lean()) return fit[0];
+  const need = texNeed();
+  for(const w of fit) if(w*TEX_SLACK >= need) return w;
+  return fit[fit.length - 1];
+}
+function texDetail(tail){
+  const held = !tail && lean() && texSizes.some(w => w > texW);
+  return texW + '×' + texH + tail + (held ? ', kept small to save data' : '');
+}
+
+/* Called every frame. Fetches the sharper rung once the view has stood still
+   for a moment - the need unchanged for 400 ms - or a wheel spin from 4.2 radii
+   to 1.25 would buy the 4096 on its way to the 8192. Timed from the last change
+   of the VIEW, not of the rung it wants: a zoom that spends a few slow frames
+   crossing the 4096's band has a steady rung for that long, and is still
+   moving. Never steps DOWN: a map already on the GPU costs nothing more to
+   keep. A failed sharpening leaves the working map where it is and is not
+   retried for that rung. */
+function sharpen(ts){
+  if(texBusy || !texW || !earthOn || !texSizes.length || !global.GlobeTex) return;
+  const need = texNeed();
+  if(need !== texNeedWas){ texNeedWas = need; texStillAt = ts; }      // still moving
+  const want = texRung();
+  if(want <= texW || want === texDead) return;
+  if(ts - texStillAt < 400) return;
+  const seq = surfaceSeq, key = surfaceKey, say = texSay;
+  texBusy = true;
+  say('ready', texDetail(', sharpening…'), texMeta);
+  global.GlobeTex.load(key, stage => {
+    if(seq !== surfaceSeq) return;
+    applyPhoto(stage);
+    texW = stage.w; texH = stage.h; texMeta = stage.meta; texBusy = false;
+    say('ready', texDetail(''), stage.meta);
+  }, null, want, texW).catch(() => {
+    if(seq !== surfaceSeq) return;
+    texBusy = false; texDead = want;
+    say('ready', texDetail(''), texMeta);
   });
 }
 
@@ -388,15 +509,19 @@ function build(canvas){
   placeSite();
 
   // inertial overlays
-  orbitLine = mkLine(0, '--contact', 2); scene.add(orbitLine);
+  orbitLine = mkLine(0, '--orbit', 2); scene.add(orbitLine);
+  /* Contact-orange is kept for exactly what the flat map uses it for: the line
+     of sight while the pass is up, and the marker while it is. Out of view the
+     marker is track-cyan, as the map's is - see the colour swap in tick(). */
   contactLine = mkLine(2, '--contact', 1); scene.add(contactLine);
   satDot = new THREE.Mesh(new THREE.SphereGeometry(0.016, 14, 12),
-    new THREE.MeshBasicMaterial({color: col('--contact')}));
+    new THREE.MeshBasicMaterial({color: col('--track')}));
   scene.add(satDot);
   satHalo = new THREE.Mesh(new THREE.RingGeometry(0.030, 0.037, 28),
-    new THREE.MeshBasicMaterial({color: col('--contact'), transparent:true, opacity:.65,
+    new THREE.MeshBasicMaterial({color: col('--track'), transparent:true, opacity:.65,
                                  side:THREE.DoubleSide, depthWrite:false}));
   scene.add(satHalo);
+  markHot = col('--contact'); markCold = col('--track');
 
   buildCloud();
   raycaster = new THREE.Raycaster();
@@ -700,13 +825,22 @@ function gsdAt(){
   if(ny.lengthSq() < 1e-12) ny = camX.clone().addScaledVector(down, -camX.dot(down));
   ny.normalize();
   const nadir = pencil(down, new THREE.Vector3().crossVectors(ny, down).normalize(), ny);
+  /* ...and whether that point is in the picture at all. The camera is never
+     rolled, so nadir lies on the screen's vertical centre line, below the
+     middle; it is in frame when it is in front and within the lens's half
+     height. From low orbit it never is while the boresight clears the limb -
+     the horizon is 70 degrees and more off nadir there, the widest lens 45 -
+     but from GEO the whole disc is 17 degrees across and both happen at once. */
+  const dz = down.dot(fwd);
+  const nadirSeen = dz > 0 && Math.abs(down.dot(camY)/dz) <= ty
+                            && Math.abs(down.dot(camX)/dz) <= ty*cam.aspect;
 
   const bore = pencil(fwd, camX, camY);
   if(!bore && !nadir) return null;
   return bore ? { x: bore.x, y: bore.y, range: bore.range, inc: bore.inc,
-                  nadir: nadir ? nadir.x : null, onBody: true, hit: bore.hit }
+                  nadir: nadir ? nadir.x : null, onBody: true, hit: bore.hit, nadirSeen }
               : { x: nadir.x, y: nadir.y, range: nadir.range, inc: nadir.inc,
-                  nadir: nadir.x, onBody: false, hit: null };
+                  nadir: nadir.x, onBody: false, hit: null, nadirSeen };
 }
 
 /* 3 significant figures is the most this is worth: the underlying orbit is a
@@ -1055,12 +1189,25 @@ function bindInput(canvas){
     raycaster.setFromCamera(m, cam);
     const hit = raycaster.intersectObject(cloudPts, false);
     for(const x of hit){
-      if(cloudValid[x.index] && !nearCull[x.index]){
+      if(pickable(x.index)){
         if(onPick) onPick(x.index, e.clientX, e.clientY);
         return;
       }
     }
   });
+}
+
+/* Can catalogue point i be hovered or clicked? It has to exist, not be faded
+   out for sitting on top of the camera, and not be round the back of the
+   globe. three.js raycasts straight through the sphere - it tests the cloud
+   alone - so a point on the far side under the cursor used to win over the
+   planet in front of it, and its name was drawn on the near face and a click
+   loaded it. */
+let pickV = null;
+function pickable(i){
+  if(!cloudValid[i] || nearCull[i]) return false;
+  if(!pickV) pickV = new THREE.Vector3();
+  return !behindEarth(pickV.set(cloudPos[i*3], cloudPos[i*3+1], cloudPos[i*3+2]));
 }
 
 /* ---- frame ---------------------------------------------------------------- */
@@ -1178,6 +1325,12 @@ function tick(ts){
   // line of sight, drawn only while the pass is actually up
   const seen = satPos && el >= GT.MASK;
   contactLine.visible = !!seen;
+  /* ...and the marker turns orange with it, the flat map's rule exactly: cyan
+     is the spacecraft, orange is the spacecraft in view from the site. */
+  const mc = seen ? markHot : markCold;
+  if(mc && !satDot.material.color.equals(mc)){
+    satDot.material.color.copy(mc); satHalo.material.color.copy(mc);
+  }
   if(seen){
     const b = llToScene(GT.OBS.lat, GT.OBS.lon, 1.0).applyAxisAngle(new THREE.Vector3(0,1,0), gmst);
     const arr = contactLine.geometry.attributes.position.array;
@@ -1232,7 +1385,7 @@ function tick(ts){
     raycaster.setFromCamera(mouse, cam);
     const hit = raycaster.intersectObject(cloudPts, false);
     let idx = -1;
-    for(const x of hit){ if(cloudValid[x.index] && !nearCull[x.index]){ idx = x.index; break; } }
+    for(const x of hit){ if(pickable(x.index)){ idx = x.index; break; } }
     if(idx !== hoverIdx){ hoverIdx = idx; canvas.style.cursor = idx>=0 ? 'pointer' : 'grab'; }
   } else if(hoverIdx !== -1 && (dragging || !cloudPts.visible)){
     hoverIdx = -1;                                  // drop a stale hover
@@ -1263,6 +1416,7 @@ function tick(ts){
   }
   paintLabels(satPos, el);
   fadeHeads();
+  sharpen(ts);                                    // after the camera has moved for this frame
   renderer.render(scene, cam);
 }
 
@@ -1286,13 +1440,44 @@ function fadeHeads(){
   });
 }
 
+/* Is a point on the far side of the globe from the eye? True when the ray from
+   the camera to it meets the unit sphere before it gets there - the test
+   orbitviz already applies to its own labels, and the job moon3d's facing
+   test does for its site labels.
+   A DOM label has no depth. The marker it names is depth-tested and vanishes
+   behind the planet, but the text went on being drawn over the visible face -
+   in the Bangkok camera, a bold KNACKSAT-2 over the Indian Ocean while the
+   spacecraft was over South America at -68 degrees. That is the one reading a
+   site-centred view must never give, and in that camera the spacecraft is
+   behind the disc for most of every orbit.
+   Only while the Earth is drawn: hiding it is how you see what it was in front
+   of, so with it off nothing stands in the way. */
+let rayD = null;                                 // scratch; THREE is not loaded when this file is
+function behindEarth(p){
+  if(!earthOn || !p) return false;
+  if(!rayD) rayD = new THREE.Vector3();
+  const c = cam.position;
+  rayD.subVectors(p, c);
+  const L = rayD.length();
+  if(!(L > 0)) return false;
+  rayD.divideScalar(L);
+  const b = c.dot(rayD), disc = b*b - (c.lengthSq() - 1);
+  if(disc <= 0) return false;                    // the sightline misses the sphere
+  const t = -b - Math.sqrt(disc);                // where it first meets it
+  return t > 0 && t < L;
+}
+
 function paintLabels(satPos, el){
   const box = renderer.domElement.getBoundingClientRect();
-  const place = (node, vec) => {
+  /* `solid` asks for the occlusion test. R(+) is exempt: its anchor is INSIDE
+     the globe by construction, labelling an arrow from the centre, and the
+     label is how that arrow is read at all while the Earth is drawn over it. */
+  const place = (node, vec, solid) => {
     if(!node) return;
     if(!vec){ node.style.display='none'; return; }
     const v = vec.clone().project(cam);
     if(v.z > 1){ node.style.display='none'; return; }
+    if(solid && behindEarth(vec)){ node.style.display='none'; return; }
     node.style.display = 'block';
     node.style.left = ((v.x*0.5+0.5)*box.width) + 'px';
     node.style.top  = ((-v.y*0.5+0.5)*box.height) + 'px';
@@ -1301,9 +1486,9 @@ function paintLabels(satPos, el){
      degenerate - it lands on the near plane and skitters around the frame with
      every sub-pixel of camera motion. There is also nothing to label: you are
      inside the thing. Hide it. */
-  place(labels.name, pov ? null : satPos);
-  place(labels.earth, labels.earth ? labels.earth.__vec : null);
-  place(labels.alt, labels.alt ? labels.alt.__vec : null);
+  place(labels.name, pov ? null : satPos, true);
+  place(labels.earth, labels.earth ? labels.earth.__vec : null, false);
+  place(labels.alt, labels.alt ? labels.alt.__vec : null, true);
   /* R(+) and the altitude both lie ALONG the radius vector, and the default
      Satellite camera sits on that same line - looking straight down it. Every
      point on a ray through the eye projects to one pixel, so the two labels
@@ -1321,7 +1506,7 @@ function paintLabels(satPos, el){
   if(labels.hover){
     if(hoverIdx >= 0){
       labels.hover.textContent = GT.CAT[hoverIdx].name;
-      place(labels.hover, new THREE.Vector3(cloudPos[hoverIdx*3], cloudPos[hoverIdx*3+1], cloudPos[hoverIdx*3+2]));
+      place(labels.hover, new THREE.Vector3(cloudPos[hoverIdx*3], cloudPos[hoverIdx*3+1], cloudPos[hoverIdx*3+2]), true);
     } else labels.hover.style.display = 'none';
   }
   if(labels.clock) labels.clock.textContent = GT.fmtUTC(simTime);
@@ -1382,10 +1567,13 @@ function paintLabels(satPos, el){
       } else if(g){
         /* The view axis clears the limb, so the pixel under the crosshair has no
            bounded footprint. Rather than print nothing, fall back to the value
-           straight down and label it as such. */
+           straight down and label it as such - including, when it is, that the
+           point it describes is not on screen. POV opens facing along-track,
+           and from low orbit that puts nadir 90 degrees below the middle of
+           the view; "at nadir" alone read as a figure for the ground in it. */
         const t = gsdText(g);
         labels.gsd.textContent = t.text.split(' × ')[0];
-        if(labels.gsdu) labels.gsdu.textContent = t.unit + ' at nadir';
+        if(labels.gsdu) labels.gsdu.textContent = t.unit + ' at nadir' + (g.nadirSeen ? '' : ', below frame');
         labels.gsd.title = 'the centre of the view clears the limb, so a pixel '
           + 'there covers no bounded patch of ground — this is the figure '
           + 'straight down from the spacecraft instead, in the same lens';

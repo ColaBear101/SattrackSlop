@@ -73,6 +73,7 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
     cam: (document.getElementById('lbl-camsite') || {}).textContent,
     ro: ['lbl-roel', 'lbl-roaz'].map(id => (document.getElementById(id) || {}).textContent),
     hint: (document.getElementById('lbl-acchint') || {}).textContent,
+    key: ['lbl-keysite', 'lbl-keyview'].map(id => (document.getElementById(id) || {}).textContent),
     note: (document.getElementById('sitenote') || {}).textContent
   }), T0);
   /* The flat map's site label is painted, not laid out, so it is read off the
@@ -168,6 +169,8 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('...and so do the readout and the section hint, which were static markup',
       moved.ro.every(t => /@ Svalbard$/.test(t)) && /^78\.23° N 15\.41° E, 450 m above sea level/.test(moved.hint),
       moved.ro.join(' / ') + ' · ' + moved.hint);
+  chk('...and so does the key on the globe', moved.key.length === 2 && moved.key.every(t => /Svalbard/.test(t || '')),
+      moved.key.join(' / '));
   const movedMap = await mapTexts();
   chk('...and the flat map labels the site by its own name',
       movedMap.includes('SVALBARD') && !movedMap.includes('BANGKOK'),

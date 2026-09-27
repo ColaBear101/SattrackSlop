@@ -228,6 +228,17 @@ const heo = () => {
       && /The latest sets are down to e 0\.01\d, under that line/.test(ro.note)
       && /^perigee \d[\d,]* km · e 0\.01\d$/.test(ro.sub),
       ro.sub + ' / ' + ((ro.note.match(/at an eccentricity of [^,]*/) || ['?'])[0]));
+  /* Just either side of the cap, three decimals printed both as 0.020: "at
+     an eccentricity of 0.020 ... above 0.02 no date is offered. The latest
+     sets are down to e 0.020, under that line". */
+  const nearCap = falling(0.0204, 2, 820, 759);
+  nearCap.forEach((r, i) => { if (i >= nearCap.length - 10) r.ecc = 0.0199; });
+  const nc = await panel(plot(nearCap));
+  chk('...and near the cap it prints a fourth decimal, so the two figures read apart',
+      /at an eccentricity of 0\.0204, the median over the last 45 days/.test(nc.note)
+      && /The latest sets are down to e 0\.0199, under that line/.test(nc.note)
+      && / · e 0\.0199$/.test(nc.sub),
+      nc.sub + ' / ' + ((nc.note.match(/at an eccentricity of [^,]*/) || ['?'])[0]));
 
   const hi = await panel(plot(heo()));
   chk('a high orbit\'s history is not reported as missing',

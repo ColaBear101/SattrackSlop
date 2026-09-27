@@ -10710,7 +10710,10 @@ function paintLife(r, P){
      rounding out can be above the cap while the latest set is under it. */
   if(r.verdict === 'eccentric'){
     const km = x => Math.round(x).toLocaleString('en-US');
-    const e = r.ecc.toFixed(3), cap = Lifetime.ECC_MAX;
+    /* Within 0.001 of the cap three decimals can print a median above it and
+       a latest set under it as the same "0.020"; a fourth tells them apart. */
+    const cap = Lifetime.ECC_MAX, eFix = x => x.toFixed(Math.abs(x - cap) < 0.001 ? 4 : 3);
+    const e = eFix(r.ecc);
     const pg = r.hp < 0 ? 'perigee below the surface' : 'perigee ' + km(r.hp) + ' km';
     const far = r.ha >= Lifetime.HA_DRAG;
     const moon = 'the Moon and the Sun pull on an orbit that reaches this far, and walk its ' +
@@ -10731,7 +10734,7 @@ function paintLife(r, P){
           ? 'With apogee at <b>' + km(r.ha) + ' km</b>, ' + moon + ' A drag model does not see them.'
           : 'What air there is at this height takes centuries or longer to bring an orbit down.'), span);
     } else {
-      const med = r.eccMed.toFixed(3);
+      const med = eFix(r.eccMed);
       lifeSet('Eccentric orbit', pg + ' · e ' + e,
         'Drag acts at perigee, <b>' + km(r.hp) + ' km</b> up, not at the <b>' + km(r.hNow) +
         ' km</b> mean altitude on the chart. This estimate is for near-circular orbits: it applies ' +

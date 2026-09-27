@@ -118,9 +118,11 @@ used, so two readers an hour apart can see why their numbers disagree.
 
 To reproduce the README on the page, open it with `?tle=embedded` — the **assignment snapshot**
 link under *Element set*. That keeps the embedded element sets, asks no source for a newer one,
-and opens each spacecraft's window at its own epoch. KNACKSAT-2 then reads 899.7 s over 2 passes
-("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set epoch 2026-09-12 07:29Z,
-embedded"), and LANDSAT 9, one click away, 37.74 minutes over 4, as below.
+and opens each spacecraft's window at its own epoch. The observer has to be Bangkok too: a site
+you moved to is remembered, so press *Reset to Bangkok* first if you did. KNACKSAT-2 then reads
+899.7 s over 2 passes ("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set
+epoch 2026-09-12 07:29Z, embedded"), and LANDSAT 9, one click away, 37.74 minutes over 4, as
+below.
 `verification/verify-refresh.js` checks both, with a newer set on offer that must not be asked for.
 
 The picker at the top right searches **2,158 spacecraft** by name or NORAD ID — type `knack`,

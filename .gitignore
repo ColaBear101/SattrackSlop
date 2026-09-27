@@ -8,9 +8,8 @@ verification/.regress-snap.js
 
 # Out of git because the token this repository is pushed with has no "workflow"
 # scope, so GitHub refuses any push that touches .github/workflows outright.
-# No workflow is committed and no CI runs on this repository; there is no
-# with-ci-workflow branch to restore one from, whatever an earlier version of
-# this comment said. To add CI, drop this entry and push the file with a token
-# that has the scope, or create it in GitHub under Actions -> New workflow,
-# which needs no token at all.
+# No workflow is committed and no CI runs on this repository, and there is no
+# branch holding one to restore. To add CI, drop this entry and push the file
+# with a token that has the scope, or create it in GitHub under Actions -> New
+# workflow, which needs no token at all.
 .github/workflows/

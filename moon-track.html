@@ -73,10 +73,13 @@ h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; letter-spacing:-.01
 
 .stage{display:grid; grid-template-columns:minmax(0,1fr) 320px}
 @media (max-width:980px){ .stage{grid-template-columns:minmax(0,1fr)} }
-/* The rail is taller than a 2:1 equirectangular map, and a grid row sizes to
-   its tallest child, so the leftover height would otherwise all pool under
-   the map. Centring splits it. */
-.mapwrap{position:relative; padding:14px 16px; min-width:0; align-self:center}
+/* The rail is usually taller than the view beside it, and a grid row sizes to
+   its tallest child. This used to centre the view in that row, which suited
+   the 2:1 flat map and nothing else: the default globe view opened with a
+   115 px empty band above it and its bottom below a 900 px fold. The view now
+   sits at the top, next to the rail's first block, and the leftover height
+   falls below the legend where it reads as the end of the column. */
+.mapwrap{position:relative; padding:14px 16px; min-width:0; align-self:start}
 canvas#map{display:block; width:100%; border-radius:4px; background:var(--sunk);
   border:1px solid var(--rule)}
 canvas#map[hidden]{display:none}
@@ -86,13 +89,19 @@ canvas#map[hidden]{display:none}
 .globewrap[hidden]{display:none}
 .globewrap canvas{display:block; width:100%; height:100%; position:absolute; inset:0}
 .g-layer{position:absolute; inset:0; pointer-events:none}
+/* A dark backing, not just a glow: over the lit grey regolith a pink tag with a
+   text-shadow alone washed out on a phone. */
 .g-lbl{position:absolute; transform:translate(8px,-50%); white-space:nowrap; display:none;
   font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.02em;
-  text-shadow:0 0 3px #000,0 0 7px #000}
+  text-shadow:0 0 3px #000,0 0 7px #000; background:rgba(5,9,12,.62); padding:0 3px;
+  border-radius:2px}
 .g-lbl.site{color:#E2557E} .g-lbl.crash{color:#CE801A}
 .g-lbl.sat{color:#E8F4F9} .g-lbl.earth{color:#F0C674}
-.hint-drag{position:absolute; left:12px; bottom:9px; margin:0;
-  font-family:"IBM Plex Mono",monospace; font-size:10px; color:#7C8A93}
+/* On its own backing so the globe and its labels cannot print over it, and
+   capped to the frame so a phone wraps it inside rather than across the Moon */
+.hint-drag{position:absolute; left:10px; bottom:8px; margin:0; max-width:calc(100% - 20px);
+  font-family:"IBM Plex Mono",monospace; font-size:10px; color:#8C9AA3; pointer-events:none;
+  background:rgba(5,9,12,.78); border-radius:3px; padding:1px 6px}
 .g-hover{position:absolute; display:none; pointer-events:none; z-index:3;
   font-family:"IBM Plex Mono",monospace; font-size:11px; color:#E8F4F9;
   background:rgba(5,9,12,.86); border:1px solid #2A343B; border-radius:3px;
@@ -105,7 +114,7 @@ canvas#map[hidden]{display:none}
 .layerpanel label{display:flex; gap:6px; align-items:center; cursor:pointer;
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:#CFE3EE}
 .layerpanel input{margin:0; width:12px; height:12px}
-@media (max-width:520px){ .layerbox{display:none} }
+@media (max-width:520px){ .layerbox{display:none} .hint-drag .hint-more{display:none} }
 .maphint{display:flex; flex-wrap:wrap; gap:4px 14px; margin:7px 2px 0;
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted)}
 .maphint i{display:inline-block; width:14px; height:2px; vertical-align:middle;
@@ -118,6 +127,10 @@ canvas#map[hidden]{display:none}
 .dv{display:flex; justify-content:space-between; gap:10px; align-items:baseline; padding:2px 0}
 .dv dt{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.09em;
   text-transform:uppercase; color:var(--muted); margin:0}
+/* Symbols are not words. Upper-casing maps Greek lowercase to Greek capitals,
+   so 'Ω / ω' rendered as 'Ω / Ω' - RAAN and argument of periapsis with one
+   label - and ν became a Latin-looking N. a, e, i are symbols too. */
+.dv dt .sym{text-transform:none; letter-spacing:0; font-size:11.5px}
 .dv dd{margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace;
   font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink); text-align:right}
 dl{margin:0}
@@ -194,7 +207,8 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
 <p class="tnote" id="tnote">
   <span class="why">Not production-grade, and here is exactly why:</span>
   <span>ephemerides <b id="t-baked">—</b> and frozen — nothing re-fetches them</span>
-  <span>positions <b>~1 km</b> near an anchor, <b>~18 km</b> twelve hours out</span>
+  <span id="t-acc">—</span>
+  <span id="t-pred">—</span>
   <span>Queqiao orbits are <b>published, not tracked</b></span>
   <span id="t-cov">—</span>
 </p>
@@ -216,7 +230,7 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
         <span class="seglabel">Layers</span>
         <div class="layerpanel" id="layers" role="group" aria-label="Scene layers"></div>
       </div>
-      <p class="hint-drag">drag to orbit · scroll to zoom · click a spacecraft to switch to it</p>
+      <p class="hint-drag">drag to orbit · scroll to zoom<span class="hint-more"> · click a spacecraft to switch to it</span></p>
     </div>
     <canvas id="map" hidden aria-label="Lunar map with the selected spacecraft's ground track, landing sites and named features. The same numbers are in the tables below."></canvas>
     <p class="maphint" id="maplegend"></p>
@@ -246,13 +260,13 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
     </div>
 
     <div class="rblock">
-      <p class="eyebrow" style="margin-bottom:6px">Orbit</p>
+      <p class="eyebrow" style="margin-bottom:6px">Orbit · lunar equator of date</p>
       <dl>
-        <div class="dv"><dt>a</dt><dd id="o-a">—</dd></div>
-        <div class="dv"><dt>e</dt><dd id="o-e">—</dd></div>
-        <div class="dv"><dt>i</dt><dd id="o-i">—</dd></div>
-        <div class="dv"><dt>Ω / ω</dt><dd id="o-node">—</dd></div>
-        <div class="dv"><dt>ν / M</dt><dd id="o-anom">—</dd></div>
+        <div class="dv"><dt><span class="sym">a</span></dt><dd id="o-a">—</dd></div>
+        <div class="dv"><dt><span class="sym">e</span></dt><dd id="o-e">—</dd></div>
+        <div class="dv"><dt><span class="sym">i</span></dt><dd id="o-i">—</dd></div>
+        <div class="dv"><dt><span class="sym">Ω / ω</span></dt><dd id="o-node">—</dd></div>
+        <div class="dv"><dt><span class="sym">ν / M</span></dt><dd id="o-anom">—</dd></div>
         <div class="dv"><dt>Period</dt><dd id="o-per">—</dd></div>
         <div class="dv"><dt>Peri × apo alt</dt><dd id="o-apsis">—</dd></div>
         <div class="dv"><dt>Spec. energy</dt><dd id="o-en">—</dd></div>
@@ -277,7 +291,8 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
       <dl>
         <div class="dv"><dt>Anchor epoch</dt><dd id="a-epoch">—</dd></div>
         <div class="dv"><dt>Hours from it</dt><dd id="a-age">—</dd></div>
-        <div class="dv"><dt>Expected error</dt><dd id="a-err">—</dd></div>
+        <div class="dv"><dt>Error vs Horizons</dt><dd id="a-err">—</dd></div>
+        <div class="dv"><dt>Horizons itself</dt><dd id="a-sol">—</dd></div>
       </dl>
       <p style="margin:7px 0 0; font-size:11.5px; line-height:1.55; color:var(--muted)" id="a-note">—</p>
     </div>
@@ -351,16 +366,24 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
           side of the Moon within weeks.</p>
         <p>Adding J2 does not rescue that — it captures nodal regression and misses the
           part that hurts. A fresh anchor does. Checked against Horizons' own sub-observer
-          point over 289 samples: <b>1 km</b> within two hours of an anchor, 18 km at
-          twelve, against <b>32–56 km</b> for one element set held for days. The panel shows
-          which regime you are in.</p>
+          point over 289 samples, in UTC: <b>1.4 km</b> within two hours of an anchor,
+          20 km at ten to twelve, against <b>32–57 km</b> for one element set held for days.
+          Chandrayaan-2's orbit loosens faster, 35 km at ten to twelve, so each craft carries
+          its own curve. The panel shows which regime you are in.</p>
+        <p>That is agreement with Horizons, not with the spacecraft. Past the last tracking
+          data in its record, Horizons is predicting as well, and its error then comes on top
+          and is not published. Two Horizons revisions of Chandrayaan-2 were <b>104 km</b>
+          apart twelve days after the older one was issued; Danuri's, 21 km after
+          thirteen. Every anchor on this page that falls in a prediction is marked
+          <span class="grade tracked">tracked · predicted</span>, and for LRO that is all
+          of them.</p>
       </div>
       <div>
         <h3>The rotation is the hard part</h3>
         <p>Earth's GMST is a smooth polynomial. The Moon's orientation is a polynomial plus
           a 13-term libration series applied to the pole's right ascension and declination
           <i>and</i> to the prime meridian. It is not a refinement: leave it out and the
-          sub-spacecraft point is wrong by <b>44 km</b>. With it, <b>0.15 km</b> against
+          sub-spacecraft point is wrong by <b>44 km</b>. With it, <b>0.17 km</b> against
           Horizons over 289 epochs.</p>
         <p>One trap worth recording — the NAIF series rates are per Julian <i>century</i>
           while every other term in the model is per day. Reading them as daily rates
@@ -369,8 +392,8 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
       <div>
         <h3>Three grades of knowing</h3>
         <p><span class="grade tracked">tracked</span> — daily element sets from JPL
-          Horizons, which ingests the agencies' own navigation solutions. LRO,
-          Chandrayaan-2 and Danuri.</p>
+          Horizons, whose trajectories are fit to the agencies' own tracking data up to a
+          date the record states, and predicted after it. LRO, Chandrayaan-2 and Danuri.</p>
         <p><span class="grade published">published</span> — no ephemeris exists publicly;
           the orbit is rebuilt from published mission parameters. Right size and shape,
           but the <i>phase</i> — where along the orbit it actually is — is not knowable.</p>
@@ -410,14 +433,21 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
           a day.</p>
       </div>
       <div>
-        <h3>Frames, and an accepted error</h3>
+        <h3>Frames, and why they agree</h3>
         <p>Landing-site coordinates are published in the <b>mean Earth / polar axis</b>
-          frame, the cartographic standard. The IAU rotation series implemented here is
-          closer to the <b>principal axis</b> frame. The two differ by about 0.03°, roughly
-          <b>860 m</b> on the surface.</p>
-        <p>That is below the anchoring error everywhere except within an hour or two of an
-          anchor epoch, so it is accepted rather than corrected — and stated here rather
-          than buried.</p>
+          (ME) frame, the cartographic standard. The IAU/WGCCRE series implemented here is
+          an approximation to that same frame — <code>pck00011.tpc</code> describes it as
+          one — valid to about <b>150 m</b> (WGCCRE, Archinal et al. 2011). So sites and
+          rotation share a frame, and the 0.17 km agreement with Horizons fits that.</p>
+        <p>The other lunar frame, <b>principal axis</b> (PA), is where the Moon's inertia
+          tensor is diagonal and the one ephemerides integrate in. It differs from ME by
+          about 0.029°, roughly <b>875 m</b> on the surface (NAIF lunar frame kernels).
+          This page does not use it, and an earlier note here that said the IAU series was
+          closer to PA had it backwards.</p>
+        <p>Orbital elements are a third question. The rail and the table give
+          <i>i</i>, Ω and ω against the <b>lunar equator of date</b>, the IAU pole; the
+          baked sets are in ICRF, the Earth's equator, where the same orbits read 5–21°
+          differently.</p>
       </div>
     </div>
   </section>
@@ -429,7 +459,13 @@ footer.foot{border-top:1px solid var(--rule); padding:16px 18px 40px; color:var(
   <a href="index.html">Earth console</a> · <a href="moon.html">Lagrange points</a>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Pinned by content as well as by version: the hash is sha512 of the r128
+     bytes cdnjs serves, so a changed file is refused rather than run. A refusal
+     leaves THREE undefined, which the page already treats as "no WebGL" and
+     answers with the flat map. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        integrity="sha512-dLxUelApnYxpLt6K2iomGngnHO83iUvZytA3YjDUCjT0HDOHKXnVYdf3hU4JjM8uEhxf9nD1/ey98U3t2vZ0qQ=="
+        crossorigin="anonymous"></script>
 <script src="core/body.js"></script>
 <script src="core/propagator.js"></script>
 <script src="moon/moondata.js"></script>
@@ -450,20 +486,95 @@ const wrap180 = x => { while(x>180) x-=360; while(x<-180) x+=360; return x; };
 const lonE = x => ((x % 360) + 360) % 360;
 const farSide = l => { const e = lonE(l); return e > 90 && e < 270; };
 
+/* ---- the lunar equator ---------------------------------------------------
+ * The element sets are referred to ICRF, the EARTH's mean equator of J2000,
+ * because that is the frame the rotation model takes. Nobody describes a lunar
+ * orbit that way: the Moon's pole sits 22-25° from ICRF's, so LRO's near-polar
+ * orbit reads as a retrograde 104° there, and a lunar inclination handed to an
+ * ICRF propagator lands tilted by the same amount. Inclination, node and
+ * argument of periapsis are quoted against the lunar equator of date instead:
+ * Z along the IAU pole, X at its ascending node on the ICRF equator
+ * (RA = α0 + 90°), Y = Z × X. Those are the first two of the three rotations
+ * MOON.toFixed applies, without the spin W.                                   */
+function lunarEq(date){
+  const o = MOON.orientation(date);
+  const sa = Math.sin(o.ra), ca = Math.cos(o.ra), sd = Math.sin(o.dec), cd = Math.cos(o.dec);
+  return { X:{x:-sa, y:ca, z:0}, Y:{x:-sd*ca, y:-sd*sa, z:cd}, Z:{x:cd*ca, y:cd*sa, z:sd} };
+}
+const dot3 = (a, b) => a.x*b.x + a.y*b.y + a.z*b.z;
+/* ICRF -> lunar equator, and back */
+const intoLEq = (v, B) => ({ x: dot3(v, B.X), y: dot3(v, B.Y), z: dot3(v, B.Z) });
+const fromLEq = (v, B) => ({ x: v.x*B.X.x + v.y*B.Y.x + v.z*B.Z.x,
+                             y: v.x*B.X.y + v.y*B.Y.y + v.z*B.Z.y,
+                             z: v.x*B.X.z + v.y*B.Y.z + v.z*B.Z.z });
+/* Elements published against the lunar equator go through the same Kepler
+   propagator, and the state it returns is rotated out to ICRF at the instant
+   asked for, so everything downstream still sees ICRF. */
+function fromLunarEquator(track){
+  const at = track.at;
+  track.at = ms => {
+    const s = at(ms); if(!s) return null;
+    const B = lunarEq(new Date(ms));
+    return { r: fromLEq(s.r, B), v: fromLEq(s.v, B) };
+  };
+  return track;
+}
+/* Osculating elements from a state, in whatever frame the state is in. */
+function elementsOf(r, v){
+  const rm = Math.hypot(r.x, r.y, r.z), vm = Math.hypot(v.x, v.y, v.z);
+  const rhat = {x:r.x/rm, y:r.y/rm, z:r.z/rm}, vr = dot3(v, rhat);
+  const hv = {x: r.y*v.z - r.z*v.y, y: r.z*v.x - r.x*v.z, z: r.x*v.y - r.y*v.x};
+  const h = Math.hypot(hv.x, hv.y, hv.z);
+  const energy = vm*vm/2 - MU/rm;
+  const a = -MU/(2*energy);
+  const ev = {x:(v.y*hv.z - v.z*hv.y)/MU - rhat.x,
+              y:(v.z*hv.x - v.x*hv.z)/MU - rhat.y,
+              z:(v.x*hv.y - v.y*hv.x)/MU - rhat.z};
+  const ecc = Math.hypot(ev.x, ev.y, ev.z);
+  const inc = Math.acos(Math.max(-1,Math.min(1,hv.z/h)))*DEG;
+  const nv = {x:-hv.y, y:hv.x, z:0}, nn = Math.hypot(nv.x,nv.y,nv.z);
+  let raan = nn > 1e-9 ? Math.atan2(nv.y,nv.x)*DEG : 0; if(raan<0) raan+=360;
+  let argp = 0;
+  if(nn > 1e-9 && ecc > 1e-9){
+    argp = Math.acos(Math.max(-1,Math.min(1,dot3(nv, ev)/(nn*ecc))))*DEG;
+    if(ev.z < 0) argp = 360 - argp;
+  }
+  let nu = 0;
+  if(ecc > 1e-9){
+    nu = Math.acos(Math.max(-1,Math.min(1,dot3(ev, rhat)/ecc)))*DEG;
+    if(vr < 0) nu = 360 - nu;
+  }
+  const E = 2*Math.atan2(Math.sqrt(1-ecc)*Math.sin(nu*RAD/2), Math.sqrt(1+ecc)*Math.cos(nu*RAD/2));
+  let M = (E - ecc*Math.sin(E))*DEG; if(M<0) M+=360;
+  return { a, ecc, inc, raan, argp, nu, M, h, energy };
+}
+/* an angle in [0, 360) to two places, without the 360.00 that rounding a
+   hair under 360 produces */
+const ang2 = x => { const s = x.toFixed(2); return s === '360.00' ? '0.00' : s; };
+
 /* ---- the fleet ----------------------------------------------------------- */
+const day = ms => iso(new Date(ms)).slice(0,10);
 const FLEET = [];
 for(const t of MD.tracked){
   const sets = t.sets.map(s => ({epoch:s[0], a:s[1], e:s[2], i:s[3], raan:s[4], argp:s[5], M:s[6]}));
+  /* predictFrom is the first instant Horizons' trajectory is purely predicted:
+     the midnight after its last day of tracking data, read from the record's
+     own header at bake time. null when the header did not say. */
+  const pf = typeof t.predictFrom === 'number' ? t.predictFrom : null;
   FLEET.push({ key:t.key, name:t.name, agency: t.key==='ch2' ? 'ISRO' : t.key==='kplo' ? 'KARI' : 'NASA',
-    grade:'tracked', track: P.anchoredTrack(MOON, sets, {name:t.name}),
-    source:'JPL Horizons ' + t.horizons + ', record revised ' + (t.revised||'—') +
-           '; ' + sets.length + ' daily element sets',
-    note:'Daily osculating element sets from JPL Horizons, which ingests the operating agency’s own navigation solutions.' });
+    grade:'tracked', predictFrom: pf, track: P.anchoredTrack(MOON, sets, {name:t.name}),
+    source:'JPL Horizons ' + t.horizons + ', record revised ' + (t.revised||'—') + '; ' +
+           (pf ? 'fit to tracking data through ' + day(pf - 86400000) + ', predicted after; '
+               : 'no fit/prediction boundary stated; ') + sets.length + ' daily element sets',
+    note:'Daily osculating element sets from JPL Horizons, built from the operating agency’s own '
+       + 'orbit determination: ' + (pf ? 'fit to tracking data through ' + day(pf - 86400000)
+       + ' and a prediction after it.' : 'Horizons does not say where its fit ends.') });
 }
 for(const p of MD.published){
+  let track = p.el ? P.keplerTrack(MOON, p.el, {name:p.name}) : null;
+  if(track && p.frame === 'lunar-equator') track = fromLunarEquator(track);
   FLEET.push({ key:p.key, name:p.name, agency:p.agency, grade:p.grade,
-    track: p.el ? P.keplerTrack(MOON, p.el, {name:p.name}) : null,
-    source:p.source, note:p.note, phaseKnown:false });
+    track, source:p.source, note:p.note, phaseKnown:false });
 }
 
 /* ---- the Sun and the Earth, seen from the Moon ---------------------------
@@ -580,11 +691,15 @@ function drawMap(){
      through the poles. The lunar sub-solar point sits within a degree or so of
      the equator most of the time - the Moon's axial tilt to the ecliptic is only
      1.54 deg - so that degenerate case is the NORMAL case here, not an edge one.
-     Testing the sign of the solar elevation per column cannot degenerate. */
+     Testing the sign of the solar elevation per column cannot degenerate.
+     The columns overlap by a pixel so no seam shows, and they go into ONE path
+     filled once: filled one by one, every overlap took the .22 alpha twice and
+     the night side came out as vertical stripes. */
   const sunV = sunFromMoon(date), ss = subPoint(sunV, o);
   const sLa = ss.lat*RAD, sLo = ss.lon*RAD;
   const sinS = Math.sin(sLa), cosS = Math.cos(sLa);
   ctx.fillStyle = 'rgba(0,0,0,.22)';
+  ctx.beginPath();
   const COLS = 240, dLat = 2;
   for(let c=0;c<COLS;c++){
     const l = -180 + 360*c/COLS;
@@ -594,12 +709,13 @@ function drawMap(){
       const lit = sinS*Math.sin(la*RAD) + cosS*Math.cos(la*RAD)*ch > 0;
       if(!lit && runStart === null) runStart = la;
       if((lit || la > 90) && runStart !== null){
-        ctx.fillRect(px(l), py(la), W/COLS + 1, py(runStart) - py(la));
+        ctx.rect(px(l), py(la), W/COLS + 1, py(runStart) - py(la));
         runStart = null;
       }
     }
-    if(runStart !== null) ctx.fillRect(px(l), py(90), W/COLS + 1, py(runStart) - py(90));
+    if(runStart !== null) ctx.rect(px(l), py(90), W/COLS + 1, py(runStart) - py(90));
   }
+  ctx.fill();
 
   /* features */
   ctx.font = '9.5px "IBM Plex Mono",monospace'; ctx.textAlign = 'left';
@@ -671,7 +787,7 @@ function drawMap(){
  * locked body is actually pictured, and it keeps the near/far side — which is
  * what decides whether a lander can call home — fixed on screen.
  */
-let viz3d = false, mode3d = true;
+let viz3d = false, mode3d = true, texNote = '';
 
 function bodyFixedDir(vec, o){
   const f = MOON.toFixed(vec, o), m = Math.hypot(f.x, f.y, f.z);
@@ -745,7 +861,7 @@ function paint(){
   if(!cur.track || !cur.track.ok){
     blank(['s-sub','s-alt','s-altrate','s-vel','s-gs','s-vsplit','o-a','o-e','o-i',
            'o-node','o-anom','o-per','o-apsis','o-en','o-h','l-rng','l-lt','l-elev',
-           'l-sun','l-lit','a-epoch','a-age','a-err']);
+           'l-sun','l-lit','a-epoch','a-age','a-err','a-sol']);
     $('a-note').textContent = 'A halo orbit is not a conic and cannot be propagated from '
       + 'orbital elements. This object is listed, not tracked.';
   } else {
@@ -770,41 +886,21 @@ function paint(){
       $('s-gs').textContent = gs.toFixed(4)+' km/s';
 
       /* osculating elements from the state, so they are live rather than the
-         stored anchor's values */
-      const hv = {x: st.r.y*st.v.z - st.r.z*st.v.y,
-                  y: st.r.z*st.v.x - st.r.x*st.v.z,
-                  z: st.r.x*st.v.y - st.r.y*st.v.x};
-      const h = Math.hypot(hv.x, hv.y, hv.z);
-      const energy = v*v/2 - MU/r;
-      const a = -MU/(2*energy);
-      const ev = {x:(st.v.y*hv.z - st.v.z*hv.y)/MU - rhat.x,
-                  y:(st.v.z*hv.x - st.v.x*hv.z)/MU - rhat.y,
-                  z:(st.v.x*hv.y - st.v.y*hv.x)/MU - rhat.z};
-      const ecc = Math.hypot(ev.x, ev.y, ev.z);
-      const inc = Math.acos(Math.max(-1,Math.min(1,hv.z/h)))*DEG;
-      const nv = {x:-hv.y, y:hv.x, z:0}, nn = Math.hypot(nv.x,nv.y,nv.z);
-      let raan = nn > 1e-9 ? Math.atan2(nv.y,nv.x)*DEG : 0; if(raan<0) raan+=360;
-      let argp = 0;
-      if(nn > 1e-9 && ecc > 1e-9){
-        argp = Math.acos(Math.max(-1,Math.min(1,(nv.x*ev.x+nv.y*ev.y+nv.z*ev.z)/(nn*ecc))))*DEG;
-        if(ev.z < 0) argp = 360 - argp;
-      }
-      let nu = 0;
-      if(ecc > 1e-9){
-        nu = Math.acos(Math.max(-1,Math.min(1,(ev.x*rhat.x+ev.y*rhat.y+ev.z*rhat.z)/ecc)))*DEG;
-        if(vr < 0) nu = 360 - nu;
-      }
-      const E = 2*Math.atan2(Math.sqrt(1-ecc)*Math.sin(nu*RAD/2), Math.sqrt(1+ecc)*Math.cos(nu*RAD/2));
-      let Mdeg = (E - ecc*Math.sin(E))*DEG; if(Mdeg<0) Mdeg+=360;
+         stored anchor's values - and taken in the lunar equator of date, not
+         in the ICRF the state arrives in. a, e, the anomalies, energy and h
+         come out the same either way; i, Ω and ω are what the frame changes. */
+      const B = lunarEq(date);
+      const el = elementsOf(intoLEq(st.r, B), intoLEq(st.v, B));
+      const a = el.a, ecc = el.ecc;
       $('o-a').textContent = a.toFixed(2)+' km';
       $('o-e').textContent = ecc.toFixed(6);
-      $('o-i').textContent = inc.toFixed(3)+'°';
-      $('o-node').textContent = raan.toFixed(2)+'° / '+argp.toFixed(2)+'°';
-      $('o-anom').textContent = nu.toFixed(2)+'° / '+Mdeg.toFixed(2)+'°';
+      $('o-i').textContent = el.inc.toFixed(3)+'°';
+      $('o-node').textContent = ang2(el.raan)+'° / '+ang2(el.argp)+'°';
+      $('o-anom').textContent = ang2(el.nu)+'° / '+ang2(el.M)+'°';
       $('o-per').textContent = (2*Math.PI*Math.sqrt(a*a*a/MU)/60).toFixed(2)+' min';
       $('o-apsis').textContent = (a*(1-ecc)-RM).toFixed(1)+' × '+(a*(1+ecc)-RM).toFixed(1)+' km';
-      $('o-en').textContent = energy.toFixed(6)+' km²/s²';
-      $('o-h').textContent = h.toFixed(2)+' km²/s';
+      $('o-en').textContent = el.energy.toFixed(6)+' km²/s²';
+      $('o-h').textContent = el.h.toFixed(2)+' km²/s';
 
       /* link geometry, the part that matters operationally */
       const ev2 = earthFromMoon(date);
@@ -836,50 +932,87 @@ function paint(){
       const anc = cur.track.anchorAt(simMs);
       const age = cur.track.ageHours(simMs);
       const beyond = cur.track.beyond(simMs);
-      $('a-epoch').textContent = iso(new Date(anc.epoch)).slice(0,16);
+      /* Anchors sit at 00:00 TDB, which is 23:58:50.816 UTC the day before,
+         so the seconds are shown: truncated to the minute they read as a
+         typo, and rounded to the day they would hide the time scale. */
+      $('a-epoch').textContent = iso(new Date(Math.round(anc.epoch/1000)*1000));
       $('a-age').textContent = (age>=0?'+':'')+age.toFixed(2)+' h';
-      const err = MD.anchorErrorKm(age);
+      const err = MD.anchorErrorKm(age, cur.key);
       $('a-err').textContent = '±' + err.toFixed(0) + ' km';
       $('a-err').className = Math.abs(age) > 12 ? 'warn' : '';
+      /* Agreement with Horizons is all the ± above measures. Past the end of
+         its tracking data Horizons is predicting too, and says so in the
+         record header; the bake keeps that date, and this is where it shows. */
+      const pf = cur.predictFrom;
+      const predicted = pf === null ? null : anc.epoch >= pf;
+      if(predicted) $('gradechip').textContent = 'tracked · predicted';
+      $('a-sol').textContent = predicted === null ? 'not stated'
+        : predicted ? 'predicted, day ' + Math.max(0, Math.floor((simMs - pf)/86400000))
+        : 'fit to tracking';
+      $('a-sol').className = predicted === false ? 'good' : 'warn';
+      const measured = 'The ± is this page against Horizons, measured for ' + cur.name + ': about '
+        + MD.anchorErrorKm(1, cur.key).toFixed(1) + ' km within two hours of an anchor, '
+        + MD.anchorErrorKm(11, cur.key).toFixed(0) + ' km at ten to twelve.';
       $('a-note').textContent = beyond
         ? 'Outside the stored coverage. The nearest anchor is being stretched, not '
           + 'interpolated, and the error above is a floor rather than an estimate.'
-        : 'Measured against Horizons: about 1 km within two hours of an anchor, rising '
-          + 'to 18 km at twelve. A single element set held for days sits at 32–56 km.';
+        : predicted === false
+        ? measured + ' Horizons’ trajectory here is fit to tracking data, so that is most '
+          + 'of the error. A single element set held for days sits at 32–57 km (LRO).'
+        : measured + ' ' + (predicted
+          ? 'But Horizons is itself predicting here, from tracking data through '
+            + day(pf - 86400000) + ': its error against the real spacecraft is not published '
+            + 'and grows with time since. For scale, two Horizons revisions of Chandrayaan-2 '
+            + 'were 104 km apart twelve days after the older one was issued.'
+          : 'Horizons does not say whether its trajectory here is fit or predicted.');
     } else {
       $('a-epoch').textContent = iso(new Date(cur.track.elements.epoch)).slice(0,10);
       $('a-age').textContent = ((simMs - cur.track.elements.epoch)/86400000).toFixed(0)+' d';
       $('a-err').textContent = 'phase unknown';
       $('a-err').className = 'warn';
-      $('a-note').textContent = 'Rebuilt from published mission parameters. The orbit’s '
-        + 'size, shape and inclination are right; WHERE ALONG IT the spacecraft is cannot be '
-        + 'known without an ephemeris, and none is published. Treat the marker as '
-        + '“somewhere on this path”.';
+      $('a-sol').textContent = 'none published';
+      $('a-sol').className = 'warn';
+      $('a-note').textContent = 'Rebuilt from published mission parameters: size, shape and '
+        + 'inclination to the lunar equator are the published figures. Where its node lies, and '
+        + 'WHERE ALONG IT the spacecraft is, cannot be known without an ephemeris, and none is '
+        + 'published. Treat the marker as “somewhere on a path like this”.';
     }
   }
   if(mode3d) feed3d(); else drawMap();
 }
 
 /* ---- tables -------------------------------------------------------------- */
+/* The table used to quote each craft's FIRST stored set, in ICRF - weeks stale
+   and in the Earth's equator. Now every row is the osculating orbit at the time
+   shown, in the lunar equator of date, the same numbers the rail gives. */
 function buildFleet(){
+  const B = lunarEq(new Date(simMs));
+  let lroIcrf = null, lroLEq = null;
   $('fleet').innerHTML = FLEET.map(f => {
-    let orbit = '—', per = '—', apsis = '—';
-    if(f.track && f.track.ok){
-      const el = f.track.kind === 'anchored' ? f.track.sets[0] : f.track.elements;
-      orbit = el.i.toFixed(1)+'° incl';
+    let orbit = '—', per = '—', apsis = '—', grade = f.grade;
+    const st = f.track && f.track.ok ? f.track.at(simMs) : null;
+    if(st){
+      const el = elementsOf(intoLEq(st.r, B), intoLEq(st.v, B));
+      if(f.key === 'lro'){ lroLEq = el.inc; lroIcrf = elementsOf(st.r, st.v).inc; }
+      orbit = el.inc.toFixed(1)+'° incl';
       per = (2*Math.PI*Math.sqrt(Math.pow(el.a,3)/MU)/60).toFixed(1)+' min';
-      apsis = (el.a*(1-el.e)-RM).toFixed(0)+' × '+(el.a*(1+el.e)-RM).toFixed(0)+' km';
+      apsis = (el.a*(1-el.ecc)-RM).toFixed(0)+' × '+(el.a*(1+el.ecc)-RM).toFixed(0)+' km';
+      if(f.track.kind === 'anchored' && f.predictFrom !== null &&
+         f.track.anchorAt(simMs).epoch >= f.predictFrom) grade = 'tracked · predicted';
     } else if(f.key === 'queqiao1'){ orbit = 'Earth–Moon L2 halo'; per = '~14 d'; }
     return '<tr><td><b>'+f.name+'</b></td><td style="text-align:left">'+f.agency+'</td>'+
-      '<td style="text-align:left"><span class="grade '+f.grade+'">'+f.grade+'</span></td>'+
+      '<td style="text-align:left"><span class="grade '+f.grade+'">'+grade+'</span></td>'+
       '<td style="text-align:left">'+orbit+'</td><td>'+per+'</td><td>'+apsis+'</td>'+
       '<td style="text-align:left;white-space:normal;max-width:30ch;color:var(--muted)">'+f.source+'</td></tr>';
   }).join('');
   $('fleetnote').innerHTML = 'Tracked orbits carry ' +
     MD.tracked.reduce((s,t)=>s+t.sets.length,0).toLocaleString('en-US') +
-    ' daily element sets between them. Inclinations are referred to the lunar equator via ' +
-    'ICRF, not to the ecliptic — Horizons quotes the latter by default, and the two differ ' +
-    'by about 21°.';
+    ' daily element sets between them. Inclinations are to the <b>lunar equator</b> of date, ' +
+    'whose pole (IAU) sits 22–25° from the Earth’s. The element sets themselves are baked ' +
+    'in ICRF, the Earth’s mean equator, because that is the frame the rotation model takes; ' +
+    (lroIcrf === null ? 'quoted there, a polar lunar orbit reads as retrograde. '
+      : 'quoted there, LRO’s ' + lroLEq.toFixed(1) + '° reads as ' + lroIcrf.toFixed(1) + '°. ') +
+    'Horizons’ own default, the ecliptic, is a third answer again.';
 }
 function buildSites(){
   const date = new Date(simMs), o = MOON.spin(date);
@@ -914,7 +1047,7 @@ $('play').addEventListener('click', () => {
   $('play').textContent = playing ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
 });
-$('now').addEventListener('click', () => { simMs = Date.now(); paint(); buildSites(); });
+$('now').addEventListener('click', () => { simMs = Date.now(); paint(); buildSites(); buildFleet(); });
 $('rate').addEventListener('input', () => {
   rate = rateFrom(+$('rate').value); $('ratev').textContent = fmtRate(rate);
 });
@@ -938,6 +1071,10 @@ function setMode(on){
   $('globewrap').hidden = !mode3d;
   $('map').hidden = mode3d;
   $('vreset').style.display = mode3d ? '' : 'none';
+  /* The note names the globe's imagery. The flat map draws none - it shades
+     the far side and the night band - and leaving 'LRO WAC mosaic' beside a
+     grey rectangle described something that was not there. */
+  $('texnote').textContent = mode3d ? texNote : 'flat map: far side and night shaded, no imagery';
   if(!mode3d) fit();
   paint();
 }
@@ -957,14 +1094,16 @@ function tick(now){
   const dt = Math.min(200, now - last); last = now;
   if(playing) simMs += dt*rate;
   paint();
-  if(++siteTick % 30 === 0) buildSites();     // the sky moves slowly; the table can too
+  if(++siteTick % 30 === 0){ buildSites(); buildFleet(); }  // the sky moves slowly; the tables can too
   requestAnimationFrame(tick);
 }
 
 /* ---- boot ---------------------------------------------------------------- */
 const span = FLEET[0].track.span;
-$('epochnote').innerHTML = 'coverage <b>' + iso(new Date(span.from)).slice(0,10) +
-  ' → ' + iso(new Date(span.to)).slice(0,10) + '</b>';
+/* Day-level labels round to the nearest day: an anchor at 00:00 TDB is
+   23:58:50 UTC, and truncating would date the whole coverage a day early. */
+const nearDay = ms => day(Math.round(ms/86400000)*86400000);
+$('epochnote').innerHTML = 'coverage <b>' + nearDay(span.from) + ' → ' + nearDay(span.to) + '</b>';
 /* Start inside the stored coverage rather than at the wall clock, so the first
    thing shown is a tracked position and not an extrapolation. */
 simMs = Math.min(Math.max(Date.now(), span.from), span.to);
@@ -987,7 +1126,7 @@ seNode.className = 'g-lbl earth'; seNode.textContent = 'sub-Earth'; glayer.appen
 viz3d = !!(window.Moon3D && window.THREE && Moon3D.init({
   canvas: $('globe'), layer: glayer, features: MD.features,
   labels: { sat: satNode, subEarth: seNode, hover: $('ghover') },
-  onTexture: t => { $('texnote').textContent = t; },
+  onTexture: t => { texNote = t; if(mode3d) $('texnote').textContent = t; },
   onPick: key => selectCraft(key)
 }));
 if(viz3d){
@@ -1004,7 +1143,7 @@ if(viz3d){
     const k = e.target.dataset.layer;
     if(k){ Moon3D.setLayer(k, e.target.checked); paint(); }
   });
-  $('texnote').textContent = 'painted (tiles loading…)';
+  texNote = 'painted (tiles loading…)';
 } else {
   $('layerbox') && ($('layerbox').style.display = 'none');
   const lb = document.querySelector('.layerbox'); if(lb) lb.style.display = 'none';
@@ -1022,6 +1161,17 @@ satNode.textContent = cur.name;
   const days = Math.floor((Date.now() - MD.baked)/86400000);
   $('t-baked').textContent = 'baked ' + iso(baked).slice(0,10) +
     (days > 0 ? ', ' + days + ' d ago' : '');
+  /* accuracy, from the same fitted curves the panel uses, so re-measuring
+     them updates this line too */
+  const near = Math.max(...MD.tracked.map(t => MD.anchorErrorKm(1, t.key)));
+  const far = MD.tracked.map(t => MD.anchorErrorKm(11, t.key));
+  $('t-acc').innerHTML = 'positions within <b>~' + near.toFixed(1) + ' km</b> of Horizons near an ' +
+    'anchor, <b>' + Math.min(...far).toFixed(0) + '–' + Math.max(...far).toFixed(0) +
+    ' km</b> half a day out';
+  /* and where Horizons itself stops fitting and starts predicting */
+  $('t-pred').innerHTML = 'Horizons itself predicts after <b>' + MD.tracked.map(t =>
+    t.name.split(' ')[0] + ' ' + (typeof t.predictFrom === 'number'
+      ? day(t.predictFrom - 86400000) : '(not stated)')).join(' · ') + '</b>';
   const ends = MD.tracked.map(t => ({name: t.name.split(' ')[0],
     end: t.sets[t.sets.length-1][0]}));
   const soonest = ends.reduce((a,b) => a.end < b.end ? a : b);

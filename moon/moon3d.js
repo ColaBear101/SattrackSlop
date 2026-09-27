@@ -308,16 +308,49 @@ function setLine(line, pts){
   line.visible = n > 1;
 }
 
+/* returns the screen point the label was pinned to, or null if hidden */
 function place(node, v){
-  if(!node) return;
-  if(!v){ node.style.display = 'none'; return; }
+  if(!node) return null;
+  if(!v){ node.style.display = 'none'; return null; }
   const p = v.clone().project(cam);
   if(p.z > 1 || p.x < -1.05 || p.x > 1.05 || p.y < -1.05 || p.y > 1.05){
-    node.style.display = 'none'; return;
+    node.style.display = 'none'; return null;
   }
+  const x = (p.x*0.5+0.5)*renderer.domElement.clientWidth;
+  const y = (-p.y*0.5+0.5)*renderer.domElement.clientHeight;
   node.style.display = 'block';
-  node.style.left = ((p.x*0.5+0.5)*renderer.domElement.clientWidth) + 'px';
-  node.style.top  = ((-p.y*0.5+0.5)*renderer.domElement.clientHeight) + 'px';
+  node.style.left = x + 'px';
+  node.style.top  = y + 'px';
+  return { x, y };
+}
+
+/* ---- label de-clutter ------------------------------------------------------
+ * Landing sites bunch: Apollo 12 and 14 are 181 km apart, a few pixels on a
+ * phone, and the sub-Earth point wanders across the near-side sites, so the
+ * tags printed over each other ("Chang'e-6Chang'e-3"). Greedy, by a fixed
+ * priority so the survivors do not flicker as the camera moves: the selected
+ * spacecraft, then sub-Earth, then sites in catalogue order. A label is kept
+ * only if its box clears every box already kept. A dropped site keeps its pin,
+ * and the surface table names every one. Sizes are measured once per text and
+ * forgotten when the web fonts arrive, since the fallback face is narrower. */
+const lblSize = new Map();
+if(global.document && document.fonts && document.fonts.ready)
+  document.fonts.ready.then(() => lblSize.clear());
+function declutter(items){
+  const kept = [];
+  for(const it of items){
+    if(!it.node || !it.pt) continue;
+    const n = it.node;
+    let s = lblSize.get(n);
+    if(!s || s.t !== n.textContent){
+      s = { t: n.textContent, w: n.offsetWidth, h: n.offsetHeight };
+      if(s.w) lblSize.set(n, s);
+    }
+    /* .g-lbl sits at translate(8px,-50%) from its anchor; 2 px of air */
+    const b = { l: it.pt.x + 6, r: it.pt.x + 10 + s.w, t: it.pt.y - s.h/2 - 1, b: it.pt.y + s.h/2 + 1 };
+    if(kept.some(k => b.l < k.r && b.r > k.l && b.t < k.b && b.b > k.t)) n.style.display = 'none';
+    else kept.push(b);
+  }
 }
 
 /* ---- per frame -----------------------------------------------------------
@@ -407,11 +440,12 @@ function frame(st){
      round the back would otherwise float over the near side, attached to
      nothing visible. */
   const camDir = cam.position.clone().normalize();
+  const tags = [];
   for(let i=0;i<sitePins.length;i++){
     const node = siteLabels[i];
     if(!node) continue;
     const p = sitePins[i].position;
-    place(node, (L.sites && L.sitelabels && p.clone().normalize().dot(camDir) > 0.12) ? p : null);
+    tags.push({ node, pt: place(node, (L.sites && L.sitelabels && p.clone().normalize().dot(camDir) > 0.12) ? p : null) });
   }
 
   /* hover: name the thing under the cursor, so a click is never a guess */
@@ -425,10 +459,11 @@ function frame(st){
     } else labels.hover.style.display = 'none';
   }
   if(canvas) canvas.style.cursor = dragging ? 'grabbing' : (hoverIdx >= 0 ? 'pointer' : 'grab');
-  if(labels.sat) place(labels.sat, showSat ? satDot.position : null);
-  if(labels.subEarth) place(labels.subEarth,
+  const satPt = labels.sat ? place(labels.sat, showSat ? satDot.position : null) : null;
+  const sePt = labels.subEarth ? place(labels.subEarth,
     (st.subEarth && subEarthRing.position.clone().normalize().dot(camDir) > 0.05)
-      ? subEarthRing.position : null);
+      ? subEarthRing.position : null) : null;
+  declutter([{ node: labels.sat, pt: satPt }, { node: labels.subEarth, pt: sePt }].concat(tags));
 
   renderer.render(scene, cam);
 }

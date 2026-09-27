@@ -9089,7 +9089,12 @@ function paintCountdown(){
   if(now){
     k.textContent = 'In view now — sets in' + sim;
     v.textContent = hhmmss(now.t1ms - simMs); v.className = 'v live';
-    w.innerHTML = ABBR.LOS + ' ' + whenZ(now.los) + ' · culminates ' + now.maxEl.toFixed(1) + '°';
+    /* Up when the window opened, with the highest point in it on that edge:
+       the spacecraft peaked before anyone looked, so that is not called a
+       culmination - the same test the sky facts make. */
+    const edge = now.clipA && now.maxAt.getTime() - now.t0ms < 1000;
+    w.innerHTML = ABBR.LOS + ' ' + whenZ(now.los) + ' · ' + (edge ? 'highest in window ' : 'culminates ') +
+                  now.maxEl.toFixed(1) + '°';
     return;
   }
   const nxt = P.find(p => p.t0ms > simMs) || passAfterWindow();

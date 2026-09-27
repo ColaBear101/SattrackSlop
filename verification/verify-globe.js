@@ -609,6 +609,21 @@ const SITES = [
     chk('...and the note beside the picker says why', /save data/i.test(note), note.trim());
     await ctx.close();
   }
+  {
+    /* The coarse rung holds on a 3G link too, and the reader there has not
+       asked to save anything, so the note must not say they did. */
+    const { ctx, p } = await fresh({ viewport: { width: 1100, height: 800 } }, () => {
+      Object.defineProperty(Navigator.prototype, 'connection',
+        { configurable: true, get(){ return { saveData: false, effectiveType: '3g' }; } });
+    });
+    await p.evaluate(() => Orbit3D.freeCam());
+    await zoomIn(p, 12);
+    await p.waitForTimeout(2500);
+    const note = await p.evaluate(() => document.getElementById('texnote').textContent);
+    chk('...and on a slow connection it says so, not that the reader asked to save data',
+        /slow connection/.test(note) && !/save data/i.test(note), note.trim());
+    await ctx.close();
+  }
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

@@ -364,7 +364,13 @@ function texRung(){
 }
 function texDetail(tail){
   const held = !tail && lean() && texSizes.some(w => w > texW);
-  return texW + '×' + texH + tail + (held ? ', kept small to save data' : '');
+  if(!held) return texW + '×' + texH + tail;
+  /* Say which of lean()'s two reasons it was: a reader on a slow link has
+     not asked to save data. */
+  const nav = global.navigator || {};
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection || {};
+  return texW + '×' + texH + (c.saveData === true ? ', kept small to save data'
+                                                  : ', kept small for a slow connection');
 }
 
 /* Called every frame. Fetches the sharper rung once the view has stood still

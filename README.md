@@ -1187,8 +1187,9 @@ Three ways in, because the observer used to be five numbers you had to already k
   airport, and a village of the same name in Chiang Rai.
 - **Use my location.** The browser's own coordinates and accuracy, with the zone the device is set
   to — which for the device in your hand is the right answer and needs no request.
-- **Coordinates.** Folded away behind a disclosure, and unchanged: an arbitrary point on the Earth
-  still has to be reachable, and it is the only path that works with no network at all.
+- **Coordinates.** Folded away behind a disclosure, and kept: an arbitrary point on the Earth
+  still has to be reachable, and it is the only path that works with no network at all. Its
+  offset field now follows the longitude as you type (below).
 
 The last few sites come back as chips, so returning to one is a click.
 

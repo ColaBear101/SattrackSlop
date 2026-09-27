@@ -1208,8 +1208,27 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   </footer>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/6.0.1/satellite.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Pinned by content as well as by version. Each hash is the sha512 of the bytes
+     cdnjs serves for that version - the value cdnjs publishes for it, checked
+     against a download - so a changed or substituted file is refused rather than
+     run in this page's origin, where it could read the saved observer and the
+     caches in localStorage or quietly alter the propagation. satellite.min.js is
+     byte-identical to verification/satellite.min.js, the copy the Node checks
+     run SGP4 on; verify.js hashes that copy against the attribute here, so the
+     second implementation and the page cannot drift onto different bytes.
+     crossorigin is not optional: a browser checks the hash of a cross-origin
+     script only when it was fetched with CORS, and refuses one that was not.
+     cdnjs answers Access-Control-Allow-Origin: *, which covers file:// (origin
+     null) too. no-referrer because cdnjs has no need to know which page asked.
+     What a refusal costs: without three.js the page gives its no-WebGL notice
+     and the flat map carries the orbit; without satellite.js there is no SGP4,
+     and nothing is computed or shown. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/6.0.1/satellite.min.js"
+        integrity="sha512-uOhERBUzGXXC1irRMB9iFqiDx92PlemkPfHVn0XoRSeXHtpvm/wKrz/BQf6LxcjiBxxkXXg5ESpIjPPdRNEQCQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        integrity="sha512-dLxUelApnYxpLt6K2iomGngnHO83iUvZytA3YjDUCjT0HDOHKXnVYdf3hU4JjM8uEhxf9nD1/ey98U3t2vZ0qQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="core/body.js"></script>
 <script src="core/propagator.js"></script>
 <script src="earth/places.js"></script>
@@ -10529,11 +10548,15 @@ function lifeClear(){
   lifeState = null; drawLife();
 }
 
-/* The history endpoint takes about half a minute per object, so this does NOT
-   fire on its own when a spacecraft is selected — clicking through the picker
-   would queue a dozen 35-second requests against someone else's server. If the
-   answer is already in the cache it appears instantly; otherwise the page asks
-   first and says what it is about to do. */
+/* The history endpoint's answer time is not one number: the ISS, LANDSAT 9 and
+   KNACKSAT-2 took 25 s, 87 s and more than 90 s on 25 Sep 2026, and 24 s, 3 s
+   and 2 s two days later (35 s was the figure first measured - README,
+   "Where the history comes from"). So this does NOT fire on its own when a
+   spacecraft is selected — clicking through the picker could queue a dozen
+   minute-long requests against someone else's server. If the answer is already
+   in the cache it appears instantly; otherwise the page asks first and says
+   what it is about to do, and gives the range rather than a typical time,
+   since there is no typical time to give. */
 function lifeOffer(entry){
   const my = ++lifeReq;
   lifeClear();
@@ -10541,8 +10564,8 @@ function lifeOffer(entry){
   if(hit){ const r = Lifetime.predict(hit); lifeState = {P:hit, r}; paintLife(r, hit); return; }
   lifeSet('Not estimated yet', '',
     'Estimating decay needs this object&rsquo;s run of past element sets. CelesTrak rebuilds that ' +
-    'from its archive on request and takes about <b>30 seconds</b> to answer, so it is fetched ' +
-    'only when you ask. It is then cached for 12 hours.' +
+    'from its archive on request, and has taken anywhere from <b>a few seconds to over a ' +
+    'minute</b> to answer, so it is fetched only when you ask. It is then cached for 12 hours.' +
     '<br><br><button class="btn" id="lifego" type="button">Estimate remaining life</button>', '');
   const b = document.getElementById('lifego');
   if(b) b.addEventListener('click', () => runLife(entry, my));
@@ -10584,8 +10607,9 @@ async function runLife(entry, my){
   const t0 = Date.now();
   let tick = null;
   const say = () => lifeSet('Fetching…', Math.round((Date.now()-t0)/1000) + ' s',
-    'Reading this object&rsquo;s element-set history from CelesTrak. This usually takes about ' +
-    '30 seconds — the archive is rebuilt on each request.', '');
+    'Reading this object&rsquo;s element-set history from CelesTrak, which rebuilds it on each ' +
+    'request. That has taken anywhere from a few seconds to over a minute; the page waits up ' +
+    'to 75 seconds.', '');
   say(); tick = setInterval(say, 1000);
   let got = null;
   try { got = await Lifetime.history(entry.satnum); } catch(e){ got = null; }

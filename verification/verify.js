@@ -4,6 +4,7 @@
 // here from first principles. satellite.min.js is used ONLY for SGP4
 // propagation + gstime (both sides need the same orbit model); every piece of
 // coordinate, element and elevation math below is derived independently.
+// CHECK 5 holds index.html to those same SGP4 bytes, through its SRI hash.
 //
 //   node verify.js
 //
@@ -361,17 +362,47 @@ function main() {
   console.log('CHECK 4: ' + (c4pass ? 'PASS' : 'FAIL') +
               '  (the a the page shows is SGP4\'s Brouwer value, to ' + A_TOL + ' relative)');
 
+  // ---------------------------------------------------------- CHECK 5
+  // Every check above runs SGP4 from the satellite.min.js next to this file;
+  // the page runs it from cdnjs. Both are only the same orbit model if they are
+  // the same bytes, and index.html now pins its copy with a Subresource
+  // Integrity hash. So hash this copy the way the browser does (sha512 of the
+  // file, base64) and require the page's attribute to name it: a re-pinned page
+  // or a replaced copy here fails this, where before the two could drift apart
+  // with nothing to say so. three.js has no copy here to hash; its tag is held
+  // to the same form, since without crossorigin the browser refuses the script.
+  hdr('CHECK 5 -- SGP4 BYTES  (verification/satellite.min.js  vs  index.html integrity)');
+  const crypto = require('crypto');
+  const html = fs.readFileSync(path.join(DIR, '..', 'index.html'), 'utf8');
+  const tagFor = lib => (html.match(new RegExp('<script[^>]*cdnjs[^>]*/' + lib + '/[^>]*>')) || [''])[0];
+  const attr = (tag, a) => (tag.match(new RegExp('\\s' + a + '="([^"]*)"')) || [])[1] || null;
+  const mineSri = 'sha512-' + crypto.createHash('sha512')
+    .update(fs.readFileSync(path.join(DIR, 'satellite.min.js'))).digest('base64');
+  const satTag = tagFor('satellite\\.js'), threeTag = tagFor('three\\.js');
+  const pinned = t => /^sha512-[A-Za-z0-9+/]{86}==$/.test(attr(t, 'integrity') || '') &&
+                      attr(t, 'crossorigin') === 'anonymous';
+  console.log('satellite.min.js here : ' + mineSri);
+  console.log('index.html satellite  : ' + (attr(satTag, 'integrity') || '(no integrity attribute)') +
+              '  crossorigin=' + attr(satTag, 'crossorigin'));
+  console.log('index.html three.js   : ' + (attr(threeTag, 'integrity') || '(no integrity attribute)') +
+              '  crossorigin=' + attr(threeTag, 'crossorigin'));
+  const c5pass = attr(satTag, 'integrity') === mineSri && pinned(satTag) && pinned(threeTag);
+  console.log('');
+  console.log('CHECK 5: ' + (c5pass ? 'PASS' : 'FAIL') +
+              '  (the page pins, by hash, the SGP4 these checks run; three.js pinned the same way)');
+
   // ---------------------------------------------------------- verdict
   hdr('VERDICT');
   console.log('CHECK 1 orbital elements      : ' + (c1pass ? 'PASS' : 'FAIL'));
   console.log('CHECK 2 topocentric elevation : ' + (c2pass ? 'PASS' : 'FAIL'));
   console.log('CHECK 3 cumulative visibility : ' + (c3pass ? 'PASS' : 'FAIL'));
   console.log('CHECK 4 displayed a (Brouwer) : ' + (c4pass ? 'PASS' : 'FAIL'));
+  console.log('CHECK 5 SGP4 bytes pinned     : ' + (c5pass ? 'PASS' : 'FAIL'));
   if (tle.stale) {
     console.log('');
     console.log('(!) Ran on the STALE FALLBACK TLE -- these are NOT real-data results.');
   }
-  process.exitCode = (c1pass && c2pass && c3pass && c4pass) ? 0 : 1;
+  process.exitCode = (c1pass && c2pass && c3pass && c4pass && c5pass) ? 0 : 1;
 }
 
 main();

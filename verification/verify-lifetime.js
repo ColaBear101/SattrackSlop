@@ -2,8 +2,8 @@
  * The decay forecast: what it refuses, and what it says when it has nothing.
  *
  * The forecast itself is validated against real re-entries (README, "How well
- * it works"); that needs CelesTrak's archive at half a minute a request, so it
- * is not in the suite. What is here is the part that can be pinned offline, on
+ * it works"); that needs CelesTrak's archive, at anything from seconds to over
+ * a minute a request, so it is not in the suite. What is here is the part that can be pinned offline, on
  * histories made up in this file:
  *
  *  - An eccentric orbit is refused. The model applies drag at the mean

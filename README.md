@@ -13,10 +13,25 @@ that was ever really Earth-specific.
 | **Lunar track console** *(testing)* | https://sattrackslop.vercel.app/moon-track.html |
 | **Earth–Moon system** *(testing)* | https://sattrackslop.vercel.app/moon.html |
 
-No build step and no server. Open `index.html` in a browser. It needs network access on first
-load for two CDN assets — `satellite.js` (SGP4) from cdnjs and the webfonts from Google Fonts —
-and nothing else; the satellite catalogue, the coastlines and the lunar ephemerides are all
-embedded.
+No build step and no server. Open `index.html` in a browser. The satellite catalogue, the
+coastlines, the Blue Marble imagery and the lunar ephemerides ship with the pages. What they fetch,
+and what happens without it:
+
+- **On load, from cdnjs:** `satellite.js` 6.0.1, the SGP4 the Earth page cannot work without, and
+  `three.js` r128 for the 3D views on all three pages, which fall back to the flat map or the
+  tables without it. The Earth page pins both by a Subresource Integrity hash as well as by
+  version, so a changed file is refused rather than run.
+- **On load, optional:** the webfonts from Google Fonts (system fonts otherwise). On the Earth
+  page, the current element set for the spacecraft on screen, from CelesTrak's `gp.php` with
+  `tle.ivanstanojevic.me` as the fallback, asked for when a spacecraft is put on screen and every
+  three hours while it stays there; an answer is reused for three hours and a failure retried
+  after five minutes (the embedded snapshot otherwise; never under `?tle=embedded`). Also the VIIRS
+  night-lights mosaic from NASA GIBS for the default globe surface, or yesterday's VIIRS true
+  colour if *Yesterday's clouds* is picked (the drawn coastlines otherwise). On the lunar track
+  page, the LRO surface mosaic from NASA Moon Trek (a surface painted from the feature list
+  otherwise). The Earth–Moon page fetches nothing past the fonts and `three.js`.
+- **Only when asked:** an object's element-set history from CelesTrak, for the decay forecast,
+  and a place-name search from Open-Meteo's geocoder.
 
 ## What's here
 
@@ -36,7 +51,8 @@ core/               the body-agnostic half
 earth/
   orbit3d.js          the WebGL globe
   orbitviz.js         orbital-element vectors, stars, constellations, planets
-  globetex.js         NASA imagery for the globe's surface, fetched at runtime
+  globetex.js         NASA imagery for the globe's surface: the Blue Marble from
+                      earth/img/, the night lights and dated layers from GIBS
   places.js           finding the observer: place search, this device, timezones
   lifetime.js         orbital decay and re-entry forecasting
 
@@ -287,6 +303,13 @@ this one:
   - LANDSAT 9: **2265 s in 4 runs** vs this program's **2264.5 s in 4 passes**
 
   Both gaps are the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
+- Both sides run the same SGP4 bytes. The harness propagates with `verification/satellite.min.js`;
+  the page loads `satellite.js` 6.0.1 from cdnjs under an integrity hash, and the harness requires
+  that hash to be the sha512 of its own copy. A re-pinned page or a replaced copy fails the check,
+  so the second implementation cannot drift onto a different build from the page it is checking.
+  The gate, which loads the page and so the CDN's copy, would already notice a file that moved
+  the numbers; the hash also refuses one that leaves them alone and does something else in the
+  page's origin, or one served only to some visitors.
 
 Run it yourself: `node verification/report.js` and `node verification/verify.js`. The report
 prints the LANDSAT 9 answer as the page computes it — SGP4's a, the node-to-node period and the
@@ -524,10 +547,13 @@ things happened: no answer inside 75 seconds, a request that failed outright, an
 answer with no history in it, a history with no rows, or rows that all fell outside those bounds.
 The first four offer a retry; the last two are answers, and do not.
 
-It is also **slow — about 35 seconds per object**, measured, because the archive is rebuilt on each
-request. So the fetch does not fire when you pick a spacecraft: clicking through the catalogue
-would queue a dozen half-minute requests against someone else's server. There is a button, one
-shared request per object, and a 12-hour cache.
+It is also **slow, and not predictably so**, because the archive is rebuilt on each request. The
+first measurement was about 35 seconds per object. On 25 September 2026 the ISS, LANDSAT 9 and
+KNACKSAT-2 took 25 s, 87 s and more than 90 s; on 27 September the same three took 24 s, 3 s and
+2 s, and 6 s, 3 s and 2 s when asked again a minute later. The page gives up at 75 s. So the fetch
+does not fire when you pick a spacecraft: clicking through the catalogue could queue a dozen
+minute-long requests against someone else's server. There is a button, one shared request per
+object, and a 12-hour cache, and the page quotes the range rather than a typical time.
 
 ### Why not just extrapolate the line
 
@@ -603,7 +629,7 @@ outside that band whenever the atmosphere is thinning.
 between 28 Aug and 12 Sep 2026, so they met the same solar weather on the way down. Their errors are
 correlated, the tight half-IQR at 270 days is an artefact of that rather than evidence of precision,
 and the measured bias partly reflects one phase of one solar cycle. A fair test needs decays spread
-over years; at 35 seconds a request, that was not built here.
+over years; with a single request able to take over a minute, that was not built here.
 
 One thing the table deliberately does not show, because it would flatter the method: running the
 predictor on each object's **full** history reproduces its real decay date to ±1 day. That is not a
@@ -971,8 +997,13 @@ The embedded catalogue is **2,158 satellites, 319 KB**, built from:
 2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
    via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
    both :80 and :443 at the time (it answers now — the block appears to have been transient or
-   rate-limit related). Starlink and OneWeb were deliberately excluded: thousands of
-   near-identical objects would swamp the picker.
+   rate-limit related). The Starlink and OneWeb groups were deliberately not pulled: thousands of
+   near-identical objects would swamp the picker. Seven of their spacecraft are in the catalogue
+   anyway — six STARLINK and ONEWEB-0639 — because they came in with the SatNOGS list, where each
+   has a published downlink, and nothing filtered that list by constellation. Dropping them belongs
+   to the next rebuild: done by hand it would change the catalogue count the regression gate
+   compares. One, STARLINK-2342, is among the objects the page refuses, because SGP4 rejects its
+   elements (see *When the object is no longer there*).
 
 Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
 and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
@@ -988,8 +1019,9 @@ Two formats, because they answer different questions. The **CSV** is the whole p
 precision — AOS and LOS as RFC 3339, duration, elevations, azimuths, range, range rate, Doppler,
 and the naked-eye verdict with the magnitude estimate behind it — for anything that wants to
 compute with it. The **calendar** is for turning up: one `VEVENT` per pass with a 10-minute alarm,
-titled with the spacecraft and its peak elevation, so a phone says "KNACKSAT-2 — 68° NE" rather
-than nothing at all.
+titled with the spacecraft, its peak elevation and where to look, so a phone says
+"KNACKSAT-2 — 68° NE" rather than nothing at all (its 18:12Z pass on 14 September, in the
+regression baseline's 72-hour window).
 
 Both are built in the page and handed over as a Blob, which works from `file://` where this page
 mostly lives.
@@ -1106,9 +1138,10 @@ The page used to say so in a disclaimer. It computes the difference now.
 Seeing a pass needs two more conditions that pull against each other — the spacecraft lit while the
 observer is not — and a third that the first version left out: it has to be bright enough. The
 first two are why satellites are watched in the hour after dusk and before dawn, and why most radio
-passes are not watchable at all. Both of KNACKSAT-2's passes on the reference day are radio-only,
-for opposite reasons: the 18:12Z pass has the sun 67° below Bangkok's horizon but the spacecraft
-**in eclipse**; the 07:20Z pass has it sunlit and the sun **55.8° up**.
+passes are not watchable at all. KNACKSAT-2's two highest passes in the regression baseline's
+72-hour window from 2026-09-13 00:00 UTC are both radio-only, for opposite reasons: the 68.1° pass
+at 18:12Z on 14 September has the sun 67° below Bangkok's horizon but the spacecraft **in
+eclipse**; the 50.1° pass at 07:20Z on 15 September has it sunlit and the sun **55.8° up**.
 
 ### Lit is not the same as bright
 
@@ -1293,8 +1326,9 @@ commercial half of the catalogue. The panel says so instead of offering a plausi
 to, and the box stays editable either way — a station knows its own bird better than a database does.
 
 KNACKSAT-2 comes back with 145.825 MHz FSK 9k6 (IARU coordinated, digipeater) and 400.630 MHz for
-telemetry. Over the 68.1° pass those give a swing of **6.77 kHz** and **18.59 kHz**; LANDSAT 9's
-2282.300 MHz S-band downlink swings **83.87 kHz** across its own.
+telemetry. Over its 68.1° pass at 18:12Z on 14 September, in the regression baseline's 72-hour
+window, those give a swing of **6.77 kHz** and **18.59 kHz**; LANDSAT 9's 2282.300 MHz S-band
+downlink swings **83.87 kHz** across its 19.9° pass at 16:08Z the same day.
 
 ```
 node verification/fetch-transmitters.js   # re-bake earth/transmitters.js
@@ -1423,11 +1457,13 @@ npm install          # Playwright, once
 npm test             # the offline suite; must end BIT-IDENTICAL
 ```
 
-`npm test` runs the second implementation, the element-vector geometry, the regression gate and the
-live-refresh check, in that order. Individually:
+`npm test` runs the second implementation, the element-vector geometry and the regression gate,
+then every check below from `refresh` to `layout` in that order, and stops at the first failure.
+Individually:
 
 ```
-npm run verify       # independent second implementation of elements/elevation/visibility
+npm run verify       # independent second implementation of elements/elevation/visibility,
+                     # and that index.html pins by hash the satellite.js bytes it runs on
 npm run report       # the LANDSAT 9 answer, printed as the page computes it
 npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
@@ -1461,9 +1497,13 @@ npm run moon:bake    # re-bake moon/moondata.js from Horizons
 npm run globe        # the globe's NASA imagery: orientation, terminator, city lights, map size
 ```
 
-`.github/workflows/verify.yml` runs the offline suite on every push, and again weekly — the
-scheduled run is the useful one, since the embedded catalogue ages on its own and the pages pin
-CDN versions of `satellite.js` and `three.js` that could be pulled.
+**No CI runs on this repository.** The token it is pushed with has no `workflow` scope, so GitHub
+refuses any push that touches `.github/workflows/`, and `.gitignore` keeps that directory out; no
+workflow file is committed. The suite runs when someone runs `npm test`. A scheduled run would be
+the useful one, since the embedded catalogue ages on its own and every page depends on cdnjs still
+serving `satellite.js` 6.0.1 and `three.js` r128 — the Earth page's integrity hashes mean a changed
+file is refused, not that a withdrawn one is replaced. Adding one needs a token with that scope,
+or GitHub's own *Actions → New workflow* editor, which needs none.
 
 Playwright is used for the browser-driven checks. The lunar scripts cache their Horizons responses
 next to themselves, so a re-run is free.

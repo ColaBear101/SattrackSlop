@@ -6,9 +6,11 @@ node_modules/
 verification/.regress-current.json
 verification/.regress-snap.js
 
-# The CI workflow is kept on disk but out of git: the deploy token has no
-# "workflow" scope, so a push that touches .github/workflows is refused outright.
-# Restore it with `git checkout with-ci-workflow -- .github/workflows` once the
-# token has that scope, or paste the file into GitHub via Actions -> new workflow,
+# Out of git because the token this repository is pushed with has no "workflow"
+# scope, so GitHub refuses any push that touches .github/workflows outright.
+# No workflow is committed and no CI runs on this repository; there is no
+# with-ci-workflow branch to restore one from, whatever an earlier version of
+# this comment said. To add CI, drop this entry and push the file with a token
+# that has the scope, or create it in GitHub under Actions -> New workflow,
 # which needs no token at all.
 .github/workflows/

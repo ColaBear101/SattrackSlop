@@ -9979,7 +9979,12 @@ function load(entry, trial){
         : 'Window not changed: SGP4 cannot propagate ' + entry.name + ' anywhere ' + tried +
           ' (' + why + ').';
     if(D){
-      curIdx = CAT.indexOf(D.entry); box.value = D.entry.name;
+      /* The picker is put back only when this call was for another
+         spacecraft. Reloading the one on screen - a newer element set on
+         trial, the window rolling on, a span or site change - never touched
+         it, and writing the name back would wipe out whatever the reader is
+         typing into it at that moment. */
+      if(D.entry !== entry){ curIdx = CAT.indexOf(D.entry); box.value = D.entry.name; }
       winStart = D.start.getTime(); spanH = D.hours;
       paintWindow();
     }

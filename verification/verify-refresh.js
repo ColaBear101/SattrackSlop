@@ -236,14 +236,21 @@ const chk = (name, ok, detail) => {
   const heldNow = await page.evaluate(() => ({ l1: __gt.D.entry.l1, epoch: __gt.D.E.epoch.getTime() }));
   served = withEpoch(cur.l1, 1) + '\n' + withMeanMotion(cur.l2, 17.5);
   const errsBefore = pageErrs.length;
+  /* Someone is typing in the picker when the refused set comes back. The
+     restore after the refusal used to write the spacecraft's name over it. */
+  await page.fill('#satsearch', 'GOES 1');
   await tick();
   st = await state();
+  const typed = await page.evaluate(() => document.getElementById('satsearch').value);
+  await page.keyboard.press('Escape');
   const kept = await page.evaluate(() => __gt.D.entry.l1);
   chk('a newer set SGP4 cannot propagate is not adopted', st.epoch === heldNow.epoch
       && kept === heldNow.l1, 'epoch still ' + new Date(st.epoch).toISOString());
   chk('...and the page says why, in SGP4\'s terms',
       /cannot propagate/.test(st.meta) && /error 6: decayed/.test(st.meta) && /re-entered/.test(st.meta),
       st.meta.slice(0, 90));
+  chk('...and leaves alone what was being typed in the picker', typed === 'GOES 1',
+      JSON.stringify(typed));
   await page.click('.bar-window .span[data-h="72"]');
   await page.waitForTimeout(1200);
   const span72 = await page.evaluate(() => __gt.D.hours);

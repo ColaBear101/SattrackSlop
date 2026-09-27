@@ -9349,7 +9349,7 @@ function opticalRows(p){
        "Sun at site", and its unqualified "spacecraft eclipsed" read as a
        contradiction of the "yes" above it, on a pass lit against the dark
        only before or after its middle. */
-    .concat([['At mid-pass', nobreak('sun ' + o.sunEl.toFixed(1) + '\u00b0') + '  ·  '
+    .concat([['At mid-pass', nobreak('sun ' + (o.sunEl <= -0.05 ? '\u2212' : '') + Math.abs(o.sunEl).toFixed(1) + '\u00b0') + '  ·  '
             + nobreak(o.litAtMid === 'sun' ? 'spacecraft sunlit'
              : o.litAtMid === 'penumbra' ? 'spacecraft in penumbra'
              : 'spacecraft eclipsed')]]);

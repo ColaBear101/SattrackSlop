@@ -136,13 +136,24 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 
 .viewport .camseg{position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:8px}
 .viewport .trailseg{position:absolute; top:52px; right:12px; display:flex; align-items:center; gap:8px}
+/* The panel is 327 px tall and starts 92 px down, so it wants a globe 431 px
+   tall, and it does not always get one - in a laptop's short window, or
+   between 901 and 1030 px wide, where the header's links take two more rows.
+   There its last switches, the orbital elements and the constellations, were
+   clipped by the viewport under the transport bar, out of the pointer's
+   reach. It stops 12 px above the globe's lower edge instead and scrolls in
+   what that leaves. It is drawn over the drag hint, which in a narrow window
+   runs beneath it and used to be drawn across its switches. */
 .viewport .layerseg{position:absolute; top:92px; right:12px; display:flex; flex-direction:column;
-  align-items:flex-end; gap:5px}
+  align-items:flex-end; gap:5px; max-height:calc(100% - 104px); z-index:1}
 .viewport .layerseg .seglabel{margin-right:2px}
 /* The phone's way in to the same panel. Below 900 px the panel used to hang
    open over half the globe and the clock with nothing that closed it; there it
-   folds behind this button, closed to begin with. Above 900 px the button is
-   not drawn and the panel stays open, as it always was. */
+   folds behind this button, closed to begin with. So it does on a screen under
+   500 px tall: the largest phones held sideways are 915 and 932 px wide and
+   get the desktop console, where the open panel covered a 231 px globe and
+   could not be put away. Elsewhere above 900 px the button is not drawn and
+   the panel stays open, as it always was. */
 .layertoggle{display:none}
 .layertoggle::after{content:"▾"; margin-left:6px}
 .layertoggle[aria-expanded="true"]::after{content:"▴"}
@@ -204,9 +215,15 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .o3-key .s-raan{color:#F5C842} .o3-key .s-inc{color:#A98BFF} .o3-key .s-argp{color:#FF9230}
 .o3-key .s-nu{color:#FF4FA3} .o3-key .s-h{color:#4FC3FF} .o3-key .s-e{color:#FF5555}
 .o3-key .s-v{color:#4DF0A0}
+/* Eleven rows are 225 px, and on a short screen - a phone held sideways, where
+   the globe is 231 to 290 px tall - they climbed into the clock. While the
+   element rows show, the six they are added to step aside there. */
+@media (max-height:560px){ .o3-key.kel-on > li:not(.kel){display:none} }
 .o3-mini:not([hidden]) ~ .o3-key{display:none}
 @media (max-width:640px){ .o3-key{display:none} }
-.layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px;
+.layerpanel{display:flex; flex-direction:column; gap:1px; padding:5px; min-height:0;
+  overflow-y:auto; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color:rgba(180,200,212,.38) transparent;
   background:rgba(10,16,20,.72); border:1px solid rgba(180,200,212,.28); border-radius:3px;
   backdrop-filter:blur(6px)}
 .layerpanel label{display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:2px;
@@ -636,9 +653,11 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .app{display:flex; flex-direction:column; height:auto; max-height:none; min-height:0}
   .stage{display:contents}
   .bar-top{order:0; position:sticky; top:0; z-index:50; background:var(--chrome)}
-  /* a jump from the header lands below it, not under it */
-  .wrap > section{scroll-margin-top:200px}
-  .terms > div{scroll-margin-top:210px}
+  /* A jump from the header lands 16 px under the top of the screen. Where the
+     header is sticky it is sticky inside the console, and it has scrolled away
+     with it by the time the report is reached, so a margin its own height
+     only left a 200 px empty band over the section jumped to. */
+  .wrap > section, .terms > div{scroll-margin-top:16px}
   .viewport{order:1; height:52vh; min-height:290px}
   .bar-transport{order:2; position:sticky; bottom:0; z-index:45}
   /* The window bar had no order of its own, so it took 0 and sat between the
@@ -653,19 +672,25 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
      covering them, and scrolls inside what that leaves: held sideways, a
      phone's globe is 290 px tall. */
   .viewport .layerseg{top:10px; right:10px; max-height:calc(100% - 100px)}
-  /* Of the captions only Layers folds away here, into its button. The rest
-     used to go too, and left three rows of "6 h" and "24 h" - trail length,
-     window step, window length - with nothing to say which was which. */
-  .layerseg > .seglabel{display:none}
-  .layertoggle{display:inline-flex; align-items:center}
-  .layerseg:not(.open) .layerpanel{display:none}
-  .layerpanel{min-height:0; overflow-y:auto; overscroll-behavior:contain}
-  .layerpanel label{font-size:11px; min-height:28px; padding:5px 7px}
+  /* A moved site's name is cut short before it can push the camera row, which
+     grows leftward from the right edge, into the globe key. */
+  .viewport #lbl-camsite{max-width:8.5em; overflow:hidden; text-overflow:ellipsis}
   .hint-drag{display:none}
   .o3-key{bottom:12px}                          /* no drag hint to sit above */
   .access{grid-template-columns:minmax(0,1fr)}
   .tablesky{position:static; justify-self:center; width:min(268px,100%)}
   .elements{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* The folded panel (see .layertoggle): below 900 px, and on a screen too short
+   for the open one. Of the captions only Layers folds away, into its button.
+   The rest used to go too below 900 px, and left three rows of "6 h" and
+   "24 h" - trail length, window step, window length - with nothing to say
+   which was which. */
+@media (max-width:900px), (max-height:500px){
+  .layerseg > .seglabel{display:none}
+  .layertoggle{display:inline-flex; align-items:center}
+  .layerseg:not(.open) .layerpanel{display:none}
+  .layerpanel label{font-size:11px; min-height:28px; padding:5px 7px}
 }
 /* Sticky only where the bars fit around the globe. On a phone the transport
    wraps to four rows, 193 px, and pinned to the foot of an 844 px screen it sat
@@ -678,7 +703,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
    Below that both are ordinary bars, one either side of the globe. */
 @media (max-width:640px), (max-width:900px) and (max-height:700px){
   .bar-top, .bar-transport{position:static}
-  .wrap > section, .terms > div{scroll-margin-top:16px}
 }
 @media (max-width:640px){
   /* Each caption over its row rather than beside it: beside, the camera row
@@ -686,7 +710,6 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .viewport .camseg, .viewport .trailseg{flex-direction:column; align-items:flex-end; gap:2px}
   .viewport .trailseg{bottom:70px}
   .viewport .layerseg{max-height:calc(100% - 140px)}
-  .viewport #lbl-camsite{max-width:8.5em; overflow:hidden; text-overflow:ellipsis}
 }
 @media (max-width:560px){
   .elements{grid-template-columns:minmax(0,1fr)}
@@ -1031,7 +1054,9 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         </div>
         <p class="passnote" id="passnote" hidden>* Clipped by the window edge. The spacecraft is
           already above 5° when the window opens, or still above it when the window closes, so the
-          true AOS or LOS lies outside the window and the duration counts only the part inside it.
+          true <abbr title="acquisition of signal: the spacecraft rises through the 5° mask">AOS</abbr>
+          or <abbr title="loss of signal: the spacecraft sets through the 5° mask">LOS</abbr> lies
+          outside the window and the duration counts only the part inside it.
           The CSV and calendar exports carry the same flag.</p>
         <div class="exportbar">
           <button class="btn" id="exp-csv">Export CSV</button>
@@ -9349,9 +9374,9 @@ function selectPass(i, scrub, fromTable){
      peaked - so it is not called a culmination there. */
   const edge = (p.clipA && p.maxAt.getTime() - p.t0ms < 1000) ||
                (p.clipL && p.t1ms - p.maxAt.getTime() < 1000);
-  const clip = p.clipA && p.clipL ? 'up the whole window; true AOS and LOS lie outside it'
-    : p.clipA ? 'already up when the window opens; true AOS is earlier'
-    : p.clipL ? 'still up when the window closes; true LOS is later' : null;
+  const clip = p.clipA && p.clipL ? 'up the whole window; true '+ABBR.AOS+' and '+ABBR.LOS+' lie outside it'
+    : p.clipA ? 'already up when the window opens; true '+ABBR.AOS+' is earlier'
+    : p.clipL ? 'still up when the window closes; true '+ABBR.LOS+' is later' : null;
   document.getElementById('skyfacts').innerHTML = [
     ['Pass', (selPass+1)+' of '+D.passes.length],
     [ABBR.AOS, whenZ(p.aos)+(p.clipA?' *':'')+' · '+whenLocal(p.aos)],
@@ -9363,7 +9388,7 @@ function selectPass(i, scrub, fromTable){
    .concat(opticalRows(p)).concat(dopRows(p))
    .map(r=>'<div class="row"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
   if(cap) cap.innerHTML = 'Pass '+(selPass+1)+' of '+D.passes.length+' · max '+p.maxEl.toFixed(1)+'° '+
-    compass(p.maxAz)+'<br>AOS '+ymd(p.aos)+' '+hms(p.aos)+'Z'+(p.clipA?' *':'');
+    compass(p.maxAz)+'<br>'+ABBR.AOS+' '+ymd(p.aos)+' '+hms(p.aos)+'Z'+(p.clipA?' *':'');
   if(scrub) setSim(p.maxAt.getTime(), true);          // jump the clock to culmination
   /* Beside the table the plot is sticky and already in view. On a narrow screen
      it stacks under the table, so bring it up rather than redraw it unseen. */
@@ -11171,8 +11196,12 @@ document.addEventListener('visibilitychange', () => {
         if(k === 'elements' && global3D()) Orbit3D.showRVector(e.target.checked);
         if(k === 'elements') elementKey(e.target.checked);
       });
-      /* the symbols' names in the globe key, for as long as the symbols are drawn */
-      const elementKey = on => document.querySelectorAll('#o3key .kel').forEach(li => li.hidden = !on);
+      /* the symbols' names in the globe key, for as long as the symbols are drawn
+         (kel-on: on a short screen they then take the key to themselves) */
+      const elementKey = on => {
+        document.querySelectorAll('#o3key .kel').forEach(li => li.hidden = !on);
+        document.getElementById('o3key').classList.toggle('kel-on', on);
+      };
       const el0 = OrbitViz.layers().find(l => l.key === 'elements');
       elementKey(!!(el0 && el0.on));
       if(global3D()) Orbit3D.showRVector(!!(el0 && el0.on));

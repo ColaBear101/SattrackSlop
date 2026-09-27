@@ -382,6 +382,8 @@ in the bottom-left corner, which it gives up to the POV minimap, and on a phone 
 same lack of room. While the orbital-elements layer is on, the key also names its symbols. The layer
 draws Ω, i, ω, θ, h, e and v as bare letters and gives the full sentence only under the pointer,
 which a newcomer has no reason to go looking for; the key lists each one in its label's colour.
+That makes the key eleven rows, 225 px, and on a screen under 560 px tall, a phone held sideways,
+it climbed into the clock. There the element rows take the key to themselves while they show.
 
 The spacecraft's name and the catalogue's hover name are HTML over the canvas, so they have no depth:
 the marker behind the planet was hidden by the depth test while its name went on being drawn over
@@ -410,14 +412,26 @@ The console fills the first screen, and at 1440×900 nothing on it said that the
 assignment asks for — the elements, the ground-track map, the pass table — was underneath. The one
 pointer was a link at the foot of the rail, which scrolls on its own, about 1000 px out of view,
 and the two Moon pages were linked beside it. The header now has a line of links to each section
-below and to both Moon pages. It costs the globe 6 px at that size.
+below and to both Moon pages. At that size the header grows by 6 px, and with the transport's tick
+labels at 11 px the globe is 8 px shorter than it was. Between 901 and about 1030 px wide the links
+wrap to two lines under the ids, which have already wrapped under the name, and the globe gives up
+about 50 px there.
+
+That was also where the desktop's layers panel ran out of room. It is 327 px tall from 92 px down,
+so it wants a globe 431 px tall, and between those widths or in a short window it does not get one.
+Its last switches, the orbital elements and the constellations, ran under the transport bar, and
+the viewport clips them there, out of the pointer's reach. The panel now stops 12 px above the
+globe's lower edge and scrolls in what that leaves.
 
 Below 900 px the console stacks, and on a 390×844 phone three things were wrong with it:
 
 - **The layers panel** hung open over half the globe, the clock and the trail row, and nothing
   closed it. It now folds behind a Layers button, closed to begin with, which reports its state in
   `aria-expanded` and closes on Escape. Opened, it stops short of the trail and camera rows and
-  scrolls within the height that leaves. Above 900 px it is the open panel it always was.
+  scrolls within the height that leaves. It folds the same way on any screen under 500 px tall: the
+  largest phones held sideways are 915 and 932 px wide and get the desktop console, where the open
+  panel covered a 231 px globe and could not be put away. Otherwise, above 900 px, it is the open
+  panel it always was.
 - **The transport bar** was sticky at the foot of the screen, where it wraps to four rows, 193 px,
   so the camera and trail buttons along the globe's lower edge were under it: a tap on Free landed
   on the transport. The window bar had no place in the stacking order, so it sat between the header
@@ -425,7 +439,9 @@ Below 900 px the console stacks, and on a 390×844 phone three things were wrong
   The header and the transport stay sticky only where they fit round the globe, from 641 to 900 px
   wide on a screen taller than 700 px. Everywhere narrower or shorter they are ordinary bars, one
   either side of the globe. Held sideways, the phone's sticky header used to cover the Layers button
-  and the clock whenever the camera row was in view.
+  and the clock whenever the camera row was in view. Where it is sticky, it is sticky inside the
+  console and scrolls away with it, so a jump from its links lands 16 px from the top of the screen
+  with nothing to make room for.
 - **The captions** over the button rows were all hidden below 900 px. That left three rows of
   "6 h" and "24 h", for trail length, window step and window length, with nothing to say which was
   which. They stay now, and on a phone the camera and trail captions sit above their rows.
@@ -438,10 +454,15 @@ The degree sign on the element cards now sits on its number rather than a space 
 The page's vocabulary is spelled out in a **Terms** section at the foot of the page: AOS and LOS,
 Z, NORAD and COSPAR IDs, TEME, B* in 1/ER, standard magnitude, penumbra, POV, FOV and GSD, the
 entry interface, and the brief's Earth Resources group. The abbreviations in the header, over the
-globe, in the rail and in the pass table carry their expansion as a tooltip, and the notes that lean
-on a term, the outside-the-brief note and the re-entry warning, link to its entry. `npm run layout` checks all of this at four sizes. It tests
-whether a button is covered with `elementFromPoint` at its centre, with the globe's lower edge
-scrolled to the foot of the screen, rather than by reading z-indices.
+globe, in the rail, in the sky plot and in the pass table carry their expansion as a tooltip, and
+the notes that lean on a term, the outside-the-brief note and the re-entry warning, link to its
+entry.
+
+`npm run layout` checks all of this at 1440×900, in three narrow or short laptop windows, on a
+tablet, on a phone held upright and sideways, and on a larger phone held sideways, 915×412, which
+gets the desktop console. It tests whether a button or a layer switch is covered with
+`elementFromPoint` at its centre, with the globe's lower edge scrolled to the foot of the screen and
+the layers panel scrolled to the switch, rather than by reading z-indices.
 
 ## Architecture: the central body is a parameter
 

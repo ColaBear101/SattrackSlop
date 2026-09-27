@@ -19,7 +19,7 @@ and what happens without it:
 
 - **On load, from cdnjs:** `satellite.js` 6.0.1, the SGP4 the Earth page cannot work without, and
   `three.js` r128 for the 3D views on all three pages, which fall back to the flat map or the
-  tables without it. The Earth page pins both by a Subresource Integrity hash as well as by
+  tables without it. Every page pins what it loads by a Subresource Integrity hash as well as by
   version, so a changed file is refused rather than run.
 - **On load, optional:** the webfonts from Google Fonts (system fonts otherwise). On the Earth
   page, the current element set for the spacecraft on screen, from CelesTrak's `gp.php` with
@@ -75,8 +75,9 @@ bit-identical regression gate on every change.
 **Both Moon pages are marked *testing* in their own mastheads**, and the badge names the actual
 reasons rather than hedging. They are not covered by that gate; the lunar ephemerides are baked
 at build time and frozen, because Horizons sends no CORS header and a browser cannot re-fetch
-them; positions are good to about a kilometre near a daily anchor and tens of kilometres between
-them; and two of the five spacecraft have no published ephemeris at all. Each page computes and
+them; positions agree with Horizons to about a kilometre and a half near a daily anchor and tens
+of kilometres between them, and Horizons is itself predicting past each record's last tracking
+data; and two of the five spacecraft have no published ephemeris at all. Each page computes and
 shows its own staleness — how long ago the data was baked, and which craft runs out of coverage
 first — so the warning cannot quietly go out of date.
 
@@ -428,10 +429,10 @@ Below 900 px the console stacks, and on a 390×844 phone three things were wrong
 - **The layers panel** hung open over half the globe, the clock and the trail row, and nothing
   closed it. It now folds behind a Layers button, closed to begin with, which reports its state in
   `aria-expanded` and closes on Escape. Opened, it stops short of the trail and camera rows and
-  scrolls within the height that leaves. It folds the same way on any screen under 500 px tall: the
-  largest phones held sideways are 915 and 932 px wide and get the desktop console, where the open
-  panel covered a 231 px globe and could not be put away. Otherwise, above 900 px, it is the open
-  panel it always was.
+  scrolls within the height that leaves. It folds the same way on any screen 500 px tall or less:
+  the largest phones held sideways are 915 and 932 px wide and get the desktop console, where the
+  open panel covered a 231 px globe and could not be put away. Otherwise, above 900 px, it is the
+  open panel it always was.
 - **The transport bar** was sticky at the foot of the screen, where it wraps to four rows, 193 px,
   so the camera and trail buttons along the globe's lower edge were under it: a tap on Free landed
   on the transport. The window bar had no place in the stacking order, so it sat between the header
@@ -1116,9 +1117,9 @@ A pass cut by the window edge is flagged in both, because its AOS or LOS is wher
 stopped and the files otherwise present it as a horizon crossing. The CSV's `aos_clipped` and
 `los_clipped` are `true` or `false`, appended after every column that was already there, so each
 one a reader finds by name — or by position — stays where it was; `est_magnitude` went on after
-them for the same reason. The calendar event carries `X-GT-CLIPPED`, says in its summary and
-description which end is the window's, and its alarm no longer announces an AOS that is really the
-window opening.
+them for the same reason. The calendar event carries `X-GT-CLIPPED`, is marked window-clipped in
+its summary, says in its description which end is the window's, and its alarm no longer announces
+an AOS that is really the window opening.
 
 The CSV also says what it was computed from, which it did not. The element set is replaced as soon
 as a newer one is published and the window opens at the reader's clock, so two exports an hour apart
@@ -1586,10 +1587,13 @@ npm run globe        # the globe's NASA imagery: orientation, terminator, city l
 **No CI runs on this repository.** The token it is pushed with has no `workflow` scope, so GitHub
 refuses any push that touches `.github/workflows/`, and `.gitignore` keeps that directory out; no
 workflow file is committed. The suite runs when someone runs `npm test`. A scheduled run would be
-the useful one, since the embedded catalogue ages on its own and every page depends on cdnjs still
-serving `satellite.js` 6.0.1 and `three.js` r128 — the Earth page's integrity hashes mean a changed
-file is refused, not that a withdrawn one is replaced. Adding one needs a token with that scope,
-or GitHub's own *Actions → New workflow* editor, which needs none.
+the useful one, since the embedded catalogue ages on its own and the pages depend on cdnjs still
+serving their scripts — the Earth page on `satellite.js` 6.0.1, and all three on `three.js` r128.
+The integrity hashes mean a changed file is refused, not that a withdrawn one is replaced. Adding
+a scheduled run needs a token with that scope, or GitHub's own *Actions → New workflow* editor,
+which needs none.
 
 Playwright is used for the browser-driven checks. The lunar scripts cache their Horizons responses
-next to themselves, so a re-run is free.
+in `$CLAUDE_JOB_DIR/tmp`, or in `gtc-lunar` under the system's temporary directory, so a re-run is
+free; delete the files to fetch again. `moon:chain` reads the reference tables that `npm run moon`
+fetches, so run that first.

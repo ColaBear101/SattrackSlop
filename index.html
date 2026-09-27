@@ -149,8 +149,8 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .viewport .layerseg .seglabel{margin-right:2px}
 /* The phone's way in to the same panel. Below 900 px the panel used to hang
    open over half the globe and the clock with nothing that closed it; there it
-   folds behind this button, closed to begin with. So it does on a screen under
-   500 px tall: the largest phones held sideways are 915 and 932 px wide and
+   folds behind this button, closed to begin with. So it does on a screen 500 px
+   tall or less: the largest phones held sideways are 915 and 932 px wide and
    get the desktop console, where the open panel covered a 231 px globe and
    could not be put away. Elsewhere above 900 px the button is not drawn and
    the panel stays open, as it always was. */
@@ -11215,10 +11215,11 @@ document.addEventListener('visibilitychange', () => {
     if(m && m.children.length) return;
     const ls = document.querySelector('.layerseg'); if(ls) ls.style.display = 'none';
   }
-  /* The panel's button, drawn only below 900 px (see .layertoggle). It opens
-     and closes the panel and says which in aria-expanded. Escape inside the
-     open panel closes it and hands the focus back, so a keyboard is not left
-     on a checkbox that has just been hidden. */
+  /* The panel's button, drawn only on a screen 900 px wide or less, or 500 px
+     tall or less (see .layertoggle). It opens and closes the panel and says
+     which in aria-expanded. Escape inside the open panel closes it and hands
+     the focus back, so a keyboard is not left on a checkbox that has just been
+     hidden. */
   const lsg = document.querySelector('.layerseg'), ltg = document.getElementById('layerstoggle');
   const setLayersOpen = open => {
     lsg.classList.toggle('open', open);

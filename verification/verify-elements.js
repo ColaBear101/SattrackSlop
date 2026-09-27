@@ -517,9 +517,15 @@ const clipped = m => m.tags.filter(t =>
     const R = trackReach(pn);
     const m = pn.notes[2].match(/reaches ±([\d.]+)° geodetic latitude/);
     const t = pn.notes[2].match(/orbit plane is tilted at most ([\d.]+)°/);
-    const needs = Math.abs(R.gc - pn.inc) >= 0.0006;
+    /* Judged on the printed figures, as the card judges them: the tilt is
+       said exactly when it prints differently from the mean i. Where this
+       script's own figure sits on a half-unit boundary the two could round
+       apart, so either answer is taken there. */
+    const r3 = x => (+x).toFixed(3), halfway = x => Math.abs(x*1000 % 1 - 0.5) < 0.05;
+    const needs = r3(R.gc) !== r3(pn.inc);
     chk('...and a GEO object\'s reach is its drawn track, with the plane\'s real tilt when that is not the mean i',
-        !!m && Math.abs(+m[1] - R.gd) < 0.00051 && (!needs || !!t) && (!t || Math.abs(+t[1] - R.gc) < 0.00051),
+        !!m && Math.abs(+m[1] - R.gd) < 0.00051 && (halfway(R.gc) || needs === !!t)
+          && (!t || Math.abs(+t[1] - R.gc) < 0.00051 && t[1] !== r3(pn.inc)),
         (m ? '±' + m[1] + '° (mine ' + R.gd.toFixed(4) + ')' : 'no reach') + ', tilt ' + (t ? t[1] : '-') +
           '° (mine ' + R.gc.toFixed(4) + ') against i = ' + pn.inc + '°');
     /* The i on the card is the mean AT THE EPOCH, and in deep space SGP4
@@ -530,16 +536,20 @@ const clipped = m => m.tags.filter(t =>
        inclination at the instant the track peaks is read here from
        satellite.js's own meanElements, not from didt as the page takes it. */
     const mi = Math.abs(sat.propagate(sat.twoline2satrec(pn.l1, pn.l2), new Date(R.tc)).meanElements.im)*180/Math.PI;
-    const days = (R.tc - pn.epoch)/86400000, gap = R.gc - mi, drifted = Math.abs(mi - pn.inc) >= 0.0006;
+    const days = (R.tc - pn.epoch)/86400000, drifted = r3(mi) !== r3(pn.inc);
     const dr = pn.notes[2].match(/where the track peaks, ([\d.]+) days (after|before) the epoch, it is ([\d.]+)°(?:, and SGP4's periodic terms put the plane ([\d.]+)° (above|below) that)?/);
-    // clear of the half-unit boundary, where the page and this could round apart
+    /* The mean in force against the mean i, on the printed figures, with
+       either answer taken on a half-unit boundary. And the periodic terms get
+       what the two printed figures leave, to the last digit, so the sentence
+       adds up: none at all when they print the same. */
+    const pg = t && dr ? Math.round((+t[1] - +dr[3])*1000) : null;
+    const split = !!dr && !/averages out/.test(pn.notes[2]) && Math.abs(+dr[3] - mi) < 0.00051
+      && Math.abs((dr[2] === 'before' ? -dr[1] : +dr[1]) - days) < 0.051
+      && pg !== null && (pg === 0 ? !dr[4]
+        : !!dr[4] && Math.round(+dr[4]*1000) === Math.abs(pg) && dr[5] === (pg > 0 ? 'above' : 'below'));
+    const periodic = /averages out SGP4's periodic terms/.test(pn.notes[2]) && !dr;
     chk('...and splits that gap into SGP4\'s drift of the mean inclination since the epoch and its periodic terms',
-        !drifted ? /averages out SGP4's periodic terms/.test(pn.notes[2])
-          : !!dr && !/averages out/.test(pn.notes[2]) && Math.abs(+dr[3] - mi) < 0.00051
-            && Math.abs((dr[2] === 'before' ? -dr[1] : +dr[1]) - days) < 0.051
-            && (Math.abs(gap) < 0.0004 ? !dr[4]
-                : Math.abs(gap) > 0.0006 ? !!dr[4] && Math.abs(+dr[4] - Math.abs(gap)) < 0.00051 && dr[5] === (gap > 0 ? 'above' : 'below')
-                : true),
+        halfway(mi) ? split || periodic : drifted ? split : periodic,
         'mean i at the peak, ' + days.toFixed(2) + ' d from the epoch: ' + mi.toFixed(4) + '° (TLE ' + pn.inc +
           '°), plane ' + R.gc.toFixed(4) + '°; card: ' + (dr ? dr[0] : pn.notes[2]));
     chk('...and its RAAN note says the node is barely defined',

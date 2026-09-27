@@ -8388,22 +8388,31 @@ function renderElements(){
         // geocentric latitude never exceeds the tilt of the plane at that instant
         (o && +mc.toFixed(dp) > +tilt.toFixed(dp) ? ', so the plane tilts further as the window runs' : '')+'.';
     }
-    const why = [], more = [];
-    if(Math.abs(mc - lim) >= tol){
+    /* The plane, the mean and the gap between them are each printed rounded,
+       so the tests are made on the printed figures too: "0.35°, not the mean
+       0.35°", or a gap of 0.01° between two figures that print the same, is
+       the sentence disagreeing with itself. The gap is counted in units of the
+       last printed digit, which keeps float noise out of it. */
+    const why = [], more = [], unit = Math.pow(10, dp);
+    if(deg(mc) !== deg(lim)){
       const sr = D.track.raw;
       const days = (tPeak - E.epoch.getTime())/86400000;
       const mNow = sr && sr.method === 'd' && isFinite(sr.didt) && isFinite(sr.inclo)
         ? fold(Math.abs(sr.inclo + sr.didt*days*1440)*DEG) : lim;
-      if(Math.abs(mNow - lim) < tol)
+      if(deg(mNow) === deg(lim))
         why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim)+
           ' — a mean inclination averages out SGP4\'s periodic terms'+(E.deepSpace ? ', the Moon\'s and Sun\'s among them' : ''));
       else {
-        const gap = mc - mNow;
+        const gap = Math.round((+mc.toFixed(dp) - +mNow.toFixed(dp))*unit);
         why.push('in this window the orbit plane is tilted at most '+deg(mc)+', not the mean '+deg(lim));
+        /* Retrograde, the figures are 180° − i, as everywhere else on the
+           card, and the mean itself is said too so that neither reads as the
+           other. */
         more.push('That i is the mean at the epoch, and SGP4 moves the mean inclination at a steady rate under the Moon\'s and Sun\'s pull: '+
-          'where the track peaks, '+Math.abs(days).toFixed(1)+' days '+(days < 0 ? 'before' : 'after')+' the epoch, it is '+deg(mNow)+
-          (Math.abs(gap) >= tol
-            ? ', and SGP4\'s periodic terms put the plane '+Math.abs(gap).toFixed(dp)+'° '+(gap > 0 ? 'above' : 'below')+' that.'
+          'where the track peaks, '+Math.abs(days).toFixed(1)+' days '+(days < 0 ? 'before' : 'after')+' the epoch, it is '+
+          (E.inc > 90 ? deg(180 - mNow)+', so 180° − i is '+deg(mNow) : deg(mNow))+
+          (gap
+            ? ', and SGP4\'s periodic terms put the plane '+(Math.abs(gap)/unit).toFixed(dp)+'° '+(gap > 0 ? 'above' : 'below')+' that.'
             : ', so that drift is the whole of the difference.'));
       }
     }

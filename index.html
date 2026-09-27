@@ -1046,7 +1046,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
           <table>
             <thead><tr>
               <th>#</th><th>Date (UTC)</th><th><abbr title="acquisition of signal: the spacecraft rises through the 5° mask">AOS</abbr> (UTC)</th><th><abbr title="loss of signal: the spacecraft sets through the 5° mask">LOS</abbr> (UTC)</th><th>Duration</th>
-              <th>Max elev.</th><th>Az at max</th><th>Min range</th><th>AOS→LOS az</th>
+              <th>Max elev.</th><th>Az at max</th><th>Min range</th><th><abbr title="the azimuth at acquisition of signal, then at loss of signal">AOS→LOS</abbr> az</th>
             </tr></thead>
             <tbody id="passbody"></tbody>
             <tfoot id="passfoot"></tfoot>
@@ -11149,7 +11149,9 @@ document.addEventListener('visibilitychange', () => {
       if(st.state === 'failed'){
         /* Named rather than swallowed: a globe that silently stayed schematic
            after you asked for a photograph is a bug report waiting to happen. */
-        note.textContent = 'Imagery unavailable — showing coastlines. ' + (st.detail || '');
+        // the detail is added only when it says more than the lead already has
+        const more = st.detail && !/^imagery unavailable\.?$/i.test(st.detail.trim()) ? ' ' + st.detail : '';
+        note.textContent = 'Imagery unavailable — showing coastlines.' + more;
         const r = menu0.querySelector('input[name=globesurf][value=vector]');
         if(r) r.checked = true;
         return;

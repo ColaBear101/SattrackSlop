@@ -11011,8 +11011,14 @@ function liveLine(now){
   if(tleLive.dead)    return ['gone', '<b>'+tleLive.dead+'</b> has a newer set that SGP4 cannot propagate in this window ('+
                               tleLive.why+')'+seen+' — keeping the one on screen'+
                               (tleLive.code === 6 ? '; the object may have re-entered.' : '.')];
-  if(tleLive.older)   return ['snap', '<b>'+tleLive.older+'</b> offered an older set — keeping the embedded one.'];
-  return ['snap', 'No live source reachable — showing the embedded snapshot.'];
+  /* Which set is kept is read off the lines, as tleSource() does: once a newer
+     set has been taken live, a later check that is offered an older one, or
+     reaches nothing, leaves that set on screen, not the embedded one. */
+  const emb = RAWTLE.indexOf(D.entry.l1) >= 0 && RAWTLE.indexOf(D.entry.l2) >= 0;
+  if(tleLive.older)   return ['snap', '<b>'+tleLive.older+'</b> offered an older set — keeping '+
+                              (emb ? 'the embedded one.' : 'the newer one on screen, fetched live earlier.')];
+  return ['snap', 'No live source reachable — '+
+          (emb ? 'showing the embedded snapshot.' : 'keeping the set on screen, fetched live earlier.')];
 }
 function paintAges(){
   if(!D) return;

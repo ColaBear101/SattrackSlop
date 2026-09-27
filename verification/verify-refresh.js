@@ -170,6 +170,11 @@ const chk = (name, ok, detail) => {
       'epoch still ' + new Date(st.epoch).toISOString());
   chk('...and the page says so rather than failing silently', /older set/.test(st.meta),
       st.meta.slice(0, 70));
+  /* The set held here is the newer one phase 3 took live, and it said
+     "keeping the embedded one" of it. */
+  chk('...naming the set it keeps as the one fetched live, not the embedded one',
+      /keeping the newer one on screen, fetched live/.test(st.meta) && !/embedded one/.test(st.meta),
+      st.meta.slice(0, 110));
   chk('...and a stale mirror backs off to the TTL, not the 5 min retry',
       Math.abs((st.next - st.now) - TTL) < 60e3,
       'due in ' + ((st.next - st.now) / HOUR).toFixed(2) + ' h (expect 3.00)');

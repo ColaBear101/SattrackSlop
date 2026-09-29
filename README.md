@@ -31,7 +31,11 @@ and what happens without it:
   page, the LRO surface mosaic from NASA Moon Trek (a surface painted from the feature list
   otherwise). The Earth–Moon page fetches nothing past the fonts and `three.js`.
 - **Only when asked:** an object's element-set history from CelesTrak, for the decay forecast,
-  and a place-name search from Open-Meteo's geocoder.
+  and a place-name search from Open-Meteo's geocoder. On a phone or tablet, the AR view asks the
+  device, not a server, for its rear camera, its motion sensors and — if *Use my location* is
+  pressed — its position. The picture is drawn over on the phone and goes nowhere, and the sensor
+  readings are neither kept nor sent; a position taken with *Use my location* becomes the observer,
+  saved in this browser the way the console's own *Use my location* saves it.
 
 ## What's here
 
@@ -55,6 +59,12 @@ earth/
                       earth/img/, the night lights and dated layers from GIBS
   places.js           finding the observer: place search, this device, timezones
   lifetime.js         orbital decay and re-entry forecasting
+  wmm.js              the World Magnetic Model 2025: how far a compass's north is
+                      from true north, at the observer
+  skyar.js            the AR view's maths: the phone's orientation as a camera,
+                      the projection, the iPhone's compass
+  arview.js           the AR view: the motion sensors, the rear camera, and the
+                      sky drawn over the picture
 
 moon/
   lunar.js            ELP-2000 lunar ephemeris + CR3BP libration points
@@ -326,6 +336,8 @@ camera. The first three are the *same* camera: a point at a fixed distance from 
 looking at the Earth's centre, differing only in how the bearing is chosen. "Satellite" therefore
 shows the Earth from the spacecraft's **direction**, which is not the same thing as showing it from
 the spacecraft. At 4.2 Earth radii out, the spacecraft is a dot in the middle of the frame.
+*AR*, beside them on a touch screen, is not a fifth: it leaves the globe for the phone's own camera
+(see **The sky through the phone**).
 
 **POV** sits on the spacecraft, facing **along-track** by default: forward along the horizontal part
 of the velocity, with the zenith as screen-up, so the horizon runs level across the frame. Nadir is
@@ -455,8 +467,8 @@ the local time of every pass in the rail was 10 px, though it is the figure a re
 The degree sign on the element cards now sits on its number rather than a space away.
 
 The page's vocabulary is spelled out in a **Terms** section at the foot of the page: AOS and LOS,
-Z, NORAD and COSPAR IDs, TEME, B* in 1/ER, standard magnitude, penumbra, POV, FOV and GSD, the
-entry interface, and the brief's Earth Resources group. The abbreviations in the header, over the
+Z, NORAD and COSPAR IDs, TEME, B* in 1/ER, standard magnitude, penumbra, POV, FOV and GSD, AR,
+heading and declination, the entry interface, and the brief's Earth Resources group. The abbreviations in the header, over the
 globe, in the rail, in the sky plot and in the pass table carry their expansion as a tooltip, and
 the notes that lean on a term, the outside-the-brief note and the re-entry warning, link to its
 entry.
@@ -466,6 +478,195 @@ tablet, on a phone held upright and sideways, and on a larger phone held sideway
 gets the desktop console. It tests whether a button or a layer switch is covered with
 `elementFromPoint` at its centre, with the globe's lower edge scrolled to the foot of the screen and
 the layers panel scrolled to the switch, rather than by reading z-indices.
+
+## The sky through the phone
+
+The console says when a pass happens and where to look — "68° NE" — and outdoors that still
+leaves the reader turning a compass bearing into a direction in the sky. On a phone or a tablet
+the camera row has one more button, **AR**, which does it for them: the rear camera's picture,
+full screen, with the sky drawn over it where the phone points. It is offered where the primary
+pointer is a finger, `(pointer: coarse)`, and not under a mouse, so the desktop console is
+unchanged. It is not a camera position of the globe, and sits beside the camera group rather than
+in it.
+
+Drawn over the picture, back to front: the ground below the horizon, lightly shaded; elevation
+rings every 15° and meridians every 30°; the horizon with a tick every 10°; the 5° mask, dashed;
+the compass points; the Sun; the current or next pass, with a mark every minute (or as many
+minutes as keep it to fifteen marks) on the observer's clock, its direction of travel and its
+highest point; the spacecraft; and, when the thing to find is off the screen, an arrow on the edge
+with the words — "turn right 30° · up 12°", "turn round", or, looking nearly straight up, where
+"right" means nothing, "face SW (226°) · 34° above the horizon". While the spacecraft is below the
+horizon and a pass is coming, the arrow points at where it will rise instead: "KNACKSAT-2 rises
+here at 18:36, in 00:05:03". The colours keep the globe's meanings — cyan the spacecraft, orange
+in view from the site, pink the mask — and, over a camera picture, are the same in either theme.
+The title says whose sky it is: "Sky over Bangkok". Under it the readout gives the view's
+direction, where north came from, the declination applied, the clock, the target and the pass.
+Held sideways, a phone's sky is 390 px tall, so the readout is a column a third of the width down
+the left, clear of the middle — half the width, the first way it was tried, covered the spacecraft
+— with only the rows that pointing needs; North and Declination are left to the phone held
+upright. The view needs no WebGL, and stays offered when the globe falls back to the flat map.
+
+### Asking
+
+Two permissions, the motion sensors and the camera, from one tap, and the order is not free. On
+an iPhone `DeviceOrientationEvent.requestPermission()` asks only while the tap is still the current
+user gesture, and WebKit carries that across an `await` only for a few kinds of work, of which
+`getUserMedia` is not one: asking for the camera first and then for motion loses the motion
+prompt. So the tap asks for motion first and the camera second, in the same task, and only then
+waits for either — as WebKit's own engineers advise for two capture requests. Starting the camera
+inside the tap has a second use: in WebKit that is what lets a camera declined earlier be asked
+for again.
+
+`requestPermission` existing does not mean iOS. Chrome 152 has it too, and answers "granted"
+there while the motion-sensor setting stays at its default of Allow. Firefox and Samsung Internet
+have none, and give events to anyone who listens. Nothing sniffs the browser.
+
+Only a secure page gets either: Chrome delivers orientation events only to one, and Safari 26.4
+does not even define `DeviceOrientationEvent` over http. https and `file://` pages qualify; a copy
+of the page served over plain http from a laptop to a phone does not, and says so, with the https
+address. Every refusal has its sentence, and a refused camera is not fatal — the sky is drawn on
+black and says why: declined, no rear camera, in use by another app, or only a front camera (whose
+picture would be of the reader, under a sky drawn for the direction behind the phone). A declined
+motion prompt on an iPhone comes back only once Safari has been closed and reopened, and the
+sentence says that. A camera that answers after the view has been closed is stopped at once.
+
+### Which way the camera points
+
+The W3C angles are an intrinsic Z-X′-Y″ rotation, R = Rz(α)·Rx(β)·Ry(γ), from the device's axes to
+East-North-Up, and the rear camera looks along the device's −z. The camera's direction is always
+taken from the matrix, never from α: held upright, β is 90° and α and γ swing together through
+180° for the smallest wobble, and two different triples describe one pose — the check proves
+that (α, β, γ) and (α+180, 180−β, γ+180) agree to 1.6e-15 over 2000 poses.
+
+Turning the phone sideways turns the picture, not the view. The screen's rotation comes from
+`window.orientation` where there is one, because iOS 16.4 reported `screen.orientation.angle` in
+the opposite sense to every other engine, and a home-screen app on iOS 26 has been reported stuck
+at portrait; where the reported angle contradicts the window's own shape, the edge gravity says is
+up is used. A marker in the middle of the screen is blind to all of this — it is in the middle
+whichever way the picture is turned — so the check holds the phone sideways both ways and measures
+the horizon instead: level to within 0.01 px across 20°, with east to the right.
+
+### Which way is north
+
+Every platform gives **magnetic** north, and none corrects it.
+
+| | Where the heading comes from | Accuracy reported |
+|---|---|---|
+| Chrome, Samsung Internet, Firefox 110+ (Android) | `deviceorientationabsolute`, from the rotation vector: magnetic | no |
+| Safari and every browser on an iPhone | `webkitCompassHeading`, magnetic, beside an α whose zero is arbitrary | ± degrees, negative when invalid |
+| No compass | α relative to wherever it started | — |
+
+The iPhone is the awkward one. Its α comes from Core Motion's gyro-only frame, zeroed wherever the
+phone happened to face when motion updates started, and drifting slowly after that; north arrives
+separately, as the compass heading of the phone's portrait top edge. The two are tied by an
+offset, heading − (360 − α), which is exact for the top edge whenever the phone is less than
+upright. What Apple does not document is which axis that heading follows once the phone *is*
+upright, or tipped back at the sky — which is exactly how AR is used; one developer reports it
+flipping towards the camera. So the offset is sampled only where that cannot matter — within 60°
+of flat, or at 60° to 85° of tilt where the top edge's and the camera's readings of the heading
+agree to 2° — and held, not re-read, while the phone points up. The cost is stated on screen: an
+iPhone raised straight to the sky starts on "Finding north — tip the phone towards flat for a
+moment", with only the horizon, the mask and the rings drawn, since those need no bearing.
+Samples are averaged on the circle, refused while the phone turns faster than 20°/s (the compass
+lags the gyro), and while the compass says it is uncalibrated or worse than ±25°; a reading that
+disagrees by more than 20° is believed once it has held for 1.5 s of usable samples in a row. The
+average runs in the time its own samples cover, so after half a minute with the phone held up, the
+first sample taken on lowering it is one sample among many, not a new bearing. Coming back to the page starts
+again, since Core Motion re-zeroes when its updates restart.
+
+With no compass at all, the view turns with the phone and says it is not tied to north, and the
+reader drags the drawn sky round until the drawn Sun sits on the real one. If a compass reading
+arrives later it takes over and the hand turn is cleared.
+
+A phone held still is silent: Chrome sends an orientation event only when an angle changes by
+0.1°, and since Chrome 153 it suspends them whenever the page is hidden, covered or out of focus —
+possibly, though that is not measured here, while a permission prompt is showing.
+So there is a timeout only for the *first* reading, started once both prompts have been answered,
+and no alarm for silence after that.
+
+### Declination
+
+True azimuth = magnetic azimuth + D, with D east of true north positive. D comes from the World
+Magnetic Model 2025 at the observer, for today — the wall clock, not the console's clock, since it
+corrects the compass in the reader's hand now. `earth/wmm.js` reproduces all 100 rows of NOAA's
+test file to within 0.005° in declination and inclination (the file prints them to 0.01°), and the
+twelve rows of NOAA's separate table to the 0.01° it gives them to. At the end of September 2026
+(decimal year 2026.74), at sea level:
+
+| | D |
+|---|---|
+| Bangkok | 0.66° W |
+| London | 1.20° E |
+| New York | 12.46° W |
+| Seattle | 14.88° E |
+| Cape Town | 26.80° W |
+
+In Bangkok the correction is smaller than the spacecraft's marker, which is exactly why leaving it
+out would be easy to miss from there. In Cape Town the check moves the observer, aims the phone,
+and finds that without it the view faces 26.8° away from the spacecraft. How far that is on the
+screen depends on the pass the check aims at, which depends on the day it runs: in the run this
+was written from, a 77° culmination, 85 px off centre; at a low pass, off a 34.6°-wide portrait
+frame altogether. The model expires at 2030.0, after which the view still uses it and says so.
+Near the magnetic poles, where the horizontal field is under 2000 nT — NOAA's "blackout zone" — a
+compass is no guide at all, and the view says that instead of applying a figure.
+
+### The lens
+
+No web API reports a camera's field of view. Phone main cameras are 24 to 28 mm equivalent, 71.6°
+to 63.4° across a 4:3 sensor's long side, and the view assumes 68°. Behind `object-fit: cover` on
+a phone held upright the picture's height is the sensor's long side, so on a 390×844 screen a
+1080×1440 stream gives a focal length of 625.6 px: a view 34.6° × 68.0°, 10.9 px per degree at
+the centre. A 10° compass error is 110 px. A pinch, or the lens slider under *Align*, sets the
+lens, which is kept for next time; the readout says "assumed" until it has been.
+
+Compass error is the larger term — 5° to 10° outdoors after calibration is typical and 20° is
+common, worse near a car, a steel desk or a magnetic phone case — so a sideways drag turns the drawn
+sky by hand, divided by the cosine of the elevation so that the sky follows the finger, and the
+*North* line says by how much ("turned +4.0° by hand"). The turn is forgotten on every open,
+because the error changes with the place and with what metal is nearby.
+
+### The clock and the observer
+
+There is one clock. Opened on the present at 1×, the view stays on it: the console's clock is
+capped at a quarter of a second a frame, so a phone locked and unlocked would otherwise come back
+behind, and whenever the clock is more than a second from the present the view puts it back.
+Opened on a scrubbed or sped-up clock, it
+draws that instant, says "sim time · the sky at 09-30 01:54:51Z, 12h 47m ahead — not the sky
+above you now", and offers *Go live*, which puts the clock on the present at real time, moving the
+analysis window only if the present has left it; a pass can be rehearsed on the real sky that way.
+
+The observer defaults to Bangkok, wherever the reader is. When the phone's time zone differs from
+the observer's by an hour or more the view says so — "The sky is drawn from Bangkok, and this
+phone keeps UTC+1 — if you are not there, every direction here is wrong" — and *Use my location*
+moves the observer to the phone through the same path as the console's own. It cannot tell two
+cities in one zone apart, which is why the title always names the observer.
+
+### What it costs
+
+While the view is open the WebGL globe draws nothing and its labels are not laid out — the check
+counts no render calls in 600 ms under the view, and some within 600 ms of closing — and the
+screen is kept awake, since a phone held up to the sky is not being touched. Closing it, by
+*Close*, Escape, the phone's Back or leaving the page, stops the camera and removes every listener
+it added. The picture is never read or drawn into the canvas. The view itself keeps only the lens
+setting, in `localStorage`; *Use my location* goes through the console's own path, which saves the
+observer there as well.
+
+### What is checked, and what is not
+
+`npm run ar` checks the maths in node — the frame against the spec's worked poses, 2000 random
+ones, the projection, the Sun against a separate derivation, the iPhone's compass fusion, the
+ticks, and the magnetic model against NOAA — and then drives the page in Chromium phone contexts
+with the permissions, the camera, the page's visibility and the sensors mocked: the order the tap
+asks in, the marker on the spacecraft to 1e-13 px, the pointer's words, every refusal's sentence,
+the phone held sideways, the globe paused, closing by *Close*, Escape and Back, an iPhone finding north,
+a phone in London with the observer in Bangkok, and a phone with no WebGL. It was run against
+three deliberate faults, and each was caught: the declination's sign flipped fails 10 of its checks,
+the camera asked for before the motion sensors fails the order check, and the screen's rotation
+ignored fails both sideways horizons, 220 px out of level. Its events are synthetic, so it proves the
+maths and the wiring, not a phone's sensors. What only a phone can show is left to a checklist:
+on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's Chrome, Samsung Internet
+and Firefox for Android — the first tap, a refusal and Try again, a declined camera, locking and
+unlocking, turning sideways, and pointing at the Sun and at a landmark of known bearing.
 
 ## Architecture: the central body is a parameter
 
@@ -1102,6 +1303,15 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+**The magnetic model** the AR view corrects a compass with is WMM2025, from NOAA's National
+Centers for Environmental Information and the British Geological Survey: epoch 2025.0, degree and
+order 12, valid to 2030.0, and in the public domain. Its coefficient file, `WMM.COF`, is embedded
+verbatim in `earth/wmm.js`, copied in by script from `WMM2025COF.zip`
+(https://www.ncei.noaa.gov/sites/default/files/2024-12/WMM2025COF.zip, 42,887 bytes), and
+`verification/WMM.COF` is the same file committed as a second copy. The same zip's
+`WMM2025_TestValues.txt` is `verification/WMM2025_TestValues.txt`, and is what the model is checked
+against. The zip's README offers test values of its own; they are the previous model's.
+
 ## Taking the answer away
 
 Two formats, because they answer different questions. The **CSV** is the whole pass table at full
@@ -1567,6 +1777,9 @@ npm run timeline     # the window rolling forward past its end, and the next pas
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
+npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
+                     # order the tap asks in, every refusal's words, the marker on the
+                     # spacecraft, the phone held sideways, the globe paused while covered
 npm run layout       # phone, tablet and desktop: nothing over the globe's buttons, the layers
                      # toggle, captions, the header's links, an 11 px floor, the Terms section
 npm run snapshot     # (re)write verification/baseline.json

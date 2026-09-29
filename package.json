@@ -32,7 +32,7 @@
     "catalogue": "node verification/verify-catalogue.js",
     "snapshot": "node verification/snapshot.js",
     "gate": "node verification/regress.js",
-    "test": "npm run verify && npm run evec && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical && npm run site && npm run export && npm run catalogue && npm run timeline && npm run elements && npm run lifetime && npm run layout",
+    "test": "npm run verify && npm run evec && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical && npm run site && npm run export && npm run catalogue && npm run timeline && npm run elements && npm run lifetime && npm run ar && npm run layout",
     "moon": "node verification/verify-moon.js",
     "moon:chain": "node verification/verify-lunar-chain.js",
     "moon:bake": "node verification/fetch-lunar-ephem.js",
@@ -40,6 +40,7 @@
     "globe": "node verification/verify-globe.js",
     "elements": "node verification/verify-elements.js",
     "lifetime": "node verification/verify-lifetime.js",
+    "ar": "node verification/verify-ar.js",
     "layout": "node verification/verify-layout.js"
   },
   "devDependencies": {

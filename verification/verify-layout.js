@@ -28,6 +28,12 @@
  *   - much of the data text was 9 to 10.5 px, the local pass times included;
  *   - AOS, LOS, COSPAR, TEME, B*'s 1/ER and the rest were used and never said.
  *
+ * The AR button, offered only on a touch screen, makes the camera row 44 px
+ * longer; it is checked to be there on each touch screen here and absent on
+ * the desktop, and the sweeps below then cover it like any other button. At
+ * 915x412 the longer row runs towards the HUD clock, and the gap is measured.
+ * What the AR view itself does is verify-ar.js.
+ *
  * "Covered" is measured, not inferred from z-index: elementFromPoint at the
  * centre of every button, with the page scrolled so the globe's lower edge is
  * at the foot of the screen - where a sticky bar would sit on it - and again
@@ -178,11 +184,13 @@ async function open(browser, url, opt){
                       .map(a => a.getAttribute('href')),
         jumpBottom: jump.length ? Math.max(...jump.map(a => a.getBoundingClientRect().bottom)) : 1e9,
         header: q('.bar-top').getBoundingClientRect().height,
-        app: q('.app').getBoundingClientRect().height
+        app: q('.app').getBoundingClientRect().height,
+        ar: vis(q('#arbtn'))
       };
     });
     chk('at 1440x900 the layers panel is open, as it always was, and no toggle is drawn',
         d.panel && !d.toggle);
+    chk('...and there is no AR button, since there is no touch screen', !d.ar);
     chk('...every caption is shown', d.captions.length === 6, d.captions.join(' '));
     chk('the header names every section below, and the Moon pages, on the first screen',
         ['#sec-elements', '#sec-track', '#sec-access', '#sec-life', '#sec-method', '#sec-terms',
@@ -229,9 +237,10 @@ async function open(browser, url, opt){
       };
     });
     chk('the abbreviations carry their expansion', !v.untitled.length && ['NORAD', 'COSPAR', 'AOS', 'LOS',
-        'TEME', '1/ER', 'POV', 'FOV', 'GSD'].every(a => v.named.includes(a)), [...new Set(v.named)].join(' '));
+        'TEME', '1/ER', 'POV', 'FOV', 'GSD', 'AR', 'WMM2025'].every(a => v.named.includes(a)), [...new Set(v.named)].join(' '));
     chk('...and the Terms section says what they mean', ['AOS, LOS', 'Z, UTC', 'NORAD ID, COSPAR ID',
-        'TEME', 'B*, 1/ER', 'std mag', 'penumbra', 'POV, FOV, GSD', 'Earth Resources group', 'entry interface']
+        'TEME', 'B*, 1/ER', 'std mag', 'penumbra', 'POV, FOV, GSD', 'AR, heading, declination',
+        'Earth Resources group', 'entry interface']
         .every(t => v.terms.includes(t)), v.terms.split(' | ').length + ' entries');
     chk('...including every term a note links to', !v.orphans.length, v.orphans.join(' ') || 'none missing');
     chk('the degree sign on the element cards sits on its number',
@@ -284,6 +293,40 @@ async function open(browser, url, opt){
     chk(N.name + ': the layers panel starts folded behind a button that says so',
         !s.panel && s.toggle && s.exp === 'false');
     chk('...the captions that tell the "6 h" rows apart are shown', s.captions.length === 4, s.captions.join(' '));
+    /* A touch screen is offered the AR button, in the camera row's own box, so
+       the sweeps below - nothing over a button, the layers panel clear of the
+       rows, no sideways scroll - measure it with the rest. The first line is a
+       precondition: if hasTouch stopped making the primary pointer coarse, the
+       button would silently vanish from every check here. */
+    const ar = await page.evaluate(() => {
+      const b = document.getElementById('arbtn'), r = b.getBoundingClientRect(), seg = document.querySelector('.camseg');
+      const c = seg.getBoundingClientRect();
+      /* the clock's text, measured as text: the HUD's own boxes are wider */
+      const gapNow = () => {
+        const c = seg.getBoundingClientRect(), rng = document.createRange(), clock = [];
+        for(const d of document.querySelectorAll('.hud > div')){
+          if(getComputedStyle(d).display === 'none' || d.hidden) continue;
+          rng.selectNodeContents(d); const t = rng.getBoundingClientRect(); if(t.width) clock.push(t);
+        }
+        return clock.length ? Math.min(...clock.map(t => t.bottom <= c.top || t.top >= c.bottom ? Infinity : c.left - t.right)) : Infinity;
+      };
+      /* and with a long site name, which above 900 px was never cut short:
+         "Frankfurt am Main" put the longer row 42 px into the clock */
+      const n = document.getElementById('lbl-camsite'), was = n.textContent;
+      const gap = gapNow();
+      n.textContent = 'Frankfurt am Main';
+      const gapLong = gapNow();
+      n.textContent = was;
+      return { coarse: matchMedia('(pointer: coarse)').matches, shown: getComputedStyle(b).display !== 'none',
+               inside: r.left >= c.left - 0.5 && r.right <= c.right + 0.5 && r.top >= c.top - 0.5 && r.bottom <= c.bottom + 0.5,
+               gap, gapLong };
+    });
+    chk('...a touch screen, so the AR button is offered, in the camera row', ar.coarse && ar.shown && ar.inside,
+        ar.coarse ? (ar.inside ? 'inside the row' : 'OUTSIDE the row') : 'precondition failed: (pointer: coarse) does not match');
+    if(N.opt.viewport.width > 900)
+      chk('...and the camera row, AR included, stays clear of the clock, with a long site name too',
+          ar.gap > 0 && ar.gapLong > 0,
+          isFinite(ar.gap) ? ar.gap.toFixed(0) + ' px between them, ' + ar.gapLong.toFixed(0) + ' px for "Frankfurt am Main"' : 'not level with it');
 
     /* On the first screen; with the globe's lower edge at the foot of the
        screen, where a sticky transport would sit on it; and, where the header

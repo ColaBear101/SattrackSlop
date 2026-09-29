@@ -44,6 +44,10 @@ let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
+/* Covered by the page's AR view: nothing here is seen, so nothing is drawn.
+   This stops the drawing, not the clock - the clock is the page's, so the
+   first frame back is built from GT.now() like any other. */
+let suspended = false;
 /* The trail has its own switch, and it has to be a flag rather than just the
    mesh's visible bit: setSat() makes the whole ground-bound group visible again
    every time a spacecraft is loaded, so a trail switched off would quietly come
@@ -1219,6 +1223,8 @@ function pickable(i){
 /* ---- frame ---------------------------------------------------------------- */
 function tick(ts){
   requestAnimationFrame(tick);
+  // the loop stays scheduled, so resuming can never start a second one
+  if(suspended){ lastFrame = 0; return; }
   const dt = lastFrame ? Math.min((ts-lastFrame)/1000, .25) : 0;
   lastFrame = ts; frameNo++;
   // the page owns sim time; the scene follows it so the globe and the flat map
@@ -1681,6 +1687,9 @@ global.Orbit3D = {
   setPov(v){ setPovState(!!v); },
   get pov(){ return pov; },
   freeCam(){ setFollowState(false); setSiteState(false); setPovState(false); },
+  // stop drawing while something covers the globe; the camera mode is kept
+  suspend(v){ suspended = !!v; },
+  get suspended(){ return suspended; },
   ok(){ return started; }
 };
 })(window);

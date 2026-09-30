@@ -13,3 +13,6 @@ verification/.regress-snap.js
 # with a token that has the scope, or create it in GitHub under Actions -> New
 # workflow, which needs no token at all.
 .github/workflows/
+
+.vercel
+.env*

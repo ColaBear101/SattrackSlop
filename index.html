@@ -285,11 +285,9 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .answer .brief{font-size:11.5px; color:var(--ink2); margin:8px 0 0; padding:6px 9px;
   border-left:3px solid var(--rule); background:var(--chrome2); border-radius:0 3px 3px 0;
   line-height:1.5}
-.answer .brief .btn{margin-top:5px; display:block}
 /* into the Terms section; ink, as the header's links are, since the track
    colour as text is too faint on the chrome */
 .answer .brief a, .reentry a{color:inherit; text-decoration-color:var(--track); text-underline-offset:2px}
-.answer .brief .btn[hidden]{display:none}
 .livel{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
   margin-top:11px; padding-top:10px; border-top:1px solid var(--chromerule)}
 .livel .k{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em;
@@ -945,8 +943,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <p class="sub" id="totalsub">—</p>
         <p class="brief" id="briefnote" hidden><b>Outside the brief.</b> KNACKSAT-2, the
           default, is not in CelesTrak’s <a href="#t-brief">Earth Resources group</a>, which the
-          assignment asks for. LANDSAT 9 is.
-          <button class="btn" id="briefgo" type="button">Show LANDSAT 9</button></p>
+          assignment asks for.</p>
         <div class="livel">
           <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
           <span class="v" id="o3el">—</span>
@@ -1365,7 +1362,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         lasts a revolution or two at most; an object SGP4 takes below it has re-entered or is about to.</dd></div>
       <div id="t-brief"><dt>Earth Resources group, the brief</dt><dd>CelesTrak's list of
         Earth-observation spacecraft. The assignment asks for a spacecraft from it; KNACKSAT-2, the
-        default here, is not in it, and LANDSAT 9 is.</dd></div>
+        default here, is not in it.</dd></div>
       <div id="t-wgs"><dt>WGS-72, WGS-84, R⊕</dt><dd>Two editions of the World Geodetic System's
         model of the Earth. SGP4 is defined on WGS-72; latitudes and altitudes here are geodetic on
         WGS-84. R⊕ is the equatorial radius, 6378.137 km.</dd></div>
@@ -10251,21 +10248,15 @@ function paintReentry(){
 /* The brief asks for a spacecraft from CelesTrak's Earth Resources group, and
    the default is not in it: KNACKSAT-2 came into this catalogue from SatNOGS,
    and verification/resource.txt, a copy of that group, has no entry for it. It
-   stays the default, so while it is the one on screen the answer block says so
-   and offers LANDSAT 9, which is in the group, rather than presenting its
-   figures as the assignment's answer without qualification. */
-const OUT_OF_BRIEF = /^KNACKSAT[- ]?2\b/i, IN_BRIEF = /^LANDSAT 9\b/i;
+   stays the default, so while it is the one on screen the answer block says so,
+   rather than presenting its figures as the assignment's answer without
+   qualification. */
+const OUT_OF_BRIEF = /^KNACKSAT[- ]?2\b/i;
 function paintBrief(){
   const n = document.getElementById('briefnote');
   if(!n) return;
   n.hidden = !OUT_OF_BRIEF.test(D.entry.name);
-  const b = document.getElementById('briefgo');
-  if(b) b.hidden = CAT.findIndex(c => IN_BRIEF.test(c.name)) < 0;
 }
-document.getElementById('briefgo').addEventListener('click', () => {
-  const i = CAT.findIndex(c => IN_BRIEF.test(c.name));
-  if(i >= 0) choose(i);                 // exactly what picking it by name does
-});
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---- searchable spacecraft picker ---------------------------------------- *
@@ -10494,7 +10485,7 @@ mq.addEventListener && mq.addEventListener('change', ()=>{
 
 /* Default spacecraft: first name that matches, in order of preference. The
    catalogue is a moving target, so fall back rather than fail to a blank page. */
-const WANT = [/^KNACKSAT[- ]?2\b/i, /^KNACKSAT\b/i, /^LANDSAT 9\b/i, /^LANDSAT 8\b/i];
+const WANT = [/^KNACKSAT[- ]?2\b/i, /^KNACKSAT\b/i, /^LANDSAT 8\b/i];
 let DEFAULT = -1;
 for(const re of WANT){ DEFAULT = CAT.findIndex(c=>re.test(c.name)); if(DEFAULT >= 0) break; }
 if(DEFAULT < 0) DEFAULT = 0;
@@ -10742,9 +10733,9 @@ function lifeClear(){
   lifeState = null; drawLife();
 }
 
-/* The history endpoint's answer time is not one number: the ISS, LANDSAT 9 and
-   KNACKSAT-2 took 25 s, 87 s and more than 90 s on 25 Sep 2026, and 24 s, 3 s
-   and 2 s two days later (35 s was the figure first measured - README,
+/* The history endpoint's answer time is not one number: the ISS and KNACKSAT-2
+   took 25 s and more than 90 s on 25 Sep 2026, and 24 s and 2 s two days
+   later (35 s was the figure first measured - README,
    "Where the history comes from"). So this does NOT fire on its own when a
    spacecraft is selected — clicking through the picker could queue a dozen
    minute-long requests against someone else's server. If the answer is already

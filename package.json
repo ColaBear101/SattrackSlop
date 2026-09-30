@@ -21,7 +21,6 @@
   ],
   "scripts": {
     "verify": "node verification/verify.js",
-    "report": "node verification/report.js",
     "evec": "node verification/verify-evec.js",
     "refresh": "node verification/verify-refresh.js",
     "pov": "node verification/verify-pov.js",

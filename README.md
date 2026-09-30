@@ -96,7 +96,7 @@ first — so the warning cannot quietly go out of date.
 Select a satellite from CelesTrak's Earth Resources group and build a web program that reports its
 orbital elements, plots a day of ground track, and totals its visibility from Bangkok above a 5°
 mask. Parts (a), (b) and (c) below work it for KNACKSAT-2, which is **not** in that group — see
-**Satellite**. LANDSAT 9, which is, is worked under **For comparison**.
+**Satellite**.
 
 ## Satellite
 
@@ -108,9 +108,8 @@ and shares its 51.63° orbit at roughly 360 km, not a sun-synchronous one.
 `verification/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
 came into this catalogue from SatNOGS rather than from a CelesTrak group (see **Data
 provenance**). The figures in (a) to (c) are correct for KNACKSAT-2, but they are not an answer
-from the group the brief names. LANDSAT 9 (NORAD 49260) is in the group, and is the in-brief
-answer, worked under **For comparison** below. KNACKSAT-2 stays the page's default; while it is on
-screen the answer block says it is outside the brief, with a button that loads LANDSAT 9.
+from the group the brief names. KNACKSAT-2 stays the page's default; while it is on screen the
+answer block says it is outside the brief.
 
 ```
 KNACKSAT-2
@@ -131,12 +130,11 @@ link under *Element set*. That keeps the embedded element sets, asks no source f
 and opens each spacecraft's window at its own epoch. The observer has to be Bangkok too: a site
 you moved to is remembered, so press *Reset to Bangkok* first if you did. KNACKSAT-2 then reads
 899.7 s over 2 passes ("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set
-epoch 2026-09-12 07:29Z, embedded"), and LANDSAT 9, one click away, 37.74 minutes over 4, as
-below.
-`verification/verify-refresh.js` checks both, with a newer set on offer that must not be asked for.
+epoch 2026-09-12 07:29Z, embedded").
+`verification/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
 
 The picker at the top right searches **2,158 spacecraft** by name or NORAD ID — type `knack`,
-`landsat`, `iss`, or `43722`. Everything on the page recomputes on selection.
+`noaa`, `iss`, or `43722`. Everything on the page recomputes on selection.
 
 ## (a) Orbital elements at epoch
 
@@ -174,8 +172,7 @@ naive form, against it:      −512 m
 
 The difference depends on inclination through a (3cos²i − 1) term, so it nearly vanishes at 54.7° —
 which is why KNACKSAT-2 at 51.63° is a best case — and is largest for equatorial and polar orbits.
-Across the 2158-satellite catalogue the median difference is **2.95 km**, the largest **6.38 km**, and
-LANDSAT 9 below is off by 2.9 km.
+Across the 2158-satellite catalogue the median difference is **2.95 km**, the largest **6.38 km**.
 
 Neither number is the semi-major axis of the ellipse the spacecraft is on at the epoch. Convert
 SGP4's own position and velocity there to two-body elements (on its μ = 398 600.8 km³/s²) and the
@@ -212,7 +209,7 @@ over one node-to-node interval, because the regression baseline is built on it, 
 that interval's length and the fraction of a revolution it covers instead of calling it one
 revolution, and does not set a radius swing from half an orbit against 2ae.
 
-Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a Landsat's. At
+Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a sun-synchronous imager's. At
 360 km the atmosphere is still biting, and this element set goes stale fast.
 
 ## (b) Ground track
@@ -225,7 +222,7 @@ A time scrubber moves the spacecraft along the track and re-renders the day/nigh
 
 At 51.63° inclination the track is a band between ±51.8° geodetic latitude — the orbit plane bounds
 geocentric latitude at the inclination, and geodetic latitude runs about 0.2° higher up there.
-Bangkok at 13.75°N sits well inside it, unlike the near-polar Landsat track that crosses the tropics
+Bangkok at 13.75°N sits well inside it, unlike a near-polar track that crosses the tropics
 almost vertically.
 
 The inclination card reads that reach off the drawn track and gives each reason it differs from i,
@@ -256,8 +253,7 @@ is — and says how far the arc got, in geodetic latitude like the map.
 | 1 | 2026-09-12 | 09:02:12 | 09:09:47 | 7m 36s | 45.1° | 505 km |
 | 2 | 2026-09-12 | 18:48:18 | 18:55:42 | 7m 24s | 40.0° | 538 km |
 
-Fewer passes than a polar satellite but much better ones: both climb above 40°, where Landsat 9
-manages 31.5° at best. The low orbit is the reason for both — a 14.5° access footprint means the
+Fewer passes than a polar satellite but much better ones: both climb above 40°. The low orbit is the reason for both — a 14.5° access footprint means the
 spacecraft must pass close overhead to be seen at all, but when it does, it is only ~500 km away.
 
 Elevation is scanned every 4 s and each crossing of the 5° mask is then bracketed and bisected to
@@ -282,15 +278,6 @@ radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 
 9.9 arcminutes, which adds roughly **8.4 s (+0.93 %)** to the total and moves each horizon crossing
 by about 2 s. Worth knowing when reading a figure quoted to 0.1 s.
 
-## For comparison — LANDSAT 9 (the Earth Resources answer)
-
-Selectable in the picker, or from the answer block's "Show LANDSAT 9" while KNACKSAT-2 is on
-screen; the assignment snapshot opens it at its own epoch and reproduces these figures. NORAD
-49260, epoch 2026-09-12 04:49:46.684 UTC, sun-synchronous at 98.2207°:
-
-- a = 7077.743 km, e = 0.0001484, i = 98.2207°, Ω = 324.2909°, ω = 100.3913°, M = 259.7453°
-- **37.74 minutes over 4 passes**, best elevation 31.50° at 14:47 UTC
-
 ## How the Earth numbers are checked
 
 An independent second implementation (own WGS-84 ECEF→ENU elevation, own TLE column parsing,
@@ -313,9 +300,8 @@ this one:
   0.25 s, and the culmination solver matches a 200 000-point brute force to 0 ms.
 - A deliberately dumb brute-force check — 86 400 one-second samples, counting those above 5°:
   - KNACKSAT-2: **899 s in 2 runs** vs this program's **899.7 s in 2 passes**
-  - LANDSAT 9: **2265 s in 4 runs** vs this program's **2264.5 s in 4 passes**
 
-  Both gaps are the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
+  The gap is the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
 - Both sides run the same SGP4 bytes. The harness propagates with `verification/satellite.min.js`;
   the page loads `satellite.js` 6.0.1 from cdnjs under an integrity hash, and the harness requires
   that hash to be the sha512 of its own copy. A re-pinned page or a replaced copy fails the check,
@@ -324,10 +310,7 @@ this one:
   the numbers; the hash also refuses one that leaves them alone and does something else in the
   page's origin, or one served only to some visitors.
 
-Run it yourself: `node verification/report.js` and `node verification/verify.js`. The report
-prints the LANDSAT 9 answer as the page computes it — SGP4's a, the node-to-node period and the
-propagated altitudes over the first revolution from the epoch — with the naive mean-element values
-on a line of their own, labelled as what the page does not show. It used to print only those.
+Run it yourself: `node verification/verify.js`.
 
 ## The view from the spacecraft
 
@@ -752,7 +735,7 @@ node verification/regress.js      # assert bit-identical
 ## Orbital decay and remaining life
 
 KNACKSAT-2 is falling. The drag term in its TLE is three orders of magnitude larger than a
-Landsat's, and CelesTrak's record shows the mean altitude going **418.6 km → 362.9 km between
+sun-synchronous imager's, and CelesTrak's record shows the mean altitude going **418.6 km → 362.9 km between
 5 Feb and 13 Sep 2026** — 55.7 km in 220 days, and accelerating. The page estimates when it runs
 out of altitude.
 
@@ -773,9 +756,9 @@ answer with no history in it, a history with no rows, or rows that all fell outs
 The first four offer a retry; the last two are answers, and do not.
 
 It is also **slow, and not predictably so**, because the archive is rebuilt on each request. The
-first measurement was about 35 seconds per object. On 25 September 2026 the ISS, LANDSAT 9 and
-KNACKSAT-2 took 25 s, 87 s and more than 90 s; on 27 September the same three took 24 s, 3 s and
-2 s, and 6 s, 3 s and 2 s when asked again a minute later. The page gives up at 75 s. So the fetch
+first measurement was about 35 seconds per object. On 25 September 2026 the ISS and
+KNACKSAT-2 took 25 s and more than 90 s; on 27 September the same two took 24 s and 2 s, and 6 s
+and 2 s when asked again a minute later. The page gives up at 75 s. So the fetch
 does not fire when you pick a spacecraft: clicking through the catalogue could queue a dozen
 minute-long requests against someone else's server. There is a button, one shared request per
 object, and a 12-hour cache, and the page quotes the range rather than a typical time.
@@ -1627,8 +1610,7 @@ to, and the box stays editable either way — a station knows its own bird bette
 
 KNACKSAT-2 comes back with 145.825 MHz FSK 9k6 (IARU coordinated, digipeater) and 400.630 MHz for
 telemetry. Over its 68.1° pass at 18:12Z on 14 September, in the regression baseline's 72-hour
-window, those give a swing of **6.77 kHz** and **18.59 kHz**; LANDSAT 9's 2282.300 MHz S-band
-downlink swings **83.87 kHz** across its 19.9° pass at 16:08Z the same day.
+window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 
 ```
 node verification/fetch-transmitters.js   # re-bake earth/transmitters.js
@@ -1764,8 +1746,7 @@ Individually:
 ```
 npm run verify       # independent second implementation of elements/elevation/visibility,
                      # and that index.html pins by hash the satellite.js bytes it runs on
-npm run report       # the LANDSAT 9 answer, printed as the page computes it
-npm run evec         # element-vector geometry, across e = 0.00015 to 0.91
+npm run evec         # element-vector geometry, across e = 0.00013 to 0.91
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range

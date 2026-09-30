@@ -54,7 +54,7 @@ function pickTLE() {
   const sats = readSats();
   if (!sats.length) return FALLBACK;
   const by = n => sats.find(s => s.name.toUpperCase().replace(/\s+/g, ' ') === n);
-  return by('LANDSAT 9') || by('LANDSAT 8') || sats[0];
+  return by('LANDSAT 8') || sats[0];
 }
 
 // ================================================================ CHECK 1

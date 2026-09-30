@@ -287,10 +287,7 @@ const chk = (name, ok, detail) => {
   /* ?tle=embedded pins the embedded element sets and opens each window at its
      set's epoch, which is how the README's figures were computed. A newer set
      is on offer here, and must not even be asked for. The figures checked are
-     the README's own: KNACKSAT-2's (c), and the LANDSAT 9 comparison reached
-     through the answer block's "Show LANDSAT 9" - the one-click way from the
-     default, which is outside the brief's Earth Resources group, to an object
-     inside it. A new page is a new browser context, so nothing cached above
+     the README's own: KNACKSAT-2's (c). A new page is a new browser context, so nothing cached above
      carries over. */
   const pin = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   pin.on('pageerror', e => pageErrs.push(e.message));
@@ -327,15 +324,6 @@ const chk = (name, ok, detail) => {
   await pin.waitForTimeout(800);
   chk('...and a due re-check still asks nothing', pinHits === 0, 'requests ' + pinHits);
   chk('the default is flagged in the answer block as outside the brief', ps.brief, ps.name);
-  await pin.click('#briefgo');
-  await pin.waitForTimeout(1500);
-  ps = await pinState();
-  chk('"Show LANDSAT 9" loads it, at its own epoch, and the flag goes',
-      ps.name === 'LANDSAT 9' && ps.start === ps.epoch && !ps.brief,
-      ps.name + ' from ' + new Date(ps.start).toISOString());
-  chk('...giving the README\'s comparison: 37.74 min over 4 passes',
-      (ps.totalS / 60).toFixed(2) === '37.74' && ps.passes === 4,
-      (ps.totalS / 60).toFixed(3) + ' min, ' + ps.passes + ' passes');
   await pin.context().close();
 
   console.log('\npage errors: ' + (pageErrs.length ? pageErrs.join(' | ') : 'none'));

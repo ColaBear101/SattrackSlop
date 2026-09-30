@@ -5,9 +5,9 @@
  * computed from the live state vector. That is the textbook definition and it is
  * the wrong thing to draw: measured over one revolution, KNACKSAT-2's osculating
  * |e| runs 0.000816 to 0.002108, a factor of 2.58, while its direction wanders
- * 64.9 deg. LANDSAT 9 is worse and shows why - at e = 1.5e-4 the vector is mostly
- * J2 short-period noise, |e| moves by a factor of 5.76 and the direction sweeps
- * the full 180 deg, so the arrow would point anywhere at all. None of that is the
+ * 64.9 deg. LANDSAT 8 is worse and shows why - at e = 1.3e-4 the vector is mostly
+ * J2 short-period noise, |e| moves by a factor of 5.57 and the direction sweeps
+ * 178.8 deg, nearly the full 180, so the arrow would point anywhere at all. None of that is the
  * orbit changing. It is exactly what the mean elements have already averaged out,
  * so the arrow now carries the MEAN vector: the one the elements card quotes, and
  * the one the ellipse and the omega arc are already built from.
@@ -34,8 +34,8 @@ const axpy = (a, k, b) => [a[0] + k*b[0], a[1] + k*b[1], a[2] + k*b[2]];
 const CASES = {
   'KNACKSAT-2':     ['1 67683U 98067XZ  26255.31192122  .00056149  00000-0  48789-3 0  9995',
                      '2 67683  51.6258 213.5681 0007959 152.6345 207.5073 15.68476422 33916'],
-  'LANDSAT 9':      ['1 49260U 21088A   26255.20123477  .00000817  00000-0  19193-3 0  9992',
-                     '2 49260  98.2207 324.2909 0001484 100.3913 259.7453 14.57109712260396'],
+  'LANDSAT 8':      ['1 39084U 13008A   26255.23548436  .00000200  00000-0  54494-4 0  9993',
+                     '2 39084  98.2226 324.3020 0001329  95.0818 265.0532 14.57098118710572'],
   'CLUSTER II-FM8': ['1 26464U 00045B   26242.68406919  .00218879 -14532-2  00000+0 0  9992',
                      '2 26464 149.4895  65.8568 9133957 283.7320   2.2648  0.44936442 20644'],
   'MMS 2':          ['1 40483U 15011B   26255.33335648 -.00001793  00000+0  00000+0 0  9991',

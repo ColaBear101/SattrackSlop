@@ -313,8 +313,8 @@ const HIST_TTL = 12*3600*1000;
 
 /* Measured: this endpoint can take over a MINUTE to answer — CelesTrak rebuilds
    the run of element sets from its archive on every call. It was about 35 s
-   when first timed; on 25 Sep 2026 the ISS, LANDSAT 9 and KNACKSAT-2 took 25 s,
-   87 s and more than 90 s, and two days later 24 s, 3 s and 2 s. Three
+   when first timed; on 25 Sep 2026 the ISS and KNACKSAT-2 took 25 s and more
+   than 90 s, and two days later 24 s and 2 s. Three
    consequences, all of them design constraints rather than details:
      - the timeout has to be generous, or slow requests are killed in flight;
      - concurrent calls for the same object must share one request, or a couple

@@ -769,9 +769,10 @@ function updateLive(date){
      vector. The osculating form (v x h)/mu - r_hat is the textbook definition
      and is what this drew first, but as a DRAWN ARROW it misleads. Measured
      over one revolution: KNACKSAT-2's osculating |e| runs 0.000816 to 0.002108,
-     a factor of 2.58, while its direction wanders 64.9 deg. LANDSAT 9 is worse
-     and shows why - at e = 1.5e-4 the vector is mostly J2 short-period noise,
-     |e| moves by a factor of 5.76 and the direction sweeps the FULL 180 deg, so
+     a factor of 2.58, while its direction wanders 64.9 deg. LANDSAT 8 is worse
+     and shows why - at e = 1.3e-4 the vector is mostly J2 short-period noise,
+     |e| moves by a factor of 5.57 and the direction sweeps 178.8 deg, NEARLY ALL
+     of 180, so
      the arrow would point anywhere at all. None of that is the orbit changing;
      it is exactly what the mean elements have already averaged out. The mean
      vector is what the elements card quotes and what the ellipse and the omega
@@ -788,9 +789,8 @@ function updateLive(date){
   live.hLbl.position.copy(hDir).multiplyScalar(Math.max(1.55, rLen*1.12) + 0.16);
 
   /* The angle is measured from perigee, and on a near-circular orbit perigee is
-     not a real place: at e = 1.5e-4 it sits about a kilometre below apogee.
-     Checked against radius over a full revolution, LANDSAT 9 put its minimum
-     radius at nu = 180.7 deg. Taking the direction from the mean elements
+     not a real place: at e = 1.3e-4 it sits about a kilometre below apogee.
+     Taking the direction from the mean elements
      removes the frame-to-frame jitter the osculating vector had, but it cannot
      manufacture a perigee that the orbit does not really have - so the label
      still says when the number is describing a nearly round orbit. */
@@ -832,7 +832,7 @@ function updateLive(date){
        apogee, so take 360 - ang - was pinned to OSCULATING perigee, because
        that is exactly where r.v changes sign. Carried over to a MEAN reference
        it breaks: measured against this angle it is wrong by up to 82.0 deg on
-       KNACKSAT-2 and 18.7 deg on LANDSAT 9, over a band as wide as the two
+       KNACKSAT-2 and 9.1 deg on LANDSAT 8, over a band as wide as the two
        perigees are apart. atan2 in the orbit plane has no branch to choose. */
     let ang = Math.atan2(rHat.dot(inPlane), rHat.dot(fromDir))*DEG;
     if(ang < 0) ang += 360;

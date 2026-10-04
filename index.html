@@ -14,6 +14,9 @@
   --muted:#536169; --rule:#CBD6DB;
   --chrome:#E4EAED; --chrome2:#D8E0E4; --chromeink:#0E1A1F; --chromerule:#C2CED4;
   --track:#0086AD; --contact:#B4670F; --observer:#C42A6E;
+  /* "this orbit cannot exist", "this field cannot be read": the page had no red, and orange
+     (--contact) already means data in view and caution. 5.4:1 on --chrome. */
+  --bad:#B3261E;
   --ocean:#DFE6E9; --land:#B3C2CA; --landline:#93A6B0; --grat:#CDD8DD;
   --night:rgba(16,34,44,.18); --day:rgba(255,250,232,.22); --fov:#4C6270;
   --swday:#E6ECEE; --swnight:#BCC7CD; --ring:#A9B9C1;
@@ -25,7 +28,7 @@
     --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
     --muted:#8096A1; --rule:#22313A;
     --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
-    --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
+    --track:#17A3CC; --contact:#CE801A; --observer:#E2557E; --bad:#F2776B;
     --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
     --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055); --fov:#E9F2F7; --fov:#E9F2F7;
     --swday:#17242C; --swnight:#070D11; --ring:#374954;
@@ -37,7 +40,7 @@
   --surface:#0B1014; --panel:#121A20; --sunk:#0E161B; --ink:#E8EFF2; --ink2:#AEBFC8;
   --muted:#8096A1; --rule:#22313A;
   --chrome:#0D141A; --chrome2:#131D24; --chromeink:#E8EFF2; --chromerule:#1E2B34;
-  --track:#17A3CC; --contact:#CE801A; --observer:#E2557E;
+  --track:#17A3CC; --contact:#CE801A; --observer:#E2557E; --bad:#F2776B;
   --ocean:#091319; --land:#2F404B; --landline:#47606D; --grat:#1C2933;
   --night:rgba(0,0,0,.32); --day:rgba(168,214,240,.055); --fov:#E9F2F7;
   --swday:#17242C; --swnight:#070D11; --ring:#374954;
@@ -330,6 +333,10 @@ canvas#globe{position:absolute; inset:0; width:100%; height:100%; display:block;
 .railprov .prov-live{color:var(--track)} .railprov .prov-snap{color:var(--contact)}
 .railprov .prov-checking{color:var(--ink2); opacity:.75}
 .railprov .prov-gone{color:var(--contact); font-weight:600}
+/* A custom orbit's provenance is ink, not --track: that colour means "a live source confirmed
+   this" (.prov-live) and reads 3.45:1 on --chrome in the light theme, under the 4.5 an 11 px
+   line needs. Nothing live confirmed a planned orbit, so it says so in the plainest colour. */
+.railprov .prov-custom{color:var(--ink2); font-weight:600}
 /* Re-entry: the one case where the answer block's own number is not to be
    believed, so it is said inside the block, above that number. */
 .reentry{margin:0 0 12px; padding:8px 10px; border-left:3px solid var(--contact);
@@ -449,6 +456,8 @@ section{display:flex; flex-direction:column; gap:16px}
 .tle-meta .prov-checking{color:var(--ink2); opacity:.75}
 .tle-meta .prov-gone{color:var(--contact); font-weight:600}
 .tle-meta .prov-gone b{color:var(--contact)}
+.tle-meta .prov-custom{color:var(--ink2); font-weight:600}
+.tle-meta .prov-custom b{color:var(--ink2)}
 
 .elements{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px;
   background:var(--rule); border:1px solid var(--rule); border-radius:4px; overflow:hidden}
@@ -634,6 +643,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   padding:8px 9px; border-radius:2px; cursor:pointer; font-size:13px; min-height:36px;
   font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--ink)}
 .combo-list li .id{color:var(--muted); font-size:11px; flex:none}
+.combo-list li.cu .id{color:var(--ink2); font-weight:600}
 .combo-list li[aria-selected="true"] .nm{color:var(--contact); font-weight:600}
 .combo-list li.on{background:var(--sunk); outline:1px solid var(--rule)}
 .combo-list li.note{cursor:default; color:var(--muted); font-size:11.5px; justify-content:flex-start;
@@ -815,6 +825,261 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   .minigrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .hint-drag{display:none}
 }
+
+/* ===== orbit planner ========================================================
+   Everything here reads the page's own tokens; the one addition, --bad, is defined
+   with the others at the top. A planner is a tool, not a report, so it lives on the
+   instrument: a drawer in the rail's cell, a panel under the globe on a narrow
+   screen, a full-screen sheet on a wide but short one. No colour literal and no
+   transition is added, so the reduced-motion rule below has nothing of ours to
+   reduce. It is the last block of the sheet on purpose: its narrow-screen rules
+   restate things the responsive blocks above set (the rail, the sticky transport),
+   and at equal specificity the later rule wins. */
+
+/* ---- the way in: a pill in the picker's hint row, and the chip that marks a custom orbit ----
+   The hint row has 70 px to spare and the header has none: a button beside the picker took 114 px
+   from the name and the links and, between 1106 and 1160 px wide and again near 650, cost a whole
+   extra row of header. In the hint row it costs 2 px of header between 1100 and 1440 px and nothing
+   narrower. Below 1080 px the row is 240 px wide and cannot hold "2,158 + 12 of yours" and the long
+   label, so the pill reads "+ Plan" there (its accessible name stays "Plan an orbit"). */
+/* margin-bottom: the pill is 24 px tall and the count text beside it 17, so this row is 7 px taller
+   than the line it replaces, and where the right-hand block of the header is the taller of the two
+   (1040 to 1080 px, where the heading has shrunk with the width) that is all the header grows by.
+   One pixel of the 10 below it is given back, which keeps the growth under 3 px at every width. */
+.hintrow{display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; width:290px; max-width:100%; margin-bottom:-1px}
+.hintrow .combo-hint{width:auto; max-width:none; flex:0 1 auto}
+.planpill{display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:1px 8px;
+  border:1px solid var(--track); border-radius:20px; background:none; color:var(--chromeink);
+  font:500 11px "IBM Plex Mono",ui-monospace,monospace; letter-spacing:.04em; cursor:pointer; white-space:nowrap}
+.planpill:hover{background:var(--chrome2)}
+.planpill[aria-expanded="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+/* off in the assignment snapshot: still a button a keyboard can reach and a screen reader can
+   read the reason from, but it does not look like one that will do something */
+.planpill[aria-disabled="true"]{cursor:default; color:var(--muted); border-color:var(--chromerule)}
+.planpill[aria-disabled="true"]:hover{background:none}
+.planpill svg{width:10px; height:10px}
+@media (max-width:1080px){ .hintrow{width:240px} .planpill .pl-more{display:none} }
+@media (max-width:560px){ .hintrow{width:100%} }
+@media (pointer:coarse){ .planpill{min-height:32px} }
+.custom-chip{cursor:pointer; background:none; font-family:inherit; color:var(--ink2);
+  border-color:var(--track)}
+.custom-chip:hover{color:var(--ink)}
+.combo-list li.grp{cursor:default; color:var(--muted); font-size:11px; letter-spacing:.13em;
+  text-transform:uppercase; min-height:0; padding:8px 9px 4px}
+.combo-list li .tag{flex:none; font-size:11px; letter-spacing:.06em; color:var(--ink2);
+  border:1px solid var(--track); border-radius:20px; padding:0 7px}
+.combo-list li.plan{border-top:1px solid var(--rule); border-radius:0; margin-top:3px;
+  padding-top:9px; color:var(--ink)}
+/* Every element the planner hides with the hidden attribute needs its own rule: the author rules
+   above (.age-chip is inline-flex, .planpill is inline-flex, section is flex) beat the browser's
+   [hidden]{display:none}, and a chip that reads "Custom orbit · edit" on every catalogue
+   spacecraft took the header from 80.8 to 100 px. Same pattern as .arview[hidden] and .hud .t3[hidden]. */
+.custom-chip[hidden], .planpill[hidden], #sec-prof[hidden], .tle-actions[hidden], #rp-nav[hidden]{display:none}
+/* the two buttons under the element set of a custom orbit, and the word they say after a press
+   (the planner may be shut, and then its own status line cannot be seen) */
+.tle-actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:4px}
+.tle-said{font:11px/1.45 "IBM Plex Mono",ui-monospace,monospace; color:var(--ink2)}
+
+/* ---- the drawer: takes the rail's cell, and the globe gives up the width ------------ */
+.planner[hidden]{display:none}
+.planner [hidden]{display:none}
+.planner{grid-column:2; grid-row:1; display:flex; flex-direction:column; min-height:0; min-width:0;
+  background:var(--chrome); color:var(--chromeink); border-left:1px solid var(--chromerule)}
+.app[data-planning] .stage{grid-template-columns:minmax(0,1fr) clamp(372px,31vw,456px)}
+.app[data-planning] .rail{display:none}
+.pl-head{display:flex; align-items:baseline; gap:8px 12px; padding:11px 16px 10px;
+  border-bottom:1px solid var(--chromerule); flex:none; scroll-margin-top:16px}
+.pl-head h2{font-size:18px; flex:1; min-width:0}
+.pl-head .eyebrow{flex:none}
+.pl-scroll{flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color:var(--chromerule) transparent;
+  scroll-padding-bottom:76px}             /* a field reached with Tab scrolls clear of the sticky Add bar */
+.pl-body{display:grid; grid-template-columns:minmax(0,1fr); grid-template-areas:"form" "prof" "saved"}
+.pl-form-col{grid-area:form; min-width:0}
+.prof{grid-area:prof; min-width:0}
+.pl-saved{grid-area:saved; min-width:0}
+
+/* ---- the form ---------------------------------------------------------------------- */
+.pl-form{display:flex; flex-direction:column; gap:15px; padding:14px 16px 4px; margin:0}
+.pl-set{border:0; margin:0; padding:0; min-width:0; display:flex; flex-direction:column; gap:9px}
+.pl-set > legend{padding:0; margin-bottom:1px; float:left; width:100%}   /* a legend as the first row of the flex column */
+.pl-set > legend + *{clear:both}
+.pl-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px}
+.pl-f{display:flex; flex-direction:column; gap:4px; min-width:0}
+.pl-f.wide{grid-column:1 / -1}
+.pl-f > label, .pl-lab{font-size:12px; font-weight:500; color:var(--ink2); display:flex; gap:7px;
+  align-items:center; flex-wrap:wrap; line-height:1.3; min-height:26px}
+.pl-f label i, .pl-lab i{font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif; font-style:italic;
+  font-size:15px; font-weight:500; color:var(--track); line-height:1; letter-spacing:0}
+.pl-num, .pl-text{display:flex; align-items:center; background:var(--panel);
+  border:1px solid var(--chromerule); border-radius:3px; min-height:36px; min-width:0}
+.pl-num:focus-within, .pl-text:focus-within{outline:2px solid var(--track); outline-offset:1px}
+.pl-num input, .pl-text input{flex:1; min-width:0; width:100%; border:0; background:none; outline:0;
+  font:500 13px "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;
+  color:var(--ink); padding:7px 4px 7px 9px; text-align:right;
+  align-self:stretch}                     /* the whole box takes the pointer, not a 31 px band of it */
+.pl-text input, .pl-num input[type=datetime-local]{text-align:left}
+.pl-text input{padding-right:9px}
+.pl-num .u{flex:none; padding:0 9px 0 3px; font:11px "IBM Plex Mono",ui-monospace,monospace; color:var(--muted)}
+/* a value a fix has just written, until the next edit: an accent on the box, not a colour for text */
+.pl-f:not([data-invalid]) .pl-num.changed, .pl-f:not([data-invalid]) .pl-text.changed{
+  border-color:var(--track); box-shadow:inset 3px 0 0 var(--track)}
+.pl-f[data-invalid] .pl-num, .pl-f[data-invalid] .pl-text{border-color:var(--bad); box-shadow:inset 3px 0 0 var(--bad)}
+.pl-err{display:flex; gap:6px; align-items:flex-start; font-size:12px; line-height:1.4; color:var(--ink);
+  margin:0}
+.pl-err svg{flex:none; width:12px; height:12px; margin-top:2px; color:var(--bad)}
+.pl-err[data-kind="note"] svg{color:var(--muted)}
+.pl-err[hidden]{display:none}
+.pl-err-form{padding:0 16px 8px}
+.pl-hint{font-size:11.5px; line-height:1.45; color:var(--muted); margin:0}
+.pl-derived{font:11.5px/1.55 "IBM Plex Mono",ui-monospace,monospace; color:var(--ink2); margin:0;
+  font-variant-numeric:tabular-nums}
+.pl-derived b{color:var(--ink); font-weight:500}
+.pl-select{font:inherit; font-size:12.5px; color:var(--ink); background:var(--panel); min-height:36px;
+  border:1px solid var(--chromerule); border-radius:3px; padding:5px 8px; width:100%; min-width:0}
+.pl-lab .seg{margin-left:auto}
+.pl-lab .seg .btn{min-height:24px; padding:1px 8px}
+.planner .btn abbr[title]{text-decoration:none; cursor:inherit}     /* the title still says it; a dotted rule in a button is noise */
+.pl-tz{font:11px "IBM Plex Mono",ui-monospace,monospace; color:var(--chromeink); padding:0 9px 0 3px}
+.pl-epochrow{display:flex; gap:8px; align-items:center; min-width:0}
+.pl-epochrow .pl-num{flex:1}
+.pl-shape[hidden]{display:none}
+.pl-actions{position:sticky; bottom:0; z-index:2; display:flex; flex-wrap:wrap; align-items:center;
+  gap:8px; padding:10px 16px; background:var(--chrome); border-top:1px solid var(--chromerule)}
+.btn.primary{background:var(--ink); border-color:var(--ink); color:var(--surface); font-weight:600}
+.btn.primary[aria-disabled="true"]{background:var(--chrome2); border-color:var(--chromerule);
+  color:var(--muted); font-weight:500}
+.pl-status{flex:1 1 100%; margin:0; font-size:12px; line-height:1.45; color:var(--ink); min-height:1.45em}
+.pl-status:empty{min-height:0}
+.pl-status .btn{margin-left:8px; min-height:26px; padding:2px 8px}
+.pl-say{position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap}
+
+/* ---- the professor -------------------------------------------------------------------- */
+/* gap:0 because the page's generic section{gap:16px} (the report's rhythm) would otherwise put 16 px of
+   dead air between the heading, the verdict and every group: each group's rule sat 16 px below the
+   text of the one above it, the title floated at the top of its row and the verdict was 24 px from its
+   heading. The panel's own paddings and rules below are the rhythm. */
+.prof{border-top:1px solid var(--chromerule); margin-top:12px; gap:0}
+.pf-head{display:flex; align-items:baseline; gap:8px 12px; padding:14px 16px 8px; flex-wrap:wrap}
+.pf-head h3{font-family:"Archivo",system-ui,sans-serif; font-size:16px; font-weight:600; margin:0; flex:1}
+.pf-verdict{margin:0 16px 10px; padding:9px 11px; background:var(--chrome2); border-radius:3px;
+  border-left:3px solid var(--sev, var(--muted)); font-size:13px; line-height:1.5}
+.pf-verdict[data-worst="good"]{--sev:var(--track)}
+.pf-verdict[data-worst="warn"]{--sev:var(--contact)}
+.pf-verdict[data-worst="bad"]{--sev:var(--bad)}
+.pf-verdict b{font-weight:600}
+.pf-verdict .sub{display:block; margin-top:2px; font:11.5px/1.5 "IBM Plex Mono",ui-monospace,monospace;
+  color:var(--ink2)}
+.pf-verdict[data-stale] .sub{color:var(--muted)}
+.pf-grp{border-top:1px solid var(--chromerule)}
+.pf-grp > summary{list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:8px;
+  padding:10px 16px; font:600 13px "Archivo",system-ui,sans-serif; min-height:40px}
+.pf-grp > summary::-webkit-details-marker{display:none}
+.pf-grp > summary::before{content:"\25B8"; color:var(--muted); font-size:11px; width:12px; flex:none}
+.pf-grp[open] > summary::before{content:"\25BE"}
+.pf-grp > summary:hover{background:var(--chrome2)}
+.pf-count{margin-left:auto; font:11px "IBM Plex Mono",ui-monospace,monospace; color:var(--ink2);
+  display:inline-flex; gap:9px; align-items:center; font-weight:400}
+.pf-count span{display:inline-flex; gap:4px; align-items:center}
+.pf-count svg{width:11px; height:11px}
+.pf-list{list-style:none; margin:0; padding:2px 16px 12px; display:flex; flex-direction:column; gap:10px}
+.pf-errs{border-top:1px solid var(--chromerule); padding-top:12px}
+.pf-errs:empty{display:none}
+.adv{--sev:var(--muted); border-left:3px solid var(--sev); padding:2px 0 2px 11px; min-width:0}
+.adv[data-sev="good"]{--sev:var(--track)}
+.adv[data-sev="warn"]{--sev:var(--contact)}
+.adv[data-sev="bad"], .adv[data-sev="error"]{--sev:var(--bad)}
+.adv[data-sev="warn"], .adv[data-sev="bad"], .adv[data-sev="error"]{border-left-width:4px}
+.adv[data-sev="bad"], .adv[data-sev="error"]{border-left-style:double; border-left-width:6px}
+.adv .sev{display:inline-flex; gap:5px; align-items:center; color:var(--sev);
+  font:500 11px "IBM Plex Mono",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase}
+.adv .sev svg{width:12px; height:12px; flex:none}
+.adv .sev span{color:var(--ink2)}
+.adv h4{font:600 14px/1.3 "Archivo",system-ui,sans-serif; margin:2px 0 3px; letter-spacing:-.005em}
+.adv p{margin:0; font-size:13px; line-height:1.55; color:var(--ink2)}
+.adv p b{color:var(--ink); font-weight:600; font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:12.5px; font-variant-numeric:tabular-nums}
+.adv .basis{margin-top:4px; font:11px/1.45 "IBM Plex Mono",ui-monospace,monospace; color:var(--muted)}
+.adv .basis a{color:inherit; text-decoration-color:var(--track); text-underline-offset:2px}
+.adv .fixes{display:flex; flex-wrap:wrap; gap:6px; margin-top:7px}
+.adv .fixes .btn{white-space:normal; text-align:left; min-height:30px}
+.pf-empty{margin:0 16px 14px; font-size:13px; color:var(--ink2)}
+.pf-foot{margin:0; padding:10px 16px 14px; border-top:1px solid var(--chromerule); font-size:11.5px;
+  line-height:1.55; color:var(--muted)}
+
+/* ---- the Professor on a catalogue spacecraft: the report's own section (SPEC 5.11) ------------- */
+/* The same notes in the same classes as the panel above (.pf-*, .adv, built by the same code); only the page
+   around them differs. The report is paper (--surface, --rule), not chrome, and a 1,100 px line is far too
+   long a measure for a note, so each group lays its notes out in columns. #sec-prof[hidden] is above, with the
+   other D37 rules: section{display:flex} would otherwise show it empty for an orbit the reader designed. */
+/* gap:0 for the reason .prof gives: the page's section{gap:16px} would put 16 px of dead air between every group */
+#sec-prof{gap:0}
+#sec-prof .shead{margin-bottom:14px}
+#sec-prof .shead .hint{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px}
+#sec-prof .pf-verdict{margin:0 0 12px; background:var(--sunk); text-wrap:balance}   /* two lines of a verdict break evenly, not on one orphaned unit */
+#sec-prof .pf-grp{border-top:1px solid var(--rule)}
+#sec-prof .pf-grp > summary{padding:10px 2px}
+#sec-prof .pf-grp > summary:hover{background:var(--sunk)}
+#sec-prof .pf-list{padding:4px 2px 18px; display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr)); gap:16px 32px; align-items:start}
+#sec-prof .pf-count{margin-left:6px}
+/* a link in muted text: the words keep the text colour (the page's own link blue is 3.6:1 on paper), the underline carries the link */
+#rp-link{color:var(--ink2); text-decoration-color:var(--track); text-underline-offset:2px}
+#sec-prof .pf-foot{padding:12px 0 0; border-top:1px solid var(--rule)}
+
+/* ---- saved orbits --------------------------------------------------------------------- */
+.pl-saved{border-top:1px solid var(--chromerule); padding:12px 16px 16px; gap:0}   /* gap:0: see .prof */
+.pl-saved h3{font-family:"Archivo",system-ui,sans-serif; font-size:14px; font-weight:600; margin:0 0 8px}
+.pl-saved h3 .pl-hint{display:inline; margin-left:6px; font-weight:400}
+.pl-saved ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px}
+/* the Undo of a Delete, repeated under the list when the action bar that holds the real one is off screen (PlannerUI.paintLocalUndo) */
+.pl-undo{display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin:8px 0 0; font-size:12px; line-height:1.45; color:var(--ink)}
+.pl-undo .btn{min-height:26px; padding:2px 8px}
+.pl-saved li{display:flex; align-items:stretch; gap:4px}
+.pl-open{flex:1; min-width:0; text-align:left; background:none; border:1px solid transparent;
+  border-radius:3px; padding:6px 9px; color:inherit; cursor:pointer; min-height:40px;
+  font:13px "IBM Plex Mono",ui-monospace,monospace}
+.pl-open:hover{background:var(--chrome2)}
+.pl-open[aria-current="true"]{background:var(--chrome2); border-color:var(--track)}
+.pl-open b{display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pl-open small{display:block; font-size:11px; color:var(--muted); letter-spacing:.03em}
+.pl-del{flex:none; width:40px; background:none; border:1px solid transparent; border-radius:3px;
+  color:var(--muted); cursor:pointer; font-size:14px}
+.pl-del:hover{color:var(--ink); background:var(--chrome2)}
+
+/* ---- narrow: no rail cell to take, so the panel sits under the globe ------------------- */
+@media (max-width:900px){
+  .planner{order:1; grid-column:auto; border-left:0; border-top:1px solid var(--chromerule)}
+  .app[data-planning] .stage{grid-template-columns:none}
+  .app[data-planning] .rail{display:flex}                 /* the rail is a long way down here; leave it */
+  .app[data-planning] .bar-transport{position:static}     /* a sticky transport would sit on the form */
+  .pl-scroll{overflow:visible}
+  .pl-actions{position:static}
+}
+/* a tablet, or a wide but short screen (a large phone held sideways, a short laptop window):
+   two columns, the form and its neighbour the professor, on one scroll */
+@media (min-width:641px) and (max-width:900px), (min-width:901px) and (max-height:560px){
+  .pl-body{grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-areas:"form prof" "saved prof"; align-items:start}
+  .prof{border-top:0; margin-top:0; border-left:1px solid var(--chromerule); align-self:stretch}
+}
+/* wide but short (a large phone held sideways, a short laptop window): the stage is 231 px tall
+   there, so it is a sheet over the whole screen, as the AR view is. Add closes it onto the globe. */
+@media (min-width:901px) and (max-height:560px){
+  .planner{position:fixed; inset:0; z-index:150; grid-column:auto; border-left:0}
+  .app[data-planning] .stage{grid-template-columns:minmax(0,1fr) 300px}
+  :root.pl-sheet{overflow:hidden}
+  .pl-head{padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:8px}
+  .pl-form, .pf-head{padding-left:calc(env(safe-area-inset-left) + 16px)}
+}
+/* a finger: every control in the planner is 44 px, the smaller segmented and fix buttons included */
+@media (pointer:coarse){
+  .planner .btn, .planner .pl-lab .seg .btn, .planner .adv .fixes .btn, .planner .pl-status .btn,
+  .pl-select, .pf-grp > summary, .pl-open{min-height:44px}
+  .pl-num, .pl-text{min-height:46px}      /* the input inside is the control, and it is 44 px of that after the borders */
+  .pl-del{width:44px}
+  /* the node's label row holds the RAAN | LTAN switch, which is 44 px tall here; its neighbour's
+     label is as tall, so that the two boxes under them stay on one line */
+  .pl-f > label[for="pl-inc"]{min-height:44px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
 
@@ -826,6 +1091,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <div class="ident">
       <h1 id="satname">—</h1>
       <div class="ids">
+        <!-- Shown by load() for an orbit the reader designed, in place of the two catalogue numbers
+             (which are hidden for it: a made-up number beside a real label is the thing to avoid).
+             A button: it opens the orbit in the planner. -->
+        <button type="button" class="age-chip custom-chip" id="customchip" hidden><span class="dot"></span>Custom orbit · edit</button>
         <span><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">—</b></span><span class="sep">·</span>
         <span><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">—</b></span><span class="sep">·</span>
         <span>Epoch <b id="idepoch">—</b></span>
@@ -854,7 +1123,16 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
                 aria-label="Show the whole catalogue">▾</button>
         <ul class="combo-list" id="satlist" role="listbox" aria-label="Spacecraft" hidden></ul>
       </div>
-      <p class="combo-hint" id="satcount">—</p>
+      <!-- The way into the orbit planner sits beside the count, not beside the picker: a button in
+           the header row took 114 px from the name and the links and wrapped the header. The plus is
+           a drawing, not a character (a literal "+ " made the pill 16 px wider), and the pill is
+           hidden until PlannerUI.init has run, so a page without the planner shows nothing here. -->
+      <div class="hintrow">
+        <p class="combo-hint" id="satcount">—</p>
+        <button type="button" class="planpill" id="planopen" aria-expanded="false" aria-controls="planner"
+                aria-label="Plan an orbit" hidden><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>Plan<span class="pl-more"> an orbit</span></button>
+      </div>
+      <p class="combo-hint" id="plannote" hidden></p>
       <p class="combo-hint loadnote" id="loadnote" role="alert" hidden></p>
     </div>
   </header>
@@ -935,6 +1213,177 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <p class="o3-fallback" id="o3fallback" hidden>WebGL is not available here — the flat ground track below plots the same orbit.</p>
     </div>
 
+    <!-- The orbit planner. Hidden until PlannerUI.init has run (the pill in the picker's hint row is
+         hidden too), so a page without the planner's scripts shows none of it. It is a child of
+         main.stage so that it can take the rail's cell on a wide screen, and sit under the globe
+         on a narrow one; PlannerUI fills every list, option and note below with DOM nodes, never
+         with markup, because the names and the notes carry text the reader typed. The sprite is
+         the four severity glyphs: a shape each (circle, triangle, square), so a note reads the
+         same in greyscale. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <symbol id="sv-good" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.25" fill="currentColor"/><path d="M3.4 6.2l1.8 1.8 3.4-3.8" fill="none" stroke="var(--chrome)" stroke-width="1.5"/></symbol>
+      <symbol id="sv-info" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="3.7" r=".9" fill="currentColor"/><rect x="5.3" y="5.3" width="1.4" height="3.4" fill="currentColor"/></symbol>
+      <symbol id="sv-warn" viewBox="0 0 12 12"><path d="M6 1.2L11.2 10.6H.8Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><rect x="5.3" y="4.4" width="1.4" height="3" fill="currentColor"/><circle cx="6" cy="8.7" r=".8" fill="currentColor"/></symbol>
+      <symbol id="sv-bad" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="1.5" fill="currentColor"/><path d="M3.8 3.8l4.4 4.4M8.2 3.8l-4.4 4.4" stroke="var(--chrome)" stroke-width="1.5"/></symbol>
+    </svg>
+    <aside class="planner" id="planner" role="region" aria-labelledby="pl-title" hidden>
+      <div class="pl-head">
+        <p class="eyebrow">Orbit planner</p>
+        <h2 id="pl-title">Design a satellite</h2>
+        <button type="button" class="btn" id="pl-close" aria-label="Close the orbit planner">Close</button>
+      </div>
+      <div class="pl-scroll">
+       <div class="pl-body">
+        <div class="pl-form-col">
+        <form class="pl-form" id="pl-form" novalidate autocomplete="off">
+          <div class="pl-f">
+            <label for="pl-name">Name</label>
+            <div class="pl-text"><input id="pl-name" type="text" autocomplete="off" spellcheck="false" aria-describedby="pl-name-hint"></div>
+            <p class="pl-err" id="pl-err-name" hidden></p>
+            <p class="pl-hint" id="pl-name-hint">Up to 24 characters. It is kept in this browser, and listed in the search box under Your orbits.</p>
+          </div>
+          <div class="pl-f">
+            <label for="pl-preset">Start from</label>
+            <select class="pl-select" id="pl-preset" aria-describedby="pl-preset-note"></select>
+            <p class="pl-hint" id="pl-preset-note"></p>
+          </div>
+
+          <fieldset class="pl-set" aria-describedby="pl-d-shape">
+            <legend class="eyebrow">Size and shape</legend>
+            <div class="seg" role="group" aria-label="How to describe the size and shape">
+              <button type="button" class="btn" aria-pressed="true" data-shape="alt">Altitudes</button>
+              <button type="button" class="btn" aria-pressed="false" data-shape="ae">a and e</button>
+              <button type="button" class="btn" aria-pressed="false" data-shape="per">Period</button>
+            </div>
+            <div class="pl-grid pl-shape" data-lens="alt">
+              <div class="pl-f">
+                <label for="pl-hp">Mean perigee altitude</label>
+                <div class="pl-num"><input id="pl-hp" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">km</span></div>
+                <p class="pl-err" id="pl-err-hp" hidden></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-ha">Mean apogee altitude</label>
+                <div class="pl-num"><input id="pl-ha" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">km</span></div>
+                <p class="pl-err" id="pl-err-ha" hidden></p>
+              </div>
+            </div>
+            <div class="pl-grid pl-shape" data-lens="ae" hidden>
+              <div class="pl-f">
+                <label for="pl-a"><i>a</i> Semi-major axis</label>
+                <div class="pl-num"><input id="pl-a" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">km</span></div>
+                <p class="pl-err" id="pl-err-a" hidden></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-e"><i>e</i> Eccentricity</label>
+                <div class="pl-num"><input id="pl-e" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u"></span></div>
+                <p class="pl-err" id="pl-err-e" hidden></p>
+              </div>
+            </div>
+            <div class="pl-grid pl-shape" data-lens="per" hidden>
+              <div class="pl-f">
+                <label for="pl-period">Keplerian period</label>
+                <div class="pl-num"><input id="pl-period" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">min</span></div>
+                <p class="pl-err" id="pl-err-period" hidden></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-e-p"><i>e</i> Eccentricity</label>
+                <div class="pl-num"><input id="pl-e-p" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u"></span></div>
+                <p class="pl-err" id="pl-err-e-p" hidden></p>
+              </div>
+            </div>
+            <p class="pl-derived" id="pl-d-shape">—</p>
+          </fieldset>
+
+          <fieldset class="pl-set" aria-describedby="pl-d-orient">
+            <legend class="eyebrow">Orientation</legend>
+            <div class="pl-grid">
+              <div class="pl-f">
+                <label for="pl-inc"><i>i</i> Inclination</label>
+                <div class="pl-num"><input id="pl-inc" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">°</span></div>
+                <p class="pl-err" id="pl-err-inc" hidden></p>
+              </div>
+              <div class="pl-f">
+                <div class="pl-lab"><label for="pl-raan"><i>Ω</i> Node</label>
+                  <div class="seg" role="group" aria-label="Give the node as">
+                    <button type="button" class="btn" aria-pressed="true" data-node="raan"><abbr title="right ascension of the ascending node: the angle, turned eastward from the March equinox, at which the orbit crosses the equator going north">RAAN</abbr></button>
+                    <button type="button" class="btn" aria-pressed="false" data-node="ltan"><abbr title="local time of the ascending node: the local mean solar time at which the orbit crosses the equator going north">LTAN</abbr></button>
+                  </div></div>
+                <div class="pl-num"><input id="pl-raan" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="pl-d-orient"><span class="u" id="pl-raan-u">°</span></div>
+                <p class="pl-err" id="pl-err-raan" hidden></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-argp"><i>ω</i> Argument of perigee</label>
+                <div class="pl-num"><input id="pl-argp" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">°</span></div>
+                <p class="pl-err" id="pl-err-argp" hidden></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-ma"><i>M</i> Mean anomaly</label>
+                <div class="pl-num"><input id="pl-ma" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">°</span></div>
+                <p class="pl-err" id="pl-err-ma" hidden></p>
+              </div>
+            </div>
+            <p class="pl-derived" id="pl-d-orient">—</p>
+          </fieldset>
+
+          <fieldset class="pl-set" aria-describedby="pl-d-drag">
+            <legend class="eyebrow">Epoch and drag</legend>
+            <div class="pl-grid">
+              <div class="pl-f wide">
+                <label for="pl-epoch">Epoch, in <abbr title="Coordinated Universal Time">UTC</abbr></label>
+                <div class="pl-epochrow">
+                  <div class="pl-num"><input id="pl-epoch" type="datetime-local" step="1" aria-describedby="pl-epoch-note"><span class="pl-tz"><abbr title="Coordinated Universal Time">UTC</abbr></span></div>
+                  <button type="button" class="btn" id="pl-now">Now</button>
+                </div>
+                <p class="pl-err" id="pl-err-epoch" hidden></p>
+                <p class="pl-hint" id="pl-epoch-note"></p>
+              </div>
+              <div class="pl-f wide">
+                <label for="pl-craft">What it is</label>
+                <select class="pl-select" id="pl-craft" aria-describedby="pl-craft-note"></select>
+                <p class="pl-hint" id="pl-craft-note"></p>
+              </div>
+              <div class="pl-f">
+                <label for="pl-am">Area over mass</label>
+                <div class="pl-num"><input id="pl-am" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="u">m²/kg</span></div>
+                <p class="pl-err" id="pl-err-am" hidden></p>
+              </div>
+            </div>
+            <p class="pl-derived" id="pl-d-drag">= <abbr title="B*, SGP4's drag term, in inverse Earth radii">B*</abbr> ... at this height · worked out from <abbr title="area over mass: the cross-section the air pushes on, per kilogram">A/m</abbr> · a guess, not a measurement</p>
+          </fieldset>
+        </form>
+        <p class="pl-err pl-err-form" id="pl-err-form" hidden></p>
+        <div class="pl-actions">
+          <button type="submit" form="pl-form" class="btn primary" id="pl-add">Add to console</button>
+          <button type="button" class="btn" id="pl-savenew" hidden>Save as new</button>
+          <button type="button" class="btn" id="pl-reset">Reset</button>
+          <p class="pl-status" id="pl-status" role="status" aria-live="polite"></p>
+        </div>
+        </div>
+
+        <section class="prof" id="prof" aria-labelledby="pf-title">
+          <div class="pf-head"><h3 id="pf-title"></h3><p class="eyebrow" id="pf-count"></p></div>
+          <p class="pf-verdict" id="pf-verdict" hidden><b id="pf-head"></b><span class="sub" id="pf-sub"></span></p>
+          <ul class="pf-list pf-errs" id="pf-errs"></ul>
+          <details class="pf-grp" data-group="type" hidden><summary></summary><ul class="pf-list"></ul></details>
+          <details class="pf-grp" data-group="survive" hidden><summary></summary><ul class="pf-list"></ul></details>
+          <details class="pf-grp" data-group="sun" hidden><summary></summary><ul class="pf-list"></ul></details>
+          <details class="pf-grp" data-group="ground" hidden><summary></summary><ul class="pf-list"></ul></details>
+          <details class="pf-grp" data-group="caveat" hidden><summary></summary><ul class="pf-list"></ul></details>
+          <p class="pf-empty" id="pf-empty" hidden></p>
+          <p class="pf-foot" id="pf-foot"></p>
+        </section>
+
+        <section class="pl-saved" aria-labelledby="pl-saved-h">
+          <h3 id="pl-saved-h">Your orbits <span class="pl-hint" id="pl-saved-count"></span></h3>
+          <ul id="pl-saved-list"></ul>
+          <p class="pl-undo" id="pl-undo" hidden></p>
+          <p class="pl-hint" id="pl-saved-none" hidden>None yet. An orbit you add is kept here, in this browser, for the next visit.</p>
+        </section>
+       </div>
+      </div>
+      <p class="pl-say" id="pl-say" role="status" aria-live="polite"></p>
+    </aside>
+
     <aside class="rail" aria-label="Visibility summary">
       <div class="answer">
         <p class="reentry" id="reentry" role="status" hidden></p>
@@ -944,6 +1393,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         <p class="brief" id="briefnote" hidden><b>Outside the brief.</b> KNACKSAT-2, the
           default, is not in CelesTrak’s <a href="#t-brief">Earth Resources group</a>, which the
           assignment asks for.</p>
+        <!-- Said beside the answer it qualifies, for an orbit the reader designed: the minutes
+             above are the first thing read, and they are a prediction for an orbit that may not exist.
+             load() shows it and hides the note above. -->
+        <p class="brief" id="customnote" hidden><b>Your orbit.</b> Designed here from elements you typed, not tracked by anyone. These passes are a prediction for an orbit that may not exist.</p>
         <div class="livel">
           <span class="k" id="lbl-elnow">Elevation at Bangkok now</span>
           <span class="v" id="o3el">—</span>
@@ -1069,6 +1522,13 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   </div>
 </div>
 
+<!-- What a commit says when the planner has closed itself: on a wide but short screen the planner is a
+     sheet, Add closes it onto the globe, and its own status line is display:none by then, so a
+     screen reader would hear nothing. This region is a child of body, not of the planner, and is
+     the one sibling the sheet does not make inert. Visually hidden, not display:none: a live
+     region taken out of the page may not be read when something is written into it. -->
+<p class="pl-say" id="pl-live" role="status" aria-live="polite"></p>
+
 <div class="arview" id="arview" role="dialog" aria-modal="true" aria-labelledby="ar-title"
      aria-describedby="ar-status" hidden>
   <video class="ar-video" id="ar-video" playsinline muted autoplay disablepictureinpicture aria-hidden="true"></video>
@@ -1117,6 +1577,13 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     <div class="tle">
       <pre id="tleraw">—</pre>
       <p class="tle-meta" id="tlemeta">—</p>
+      <!-- For an orbit the reader designed: its two lines are real and checksum-valid, so they
+           paste into other tools. load() shows this row; PlannerUI wires the buttons. -->
+      <div class="tle-actions" id="tleactions" hidden>
+        <button type="button" class="btn" id="tle-edit">Edit in planner</button>
+        <button type="button" class="btn" id="tle-copy">Copy as TLE</button>
+        <span class="tle-said" id="tle-said"></span>
+      </div>
     </div>
   </section>
 
@@ -1124,7 +1591,7 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
   <section id="sec-elements">
     <div class="shead">
       <h2>Orbital elements at epoch</h2>
-      <p class="hint">SGP4 mean elements from the <abbr title="two-line element set">TLE</abbr> (Kozai n, Brouwer a), angles in the <abbr title="true equator, mean equinox: the inertial frame SGP4 works in">TEME</abbr> frame of epoch</p>
+      <p class="hint">SGP4 mean elements from the <abbr title="two-line element set">TLE</abbr> (Kozai n, Brouwer a), angles in the <abbr title="true equator, mean equinox: the inertial frame SGP4 works in">TEME</abbr> frame of epoch<!-- The link to the Professor's notes below, shown with that section (PlannerUI sets its words from AdvisorCopy.ADVISOR_LABEL). Not in the jump nav: that has a header-height budget. --><span id="rp-nav" hidden> · <a id="rp-link" href="#sec-prof"></a></span></p>
     </div>
     <div class="elements" id="elgrid"></div>
     <div class="oscbox">
@@ -1134,6 +1601,26 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
     </div>
     <dl class="derived" id="derived"></dl>
     <p class="dnote" id="dnote"></p>
+  </section>
+
+  <!-- (a2) ----------------------------------------------------------------- -->
+  <!-- The Professor on the spacecraft on screen: the report's read-only host of the advisor the planner
+       uses (SPEC 5.11). Hidden until PlannerUI builds it after a load (an idle callback, never on load's
+       own path); load() hides it for an orbit the reader designed, whose host is the planner; empty and
+       hidden for good where the planner modules are missing. Every node in it is built by PlannerUI with
+       textContent: the spacecraft's name comes from the catalogue or the network. -->
+  <section id="sec-prof" aria-labelledby="rp-title" hidden>
+    <div class="shead">
+      <h2 id="rp-title"></h2>
+      <p class="hint" id="rp-count"></p>
+    </div>
+    <p class="pf-verdict" id="rp-verdict"><b id="rp-head"></b></p>
+    <details class="pf-grp" data-group="type" hidden><summary></summary><ul class="pf-list"></ul></details>
+    <details class="pf-grp" data-group="survive" hidden><summary></summary><ul class="pf-list"></ul></details>
+    <details class="pf-grp" data-group="sun" hidden><summary></summary><ul class="pf-list"></ul></details>
+    <details class="pf-grp" data-group="ground" hidden><summary></summary><ul class="pf-list"></ul></details>
+    <details class="pf-grp" data-group="caveat" hidden><summary></summary><ul class="pf-list"></ul></details>
+    <p class="pf-foot" id="rp-foot"></p>
   </section>
 
   <!-- (b) ------------------------------------------------------------------ -->
@@ -1339,7 +1826,10 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
         near-equatorial geostationary orbit.</dd></div>
       <div id="t-bstar"><dt>B*, 1/ER</dt><dd>SGP4's drag term. Its unit is the inverse Earth
         radius, 1/ER. It is fitted along with the elements and soaks up whatever else the fit could
-        not model, so it is not a measured area-to-mass ratio.</dd></div>
+        not model, so it is not a measured area-to-mass ratio. Here you type the area-to-mass ratio
+        A/m instead, in m²/kg, with Cd = 2.2; B* is then worked out from it for the height typed,
+        so that SGP4 decays at the rate this page’s Decay model gives, and it is a guess, not a
+        measurement.</dd></div>
       <div id="t-mag"><dt>Magnitude, std mag, phase</dt><dd>Astronomical brightness, where smaller is
         brighter and 5 magnitudes is a factor of 100. About +6 is the faintest the naked eye sees in a
         dark sky, and the page's threshold. The standard magnitude is an object's brightness at
@@ -1366,6 +1856,37 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
       <div id="t-wgs"><dt>WGS-72, WGS-84, R⊕</dt><dd>Two editions of the World Geodetic System's
         model of the Earth. SGP4 is defined on WGS-72; latitudes and altitudes here are geodetic on
         WGS-84. R⊕ is the equatorial radius, 6378.137 km.</dd></div>
+      <!-- The words the Professor's notes link to. A note that names a term must find it here: the
+           layout suite fails on any a[href^="#t-"] that points at nothing. -->
+      <div id="t-sso"><dt>Sun-synchronous</dt><dd>An orbit whose plane turns about 0.986 degrees a day,
+        the rate the Sun appears to move through the stars, so it keeps the same angle to the Sun all
+        year and crosses the equator at the same local solar time every day. The Earth's equatorial
+        bulge does the turning, and it only matches for a retrograde tilt a little over 90 degrees
+        (97.4 at 500 km), up to about 5,970 km high.</dd></div>
+      <div id="t-ltan"><dt>LTAN, LTDN</dt><dd>Local time of the ascending node: the local mean solar
+        time at which the satellite crosses the equator northbound; LTDN is the southbound crossing,
+        twelve hours away. A sun-synchronous orbit keeps both fixed. 10:30 is a common choice for
+        imaging; 06:00 or 18:00 is a dawn-dusk orbit.</dd></div>
+      <div id="t-beta"><dt>Beta angle, eclipse</dt><dd>The angle between the Sun's direction and the
+        orbit plane. At 0 the Sun lies in the plane and the satellite spends longest in Earth's
+        shadow; beyond a limit set by the height (the arcsine of the Earth's radius over the orbit
+        radius, 68 degrees at 500 km) the shadow misses the orbit and there is no eclipse. Beta
+        changes over the year as the plane and the Sun move. The eclipse figures use a cylindrical
+        shadow and ignore the penumbra.</dd></div>
+      <div id="t-geo"><dt>Geostationary, geosynchronous</dt><dd>A period of one sidereal day, 23 h 56 min
+        4 s, which takes 35,786 km. Geosynchronous means only the period; geostationary adds no tilt
+        and no eccentricity, so the satellite stays over one point of the equator. A tilted one
+        traces a figure-eight about it each day.</dd></div>
+      <div id="t-crit"><dt>Critical inclination</dt><dd>63.4 degrees (and 116.6), where the Earth's
+        bulge stops turning an orbit's perigee. Orbits that depend on where their apogee sits,
+        Molniya and Tundra, use it.</dd></div>
+      <div id="t-belts"><dt>Van Allen belts</dt><dd>Two doughnuts of charged particles trapped by the
+        Earth's magnetic field: an inner one, mostly protons, between about 1,000 and 6,000 km, and
+        an outer one, mostly electrons, from about 13,000 km and densest near 15,000 to 25,000 km.
+        The edges are fuzzy and move with the Sun.</dd></div>
+      <div id="t-saa"><dt>South Atlantic Anomaly</dt><dd>A region over South America and the South
+        Atlantic where the magnetic field is weak, so the inner belt reaches down to low-orbit
+        height. Spacecraft crossing it take more particle hits and more memory bit-flips.</dd></div>
     </dl>
   </section>
 
@@ -1408,6 +1929,14 @@ footer{color:var(--ink2); font-size:12px; border-top:1px solid var(--rule); padd
 <script src="earth/wmm.js"></script>
 <script src="earth/skyar.js"></script>
 <script src="earth/arview.js"></script>
+<!-- The orbit planner: Planner is the maths and the TLE writer, Advisor the numbers behind the
+     Professor's notes, AdvisorCopy their words, PlannerUI the form. The planner is on only when all
+     four and Lifetime are present (the page's plannerOn()); without any one of them the pill,
+     the panel and every mark stay hidden and the page is the console it was. -->
+<script src="earth/planner.js"></script>
+<script src="earth/advisor.js"></script>
+<script src="earth/advisor-copy.js"></script>
+<script src="earth/plannerui.js"></script>
 <script id="worlddata" type="application/json">{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-59.57,-80.04],[-59.87,-80.55],[-60.16,-81],[-62.26,-80.86],[-64.49,-80.92],[-65.74,-80.59],[-65.74,-80.55],[-66.29,-80.26],[-64.04,-80.29],[-61.88,-80.39],[-61.14,-79.98],[-60.61,-79.63],[-59.57,-80.04]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-159.21,-79.5],[-161.13,-79.63],[-162.44,-79.28],[-163.03,-78.93],[-163.07,-78.87],[-163.71,-78.6],[-163.11,-78.22],[-161.25,-78.38],[-160.25,-78.69],[-159.48,-79.05],[-159.21,-79.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-45.15,-78.05],[-43.92,-78.48],[-43.49,-79.09],[-43.37,-79.52],[-43.33,-80.03],[-44.88,-80.34],[-46.51,-80.59],[-48.39,-80.83],[-50.48,-81.03],[-52.85,-80.97],[-54.16,-80.63],[-53.99,-80.22],[-51.85,-79.95],[-50.99,-79.61],[-50.36,-79.18],[-49.91,-78.81],[-49.31,-78.46],[-48.66,-78.05],[-48.15,-78.05],[-46.66,-77.83],[-45.15,-78.05]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-121.21,-73.5],[-119.92,-73.66],[-118.72,-73.48],[-119.29,-73.83],[-120.23,-74.09],[-121.62,-74.01],[-122.62,-73.66],[-122.41,-73.32],[-121.21,-73.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-125.56,-73.48],[-124.03,-73.87],[-124.62,-73.83],[-125.91,-73.74],[-127.28,-73.46],[-126.56,-73.25],[-125.56,-73.48]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-98.98,-71.93],[-97.88,-72.07],[-96.79,-71.95],[-96.2,-72.52],[-96.98,-72.44],[-98.2,-72.48],[-99.43,-72.44],[-100.78,-72.5],[-101.8,-72.31],[-102.33,-71.89],[-101.7,-71.72],[-100.43,-71.85],[-98.98,-71.93]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-68.45,-70.96],[-68.33,-71.41],[-68.51,-71.8],[-68.78,-72.17],[-69.96,-72.31],[-71.08,-72.5],[-72.39,-72.48],[-71.9,-72.09],[-73.07,-72.23],[-74.19,-72.37],[-74.95,-72.07],[-75.01,-71.66],[-73.92,-71.27],[-73.23,-71.15],[-72.07,-71.19],[-71.78,-70.68],[-71.72,-70.31],[-71.74,-69.51],[-71.17,-69.04],[-70.25,-68.88],[-69.72,-69.25],[-69.49,-69.62],[-69.06,-70.07],[-68.73,-70.51],[-68.45,-70.96]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-58.61,-64.15],[-59.05,-64.37],[-59.79,-64.21],[-60.61,-64.31],[-61.3,-64.54],[-62.02,-64.8],[-62.51,-65.09],[-62.65,-65.48],[-62.59,-65.86],[-62.12,-66.19],[-62.81,-66.43],[-63.75,-66.5],[-64.29,-66.84],[-64.88,-67.15],[-65.51,-67.58],[-65.67,-67.95],[-65.31,-68.37],[-64.78,-68.68],[-63.96,-68.91],[-63.2,-69.23],[-62.79,-69.62],[-62.57,-69.99],[-62.28,-70.38],[-61.81,-70.72],[-61.51,-71.09],[-61.38,-72.01],[-61.08,-72.38],[-61,-72.77],[-60.69,-73.17],[-60.83,-73.7],[-61.38,-74.11],[-61.96,-74.44],[-63.3,-74.58],[-63.75,-74.93],[-64.35,-75.26],[-65.86,-75.64],[-67.19,-75.79],[-68.45,-76.01],[-69.8,-76.22],[-70.6,-76.63],[-72.21,-76.67],[-73.97,-76.63],[-75.56,-76.71],[-77.24,-76.71],[-76.93,-77.1],[-75.4,-77.28],[-74.28,-77.56],[-73.66,-77.91],[-74.77,-78.22],[-76.5,-78.12],[-77.93,-78.38],[-77.98,-78.79],[-78.02,-79.18],[-76.85,-79.51],[-76.63,-79.89],[-75.36,-80.26],[-73.24,-80.42],[-71.44,-80.69],[-70.01,-81],[-68.19,-81.32],[-65.7,-81.47],[-63.26,-81.75],[-61.55,-82.04],[-59.69,-82.38],[-58.71,-82.85],[-58.22,-83.22],[-57.01,-82.87],[-55.36,-82.57],[-53.62,-82.26],[-51.54,-82],[-49.76,-81.73],[-47.27,-81.71],[-44.83,-81.85],[-42.81,-82.08],[-42.16,-81.65],[-40.77,-81.36],[-38.24,-81.34],[-36.27,-81.12],[-34.39,-80.91],[-32.31,-80.77],[-30.1,-80.59],[-28.55,-80.34],[-29.25,-79.99],[-29.69,-79.63],[-29.69,-79.26],[-31.62,-79.3],[-33.68,-79.46],[-35.64,-79.46],[-35.91,-79.08],[-35.78,-78.34],[-35.33,-78.12],[-33.9,-77.89],[-32.21,-77.65],[-31,-77.36],[-29.78,-77.07],[-28.88,-76.67],[-27.51,-76.5],[-26.16,-76.36],[-25.47,-76.28],[-23.93,-76.24],[-22.46,-76.11],[-21.22,-75.91],[-20.01,-75.67],[-18.91,-75.44],[-17.52,-75.13],[-16.64,-74.79],[-15.7,-74.5],[-15.41,-74.11],[-16.47,-73.87],[-16.11,-73.46],[-15.45,-73.15],[-14.41,-72.95],[-13.31,-72.72],[-12.29,-72.4],[-11.51,-72.01],[-11.02,-71.54],[-10.3,-71.27],[-9.1,-71.32],[-8.61,-71.66],[-7.42,-71.7],[-7.38,-71.32],[-6.87,-70.93],[-5.79,-71.03],[-5.54,-71.4],[-4.34,-71.46],[-3.05,-71.29],[-1.8,-71.17],[-0.66,-71.23],[-0.23,-71.64],[0.87,-71.3],[1.89,-71.13],[3.02,-70.99],[4.14,-70.85],[5.16,-70.62],[6.27,-70.46],[7.14,-70.25],[7.74,-69.89],[8.49,-70.15],[9.53,-70.01],[10.25,-70.48],[10.82,-70.83],[11.95,-70.64],[12.4,-70.25],[13.42,-69.97],[14.73,-70.03],[15.13,-70.4],[15.95,-70.03],[17.03,-69.91],[18.2,-69.87],[19.26,-69.89],[20.38,-70.01],[21.45,-70.07],[21.92,-70.4],[22.57,-70.7],[23.67,-70.52],[24.84,-70.48],[25.98,-70.48],[27.09,-70.46],[28.09,-70.32],[29.15,-70.21],[30.03,-69.93],[30.97,-69.76],[31.99,-69.66],[32.75,-69.38],[33.3,-68.84],[33.87,-68.5],[34.91,-68.66],[35.3,-69.01],[36.16,-69.25],[37.2,-69.17],[37.91,-69.52],[38.65,-69.78],[39.67,-69.54],[40.02,-69.11],[40.92,-68.93],[41.96,-68.6],[42.94,-68.46],[44.11,-68.27],[44.9,-68.05],[45.72,-67.82],[46.5,-67.6],[47.44,-67.72],[48.34,-67.37],[48.99,-67.09],[49.93,-67.11],[50.75,-66.88],[50.95,-66.52],[51.79,-66.25],[52.61,-66.05],[53.61,-65.9],[54.53,-65.82],[55.41,-65.88],[56.36,-65.97],[57.16,-66.25],[57.26,-66.68],[58.14,-67.01],[58.74,-67.29],[59.94,-67.41],[60.61,-67.68],[61.43,-67.95],[62.39,-68.01],[63.19,-67.82],[64.05,-67.41],[64.99,-67.62],[65.97,-67.74],[66.91,-67.86],[67.89,-67.93],[68.89,-67.93],[69.71,-68.97],[69.67,-69.23],[69.56,-69.68],[68.6,-69.93],[67.81,-70.31],[67.95,-70.7],[69.07,-70.68],[68.93,-71.07],[68.42,-71.44],[67.95,-71.85],[68.71,-72.17],[69.87,-72.26],[71.02,-72.09],[71.57,-71.7],[71.91,-71.32],[72.45,-71.01],[73.08,-70.72],[73.34,-70.36],[73.86,-69.87],[74.49,-69.78],[75.63,-69.74],[76.63,-69.62],[77.64,-69.46],[78.13,-69.07],[78.43,-68.7],[79.11,-68.33],[80.09,-68.07],[80.94,-67.88],[81.48,-67.54],[82.05,-67.37],[82.78,-67.21],[83.78,-67.31],[84.68,-67.21],[85.66,-67.09],[86.75,-67.15],[87.48,-66.88],[87.99,-66.21],[88.36,-66.48],[88.83,-66.95],[89.67,-67.15],[90.63,-67.23],[91.59,-67.11],[92.61,-67.19],[93.55,-67.21],[94.18,-67.11],[95.02,-67.17],[95.78,-67.39],[96.68,-67.25],[97.76,-67.25],[98.68,-67.11],[99.72,-67.25],[100.38,-66.92],[100.89,-66.58],[101.58,-66.31],[102.83,-65.56],[103.48,-65.7],[104.24,-65.97],[104.91,-66.33],[106.18,-66.93],[107.16,-66.95],[108.08,-66.95],[109.16,-66.84],[110.24,-66.7],[111.06,-66.43],[111.74,-66.13],[112.86,-66.09],[113.6,-65.88],[114.39,-66.07],[114.9,-66.39],[115.6,-66.7],[116.7,-66.66],[117.38,-66.92],[118.58,-67.17],[119.83,-67.27],[120.87,-67.19],[121.65,-66.88],[122.32,-66.56],[123.22,-66.48],[124.12,-66.62],[125.16,-66.72],[126.1,-66.56],[127,-66.56],[127.88,-66.66],[128.8,-66.76],[129.7,-66.58],[130.78,-66.43],[131.8,-66.39],[132.94,-66.39],[133.86,-66.29],[134.76,-66.21],[135.03,-65.72],[135.07,-65.31],[135.7,-65.58],[135.87,-66.03],[136.21,-66.45],[136.62,-66.78],[137.46,-66.95],[138.6,-66.9],[139.91,-66.88],[140.81,-66.82],[142.12,-66.82],[143.06,-66.8],[144.37,-66.84],[145.49,-66.92],[146.2,-67.23],[146,-67.6],[146.65,-67.9],[147.72,-68.13],[148.84,-68.39],[150.13,-68.56],[151.48,-68.72],[152.5,-68.87],[153.64,-68.89],[154.28,-68.56],[155.17,-68.84],[155.93,-69.15],[156.81,-69.38],[158.03,-69.48],[159.18,-69.6],[159.67,-69.99],[160.81,-70.23],[161.57,-70.58],[162.69,-70.74],[163.84,-70.72],[164.92,-70.78],[166.11,-70.76],[167.31,-70.83],[168.43,-70.97],[169.46,-71.21],[170.5,-71.4],[171.21,-71.7],[171.09,-72.09],[170.56,-72.44],[170.11,-72.89],[169.76,-73.24],[169.29,-73.66],[167.98,-73.81],[167.39,-74.17],[166.09,-74.38],[165.64,-74.77],[164.96,-75.15],[164.23,-75.46],[163.82,-75.87],[163.57,-76.24],[163.47,-76.69],[163.49,-77.07],[164.06,-77.46],[164.27,-77.83],[164.74,-78.18],[166.6,-78.32],[167,-78.75],[165.19,-78.91],[163.67,-79.12],[161.77,-79.16],[160.92,-79.73],[160.75,-80.2],[160.32,-80.57],[159.79,-80.95],[161.12,-81.28],[161.63,-81.69],[162.49,-82.06],[163.71,-82.4],[165.1,-82.71],[166.6,-83.02],[168.9,-83.34],[169.4,-83.83],[172.28,-84.04],[172.48,-84.12],[173.22,-84.41],[175.99,-84.16],[178.28,-84.47],[180,-84.71],[180,-90],[-180,-90],[-180,-84.71],[-179.94,-84.72],[-179.06,-84.14],[-177.26,-84.45],[-177.14,-84.42],[-176.86,-84.33],[-176.52,-84.23],[-176.23,-84.14],[-176.08,-84.1],[-175.93,-84.1],[-175.83,-84.12],[-174.38,-84.53],[-173.12,-84.12],[-172.89,-84.06],[-169.95,-83.88],[-169,-84.12],[-168.53,-84.24],[-167.02,-84.57],[-164.18,-84.83],[-161.93,-85.14],[-158.07,-85.37],[-155.19,-85.1],[-150.94,-85.3],[-148.53,-85.61],[-145.89,-85.32],[-143.11,-85.04],[-142.89,-84.57],[-146.83,-84.53],[-150.06,-84.3],[-150.9,-83.9],[-153.59,-83.69],[-153.41,-83.24],[-153.04,-82.83],[-152.67,-82.45],[-152.86,-82.04],[-154.53,-81.77],[-155.29,-81.42],[-156.84,-81.1],[-154.41,-81.16],[-152.1,-81],[-150.65,-81.34],[-148.87,-81.04],[-147.22,-80.67],[-146.42,-80.34],[-146.77,-79.93],[-148.06,-79.65],[-149.53,-79.36],[-151.59,-79.3],[-153.39,-79.16],[-155.33,-79.06],[-155.98,-78.69],[-157.27,-78.38],[-158.05,-78.03],[-158.37,-76.89],[-157.88,-76.99],[-156.97,-77.3],[-155.33,-77.2],[-153.74,-77.07],[-152.92,-77.5],[-151.33,-77.4],[-150,-77.18],[-148.75,-76.91],[-147.61,-76.58],[-146.1,-76.48],[-146.14,-76.11],[-146.5,-75.73],[-146.2,-75.38],[-144.91,-75.2],[-144.32,-75.54],[-142.79,-75.34],[-141.64,-75.09],[-140.21,-75.07],[-138.86,-74.97],[-137.51,-74.73],[-136.43,-74.52],[-135.21,-74.3],[-134.43,-74.36],[-133.75,-74.44],[-132.26,-74.3],[-130.93,-74.48],[-129.55,-74.46],[-128.24,-74.32],[-126.89,-74.42],[-125.4,-74.52],[-124.01,-74.48],[-122.56,-74.5],[-121.07,-74.52],[-119.7,-74.48],[-118.68,-74.19],[-117.47,-74.03],[-116.22,-74.24],[-115.02,-74.07],[-113.94,-73.71],[-113.3,-74.03],[-112.95,-74.38],[-112.3,-74.71],[-111.26,-74.42],[-110.07,-74.79],[-108.71,-74.91],[-107.56,-75.18],[-106.15,-75.13],[-104.88,-74.95],[-103.37,-74.99],[-102.02,-75.13],[-100.65,-75.3],[-100.12,-74.87],[-100.76,-74.54],[-101.25,-74.19],[-102.55,-74.11],[-103.11,-73.73],[-103.33,-73.36],[-103.68,-72.62],[-102.92,-72.75],[-101.61,-72.81],[-100.31,-72.75],[-99.14,-72.91],[-98.12,-73.21],[-97.69,-73.56],[-96.34,-73.62],[-95.04,-73.48],[-93.67,-73.28],[-92.44,-73.17],[-91.42,-73.4],[-90.09,-73.32],[-89.23,-72.56],[-88.42,-73.01],[-87.27,-73.19],[-86.01,-73.09],[-85.19,-73.48],[-83.88,-73.52],[-82.67,-73.64],[-81.47,-73.85],[-80.69,-73.48],[-80.3,-73.13],[-79.3,-73.52],[-77.93,-73.42],[-76.91,-73.64],[-76.22,-73.97],[-74.89,-73.87],[-73.85,-73.66],[-72.83,-73.4],[-71.62,-73.26],[-70.21,-73.15],[-68.94,-73.01],[-67.96,-72.79],[-67.37,-72.48],[-67.13,-72.05],[-67.25,-71.64],[-67.56,-71.25],[-67.92,-70.85],[-68.23,-70.46],[-68.49,-70.11],[-68.54,-69.72],[-68.45,-69.33],[-67.98,-68.95],[-67.58,-68.54],[-67.43,-68.15],[-67.62,-67.72],[-67.74,-67.33],[-67.25,-66.88],[-66.7,-66.58],[-66.06,-66.21],[-65.37,-65.9],[-64.57,-65.6],[-64.18,-65.17],[-63.63,-64.9],[-63,-64.64],[-62.04,-64.58],[-61.41,-64.27],[-60.71,-64.07],[-59.89,-63.96],[-59.16,-63.7],[-58.59,-63.39],[-57.81,-63.27],[-57.22,-63.53],[-57.6,-63.86],[-58.61,-64.15]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-67.75,-53.85],[-66.45,-54.45],[-65.05,-54.7],[-65.5,-55.2],[-66.45,-55.25],[-66.96,-54.9],[-67.29,-55.3],[-68.15,-55.61],[-69.23,-55.5],[-69.96,-55.2],[-71.01,-55.05],[-72.26,-54.5],[-73.29,-53.96],[-74.66,-52.84],[-73.84,-53.05],[-72.43,-53.72],[-71.11,-54.07],[-70.59,-53.62],[-70.27,-52.93],[-69.35,-52.52],[-68.63,-52.64],[-68.25,-53.1],[-67.75,-53.85]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-58.55,-51.1],[-57.75,-51.55],[-58.05,-51.9],[-59.4,-52.2],[-59.85,-51.85],[-60.7,-52.3],[-61.2,-51.85],[-60,-51.25],[-59.15,-51.5],[-58.55,-51.1]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[70.28,-49.71],[68.75,-49.77],[68.72,-49.24],[68.87,-48.83],[68.94,-48.62],[69.58,-48.94],[70.53,-49.06],[70.56,-49.25],[70.28,-49.71]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[145.4,-40.79],[146.36,-41.14],[146.91,-41],[147.69,-40.81],[148.29,-40.88],[148.36,-42.06],[148.02,-42.41],[147.91,-43.21],[147.56,-42.94],[146.87,-43.63],[146.66,-43.58],[146.05,-43.55],[145.43,-42.69],[145.3,-42.03],[144.72,-41.16],[144.74,-40.7],[145.4,-40.79]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[173.02,-40.92],[173.25,-41.33],[173.96,-40.93],[174.25,-41.35],[174.25,-41.77],[173.88,-42.23],[173.22,-42.97],[172.71,-43.37],[173.08,-43.85],[172.31,-43.87],[171.45,-44.24],[171.19,-44.9],[170.62,-45.91],[169.83,-46.36],[169.33,-46.64],[168.41,-46.62],[167.76,-46.29],[166.68,-46.22],[166.51,-45.85],[167.05,-45.11],[168.3,-44.12],[168.95,-43.94],[169.67,-43.56],[170.52,-43.03],[171.13,-42.51],[171.57,-41.77],[171.95,-41.51],[172.1,-40.96],[172.8,-40.49],[173.02,-40.92]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[174.61,-36.16],[175.34,-37.21],[175.36,-36.53],[175.81,-36.8],[175.96,-37.56],[176.76,-37.88],[177.44,-37.96],[178.01,-37.58],[178.52,-37.7],[178.27,-38.58],[177.97,-39.17],[177.21,-39.15],[176.94,-39.45],[177.03,-39.88],[176.89,-40.07],[176.51,-40.6],[176.01,-41.29],[175.24,-41.69],[175.07,-41.43],[174.65,-41.28],[175.23,-40.46],[174.9,-39.91],[173.82,-39.51],[173.85,-39.15],[174.57,-38.8],[174.74,-38.03],[174.7,-37.38],[174.29,-36.71],[174.32,-36.53],[173.84,-36.12],[173.05,-35.24],[172.64,-34.53],[173.01,-34.45],[173.55,-35.01],[174.33,-35.27],[174.61,-36.16]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[167.12,-22.16],[166.74,-22.4],[166.19,-22.13],[165.47,-21.68],[164.83,-21.15],[164.17,-20.44],[164.03,-20.11],[164.46,-20.12],[165.02,-20.46],[165.46,-20.8],[165.78,-21.08],[166.6,-21.7],[167.12,-22.16]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[178.37,-17.34],[178.72,-17.63],[178.55,-18.15],[177.93,-18.29],[177.38,-18.16],[177.29,-17.72],[177.67,-17.38],[178.13,-17.5],[178.37,-17.34]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[179.36,-16.8],[178.73,-17.01],[178.6,-16.64],[179.1,-16.43],[179.41,-16.38],[180,-16.07],[180,-16.56],[179.36,-16.8]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-179.92,-16.5],[-180,-16.56],[-180,-16.07],[-179.79,-16.02],[-179.92,-16.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[167.84,-16.47],[167.52,-16.6],[167.18,-16.16],[167.22,-15.89],[167.84,-16.47]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[167.11,-14.93],[167.27,-15.74],[167,-15.61],[166.79,-15.67],[166.65,-15.39],[166.63,-14.63],[167.11,-14.93]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[50.06,-13.56],[50.22,-14.76],[50.48,-15.23],[50.38,-15.71],[50.2,-16],[49.86,-15.41],[49.67,-15.71],[49.86,-16.45],[49.77,-16.88],[49.5,-17.11],[49.44,-17.95],[49.04,-19.12],[48.55,-20.5],[47.93,-22.39],[47.55,-23.78],[47.1,-24.94],[46.28,-25.18],[45.41,-25.6],[44.83,-25.35],[44.04,-24.99],[43.76,-24.46],[43.7,-23.57],[43.35,-22.78],[43.25,-22.06],[43.43,-21.34],[43.89,-21.16],[43.9,-20.83],[44.37,-20.07],[44.46,-19.44],[44.23,-18.96],[44.04,-18.33],[43.96,-17.41],[44.31,-16.85],[44.45,-16.22],[44.94,-16.18],[45.5,-15.97],[45.87,-15.79],[46.31,-15.78],[46.88,-15.21],[47.71,-14.59],[48.01,-14.09],[47.87,-13.66],[48.29,-13.78],[48.85,-13.09],[48.86,-12.49],[49.19,-12.04],[49.54,-12.47],[49.81,-12.9],[50.06,-13.56]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[143.56,-13.76],[143.92,-14.55],[144.56,-14.17],[144.89,-14.59],[145.37,-14.98],[145.27,-15.43],[145.49,-16.29],[145.64,-16.78],[145.89,-16.91],[146.16,-17.76],[146.06,-18.28],[146.39,-18.96],[147.47,-19.48],[148.18,-19.96],[148.85,-20.39],[148.72,-20.63],[149.29,-21.26],[149.68,-22.34],[150.08,-22.12],[150.48,-22.56],[150.73,-22.4],[150.9,-23.46],[151.61,-24.08],[152.07,-24.46],[152.86,-25.27],[153.14,-26.07],[153.16,-26.64],[153.09,-27.26],[153.57,-28.11],[153.51,-29],[153.34,-29.46],[153.07,-30.35],[153.09,-30.92],[152.89,-31.64],[152.45,-32.55],[151.71,-33.04],[151.34,-33.82],[151.01,-34.31],[150.71,-35.17],[150.33,-35.67],[150.08,-36.42],[149.95,-37.11],[150,-37.43],[149.42,-37.77],[148.3,-37.81],[147.38,-38.22],[146.92,-38.61],[146.32,-39.04],[145.49,-38.59],[144.88,-38.42],[145.03,-37.9],[144.49,-38.09],[143.61,-38.81],[142.75,-38.54],[142.18,-38.38],[141.61,-38.31],[140.64,-38.02],[139.99,-37.4],[139.81,-36.64],[139.57,-36.14],[139.08,-35.73],[138.12,-35.61],[138.45,-35.13],[138.21,-34.38],[137.72,-35.08],[136.83,-35.26],[137.35,-34.71],[137.5,-34.13],[137.89,-33.64],[137.81,-32.9],[137,-33.75],[136.37,-34.09],[135.99,-34.89],[135.21,-34.48],[135.24,-33.95],[134.61,-33.22],[134.09,-32.85],[134.27,-32.62],[132.99,-32.01],[132.29,-31.98],[131.33,-31.5],[129.54,-31.59],[128.24,-31.95],[127.1,-32.28],[126.15,-32.22],[125.09,-32.73],[124.22,-32.96],[124.03,-33.48],[123.66,-33.89],[122.81,-33.91],[122.18,-34],[121.3,-33.82],[120.58,-33.93],[119.89,-33.98],[119.3,-34.51],[119.01,-34.46],[118.51,-34.75],[118.02,-35.06],[117.3,-35.03],[116.63,-35.03],[115.56,-34.39],[115.03,-34.2],[115.05,-33.62],[115.55,-33.49],[115.71,-33.26],[115.68,-32.9],[115.8,-32.21],[115.69,-31.61],[115.16,-30.6],[115,-30.03],[115.04,-29.46],[114.64,-28.81],[114.62,-28.52],[114.17,-28.12],[114.05,-27.33],[113.48,-26.54],[113.34,-26.12],[113.78,-26.55],[113.44,-25.62],[113.94,-25.91],[114.23,-26.3],[114.22,-25.79],[113.72,-25],[113.63,-24.68],[113.39,-24.38],[113.5,-23.81],[113.71,-23.56],[113.84,-23.06],[113.74,-22.48],[114.15,-21.76],[114.23,-22.52],[114.65,-21.83],[115.46,-21.5],[115.95,-21.07],[116.71,-20.7],[117.17,-20.62],[117.44,-20.75],[118.23,-20.37],[118.84,-20.26],[118.99,-20.04],[119.25,-19.95],[119.81,-19.98],[120.86,-19.68],[121.4,-19.24],[121.66,-18.71],[122.24,-18.2],[122.29,-17.8],[122.31,-17.25],[123.01,-16.41],[123.43,-17.27],[123.86,-17.07],[123.5,-16.6],[123.82,-16.11],[124.26,-16.33],[124.38,-15.57],[124.93,-15.08],[125.17,-14.68],[125.67,-14.51],[125.69,-14.23],[126.13,-14.35],[126.14,-14.1],[126.58,-13.95],[127.07,-13.82],[127.8,-14.28],[128.36,-14.87],[128.99,-14.88],[129.62,-14.97],[129.41,-14.42],[129.89,-13.62],[130.34,-13.36],[130.18,-13.11],[130.62,-12.54],[131.22,-12.18],[131.74,-12.3],[132.58,-12.11],[132.56,-11.6],[131.82,-11.27],[132.36,-11.13],[133.02,-11.38],[133.55,-11.79],[134.39,-12.04],[134.68,-11.94],[135.3,-12.25],[135.88,-11.96],[136.26,-12.05],[136.49,-11.86],[136.95,-12.35],[136.69,-12.89],[136.31,-13.29],[135.96,-13.32],[136.08,-13.72],[135.78,-14.22],[135.43,-14.72],[135.5,-15],[136.3,-15.55],[137.07,-15.87],[137.58,-16.22],[138.3,-16.81],[138.59,-16.81],[139.11,-17.06],[139.26,-17.37],[140.22,-17.71],[140.88,-17.37],[141.07,-16.83],[141.27,-16.39],[141.4,-15.84],[141.7,-15.04],[141.56,-14.56],[141.64,-14.27],[141.52,-13.7],[141.65,-12.94],[141.84,-12.74],[141.69,-12.41],[141.93,-11.88],[142.12,-11.33],[142.14,-11.04],[142.52,-10.67],[142.8,-11.16],[142.87,-11.78],[143.12,-11.91],[143.16,-12.33],[143.52,-12.83],[143.6,-13.4],[143.56,-13.76]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[162.12,-10.48],[162.4,-10.83],[161.7,-10.82],[161.32,-10.2],[161.92,-10.45],[162.12,-10.48]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[120.72,-10.24],[120.3,-10.26],[118.97,-9.56],[119.9,-9.36],[120.43,-9.67],[120.78,-9.97],[120.72,-10.24]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[160.85,-9.87],[160.46,-9.9],[159.85,-9.79],[159.64,-9.64],[159.7,-9.24],[160.36,-9.4],[160.69,-9.61],[160.85,-9.87]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[161.68,-9.6],[161.53,-9.78],[160.79,-8.92],[160.58,-8.32],[160.92,-8.32],[161.28,-9.12],[161.68,-9.6]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[124.44,-10.14],[123.58,-10.36],[123.46,-10.24],[123.55,-9.9],[123.98,-9.29],[124.97,-8.89],[125.09,-8.66],[125.95,-8.43],[126.64,-8.4],[126.96,-8.27],[127.34,-8.4],[126.97,-8.67],[125.93,-9.11],[125.09,-9.39],[124.44,-10.14]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[117.9,-8.1],[118.26,-8.36],[118.88,-8.28],[119.13,-8.71],[117.97,-8.91],[117.28,-9.04],[116.74,-9.03],[117.08,-8.46],[117.63,-8.45],[117.9,-8.1]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[122.9,-8.09],[122.76,-8.65],[121.25,-8.93],[119.92,-8.81],[119.92,-8.44],[120.72,-8.24],[121.34,-8.54],[122.01,-8.46],[122.9,-8.09]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[159.88,-8.34],[159.92,-8.54],[159.13,-8.11],[158.59,-7.75],[158.21,-7.42],[158.36,-7.32],[158.82,-7.56],[159.64,-8.02],[159.88,-8.34]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[157.54,-7.35],[157.34,-7.4],[156.9,-7.18],[156.49,-6.77],[156.54,-6.6],[157.14,-7.02],[157.54,-7.35]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[108.62,-6.78],[110.54,-6.88],[110.76,-6.47],[112.61,-6.95],[112.98,-7.59],[114.48,-7.78],[115.71,-8.37],[114.56,-8.75],[113.46,-8.35],[112.56,-8.38],[111.52,-8.3],[110.59,-8.12],[109.43,-7.74],[108.69,-7.64],[108.28,-7.77],[106.45,-7.35],[106.28,-6.92],[105.37,-6.85],[106.05,-5.9],[107.27,-5.95],[108.07,-6.35],[108.49,-6.42],[108.62,-6.78]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[134.72,-6.21],[134.21,-6.9],[134.11,-6.14],[134.29,-5.78],[134.5,-5.45],[134.73,-5.74],[134.72,-6.21]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[155.88,-6.82],[155.6,-6.92],[155.17,-6.54],[154.73,-5.9],[154.51,-5.14],[154.65,-5.04],[154.76,-5.34],[155.06,-5.57],[155.55,-6.2],[156.02,-6.54],[155.88,-6.82]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[151.98,-5.48],[151.46,-5.56],[151.3,-5.84],[150.75,-6.08],[150.24,-6.32],[149.71,-6.32],[148.89,-6.03],[148.32,-5.75],[148.4,-5.44],[149.3,-5.58],[149.85,-5.51],[150,-5.03],[150.14,-5],[150.24,-5.53],[150.81,-5.46],[151.09,-5.11],[151.65,-4.76],[151.54,-4.17],[152.14,-4.15],[152.34,-4.31],[152.32,-4.87],[151.98,-5.48]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[127.25,-3.46],[126.87,-3.79],[126.18,-3.61],[125.99,-3.18],[127,-3.13],[127.25,-3.46]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[130.47,-3.09],[130.83,-3.86],[129.99,-3.45],[129.16,-3.36],[128.59,-3.43],[127.9,-3.39],[128.14,-2.84],[129.37,-2.8],[130.47,-3.09]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[153.14,-4.5],[152.83,-4.77],[152.64,-4.18],[152.41,-3.79],[151.95,-3.46],[151.38,-3.04],[150.66,-2.74],[150.94,-2.5],[151.48,-2.78],[151.82,-3],[152.24,-3.24],[152.64,-3.66],[153.02,-3.98],[153.14,-4.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[134.14,-1.15],[134.42,-2.77],[135.46,-3.37],[136.29,-2.31],[137.44,-1.7],[138.33,-1.7],[139.18,-2.05],[139.93,-2.41],[141,-2.6],[142.74,-3.29],[144.58,-3.86],[145.27,-4.37],[145.83,-4.88],[145.98,-5.47],[147.65,-6.08],[147.89,-6.61],[146.97,-6.72],[147.19,-7.39],[148.08,-8.04],[148.73,-9.1],[149.31,-9.07],[149.27,-9.51],[150.04,-9.68],[149.74,-9.87],[150.8,-10.29],[150.69,-10.58],[150.03,-10.65],[149.78,-10.39],[148.92,-10.28],[147.91,-10.13],[147.14,-9.49],[146.57,-8.94],[146.05,-8.07],[144.74,-7.63],[143.9,-7.92],[143.29,-8.25],[143.41,-8.98],[142.63,-9.33],[142.07,-9.16],[141.03,-9.12],[140.14,-8.3],[139.13,-8.1],[138.88,-8.38],[137.61,-8.41],[138.04,-7.6],[138.67,-7.32],[138.41,-6.23],[137.93,-5.39],[135.99,-4.55],[135.16,-4.46],[133.66,-3.54],[133.37,-4.02],[132.98,-4.11],[132.76,-3.75],[132.75,-3.31],[131.99,-2.82],[133.07,-2.46],[133.78,-2.48],[133.7,-2.21],[132.23,-2.21],[131.84,-1.62],[130.94,-1.43],[130.52,-0.94],[131.87,-0.7],[132.38,-0.37],[133.99,-0.78],[134.14,-1.15]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[125.24,1.42],[124.44,0.43],[123.69,0.24],[122.72,0.43],[121.06,0.38],[120.18,0.24],[120.04,-0.52],[120.94,-1.41],[121.48,-0.96],[123.34,-0.62],[123.26,-1.08],[122.82,-0.93],[122.39,-1.52],[121.51,-1.9],[122.45,-3.19],[122.27,-3.53],[123.17,-4.68],[123.16,-5.34],[122.63,-5.63],[122.24,-5.28],[122.72,-4.46],[121.74,-4.85],[121.49,-4.57],[121.62,-4.19],[120.9,-3.6],[120.97,-2.63],[120.31,-2.93],[120.39,-4.1],[120.43,-5.53],[119.8,-5.67],[119.37,-5.38],[119.65,-4.46],[119.5,-3.49],[119.08,-3.49],[118.77,-2.8],[119.18,-2.15],[119.32,-1.35],[119.83,0.15],[120.04,0.57],[120.89,1.31],[121.67,1.01],[122.93,0.88],[124.08,0.92],[125.07,1.64],[125.24,1.42]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[128.69,1.13],[128.64,0.26],[128.12,0.36],[127.97,-0.25],[128.38,-0.78],[128.1,-0.9],[127.7,-0.27],[127.4,1.01],[127.6,1.81],[127.93,2.17],[128,1.63],[128.59,1.54],[128.69,1.13]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[105.82,-5.85],[104.71,-5.87],[103.87,-5.04],[102.58,-4.22],[102.16,-3.61],[101.4,-2.8],[100.9,-2.05],[100.14,-0.65],[99.26,0.18],[98.97,1.04],[98.6,1.82],[97.7,2.45],[97.18,3.31],[96.42,3.87],[95.38,4.97],[95.29,5.48],[95.94,5.44],[97.48,5.25],[98.37,4.27],[99.14,3.59],[99.69,3.17],[100.64,2.1],[101.66,2.08],[102.5,1.4],[103.08,0.56],[103.84,0.1],[103.44,-0.71],[104.01,-1.06],[104.37,-1.08],[104.54,-1.78],[104.89,-2.34],[105.62,-2.43],[106.11,-3.06],[105.86,-4.31],[105.82,-5.85]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[117.88,1.83],[119,0.9],[117.81,0.78],[117.48,0.1],[117.52,-0.8],[116.56,-1.49],[116.53,-2.48],[116.15,-4.01],[116,-3.66],[114.86,-4.11],[114.47,-3.5],[113.76,-3.44],[113.26,-3.12],[112.07,-3.48],[111.7,-2.99],[111.05,-3.05],[110.22,-2.93],[110.07,-1.59],[109.57,-1.31],[109.09,-0.46],[108.95,0.42],[109.07,1.34],[109.66,2.01],[110.4,1.66],[111.17,1.85],[111.37,2.7],[111.8,2.89],[113,3.1],[113.71,3.89],[114.2,4.53],[114.6,4.9],[115.45,5.45],[116.22,6.14],[116.73,6.92],[117.13,6.93],[117.64,6.42],[117.69,5.99],[118.35,5.71],[119.18,5.41],[119.11,5.02],[118.44,4.97],[118.62,4.48],[117.88,4.14],[117.31,3.23],[118.05,2.29],[117.88,1.83]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[126.38,8.41],[126.48,7.75],[126.54,7.19],[126.2,6.27],[125.83,7.29],[125.36,6.79],[125.68,6.05],[125.4,5.58],[124.22,6.16],[123.94,6.89],[124.24,7.36],[123.61,7.83],[123.3,7.42],[122.83,7.46],[122.09,6.9],[121.92,7.19],[122.31,8.03],[122.94,8.32],[123.49,8.69],[123.84,8.24],[124.6,8.51],[124.76,8.96],[125.47,8.99],[125.41,9.76],[126.22,9.29],[126.31,8.78],[126.38,8.41]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[81.22,6.2],[80.35,5.97],[79.87,6.76],[79.7,8.2],[80.15,9.82],[80.84,9.27],[81.3,8.56],[81.79,7.52],[81.64,6.48],[81.22,6.2]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-60.93,10.11],[-61.77,10],[-61.95,10.09],[-61.66,10.37],[-61.68,10.76],[-61.1,10.89],[-60.89,10.86],[-60.93,10.11]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[123.98,10.28],[123.62,9.95],[123.31,9.32],[123,9.02],[122.38,9.71],[122.59,9.98],[122.84,10.26],[122.95,10.88],[123.5,10.94],[123.34,10.27],[124.08,11.23],[123.98,10.28]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[118.5,9.32],[117.17,8.37],[117.66,9.07],[118.39,9.68],[118.99,10.38],[119.51,11.37],[119.69,10.55],[119.03,10],[118.5,9.32]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[121.88,11.89],[122.48,11.58],[123.12,11.58],[123.1,11.17],[122.64,10.74],[122,10.44],[121.97,10.91],[122.04,11.42],[121.88,11.89]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[125.5,12.16],[125.78,11.05],[125.01,11.31],[125.03,10.98],[125.28,10.36],[124.8,10.13],[124.76,10.84],[124.46,10.89],[124.3,11.5],[124.89,11.42],[124.88,11.79],[124.27,12.56],[125.23,12.54],[125.5,12.16]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[121.53,13.07],[121.26,12.21],[120.83,12.7],[120.32,13.47],[121.18,13.43],[121.53,13.07]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[121.32,18.5],[121.94,18.22],[122.25,18.48],[122.34,18.22],[122.17,17.81],[122.52,17.09],[122.25,16.26],[121.66,15.93],[121.51,15.12],[121.73,14.33],[122.26,14.22],[122.7,14.34],[123.95,13.78],[123.86,13.24],[124.18,13],[124.08,12.54],[123.3,13.03],[122.93,13.55],[122.67,13.19],[122.03,13.78],[121.13,13.64],[120.63,13.86],[120.68,14.27],[120.99,14.53],[120.69,14.76],[120.56,14.4],[120.07,14.97],[119.92,15.41],[119.88,16.36],[120.29,16.03],[120.39,17.6],[120.72,18.51],[121.32,18.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-65.59,18.23],[-65.85,17.98],[-66.6,17.98],[-67.18,17.95],[-67.24,18.37],[-67.1,18.52],[-66.28,18.51],[-65.77,18.43],[-65.59,18.23]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-76.9,17.87],[-77.21,17.7],[-77.77,17.86],[-78.34,18.23],[-78.22,18.45],[-77.8,18.52],[-77.57,18.49],[-76.9,18.4],[-76.37,18.16],[-76.2,17.89],[-76.9,17.87]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-72.58,19.87],[-71.71,19.71],[-71.59,19.88],[-70.81,19.88],[-70.21,19.62],[-69.95,19.65],[-69.77,19.29],[-69.22,19.31],[-69.25,19.02],[-68.81,18.98],[-68.32,18.61],[-68.69,18.21],[-69.16,18.42],[-69.62,18.38],[-69.95,18.43],[-70.13,18.25],[-70.52,18.18],[-70.67,18.43],[-71,18.28],[-71.4,17.6],[-71.66,17.76],[-71.71,18.04],[-72.37,18.21],[-72.84,18.15],[-73.45,18.22],[-73.92,18.03],[-74.46,18.34],[-74.37,18.66],[-73.45,18.53],[-72.69,18.45],[-72.33,18.67],[-72.79,19.1],[-72.78,19.48],[-73.42,19.64],[-73.19,19.92],[-72.58,19.87]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[110.34,18.68],[109.48,18.2],[108.66,18.51],[108.63,19.37],[109.12,19.82],[110.21,20.1],[110.79,20.08],[111.01,19.7],[110.57,19.26],[110.34,18.68]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-155.54,19.08],[-155.69,18.92],[-155.94,19.06],[-155.91,19.34],[-156.07,19.7],[-156.02,19.81],[-155.85,19.98],[-155.92,20.17],[-155.86,20.27],[-155.79,20.25],[-155.4,20.08],[-155.22,19.99],[-155.06,19.86],[-154.81,19.51],[-154.83,19.45],[-155.22,19.24],[-155.54,19.08]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-156.08,20.64],[-156.41,20.57],[-156.59,20.78],[-156.7,20.86],[-156.71,20.93],[-156.61,21.01],[-156.26,20.92],[-156,20.76],[-156.08,20.64]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-156.76,21.18],[-156.79,21.07],[-157.33,21.1],[-157.25,21.22],[-156.76,21.18]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-157.65,21.32],[-157.71,21.26],[-157.78,21.28],[-158.13,21.31],[-158.25,21.54],[-158.29,21.58],[-158.03,21.72],[-157.94,21.65],[-157.65,21.32]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-159.35,21.98],[-159.46,21.88],[-159.8,22.07],[-159.75,22.14],[-159.6,22.24],[-159.37,22.21],[-159.35,21.98]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-79.68,22.77],[-79.28,22.4],[-78.35,22.51],[-77.99,22.28],[-77.15,21.66],[-76.52,21.21],[-76.19,21.22],[-75.6,21.02],[-75.67,20.74],[-74.93,20.69],[-74.18,20.28],[-74.3,20.05],[-74.96,19.92],[-75.63,19.87],[-76.32,19.95],[-77.76,19.86],[-77.09,20.41],[-77.49,20.67],[-78.14,20.74],[-78.48,21.03],[-78.72,21.6],[-79.28,21.56],[-80.22,21.83],[-80.52,22.04],[-81.82,22.19],[-82.17,22.39],[-81.8,22.64],[-82.78,22.69],[-83.49,22.17],[-83.91,22.15],[-84.05,21.91],[-84.55,21.8],[-84.97,21.9],[-84.45,22.2],[-84.23,22.57],[-83.78,22.79],[-83.27,22.98],[-82.51,23.08],[-82.27,23.19],[-81.4,23.12],[-80.62,23.11],[-79.68,22.77]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-77.53,23.76],[-77.78,23.71],[-78.03,24.29],[-78.41,24.58],[-78.19,25.21],[-77.89,25.17],[-77.54,24.34],[-77.53,23.76]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[121.18,22.79],[120.75,21.97],[120.22,22.81],[120.11,23.56],[120.69,24.54],[121.5,25.3],[121.95,25],[121.78,24.39],[121.18,22.79]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-77.82,26.58],[-78.91,26.42],[-78.98,26.79],[-78.51,26.87],[-77.85,26.84],[-77.82,26.58]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-77,26.59],[-77.17,25.88],[-77.36,26.01],[-77.34,26.53],[-77.79,26.93],[-77.79,27.04],[-77,26.59]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[134.64,34.15],[134.77,33.81],[134.2,33.2],[133.79,33.52],[133.28,33.29],[133.01,32.7],[132.36,32.99],[132.37,33.46],[132.92,34.06],[133.49,33.94],[133.9,34.36],[134.64,34.15]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[34.58,35.67],[33.9,35.25],[33.97,35.06],[34,34.98],[32.98,34.57],[32.49,34.7],[32.26,35.1],[32.73,35.14],[32.8,35.15],[32.95,35.39],[33.67,35.37],[34.58,35.67]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[23.7,35.71],[24.25,35.37],[25.03,35.42],[25.77,35.35],[25.75,35.18],[26.29,35.3],[26.16,35],[24.72,34.92],[24.74,35.08],[23.51,35.28],[23.7,35.71]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[15.52,38.23],[15.16,37.44],[15.31,37.13],[15.1,36.62],[14.34,37],[13.83,37.1],[12.43,37.61],[12.57,38.13],[13.74,38.03],[14.76,38.14],[15.52,38.23]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[9.21,41.21],[9.81,40.5],[9.67,39.18],[9.21,39.24],[8.81,38.91],[8.43,39.17],[8.39,40.38],[8.16,40.95],[8.71,40.9],[9.21,41.21]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[140.98,37.14],[140.6,36.34],[140.77,35.84],[140.25,35.14],[138.98,34.67],[137.22,34.61],[135.79,33.46],[135.12,33.85],[135.08,34.6],[133.34,34.38],[132.16,33.9],[130.99,33.89],[132,33.15],[131.33,31.45],[130.69,31.03],[130.2,31.42],[130.45,32.32],[129.81,32.61],[129.41,33.3],[130.35,33.6],[130.88,34.23],[131.88,34.75],[132.62,35.43],[134.61,35.73],[135.68,35.53],[136.72,37.3],[137.39,36.83],[138.86,37.83],[139.43,38.22],[140.05,39.44],[139.88,40.56],[140.31,41.2],[141.37,41.38],[141.91,39.99],[141.88,39.18],[140.96,38.17],[140.98,37.14]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[9.56,42.15],[9.23,41.38],[8.78,41.58],[8.54,42.26],[8.75,42.63],[9.39,43.01],[9.56,42.15]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[143.91,44.17],[144.61,43.96],[145.32,44.38],[145.54,43.26],[144.06,42.99],[143.18,42],[141.61,42.68],[141.07,41.58],[139.96,41.57],[139.82,42.56],[140.31,43.33],[141.38,43.39],[141.67,44.77],[141.97,45.55],[143.14,44.51],[143.91,44.17]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-63.66,46.55],[-62.94,46.42],[-62.01,46.44],[-62.5,46.03],[-62.87,45.97],[-64.14,46.39],[-64.39,46.73],[-64.01,47.04],[-63.66,46.55]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-61.81,49.11],[-62.29,49.09],[-63.59,49.4],[-64.52,49.87],[-64.17,49.96],[-62.86,49.71],[-61.84,49.29],[-61.81,49.11]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-123.51,48.51],[-124.01,48.37],[-125.66,48.83],[-125.95,49.18],[-126.85,49.53],[-127.03,49.81],[-128.06,49.99],[-128.44,50.54],[-128.36,50.77],[-127.31,50.55],[-126.7,50.4],[-125.76,50.3],[-125.42,49.95],[-124.92,49.48],[-123.92,49.06],[-123.51,48.51]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-56.13,50.69],[-56.8,49.81],[-56.14,50.15],[-55.47,49.94],[-55.82,49.59],[-54.94,49.31],[-54.47,49.56],[-53.48,49.25],[-53.79,48.52],[-53.09,48.69],[-52.96,48.16],[-52.65,47.54],[-53.07,46.66],[-53.52,46.62],[-54.18,46.81],[-53.96,47.63],[-54.24,47.75],[-55.4,46.88],[-56,46.92],[-55.29,47.39],[-56.25,47.63],[-57.33,47.57],[-59.27,47.6],[-59.42,47.9],[-58.8,48.25],[-59.23,48.52],[-58.39,49.13],[-57.36,50.72],[-56.74,51.29],[-55.87,51.63],[-55.41,51.59],[-55.6,51.32],[-56.13,50.69]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-132.71,54.04],[-131.75,54.12],[-132.05,52.98],[-131.18,52.18],[-131.58,52.18],[-132.18,52.64],[-132.55,53.1],[-133.05,53.41],[-133.24,53.85],[-133.18,54.17],[-132.71,54.04]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[143.65,50.75],[144.65,48.98],[143.17,49.31],[142.56,47.86],[143.53,46.84],[143.51,46.14],[142.75,46.74],[142.09,45.97],[141.91,46.81],[142.02,47.78],[141.9,48.86],[142.14,49.62],[142.18,50.95],[141.59,51.94],[141.68,53.3],[142.61,53.76],[142.21,54.23],[142.65,54.37],[142.91,53.7],[143.26,52.74],[143.24,51.76],[143.65,50.75]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-6.79,52.26],[-8.56,51.67],[-9.98,51.82],[-9.17,52.86],[-9.69,53.88],[-8.33,54.66],[-7.57,55.13],[-6.73,55.17],[-5.66,54.55],[-6.2,53.87],[-6.03,53.15],[-6.79,52.26]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[12.69,55.61],[12.09,54.8],[11.04,55.36],[10.9,55.78],[12.37,56.11],[12.69,55.61]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-153.01,57.12],[-154.01,56.73],[-154.52,56.99],[-154.67,57.46],[-153.76,57.82],[-153.23,57.97],[-152.56,57.9],[-152.14,57.59],[-153.01,57.12]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-3.01,58.64],[-4.07,57.55],[-3.06,57.69],[-1.96,57.68],[-2.22,56.87],[-3.12,55.97],[-2.09,55.91],[-1.11,54.62],[-0.43,54.46],[0.18,53.33],[0.47,52.93],[1.68,52.74],[1.56,52.1],[1.05,51.81],[1.45,51.29],[0.55,50.77],[-0.79,50.77],[-2.49,50.5],[-2.96,50.7],[-3.62,50.23],[-4.54,50.34],[-5.25,49.96],[-5.78,50.16],[-4.31,51.21],[-3.41,51.43],[-4.98,51.59],[-5.27,51.99],[-4.22,52.3],[-4.77,52.84],[-4.58,53.5],[-3.09,53.4],[-2.95,53.99],[-3.63,54.62],[-4.84,54.79],[-5.08,55.06],[-4.72,55.51],[-5.05,55.78],[-5.59,55.31],[-5.64,56.28],[-6.15,56.79],[-5.79,57.82],[-5.01,58.63],[-4.21,58.55],[-3.01,58.64]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-165.58,59.91],[-166.19,59.75],[-166.85,59.94],[-167.46,60.21],[-166.47,60.38],[-165.67,60.29],[-165.58,59.91]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-79.27,62.16],[-79.66,61.63],[-80.1,61.72],[-80.36,62.02],[-80.32,62.09],[-79.93,62.39],[-79.52,62.36],[-79.27,62.16]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-81.9,62.71],[-83.07,62.16],[-83.77,62.18],[-83.99,62.45],[-83.25,62.91],[-81.88,62.9],[-81.9,62.71]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-171.73,63.78],[-171.11,63.59],[-170.49,63.69],[-169.68,63.43],[-168.69,63.3],[-168.77,63.19],[-169.53,62.98],[-170.29,63.19],[-170.67,63.38],[-171.55,63.32],[-171.79,63.41],[-171.73,63.78]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-85.16,65.66],[-84.98,65.22],[-84.46,65.37],[-83.88,65.11],[-82.79,64.77],[-81.64,64.46],[-81.55,63.98],[-80.82,64.06],[-80.1,63.73],[-80.99,63.41],[-82.55,63.65],[-83.11,64.1],[-84.1,63.57],[-85.52,63.05],[-85.87,63.64],[-87.22,63.54],[-86.35,64.04],[-86.22,64.82],[-85.88,65.74],[-85.16,65.66]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-14.51,66.46],[-14.74,65.81],[-13.61,65.13],[-14.91,64.36],[-17.79,63.68],[-18.66,63.5],[-19.97,63.64],[-22.76,63.96],[-21.78,64.4],[-23.96,64.89],[-22.18,65.08],[-22.23,65.38],[-24.33,65.61],[-23.65,66.26],[-22.13,66.41],[-20.58,65.73],[-19.06,66.28],[-17.8,65.99],[-16.17,66.53],[-14.51,66.46]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-75.87,67.15],[-76.99,67.1],[-77.24,67.59],[-76.81,68.15],[-75.9,68.29],[-75.11,68.01],[-75.1,67.58],[-75.22,67.44],[-75.87,67.15]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-175.01,66.58],[-174.34,66.34],[-174.57,67.06],[-171.86,66.91],[-169.9,65.98],[-170.89,65.54],[-172.53,65.44],[-172.55,64.46],[-172.96,64.25],[-173.89,64.28],[-174.65,64.63],[-175.98,64.92],[-176.21,65.36],[-177.22,65.52],[-178.36,65.39],[-178.9,65.74],[-178.69,66.11],[-179.88,65.87],[-179.43,65.4],[-180,64.98],[-180,68.96],[-177.55,68.2],[-174.93,67.21],[-175.01,66.58]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-95.65,69.11],[-96.27,68.76],[-97.62,69.06],[-98.43,68.95],[-99.8,69.4],[-98.92,69.71],[-98.22,70.14],[-97.16,69.86],[-96.56,69.68],[-96.26,69.49],[-95.65,69.11]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[180,70.83],[178.9,70.78],[178.73,71.1],[180,71.52],[180,70.83]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-178.69,70.89],[-180,70.83],[-180,71.52],[-179.87,71.56],[-179.02,71.56],[-177.58,71.27],[-177.66,71.13],[-178.69,70.89]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-90.55,69.5],[-90.55,68.48],[-89.22,69.26],[-88.02,68.62],[-88.32,67.87],[-87.35,67.2],[-86.31,67.92],[-85.58,68.78],[-85.52,69.88],[-84.1,69.81],[-82.62,69.66],[-81.28,69.16],[-81.22,68.67],[-81.96,68.13],[-81.26,67.6],[-81.39,67.11],[-83.34,66.41],[-84.74,66.26],[-85.77,66.56],[-86.07,66.06],[-87.03,65.21],[-87.32,64.78],[-88.48,64.1],[-89.91,64.03],[-90.7,63.61],[-90.77,62.96],[-91.93,62.84],[-93.16,62.02],[-94.24,60.9],[-94.63,60.11],[-94.68,58.95],[-93.22,58.78],[-92.76,57.85],[-92.3,57.09],[-90.9,57.28],[-89.04,56.85],[-88.04,56.47],[-87.32,56],[-86.07,55.72],[-85.01,55.3],[-83.36,55.24],[-82.27,55.15],[-82.44,54.28],[-82.12,53.28],[-81.4,52.16],[-79.91,51.21],[-79.14,51.53],[-78.6,52.56],[-79.12,54.14],[-79.83,54.67],[-78.23,55.14],[-77.1,55.84],[-76.54,56.53],[-76.62,57.2],[-77.3,58.05],[-78.52,58.8],[-77.34,59.85],[-77.77,60.76],[-78.11,62.32],[-77.41,62.55],[-75.7,62.28],[-74.67,62.18],[-73.84,62.44],[-72.91,62.11],[-71.68,61.53],[-71.37,61.14],[-69.59,61.06],[-69.62,60.22],[-69.29,58.96],[-68.37,58.8],[-67.65,58.21],[-66.2,58.77],[-65.25,59.87],[-64.58,60.34],[-63.8,59.44],[-62.5,58.17],[-61.4,56.97],[-61.8,56.34],[-60.47,55.78],[-59.57,55.2],[-57.98,54.95],[-57.33,54.63],[-56.94,53.78],[-56.16,53.65],[-55.76,53.27],[-55.68,52.15],[-56.41,51.77],[-57.13,51.42],[-58.77,51.06],[-60.03,50.24],[-61.72,50.08],[-63.86,50.29],[-65.36,50.3],[-66.4,50.23],[-67.24,49.51],[-68.51,49.07],[-69.95,47.74],[-71.1,46.82],[-70.26,46.99],[-68.65,48.3],[-66.55,49.13],[-65.06,49.23],[-64.17,48.74],[-65.12,48.07],[-64.8,46.99],[-64.47,46.24],[-63.17,45.74],[-61.52,45.88],[-60.52,47.01],[-60.45,46.28],[-59.8,45.92],[-61.04,45.27],[-63.25,44.67],[-64.25,44.27],[-65.36,43.55],[-66.12,43.62],[-66.16,44.47],[-64.43,45.29],[-66.03,45.26],[-67.14,45.14],[-66.96,44.81],[-68.03,44.33],[-69.06,43.98],[-70.12,43.68],[-70.69,43.03],[-70.81,42.87],[-70.83,42.34],[-70.49,41.81],[-70.08,41.78],[-70.18,42.15],[-69.88,41.92],[-69.97,41.64],[-70.64,41.48],[-71.12,41.49],[-71.86,41.32],[-72.29,41.27],[-72.88,41.22],[-73.71,40.93],[-72.24,41.12],[-71.95,40.93],[-73.34,40.63],[-73.98,40.63],[-73.95,40.75],[-74.26,40.47],[-73.96,40.43],[-74.18,39.71],[-74.91,38.94],[-74.98,39.2],[-75.2,39.25],[-75.53,39.5],[-75.32,38.96],[-75.08,38.78],[-75.06,38.4],[-75.38,38.02],[-75.94,37.22],[-76.03,37.26],[-75.72,37.94],[-76.23,38.32],[-76.35,39.15],[-76.54,38.72],[-76.33,38.08],[-76.96,38.23],[-76.3,37.92],[-76.26,36.97],[-75.97,36.9],[-75.87,36.55],[-75.73,35.55],[-76.36,34.81],[-77.4,34.51],[-78.05,33.93],[-78.55,33.86],[-79.06,33.49],[-79.2,33.16],[-80.3,32.51],[-80.86,32.03],[-81.34,31.44],[-81.49,30.73],[-81.31,30.04],[-80.98,29.18],[-80.54,28.47],[-80.53,28.04],[-80.06,26.88],[-80.09,26.21],[-80.13,25.82],[-80.38,25.21],[-80.68,25.08],[-81.17,25.2],[-81.33,25.64],[-81.71,25.87],[-82.24,26.73],[-82.71,27.5],[-82.86,27.89],[-82.65,28.55],[-82.93,29.1],[-83.71,29.94],[-84.1,30.09],[-85.11,29.64],[-85.29,29.69],[-85.77,30.15],[-86.4,30.4],[-87.53,30.27],[-88.42,30.38],[-89.18,30.32],[-89.6,30.18],[-89.41,29.89],[-89.43,29.49],[-89.22,29.29],[-89.41,29.16],[-89.78,29.31],[-90.15,29.12],[-90.88,29.15],[-91.63,29.68],[-92.5,29.55],[-93.23,29.78],[-93.85,29.71],[-94.69,29.48],[-95.6,28.74],[-96.59,28.31],[-97.14,27.83],[-97.37,27.38],[-97.38,26.69],[-97.33,26.21],[-97.14,25.87],[-97.53,24.99],[-97.7,24.27],[-97.78,22.93],[-97.87,22.44],[-97.7,21.9],[-97.39,21.41],[-97.19,20.64],[-96.53,19.89],[-96.29,19.32],[-95.9,18.83],[-94.84,18.56],[-94.43,18.14],[-93.55,18.42],[-92.79,18.52],[-92.04,18.7],[-91.41,18.88],[-90.77,19.28],[-90.53,19.87],[-90.45,20.71],[-90.28,21],[-89.6,21.26],[-88.54,21.49],[-87.66,21.46],[-87.05,21.54],[-86.81,21.33],[-86.85,20.85],[-87.38,20.26],[-87.62,19.65],[-87.44,19.47],[-87.59,19.04],[-87.84,18.26],[-88.09,18.52],[-88.3,18.5],[-88.3,18.35],[-88.11,18.35],[-88.12,18.08],[-88.29,17.64],[-88.2,17.49],[-88.3,17.13],[-88.24,17.04],[-88.36,16.53],[-88.55,16.27],[-88.73,16.23],[-88.93,15.89],[-88.6,15.71],[-88.52,15.86],[-88.22,15.73],[-88.12,15.69],[-87.9,15.86],[-87.62,15.88],[-87.52,15.8],[-87.37,15.85],[-86.9,15.76],[-86.44,15.78],[-86.12,15.89],[-86,16.01],[-85.68,15.95],[-85.44,15.89],[-85.18,15.91],[-84.98,16],[-84.53,15.86],[-84.37,15.84],[-84.06,15.65],[-83.77,15.42],[-83.41,15.27],[-83.15,15],[-83.23,14.9],[-83.28,14.68],[-83.18,14.31],[-83.41,13.97],[-83.52,13.57],[-83.55,13.13],[-83.5,12.87],[-83.47,12.42],[-83.63,12.32],[-83.72,11.89],[-83.65,11.63],[-83.86,11.37],[-83.81,11.1],[-83.66,10.94],[-83.4,10.4],[-83.02,9.99],[-82.55,9.57],[-82.19,9.21],[-82.21,9],[-81.81,8.95],[-81.71,9.03],[-81.44,8.79],[-80.95,8.86],[-80.52,9.11],[-79.91,9.31],[-79.57,9.61],[-79.02,9.55],[-79.06,9.45],[-78.5,9.42],[-78.06,9.25],[-77.73,8.95],[-77.35,8.67],[-76.84,8.64],[-76.09,9.34],[-75.67,9.44],[-75.66,9.77],[-75.48,10.62],[-74.91,11.08],[-74.28,11.1],[-74.2,11.31],[-73.41,11.23],[-72.63,11.73],[-72.24,11.96],[-71.75,12.44],[-71.4,12.38],[-71.14,12.11],[-71.33,11.78],[-71.36,11.54],[-71.95,11.42],[-71.62,10.97],[-71.63,10.45],[-72.07,9.87],[-71.7,9.07],[-71.26,9.14],[-71.04,9.86],[-71.35,10.21],[-71.4,10.97],[-70.16,11.38],[-70.29,11.85],[-69.94,12.16],[-69.58,11.46],[-68.88,11.44],[-68.23,10.89],[-68.19,10.55],[-67.3,10.55],[-66.23,10.65],[-65.66,10.2],[-64.89,10.08],[-64.33,10.39],[-64.32,10.64],[-63.08,10.7],[-61.88,10.72],[-62.73,10.42],[-62.39,9.95],[-61.59,9.87],[-60.83,9.38],[-60.67,8.58],[-60.15,8.6],[-59.76,8.37],[-59.1,8],[-58.48,7.35],[-58.45,6.83],[-58.08,6.81],[-57.54,6.32],[-57.15,5.97],[-55.95,5.77],[-55.84,5.95],[-55.03,6.03],[-53.96,5.76],[-53.62,5.65],[-52.88,5.41],[-51.82,4.57],[-51.66,4.16],[-51.32,4.2],[-51.07,3.65],[-50.51,1.9],[-49.97,1.74],[-49.95,1.05],[-50.7,0.22],[-50.39,-0.08],[-48.62,-0.24],[-48.58,-1.24],[-47.82,-0.58],[-46.57,-0.94],[-44.91,-1.55],[-44.42,-2.14],[-44.58,-2.69],[-43.42,-2.38],[-41.47,-2.91],[-39.98,-2.87],[-38.5,-3.7],[-37.22,-4.82],[-36.45,-5.11],[-35.6,-5.15],[-35.24,-5.46],[-34.9,-6.74],[-34.73,-7.34],[-35.13,-9],[-35.64,-9.65],[-37.05,-11.04],[-37.68,-12.17],[-38.42,-13.04],[-38.67,-13.06],[-38.95,-13.79],[-38.88,-15.67],[-39.16,-17.21],[-39.27,-17.87],[-39.58,-18.26],[-39.76,-19.6],[-40.77,-20.9],[-40.94,-21.94],[-41.75,-22.37],[-41.99,-22.97],[-43.07,-22.97],[-44.65,-23.35],[-45.35,-23.8],[-46.47,-24.09],[-47.65,-24.89],[-48.5,-25.88],[-48.64,-26.62],[-48.47,-27.18],[-48.66,-28.19],[-48.89,-28.67],[-49.59,-29.22],[-50.7,-30.98],[-51.58,-31.78],[-52.26,-32.25],[-52.71,-33.2],[-53.37,-33.77],[-53.81,-34.4],[-54.94,-34.95],[-55.67,-34.75],[-56.22,-34.86],[-57.14,-34.43],[-57.82,-34.46],[-58.43,-33.91],[-58.5,-34.43],[-57.23,-35.29],[-57.36,-35.98],[-56.74,-36.41],[-56.79,-36.9],[-57.75,-38.18],[-59.23,-38.72],[-61.24,-38.93],[-62.34,-38.83],[-62.13,-39.42],[-62.33,-40.17],[-62.15,-40.68],[-62.75,-41.03],[-63.77,-41.17],[-64.73,-40.8],[-65.12,-41.06],[-64.98,-42.06],[-64.3,-42.36],[-63.76,-42.04],[-63.46,-42.56],[-64.38,-42.87],[-65.18,-43.5],[-65.33,-44.5],[-65.57,-45.04],[-66.51,-45.04],[-67.29,-45.55],[-67.58,-46.3],[-66.6,-47.03],[-65.64,-47.24],[-65.99,-48.13],[-67.17,-48.7],[-67.82,-49.87],[-68.73,-50.26],[-69.14,-50.73],[-68.82,-51.77],[-68.15,-52.35],[-68.57,-52.3],[-69.46,-52.29],[-69.94,-52.54],[-70.85,-52.9],[-71.01,-53.83],[-71.43,-53.86],[-72.56,-53.53],[-73.7,-52.84],[-74.95,-52.26],[-75.26,-51.63],[-74.98,-51.04],[-75.48,-50.38],[-75.61,-48.67],[-75.18,-47.71],[-74.13,-46.94],[-75.64,-46.65],[-74.69,-45.76],[-74.35,-44.1],[-73.24,-44.45],[-72.72,-42.38],[-73.39,-42.12],[-73.7,-43.37],[-74.33,-43.22],[-74.02,-41.79],[-73.68,-39.94],[-73.22,-39.26],[-73.51,-38.28],[-73.59,-37.16],[-73.17,-37.12],[-72.55,-35.51],[-71.86,-33.91],[-71.44,-32.42],[-71.67,-30.92],[-71.37,-30.1],[-71.49,-28.86],[-70.91,-27.64],[-70.72,-25.71],[-70.4,-23.63],[-70.09,-21.39],[-70.16,-19.76],[-70.37,-18.35],[-71.38,-17.77],[-71.46,-17.36],[-73.44,-16.36],[-75.24,-15.27],[-76.01,-14.65],[-76.42,-13.82],[-76.26,-13.53],[-77.11,-12.22],[-78.09,-10.38],[-79.04,-8.39],[-79.45,-7.93],[-79.76,-7.19],[-80.54,-6.54],[-81.25,-6.14],[-80.93,-5.69],[-81.41,-4.74],[-81.1,-4.04],[-80.3,-3.4],[-79.77,-2.66],[-79.99,-2.22],[-80.37,-2.69],[-80.97,-2.25],[-80.76,-1.97],[-80.93,-1.06],[-80.58,-0.91],[-80.4,-0.28],[-80.02,0.36],[-80.09,0.77],[-79.54,0.98],[-78.86,1.38],[-78.99,1.69],[-78.62,1.77],[-78.66,2.27],[-78.43,2.63],[-77.93,2.7],[-77.51,3.33],[-77.13,3.85],[-77.5,4.09],[-77.31,4.67],[-77.53,5.58],[-77.32,5.85],[-77.48,6.69],[-77.88,7.22],[-78.21,7.51],[-78.43,8.05],[-78.18,8.32],[-78.44,8.39],[-78.62,8.72],[-79.12,9],[-79.56,8.93],[-79.76,8.58],[-80.16,8.33],[-80.38,8.3],[-80.48,8.09],[-80,7.55],[-80.28,7.42],[-80.42,7.27],[-80.89,7.22],[-81.06,7.82],[-81.19,7.65],[-81.52,7.71],[-81.72,8.11],[-82.13,8.18],[-82.39,8.29],[-82.82,8.29],[-82.85,8.07],[-82.97,8.23],[-83.51,8.45],[-83.71,8.66],[-83.6,8.83],[-83.63,9.05],[-83.91,9.29],[-84.3,9.49],[-84.65,9.62],[-84.71,9.91],[-84.98,10.09],[-84.91,9.8],[-85.11,9.56],[-85.34,9.83],[-85.66,9.93],[-85.8,10.13],[-85.79,10.44],[-85.66,10.75],[-85.94,10.9],[-85.71,11.09],[-86.06,11.4],[-86.53,11.81],[-86.75,12.14],[-87.17,12.46],[-87.67,12.91],[-87.56,13.06],[-87.39,12.91],[-87.32,12.98],[-87.49,13.3],[-87.79,13.38],[-87.9,13.15],[-88.48,13.16],[-88.84,13.26],[-89.26,13.46],[-89.81,13.52],[-90.1,13.74],[-90.61,13.91],[-91.23,13.93],[-91.69,14.13],[-92.23,14.54],[-93.36,15.62],[-93.88,15.94],[-94.69,16.2],[-95.25,16.13],[-96.05,15.75],[-96.56,15.65],[-97.26,15.92],[-98.01,16.11],[-98.95,16.57],[-99.7,16.71],[-100.83,17.17],[-101.67,17.65],[-101.92,17.92],[-102.48,17.98],[-103.5,18.29],[-103.92,18.75],[-104.99,19.32],[-105.49,19.95],[-105.73,20.43],[-105.4,20.53],[-105.5,20.82],[-105.27,21.08],[-105.27,21.42],[-105.6,21.87],[-105.69,22.27],[-106.03,22.77],[-106.91,23.77],[-107.92,24.55],[-108.4,25.17],[-109.26,25.58],[-109.44,25.82],[-109.29,26.44],[-109.8,26.68],[-110.39,27.16],[-110.64,27.86],[-111.18,27.94],[-111.76,28.47],[-112.23,28.95],[-112.27,29.27],[-112.81,30.02],[-113.16,30.79],[-113.15,31.17],[-113.87,31.57],[-114.21,31.52],[-114.78,31.8],[-114.94,31.39],[-114.77,30.91],[-114.67,30.16],[-114.33,29.75],[-113.59,29.06],[-113.42,28.83],[-113.27,28.75],[-113.14,28.41],[-112.96,28.43],[-112.76,27.78],[-112.46,27.53],[-112.24,27.17],[-111.62,26.66],[-111.28,25.73],[-110.99,25.29],[-110.71,24.83],[-110.66,24.3],[-110.17,24.27],[-109.77,23.81],[-109.41,23.36],[-109.43,23.19],[-109.85,22.82],[-110.03,22.82],[-110.29,23.43],[-110.95,24],[-111.67,24.48],[-112.18,24.74],[-112.15,25.47],[-112.3,26.01],[-112.78,26.32],[-113.46,26.77],[-113.6,26.64],[-113.85,26.9],[-114.47,27.14],[-115.06,27.72],[-114.98,27.8],[-114.57,27.74],[-114.2,28.12],[-114.16,28.57],[-114.93,29.28],[-115.52,29.56],[-115.89,30.18],[-116.26,30.84],[-116.72,31.64],[-117.13,32.54],[-117.3,33.05],[-117.94,33.62],[-118.41,33.74],[-118.52,34.03],[-119.08,34.08],[-119.44,34.35],[-120.37,34.45],[-120.62,34.61],[-120.74,35.16],[-121.71,36.16],[-122.55,37.55],[-122.51,37.78],[-122.95,38.11],[-123.73,38.95],[-123.87,39.77],[-124.4,40.31],[-124.18,41.14],[-124.21,42],[-124.53,42.77],[-124.14,43.71],[-123.9,45.52],[-124.08,46.86],[-124.4,47.72],[-124.69,48.18],[-124.57,48.38],[-123.12,48.04],[-122.59,47.1],[-122.34,47.36],[-122.5,48.18],[-122.84,49],[-122.97,49],[-124.91,49.98],[-125.62,50.42],[-127.44,50.83],[-127.99,51.72],[-127.85,52.33],[-129.13,52.76],[-129.31,53.56],[-130.51,54.29],[-130.54,54.8],[-131.09,55.18],[-131.97,55.5],[-132.25,56.37],[-133.54,57.18],[-134.08,58.12],[-135.04,58.19],[-136.63,58.21],[-137.8,58.5],[-139.87,59.54],[-140.83,59.73],[-142.57,60.08],[-143.96,60],[-145.93,60.46],[-147.11,60.88],[-148.22,60.67],[-148.02,59.98],[-148.57,59.91],[-149.73,59.71],[-150.61,59.37],[-151.72,59.16],[-151.86,59.75],[-151.41,60.73],[-150.35,61.03],[-150.62,61.28],[-151.9,60.73],[-152.58,60.06],[-154.02,59.35],[-153.29,58.86],[-154.23,58.15],[-155.31,57.73],[-156.31,57.42],[-156.56,56.98],[-158.12,56.46],[-158.43,55.99],[-159.6,55.57],[-160.29,55.64],[-161.22,55.36],[-162.24,55.02],[-163.07,54.69],[-164.79,54.4],[-164.94,54.57],[-163.85,55.04],[-162.87,55.35],[-161.8,55.9],[-160.56,56.01],[-160.07,56.42],[-158.68,57.02],[-158.46,57.22],[-157.72,57.57],[-157.55,58.33],[-157.04,58.92],[-158.19,58.62],[-158.52,58.79],[-159.06,58.42],[-159.71,58.93],[-159.98,58.57],[-160.36,59.07],[-161.35,58.67],[-161.97,58.67],[-162.05,59.27],[-161.87,59.63],[-162.52,59.99],[-163.82,59.8],[-164.66,60.27],[-165.35,60.51],[-165.35,61.07],[-166.12,61.5],[-165.73,62.08],[-164.92,62.63],[-164.56,63.15],[-163.75,63.22],[-163.07,63.06],[-162.26,63.54],[-161.53,63.46],[-160.77,63.77],[-160.96,64.22],[-161.52,64.4],[-160.78,64.79],[-161.39,64.78],[-162.45,64.56],[-162.76,64.34],[-163.55,64.56],[-164.96,64.45],[-166.43,64.69],[-166.84,65.09],[-168.11,65.67],[-166.71,66.09],[-164.47,66.58],[-163.65,66.58],[-163.79,66.08],[-161.68,66.12],[-162.49,66.74],[-163.72,67.12],[-164.43,67.62],[-165.39,68.04],[-166.76,68.36],[-166.2,68.88],[-164.43,68.92],[-163.17,69.37],[-162.93,69.86],[-161.91,70.33],[-160.93,70.45],[-159.04,70.89],[-158.12,70.82],[-156.58,71.36],[-155.07,71.15],[-154.34,70.7],[-153.9,70.89],[-152.21,70.83],[-152.27,70.6],[-150.74,70.43],[-149.72,70.53],[-147.61,70.21],[-145.69,70.12],[-144.92,69.99],[-143.59,70.15],[-142.07,69.85],[-140.99,69.71],[-139.12,69.47],[-137.55,68.99],[-136.5,68.9],[-135.63,69.32],[-134.41,69.63],[-132.93,69.51],[-131.43,69.94],[-129.79,70.19],[-129.11,69.78],[-128.36,70.01],[-128.14,70.48],[-127.45,70.38],[-125.76,69.48],[-124.42,70.16],[-124.29,69.4],[-123.06,69.56],[-122.68,69.86],[-121.47,69.8],[-119.94,69.38],[-117.6,69.01],[-116.23,68.84],[-115.25,68.91],[-113.9,68.4],[-115.3,67.9],[-113.5,67.69],[-110.8,67.81],[-109.95,67.98],[-108.88,67.38],[-107.79,67.89],[-108.81,68.31],[-108.17,68.65],[-106.95,68.7],[-106.15,68.8],[-105.34,68.56],[-104.34,68.02],[-103.22,68.1],[-101.45,67.65],[-99.9,67.81],[-98.44,67.78],[-98.56,68.4],[-97.67,68.58],[-96.12,68.24],[-96.13,67.29],[-95.49,68.09],[-94.68,68.06],[-94.23,69.07],[-95.3,69.69],[-96.47,70.09],[-96.39,71.19],[-95.21,71.92],[-93.89,71.76],[-92.88,71.32],[-91.52,70.19],[-92.41,69.7],[-90.55,69.5]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-114.17,73.12],[-114.67,72.65],[-112.44,72.96],[-111.05,72.45],[-109.92,72.96],[-109.01,72.63],[-108.19,71.65],[-107.69,72.07],[-108.4,73.09],[-107.52,73.24],[-106.52,73.08],[-105.4,72.67],[-104.77,71.7],[-104.46,70.99],[-102.79,70.5],[-100.98,70.02],[-101.09,69.58],[-102.73,69.5],[-102.09,69.12],[-102.43,68.75],[-104.24,68.91],[-105.96,69.18],[-107.12,69.12],[-109,68.78],[-111.97,68.6],[-113.31,68.54],[-113.85,69.01],[-115.22,69.28],[-116.11,69.17],[-117.34,69.96],[-116.67,70.07],[-115.13,70.24],[-113.72,70.19],[-112.42,70.37],[-114.35,70.6],[-116.49,70.52],[-117.9,70.54],[-118.43,70.91],[-116.11,71.31],[-117.66,71.3],[-119.4,71.56],[-118.56,72.31],[-117.87,72.71],[-115.19,73.31],[-114.17,73.12]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-104.5,73.42],[-105.38,72.76],[-106.94,73.46],[-106.6,73.6],[-105.26,73.64],[-104.5,73.42]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-76.34,73.1],[-76.25,72.83],[-77.31,72.86],[-78.39,72.88],[-79.49,72.74],[-79.78,72.8],[-80.88,73.33],[-80.83,73.69],[-80.35,73.76],[-78.06,73.65],[-76.34,73.1]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-86.56,73.16],[-85.77,72.53],[-84.85,73.34],[-82.32,73.75],[-80.6,72.72],[-80.75,72.06],[-78.77,72.35],[-77.82,72.75],[-75.61,72.24],[-74.23,71.77],[-74.1,71.33],[-72.24,71.56],[-71.2,70.92],[-68.79,70.53],[-67.91,70.12],[-66.97,69.19],[-68.81,68.72],[-66.45,68.07],[-64.86,67.85],[-63.42,66.93],[-61.85,66.86],[-62.16,66.16],[-63.92,65],[-65.15,65.43],[-66.72,66.39],[-68.02,66.26],[-68.14,65.69],[-67.09,65.11],[-65.73,64.65],[-65.32,64.38],[-64.67,63.39],[-65.01,62.67],[-66.28,62.95],[-68.78,63.75],[-67.37,62.88],[-66.33,62.28],[-66.17,61.93],[-68.88,62.33],[-71.02,62.91],[-72.24,63.4],[-71.89,63.68],[-73.38,64.19],[-74.83,64.68],[-74.82,64.39],[-77.71,64.23],[-78.56,64.57],[-77.9,65.31],[-76.02,65.33],[-73.96,65.45],[-74.29,65.81],[-73.94,66.31],[-72.65,67.28],[-72.93,67.73],[-73.31,68.07],[-74.84,68.55],[-76.87,68.89],[-76.23,69.15],[-77.29,69.77],[-78.17,69.83],[-78.96,70.17],[-79.49,69.87],[-81.31,69.74],[-84.94,69.97],[-87.06,70.26],[-88.68,70.41],[-89.51,70.76],[-88.47,71.22],[-89.89,71.22],[-90.21,72.24],[-89.44,73.13],[-88.41,73.54],[-85.83,73.8],[-86.56,73.16]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-100.36,73.84],[-99.16,73.63],[-97.38,73.76],[-97.12,73.47],[-98.05,72.99],[-96.54,72.56],[-96.72,71.66],[-98.36,71.27],[-99.32,71.36],[-100.01,71.74],[-102.5,72.51],[-102.48,72.83],[-100.44,72.71],[-101.54,73.36],[-100.36,73.84]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[143.6,73.21],[142.09,73.21],[140.04,73.32],[139.86,73.37],[140.81,73.77],[142.06,73.86],[143.48,73.48],[143.6,73.21]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-93.2,72.77],[-94.27,72.02],[-95.41,72.06],[-96.03,72.94],[-96.02,73.44],[-95.5,73.86],[-94.5,74.13],[-92.42,74.1],[-90.51,73.86],[-92,72.97],[-93.2,72.77]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-120.46,71.4],[-123.09,70.9],[-123.62,71.34],[-125.93,71.87],[-125.59,72.19],[-124.81,73.02],[-123.94,73.68],[-124.92,74.29],[-121.54,74.45],[-120.11,74.24],[-117.56,74.19],[-116.58,73.9],[-115.51,73.48],[-116.77,73.22],[-119.22,72.52],[-120.46,71.82],[-120.46,71.4]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[150.73,75.08],[149.58,74.69],[147.98,74.78],[146.12,75.17],[146.36,75.5],[148.22,75.35],[150.73,75.08]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-93.61,74.98],[-94.16,74.59],[-95.61,74.67],[-96.82,74.93],[-96.29,75.38],[-94.85,75.65],[-93.98,75.3],[-93.61,74.98]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[145.09,75.56],[144.3,74.82],[140.61,74.85],[138.96,74.61],[136.97,75.26],[137.51,75.95],[138.83,76.14],[141.47,76.09],[145.09,75.56]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-98.5,76.72],[-97.74,76.26],[-97.7,75.74],[-98.16,75],[-99.81,74.9],[-100.88,75.06],[-100.86,75.64],[-102.5,75.56],[-102.57,76.34],[-101.49,76.31],[-99.98,76.65],[-98.58,76.59],[-98.5,76.72]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-108.21,76.2],[-107.82,75.85],[-106.93,76.01],[-105.88,75.97],[-105.7,75.48],[-106.31,75.01],[-109.7,74.85],[-112.22,74.42],[-113.74,74.39],[-113.87,74.72],[-111.79,75.16],[-116.31,75.04],[-117.71,75.22],[-116.35,76.2],[-115.4,76.48],[-112.59,76.14],[-110.81,75.55],[-109.07,75.47],[-110.5,76.43],[-109.58,76.79],[-108.55,76.68],[-108.21,76.2]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[57.54,70.72],[56.94,70.63],[53.68,70.76],[53.41,71.21],[51.6,71.47],[51.46,72.01],[52.48,72.23],[52.44,72.77],[54.43,73.63],[53.51,73.75],[55.9,74.63],[55.63,75.08],[57.87,75.61],[61.17,76.25],[64.5,76.44],[66.21,76.81],[68.16,76.94],[68.85,76.54],[68.18,76.23],[64.64,75.74],[61.58,75.26],[58.48,74.31],[56.99,73.33],[55.42,72.37],[55.62,71.54],[57.54,70.72]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-94.68,77.1],[-93.57,76.78],[-91.61,76.78],[-90.74,76.45],[-90.97,76.07],[-89.82,75.85],[-89.19,75.61],[-87.84,75.57],[-86.38,75.48],[-84.79,75.7],[-82.75,75.78],[-81.13,75.71],[-80.06,75.34],[-79.83,74.92],[-80.46,74.66],[-81.95,74.44],[-83.23,74.56],[-86.1,74.41],[-88.15,74.39],[-89.76,74.52],[-92.42,74.84],[-92.77,75.39],[-92.89,75.88],[-93.89,76.32],[-95.96,76.44],[-97.12,76.75],[-96.75,77.16],[-94.68,77.1]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-116.2,77.65],[-116.34,76.88],[-117.11,76.53],[-118.04,76.48],[-119.9,76.05],[-121.5,75.9],[-122.85,76.12],[-121.16,76.86],[-119.1,77.51],[-117.57,77.5],[-116.2,77.65]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[106.97,76.97],[107.24,76.48],[108.15,76.72],[111.08,76.71],[113.33,76.22],[114.13,75.85],[113.89,75.33],[112.78,75.03],[110.15,74.48],[109.4,74.18],[110.64,74.04],[112.12,73.79],[113.02,73.98],[113.53,73.34],[113.97,73.59],[115.57,73.75],[118.78,73.59],[119.02,73.12],[123.2,72.97],[123.26,73.74],[125.38,73.56],[126.98,73.57],[128.59,73.04],[129.05,72.4],[128.46,71.98],[129.72,71.19],[131.29,70.79],[132.25,71.84],[133.86,71.39],[135.56,71.66],[137.5,71.35],[138.23,71.63],[139.87,71.49],[139.15,72.42],[140.47,72.85],[149.5,72.2],[150.35,71.61],[152.97,70.84],[157.01,71.03],[159,70.87],[159.83,70.45],[159.71,69.72],[160.94,69.44],[162.28,69.64],[164.05,69.67],[165.94,69.47],[167.84,69.58],[169.58,68.69],[170.82,69.01],[170.01,69.65],[170.45,70.1],[173.64,69.82],[175.72,69.88],[178.6,69.4],[180,68.96],[180,64.98],[179.99,64.97],[178.71,64.53],[177.41,64.61],[178.31,64.08],[178.91,63.25],[179.37,62.98],[179.49,62.57],[179.23,62.3],[177.36,62.52],[174.57,61.77],[173.68,61.65],[172.15,60.95],[170.7,60.34],[170.33,59.88],[168.9,60.57],[166.3,59.79],[165.84,60.16],[164.88,59.73],[163.54,59.87],[163.22,59.21],[162.02,58.24],[162.05,57.84],[163.19,57.62],[163.06,56.16],[162.13,56.12],[161.7,55.29],[162.12,54.86],[160.37,54.34],[160.02,53.2],[158.53,52.96],[158.23,51.94],[156.79,51.01],[156.42,51.7],[155.99,53.16],[155.43,55.38],[155.91,56.77],[156.76,57.36],[156.81,57.83],[158.36,58.06],[160.15,59.31],[161.87,60.34],[163.67,61.14],[164.47,62.55],[163.26,62.47],[162.66,61.64],[160.12,60.54],[159.3,61.77],[156.72,61.43],[154.22,59.76],[155.04,59.15],[152.81,58.88],[151.27,58.78],[151.34,59.5],[149.78,59.66],[148.54,59.16],[145.49,59.34],[142.2,59.04],[138.96,57.09],[135.13,54.73],[136.7,54.6],[137.19,53.98],[138.16,53.76],[138.8,54.25],[139.9,54.19],[141.35,53.09],[141.38,52.24],[140.6,51.24],[140.51,50.05],[140.06,48.45],[138.55,47],[138.22,46.31],[136.86,45.14],[135.52,43.99],[134.87,43.4],[133.54,42.81],[132.91,42.8],[132.28,43.28],[130.94,42.55],[130.78,42.22],[130.4,42.28],[129.97,41.94],[129.67,41.6],[129.71,40.88],[129.19,40.66],[129.01,40.49],[128.63,40.19],[127.97,40.03],[127.53,39.76],[127.5,39.32],[127.39,39.21],[127.78,39.05],[128.35,38.61],[129.21,37.43],[129.46,36.78],[129.47,35.63],[129.09,35.08],[128.19,34.89],[127.39,34.48],[126.49,34.39],[126.37,34.93],[126.56,35.68],[126.12,36.73],[126.86,36.89],[126.17,37.75],[125.69,37.94],[125.57,37.75],[125.28,37.67],[125.24,37.86],[124.98,37.95],[124.71,38.11],[124.99,38.55],[125.22,38.67],[125.13,38.85],[125.39,39.39],[125.32,39.55],[124.74,39.66],[124.27,39.93],[122.87,39.64],[122.13,39.17],[121.05,38.9],[121.59,39.36],[121.38,39.75],[122.17,40.42],[121.64,40.95],[120.77,40.59],[119.64,39.9],[119.02,39.25],[118.04,39.2],[117.53,38.74],[118.06,38.06],[118.88,37.9],[118.91,37.45],[119.7,37.16],[120.82,37.87],[121.71,37.48],[122.36,37.45],[122.52,36.93],[121.1,36.65],[120.64,36.11],[119.66,35.61],[119.15,34.91],[120.23,34.36],[120.62,33.38],[121.23,32.46],[121.91,31.69],[121.89,30.95],[121.26,30.68],[121.5,30.14],[122.09,29.83],[121.94,29.02],[121.68,28.23],[121.13,28.14],[120.4,27.05],[119.59,25.74],[118.66,24.55],[117.28,23.62],[115.89,22.78],[114.76,22.67],[114.15,22.22],[113.81,22.55],[113.24,22.05],[111.84,21.55],[110.79,21.4],[110.44,20.34],[109.89,20.28],[109.63,21.01],[109.86,21.4],[108.52,21.72],[108.05,21.55],[106.72,20.7],[105.88,19.75],[105.66,19.06],[106.43,18],[107.36,16.7],[108.27,16.08],[108.88,15.28],[109.34,13.43],[109.2,11.67],[108.37,11.01],[107.22,10.36],[106.41,9.53],[105.16,8.6],[104.8,9.24],[105.08,9.92],[104.33,10.49],[103.5,10.63],[103.09,11.15],[102.59,12.19],[101.69,12.65],[100.83,12.63],[100.98,13.41],[100.1,13.41],[100.02,12.31],[99.48,10.85],[99.15,9.96],[99.22,9.24],[99.87,9.21],[100.28,8.3],[100.46,7.43],[101.02,6.86],[101.62,6.74],[102.14,6.22],[102.37,6.13],[102.96,5.52],[103.38,4.86],[103.44,4.18],[103.33,3.73],[103.43,3.38],[103.5,2.79],[103.85,2.52],[104.25,1.63],[104.23,1.29],[103.52,1.23],[102.57,1.97],[101.39,2.76],[101.27,3.27],[100.7,3.94],[100.56,4.77],[100.2,5.31],[100.31,6.04],[100.09,6.46],[99.69,6.85],[99.52,7.34],[98.99,7.91],[98.5,8.38],[98.34,7.79],[98.15,8.35],[98.26,8.97],[98.55,9.93],[98.46,10.68],[98.76,11.44],[98.43,12.03],[98.51,13.12],[98.1,13.64],[97.78,14.84],[97.6,16.1],[97.16,16.93],[96.51,16.43],[95.37,15.71],[94.81,15.8],[94.19,16.04],[94.53,17.28],[94.32,18.21],[93.54,19.37],[93.66,19.73],[93.08,19.86],[92.37,20.67],[92.08,21.19],[92.03,21.7],[91.83,22.18],[91.42,22.77],[90.5,22.81],[90.59,22.39],[90.27,21.84],[89.85,22.04],[89.7,21.86],[89.42,21.97],[89.03,22.06],[88.89,21.69],[88.21,21.7],[86.98,21.5],[87.03,20.74],[86.5,20.15],[85.06,19.48],[83.94,18.3],[83.19,17.67],[82.19,17.02],[82.19,16.56],[81.69,16.31],[80.79,15.95],[80.32,15.9],[80.03,15.14],[80.23,13.84],[80.29,13.01],[79.86,12.06],[79.86,10.36],[79.34,10.31],[78.89,9.55],[79.19,9.22],[78.28,8.93],[77.94,8.25],[77.54,7.97],[76.59,8.9],[76.13,10.3],[75.75,11.31],[75.4,11.78],[74.86,12.74],[74.62,13.99],[74.44,14.62],[73.53,15.99],[73.12,17.93],[72.82,19.21],[72.82,20.42],[72.63,21.36],[71.18,20.76],[70.47,20.88],[69.16,22.09],[69.64,22.45],[69.35,22.84],[68.18,23.69],[67.44,23.94],[67.15,24.66],[66.37,25.43],[64.53,25.24],[62.91,25.22],[61.5,25.08],[59.62,25.38],[58.53,25.61],[57.4,25.74],[56.97,26.97],[56.49,27.14],[55.72,26.96],[54.72,26.48],[53.49,26.81],[52.48,27.58],[51.52,27.87],[50.85,28.81],[50.12,30.15],[49.58,29.99],[48.94,30.32],[48.57,29.93],[47.97,29.98],[48.18,29.53],[48.09,29.31],[48.42,28.55],[48.81,27.69],[49.3,27.46],[49.47,27.11],[50.15,26.69],[50.21,26.28],[50.11,25.94],[50.24,25.61],[50.53,25.33],[50.66,25],[50.81,24.75],[50.74,25.48],[51.01,26.01],[51.29,26.11],[51.59,25.8],[51.61,25.22],[51.39,24.63],[51.58,24.25],[51.76,24.29],[51.79,24.02],[52.58,24.18],[53.4,24.15],[54.01,24.12],[54.69,24.8],[55.44,25.44],[56.07,26.06],[56.36,26.4],[56.49,26.31],[56.39,25.9],[56.26,25.71],[56.4,24.92],[56.85,24.24],[57.4,23.88],[58.14,23.75],[58.73,23.57],[59.18,22.99],[59.45,22.66],[59.81,22.53],[59.81,22.31],[59.44,21.71],[59.28,21.43],[58.86,21.11],[58.49,20.43],[58.03,20.48],[57.83,20.24],[57.67,19.74],[57.79,19.07],[57.69,18.94],[57.23,18.95],[56.61,18.57],[56.51,18.09],[56.28,17.88],[55.66,17.88],[55.27,17.63],[55.27,17.23],[54.79,16.95],[54.24,17.05],[53.57,16.71],[53.11,16.65],[52.39,16.38],[52.19,15.94],[52.17,15.6],[51.17,15.18],[49.57,14.71],[48.68,14],[48.24,13.95],[47.94,14.01],[47.35,13.59],[46.72,13.4],[45.88,13.35],[45.63,13.29],[45.41,13.03],[45.14,12.95],[44.99,12.7],[44.49,12.72],[44.18,12.59],[43.48,12.64],[43.22,13.22],[43.25,13.77],[43.09,14.06],[42.89,14.8],[42.6,15.21],[42.81,15.26],[42.7,15.72],[42.82,15.91],[42.78,16.35],[42.65,16.77],[42.35,17.08],[42.27,17.47],[41.75,17.83],[41.22,18.67],[40.94,19.49],[40.25,20.17],[39.8,20.34],[39.14,21.29],[39.02,21.99],[39.07,22.58],[38.49,23.69],[38.02,24.08],[37.48,24.29],[37.15,24.86],[37.21,25.08],[36.93,25.6],[36.64,25.83],[36.25,26.57],[35.64,27.38],[35.13,28.06],[34.63,28.06],[34.79,28.61],[34.83,28.96],[34.96,29.36],[34.92,29.5],[34.64,29.1],[34.43,28.34],[34.15,27.82],[33.92,27.65],[33.59,27.97],[33.14,28.42],[32.42,29.85],[32.32,29.76],[32.73,28.71],[33.35,27.7],[34.1,26.14],[34.47,25.6],[34.8,25.03],[35.69,23.93],[35.49,23.75],[35.53,23.1],[36.69,22.2],[36.87,22],[37.19,21.02],[36.97,20.84],[37.11,19.81],[37.48,18.61],[37.86,18.37],[38.41,18],[38.99,16.84],[39.27,15.92],[39.81,15.44],[41.18,14.49],[41.73,13.92],[42.28,13.34],[42.59,13],[43.08,12.7],[43.32,12.39],[43.29,11.97],[42.72,11.74],[43.15,11.46],[43.47,11.28],[43.67,10.86],[44.12,10.45],[44.61,10.44],[45.56,10.7],[46.65,10.82],[47.53,11.13],[48.02,11.19],[48.38,11.38],[48.95,11.41],[49.27,11.43],[49.73,11.58],[50.26,11.68],[50.73,12.02],[51.11,12.02],[51.13,11.75],[51.04,11.17],[51.05,10.64],[50.83,10.28],[50.55,9.2],[50.07,8.08],[49.45,6.8],[48.59,5.34],[47.74,4.22],[46.56,2.86],[45.56,2.05],[44.07,1.05],[43.14,0.29],[42.04,-0.92],[41.81,-1.45],[41.59,-1.68],[40.88,-2.08],[40.64,-2.5],[40.26,-2.57],[40.12,-3.28],[39.8,-3.68],[39.6,-4.35],[39.2,-4.68],[38.74,-5.91],[38.8,-6.48],[39.44,-6.84],[39.47,-7.1],[39.19,-7.7],[39.25,-8.01],[39.19,-8.49],[39.54,-9.11],[39.95,-10.1],[40.32,-10.32],[40.48,-10.77],[40.44,-11.76],[40.56,-12.64],[40.6,-14.2],[40.78,-14.69],[40.48,-15.41],[40.09,-16.1],[39.45,-16.72],[38.54,-17.1],[37.41,-17.59],[36.28,-18.66],[35.9,-18.84],[35.2,-19.55],[34.79,-19.78],[34.7,-20.5],[35.18,-21.25],[35.37,-21.84],[35.39,-22.14],[35.56,-22.09],[35.53,-23.07],[35.37,-23.54],[35.61,-23.71],[35.46,-24.12],[35.04,-24.48],[34.22,-24.82],[33.01,-25.36],[32.57,-25.73],[32.66,-26.15],[32.92,-26.22],[32.83,-26.74],[32.58,-27.47],[32.46,-28.3],[32.2,-28.75],[31.52,-29.26],[31.33,-29.4],[30.9,-29.91],[30.62,-30.42],[30.06,-31.14],[28.93,-32.17],[28.22,-32.77],[27.46,-33.23],[26.42,-33.61],[25.91,-33.67],[25.78,-33.94],[25.17,-33.8],[24.68,-33.99],[23.59,-33.79],[22.99,-33.92],[22.57,-33.86],[21.54,-34.26],[20.69,-34.42],[20.07,-34.8],[19.62,-34.82],[19.19,-34.46],[18.86,-34.44],[18.42,-34],[18.38,-34.14],[18.24,-33.87],[18.25,-33.28],[17.93,-32.61],[18.25,-32.43],[18.22,-31.66],[17.57,-30.73],[17.06,-29.88],[16.35,-28.58],[15.6,-27.82],[15.21,-27.09],[14.99,-26.12],[14.74,-25.39],[14.41,-23.85],[14.39,-22.66],[14.26,-22.11],[13.87,-21.7],[13.35,-20.87],[12.83,-19.67],[12.61,-19.05],[11.79,-18.07],[11.73,-17.3],[11.64,-16.67],[11.78,-15.79],[12.12,-14.88],[12.18,-14.45],[12.5,-13.55],[12.74,-13.14],[13.31,-12.48],[13.63,-12.04],[13.74,-11.3],[13.69,-10.73],[13.39,-10.37],[13.12,-9.77],[12.88,-9.17],[12.93,-8.96],[13.24,-8.56],[12.93,-7.6],[12.73,-6.93],[12.23,-6.29],[12.32,-6.1],[12.18,-5.79],[11.92,-5.04],[11.09,-3.98],[10.07,-2.97],[9.41,-2.14],[8.8,-1.11],[8.83,-0.78],[9.05,-0.46],[9.29,0.27],[9.49,1.01],[9.31,1.16],[9.65,2.28],[9.8,3.07],[9.4,3.73],[8.95,3.9],[8.74,4.35],[8.49,4.5],[8.5,4.77],[7.46,4.41],[7.08,4.46],[6.7,4.24],[5.9,4.26],[5.36,4.89],[5.03,5.61],[4.33,6.27],[3.57,6.26],[2.69,6.26],[1.87,6.14],[1.06,5.93],[-0.51,5.34],[-1.06,5],[-1.96,4.71],[-2.86,4.99],[-3.31,4.98],[-4.01,5.18],[-4.65,5.17],[-5.83,4.99],[-6.53,4.71],[-7.52,4.34],[-7.71,4.36],[-7.97,4.36],[-9,4.83],[-9.91,5.59],[-10.77,6.14],[-11.44,6.79],[-11.71,6.86],[-12.43,7.26],[-12.95,7.8],[-13.12,8.16],[-13.25,8.9],[-13.69,9.49],[-14.07,9.89],[-14.33,10.02],[-14.58,10.21],[-14.69,10.66],[-14.84,10.88],[-15.13,11.04],[-15.66,11.46],[-16.09,11.52],[-16.31,11.81],[-16.31,11.96],[-16.61,12.17],[-16.68,12.38],[-16.84,13.15],[-16.71,13.6],[-17.13,14.37],[-17.62,14.73],[-17.19,14.92],[-16.7,15.62],[-16.46,16.14],[-16.55,16.67],[-16.27,17.17],[-16.15,18.11],[-16.26,19.1],[-16.38,19.59],[-16.28,20.09],[-16.54,20.57],[-17.06,21],[-17.02,21.42],[-16.97,21.89],[-16.59,22.16],[-16.26,22.68],[-16.33,23.02],[-15.98,23.72],[-15.43,24.36],[-15.09,24.52],[-14.82,25.1],[-14.8,25.64],[-14.44,26.25],[-13.77,26.62],[-13.14,27.64],[-12.62,28.04],[-11.69,28.15],[-10.9,28.83],[-10.4,29.1],[-9.56,29.93],[-9.81,31.18],[-9.43,32.04],[-9.3,32.56],[-8.66,33.24],[-7.65,33.7],[-6.91,34.11],[-6.24,35.15],[-5.93,35.76],[-5.19,35.76],[-4.59,35.33],[-3.64,35.4],[-2.6,35.18],[-2.17,35.17],[-1.21,35.71],[-0.13,35.89],[0.5,36.3],[1.47,36.61],[3.16,36.78],[4.82,36.87],[5.32,36.72],[6.26,37.11],[7.33,37.12],[7.74,36.89],[8.42,36.95],[9.51,37.35],[10.21,37.23],[10.18,36.72],[11.03,37.09],[11.1,36.9],[10.6,36.41],[10.59,35.95],[10.94,35.7],[10.81,34.83],[10.15,34.33],[10.34,33.79],[10.86,33.77],[11.11,33.29],[11.49,33.14],[12.66,32.79],[13.08,32.88],[13.92,32.71],[15.25,32.27],[15.71,31.38],[16.61,31.18],[18.02,30.76],[19.09,30.27],[19.57,30.53],[20.05,30.99],[19.82,31.75],[20.13,32.24],[20.85,32.71],[21.54,32.84],[22.9,32.64],[23.24,32.19],[23.61,32.19],[23.93,32.02],[24.92,31.9],[25.16,31.57],[26.5,31.59],[27.46,31.32],[28.45,31.03],[28.91,30.87],[29.68,31.19],[30.1,31.47],[30.98,31.56],[31.69,31.43],[31.96,30.93],[32.19,31.26],[32.99,31.02],[33.77,30.97],[34.27,31.22],[34.56,31.55],[34.49,31.61],[34.75,32.07],[34.96,32.83],[35.1,33.08],[35.13,33.09],[35.48,33.91],[35.98,34.61],[36,34.64],[35.91,35.41],[36.15,35.82],[35.78,36.28],[36.16,36.65],[35.55,36.57],[34.71,36.8],[34.03,36.22],[32.51,36.11],[31.7,36.64],[30.62,36.68],[30.39,36.26],[29.7,36.14],[28.73,36.68],[27.64,36.66],[27.05,37.65],[26.32,38.21],[26.8,38.99],[26.17,39.46],[27.28,40.42],[28.82,40.46],[29.24,41.22],[31.15,41.09],[32.35,41.74],[33.51,42.02],[35.17,42.04],[36.91,41.34],[38.35,40.95],[39.51,41.1],[40.37,41.01],[41.55,41.54],[41.7,41.96],[41.45,42.65],[40.88,43.01],[40.32,43.13],[39.96,43.44],[38.68,44.28],[37.54,44.66],[36.68,45.24],[37.4,45.4],[38.23,46.24],[37.67,46.64],[39.15,47.04],[39.12,47.26],[38.22,47.1],[37.43,47.02],[36.76,46.7],[35.82,46.65],[34.96,46.27],[35.02,45.65],[35.51,45.41],[36.53,45.47],[36.33,45.11],[35.24,44.94],[33.88,44.36],[33.33,44.56],[33.55,45.03],[32.45,45.33],[32.63,45.52],[33.59,45.85],[33.3,46.08],[31.74,46.33],[31.68,46.71],[30.75,46.58],[30.38,46.03],[29.6,45.29],[29.63,45.04],[29.14,44.82],[28.84,44.91],[28.56,43.71],[28.04,43.29],[27.67,42.58],[28,42.01],[28.12,41.62],[28.99,41.3],[28.81,41.05],[27.62,41],[27.19,40.69],[26.36,40.15],[26.04,40.62],[26.06,40.82],[25.45,40.85],[24.93,40.95],[23.71,40.69],[24.41,40.13],[23.9,39.96],[23.34,39.96],[22.81,40.48],[22.63,40.26],[22.85,39.66],[23.35,39.19],[22.97,38.97],[23.53,38.51],[24.03,38.22],[24.04,37.66],[23.12,37.92],[23.41,37.41],[22.78,37.31],[23.15,36.42],[22.49,36.41],[21.67,36.85],[21.3,37.65],[21.12,38.31],[20.73,38.77],[20.22,39.34],[20.15,39.63],[19.98,39.7],[19.96,39.92],[19.41,40.25],[19.32,40.73],[19.4,41.41],[19.54,41.72],[19.37,41.88],[19.16,41.96],[18.88,42.28],[18.45,42.48],[17.51,42.85],[16.93,43.21],[16.02,43.51],[15.17,44.24],[15.38,44.32],[14.92,44.74],[14.9,45.08],[14.26,45.23],[13.95,44.8],[13.66,45.14],[13.68,45.48],[13.72,45.5],[13.94,45.59],[13.14,45.74],[12.33,45.38],[12.38,44.89],[12.26,44.6],[12.59,44.09],[13.53,43.59],[14.03,42.76],[15.14,41.96],[15.93,41.96],[16.17,41.74],[15.89,41.54],[16.79,41.18],[17.52,40.88],[18.38,40.36],[18.48,40.17],[18.29,39.81],[17.74,40.28],[16.87,40.44],[16.45,39.8],[17.17,39.42],[17.05,38.9],[16.64,38.84],[16.1,37.99],[15.68,37.91],[15.69,38.21],[15.89,38.75],[16.11,38.96],[15.72,39.54],[15.41,40.05],[15,40.17],[14.7,40.6],[14.06,40.79],[13.63,41.19],[12.89,41.25],[12.11,41.7],[11.19,42.36],[10.51,42.93],[10.2,43.92],[9.7,44.04],[8.89,44.37],[8.43,44.23],[7.85,43.77],[7.44,43.69],[6.53,43.13],[4.56,43.4],[3.1,43.08],[2.99,42.47],[3.04,41.89],[2.09,41.23],[0.81,41.01],[0.72,40.68],[0.11,40.12],[-0.28,39.31],[0.11,38.74],[-0.47,38.29],[-0.68,37.64],[-1.44,37.44],[-2.15,36.67],[-3.42,36.66],[-4.37,36.68],[-5,36.32],[-5.38,35.95],[-5.87,36.03],[-6.24,36.37],[-6.52,36.94],[-7.45,37.1],[-7.86,36.84],[-8.38,36.98],[-8.9,36.87],[-8.75,37.65],[-8.84,38.27],[-9.29,38.36],[-9.53,38.74],[-9.45,39.39],[-9.05,39.76],[-8.98,40.16],[-8.77,40.76],[-8.79,41.18],[-8.99,41.54],[-9.03,41.88],[-8.98,42.59],[-9.39,43.03],[-7.98,43.75],[-6.75,43.57],[-5.41,43.57],[-4.35,43.4],[-3.52,43.46],[-1.9,43.42],[-1.38,44.02],[-1.19,46.01],[-2.23,47.06],[-2.96,47.57],[-4.49,47.96],[-4.59,48.68],[-3.3,48.9],[-1.62,48.64],[-1.93,49.78],[-0.99,49.35],[1.34,50.13],[1.64,50.95],[2.51,51.15],[3.32,51.35],[3.83,51.62],[4.71,53.09],[6.07,53.51],[6.91,53.48],[7.1,53.69],[7.94,53.75],[8.12,53.53],[8.8,54.02],[8.57,54.4],[8.53,54.96],[8.12,55.52],[8.09,56.54],[8.26,56.81],[8.54,57.11],[9.42,57.17],[9.78,57.45],[10.58,57.73],[10.55,57.22],[10.25,56.89],[10.37,56.61],[10.91,56.46],[10.67,56.08],[10.37,56.19],[9.65,55.47],[9.92,54.98],[9.94,54.6],[10.95,54.36],[10.94,54.01],[11.96,54.2],[12.52,54.47],[13.65,54.08],[14.12,53.76],[14.8,54.05],[16.36,54.51],[17.62,54.85],[18.62,54.68],[18.7,54.44],[19.66,54.43],[19.89,54.87],[21.27,55.19],[21.06,56.03],[21.09,56.78],[21.58,57.41],[22.52,57.75],[23.32,57.01],[24.12,57.03],[24.31,57.79],[24.43,58.38],[24.06,58.26],[23.43,58.61],[23.34,59.19],[24.6,59.47],[25.86,59.61],[26.95,59.45],[27.98,59.48],[29.12,60.03],[28.07,60.5],[26.26,60.42],[24.5,60.06],[22.87,59.85],[22.29,60.39],[21.32,60.72],[21.54,61.71],[21.06,62.61],[21.54,63.19],[22.44,63.82],[24.73,64.9],[25.4,65.11],[25.29,65.53],[23.9,66.01],[22.18,65.72],[21.21,65.03],[21.37,64.41],[19.78,63.61],[17.85,62.75],[17.12,61.34],[17.83,60.64],[18.79,60.08],[17.87,58.95],[16.83,58.72],[16.45,57.04],[15.88,56.1],[14.67,56.2],[14.1,55.41],[12.94,55.36],[12.63,56.31],[11.79,57.44],[11.03,58.86],[10.36,59.47],[8.38,58.31],[7.05,58.08],[5.67,58.59],[5.31,59.66],[4.99,61.97],[5.91,62.61],[8.55,63.45],[10.53,64.49],[12.36,65.88],[14.76,67.81],[16.44,68.56],[19.18,69.82],[21.38,70.26],[23.02,70.2],[24.55,71.03],[26.37,70.99],[28.17,71.19],[31.29,70.45],[30.01,70.19],[31.1,69.56],[32.13,69.91],[33.78,69.3],[36.51,69.06],[40.29,67.93],[41.06,67.46],[41.13,66.79],[40.02,66.27],[38.38,66],[33.92,66.76],[33.18,66.63],[34.81,65.9],[34.94,64.41],[36.23,64.11],[37.01,63.85],[37.14,64.33],[36.52,64.78],[37.18,65.14],[39.59,64.52],[40.44,64.76],[39.76,65.5],[42.09,66.48],[43.02,66.42],[43.95,66.07],[44.53,66.76],[43.7,67.35],[44.19,67.95],[43.45,68.57],[46.25,68.25],[46.82,67.69],[45.56,67.57],[45.56,67.01],[46.35,66.67],[47.89,66.88],[48.14,67.52],[50.23,68],[53.72,68.86],[54.47,68.81],[53.49,68.2],[54.73,68.1],[55.44,68.44],[57.32,68.47],[58.8,68.88],[59.94,68.28],[61.08,68.94],[60.03,69.52],[60.55,69.85],[63.5,69.55],[64.89,69.23],[68.51,68.09],[69.18,68.62],[68.16,69.14],[68.14,69.36],[66.93,69.45],[67.26,69.93],[66.72,70.71],[66.69,71.03],[68.54,71.93],[69.2,72.84],[69.94,73.04],[72.59,72.78],[72.8,72.22],[71.85,71.41],[72.47,71.09],[72.79,70.39],[72.56,69.02],[73.67,68.41],[73.24,67.74],[71.28,66.32],[72.42,66.17],[72.82,66.53],[73.92,66.79],[74.19,67.28],[75.05,67.76],[74.47,68.33],[74.94,68.99],[73.84,69.07],[73.6,69.63],[74.4,70.63],[73.1,71.45],[74.89,72.12],[74.66,72.83],[75.16,72.86],[75.68,72.3],[75.29,71.34],[76.36,71.15],[75.9,71.87],[77.58,72.27],[79.65,72.32],[81.5,71.75],[80.61,72.58],[80.51,73.65],[82.25,73.85],[84.66,73.81],[86.82,73.94],[86.01,74.46],[87.17,75.12],[88.32,75.14],[90.26,75.64],[92.9,75.77],[93.23,76.05],[95.86,76.14],[96.68,75.92],[98.92,76.45],[100.76,76.43],[101.04,76.86],[101.99,77.29],[104.35,77.7],[106.07,77.37],[104.71,77.13],[106.97,76.97]],[[49.11,41.28],[49.62,40.57],[50.08,40.53],[50.39,40.26],[49.57,40.18],[49.4,39.4],[49.22,39.05],[48.86,38.82],[48.88,38.32],[49.2,37.58],[50.15,37.37],[50.84,36.87],[52.26,36.7],[53.83,36.97],[53.92,37.2],[53.74,37.91],[53.88,38.95],[53.1,39.29],[53.36,39.98],[52.69,40.03],[52.92,40.88],[53.86,40.63],[54.74,40.95],[54.01,41.55],[53.72,42.12],[52.92,41.87],[52.81,41.14],[52.5,41.78],[52.45,42.03],[52.69,42.44],[52.5,42.79],[51.34,43.13],[50.89,44.03],[50.34,44.28],[50.31,44.61],[51.28,44.51],[51.32,45.25],[52.17,45.41],[53.04,45.26],[53.22,46.23],[53.04,46.85],[52.04,46.8],[51.19,47.05],[50.03,46.61],[49.1,46.4],[48.65,45.81],[47.68,45.64],[46.68,44.61],[47.59,43.66],[47.49,42.99],[48.58,41.81],[49.11,41.28]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-93.84,77.52],[-94.3,77.49],[-96.17,77.56],[-96.44,77.83],[-94.42,77.82],[-93.72,77.63],[-93.84,77.52]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-110.19,77.7],[-112.05,77.41],[-113.53,77.73],[-112.72,78.05],[-111.26,78.15],[-109.85,78],[-110.19,77.7]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[24.72,77.85],[22.49,77.44],[20.73,77.68],[21.42,77.94],[20.81,78.25],[22.88,78.45],[23.28,78.08],[24.72,77.85]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-109.66,78.6],[-110.88,78.41],[-112.54,78.41],[-112.53,78.55],[-111.5,78.85],[-110.96,78.8],[-109.66,78.6]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-95.83,78.06],[-97.31,77.85],[-98.12,78.08],[-98.55,78.46],[-98.63,78.87],[-97.34,78.83],[-96.75,78.77],[-95.56,78.42],[-95.83,78.06]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-100.06,78.32],[-99.67,77.91],[-101.3,78.02],[-102.95,78.34],[-105.18,78.38],[-104.21,78.68],[-105.42,78.92],[-105.49,79.3],[-103.53,79.17],[-100.83,78.8],[-100.06,78.32]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[105.08,78.31],[99.44,77.92],[101.26,79.23],[102.09,79.35],[102.84,79.28],[105.37,78.71],[105.08,78.31]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[18.25,79.7],[21.54,78.96],[19.03,78.56],[18.47,77.83],[17.59,77.64],[17.12,76.81],[15.91,76.77],[13.76,77.38],[14.67,77.74],[13.17,78.02],[11.22,78.87],[10.44,79.65],[13.17,80.01],[13.72,79.66],[15.14,79.67],[15.52,80.02],[16.99,80.05],[18.25,79.7]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[25.45,80.41],[27.41,80.06],[25.92,79.52],[23.02,79.4],[20.08,79.57],[19.9,79.84],[18.46,79.86],[17.37,80.32],[20.46,80.6],[21.91,80.36],[22.92,80.66],[25.45,80.41]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[51.14,80.55],[49.79,80.42],[48.89,80.34],[48.75,80.18],[47.59,80.01],[46.5,80.25],[47.07,80.56],[44.85,80.59],[46.8,80.77],[48.32,80.78],[48.52,80.51],[49.1,80.75],[50.04,80.92],[51.52,80.7],[51.14,80.55]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[99.94,78.88],[97.76,78.76],[94.97,79.04],[93.31,79.43],[92.55,80.14],[91.18,80.34],[93.78,81.02],[95.94,81.25],[97.88,80.75],[100.19,79.78],[99.94,78.88]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-87.02,79.66],[-85.81,79.34],[-87.19,79.04],[-89.04,78.29],[-90.8,78.22],[-92.88,78.34],[-93.95,78.75],[-93.94,79.11],[-93.15,79.38],[-94.97,79.37],[-96.08,79.71],[-96.71,80.16],[-96.02,80.6],[-95.32,80.91],[-94.3,80.98],[-94.74,81.21],[-92.41,81.26],[-91.13,80.72],[-89.45,80.51],[-87.81,80.32],[-87.02,79.66]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-68.5,83.11],[-65.83,83.03],[-63.68,82.9],[-61.85,82.63],[-61.89,82.36],[-64.33,81.93],[-66.75,81.73],[-67.66,81.5],[-65.48,81.51],[-67.84,80.9],[-69.47,80.62],[-71.18,79.8],[-73.24,79.63],[-73.88,79.43],[-76.91,79.32],[-75.53,79.2],[-76.22,79.02],[-75.39,78.53],[-76.34,78.18],[-77.89,77.9],[-78.36,77.51],[-79.76,77.21],[-79.62,76.98],[-77.91,77.02],[-77.89,76.78],[-80.56,76.18],[-83.17,76.45],[-86.11,76.3],[-87.6,76.42],[-89.49,76.47],[-89.62,76.95],[-87.77,77.18],[-88.26,77.9],[-87.65,77.97],[-84.98,77.54],[-86.34,78.18],[-87.96,78.37],[-87.15,78.76],[-85.38,79],[-85.09,79.35],[-86.51,79.74],[-86.93,80.25],[-84.2,80.21],[-83.41,80.1],[-81.85,80.46],[-84.1,80.58],[-87.6,80.52],[-89.37,80.86],[-90.2,81.26],[-91.37,81.55],[-91.59,81.89],[-90.1,82.09],[-88.93,82.12],[-86.97,82.28],[-85.5,82.65],[-84.26,82.6],[-83.18,82.32],[-82.42,82.86],[-81.1,83.02],[-79.31,83.13],[-76.25,83.17],[-75.72,83.06],[-72.83,83.23],[-70.67,83.17],[-68.5,83.11]]]}},{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-27.1,83.52],[-20.85,82.73],[-22.69,82.34],[-26.52,82.3],[-31.9,82.2],[-31.4,82.02],[-27.86,82.13],[-24.84,81.79],[-22.9,82.09],[-22.07,81.73],[-23.17,81.15],[-20.62,81.52],[-15.77,81.91],[-12.77,81.72],[-12.21,81.29],[-16.29,80.58],[-16.85,80.35],[-20.05,80.18],[-17.73,80.13],[-18.9,79.4],[-19.7,78.75],[-19.67,77.64],[-18.47,76.99],[-20.04,76.94],[-21.68,76.63],[-19.83,76.1],[-19.6,75.25],[-20.67,75.16],[-19.37,74.3],[-21.59,74.22],[-20.43,73.82],[-20.76,73.46],[-22.17,73.31],[-23.57,73.31],[-22.31,72.63],[-22.3,72.18],[-24.28,72.6],[-24.79,72.33],[-23.44,72.08],[-22.13,71.47],[-21.75,70.66],[-23.54,70.47],[-24.31,70.86],[-25.54,71.43],[-25.2,70.75],[-26.36,70.23],[-23.73,70.18],[-22.35,70.13],[-25.03,69.26],[-27.75,68.47],[-30.67,68.13],[-31.78,68.12],[-32.81,67.74],[-34.2,66.68],[-36.35,65.98],[-37.04,65.94],[-38.38,65.69],[-39.81,65.46],[-40.67,64.84],[-40.68,64.14],[-41.19,63.48],[-42.82,62.68],[-42.42,61.9],[-42.87,61.07],[-43.38,60.1],[-44.79,60.04],[-46.26,60.85],[-48.26,60.86],[-49.23,61.41],[-49.9,62.38],[-51.63,63.63],[-52.14,64.28],[-52.28,65.18],[-53.66,66.1],[-53.3,66.84],[-53.97,67.19],[-52.98,68.36],[-51.48,68.73],[-51.08,69.15],[-50.87,69.93],[-52.01,69.57],[-52.56,69.43],[-53.46,69.28],[-54.68,69.61],[-54.75,70.29],[-54.36,70.82],[-53.43,70.84],[-51.39,70.57],[-53.11,71.2],[-54,71.55],[-55,71.41],[-55.83,71.65],[-54.72,72.59],[-55.33,72.96],[-56.12,73.65],[-57.32,74.71],[-58.6,75.1],[-58.59,75.52],[-61.27,76.1],[-63.39,76.18],[-66.06,76.13],[-68.5,76.06],[-69.66,76.38],[-71.4,77.01],[-68.78,77.32],[-66.76,77.38],[-71.04,77.64],[-73.3,78.04],[-73.16,78.43],[-69.37,78.91],[-65.71,79.39],[-65.32,79.76],[-68.02,80.12],[-67.15,80.52],[-63.69,81.21],[-62.23,81.32],[-62.65,81.77],[-60.28,82.03],[-57.21,82.19],[-54.13,82.2],[-53.04,81.89],[-50.39,82.44],[-48,82.06],[-46.6,81.99],[-44.52,81.66],[-46.9,82.2],[-46.76,82.63],[-43.41,83.23],[-39.9,83.18],[-38.62,83.55],[-35.09,83.65],[-27.1,83.52]]]}}]}</script>
 <script id="tledata" type="text/plain">
 3CAT-4
@@ -8175,6 +8704,21 @@ function build(track, aos, los, clipA, clipL){
 
 /* ---- state --------------------------------------------------------------- */
 const CAT = parseCatalog(RAWTLE);
+/* The reader's own orbits, added through the orbit planner. A SEPARATE array and
+   never pushed onto CAT: CAT is 2,158 entries that the 3D cloud indexes by
+   position (earth/orbit3d.js builds one Track per entry at init and reads
+   GT.CAT[i] by the same i), that the regression gate counts (meta.catalogue),
+   and that verify-elements finds the cloud by (position.count === CAT.length).
+   Pushing onto it would misalign the cloud the first time one was removed, and
+   would put a stranger's object into every test that walks the catalogue. */
+const CUSTOM = [];
+/* The picker's one index space: 0..CAT.length-1 is the catalogue, the rest are
+   CUSTOM in order. The cloud, askLoad(), the hover label and GT.CAT stay on
+   catalogue indices and never see a custom one. */
+const entryAt = i => i < CAT.length ? CAT[i] : CUSTOM[i - CAT.length];
+const indexOf = e => { let i = CAT.indexOf(e); if(i >= 0) return i; i = CUSTOM.indexOf(e); return i >= 0 ? CAT.length + i : -1; };
+/* What tleSource() writes into the CSV's tle_source column for a custom orbit. */
+const CUSTOM_SOURCE = 'custom orbit planned on this page from user-entered elements; not a catalogue object; nothing was fetched';
 let D = null, selPass = 0, timer = null;
 
 /* ---- test surface --------------------------------------------------------
@@ -8195,7 +8739,16 @@ window.__gt = {
   get NAKED_EYE_MAG(){ return NAKED_EYE_MAG; },
   stepFor, passStepFor, OBS, MASK, RE, MU, tzAt, applySite,
   get D(){ return D; },
-  get CAT(){ return CAT; }
+  get CAT(){ return CAT; },
+  /* The reader's own orbits (earth/planner.js builds them, the block after choose() keeps them).
+     Members are only ever ADDED to this object: the regression gate reads the ones above.
+     fetchTLE and runLife are here so a test can call the second layer of each network guard
+     directly - refreshTLE's and lifeOffer's own checks return first, so no page-level path ever
+     reaches them with a custom number, and a guard nothing can reach is a guard that can rot
+     unseen (lifeReq is the token runLife compares its argument with). */
+  get CUSTOM(){ return CUSTOM; },
+  get lifeReq(){ return lifeReq; },
+  entryAt, indexOf, addCustom, updateCustom, removeCustom, addCustomTLE, tleOk, paintCount, fetchTLE, runLife
 };
 
 /* The entry interface - conventionally 400,000 ft, about 122 km - below which a
@@ -8644,7 +9197,10 @@ function renderElements(){
     ['Max altitude', D.E.apogeeAlt.toFixed(1)+' km'],
     ['Revs in 24 h', (86400/P).toFixed(2)],
     ['B* drag term', D.E.bstar.toExponential(4)+' <abbr title="per Earth radius, the unit SGP4 carries B* in">1/ER</abbr>'],
-    ['Rev. no. @ epoch', String(D.E.rev)]
+    /* A planned orbit has no revolution count: the field is 00000 in its synthetic TLE, and
+       "Rev. no. @ epoch 0" is a figure with a meaning it does not have. DOM text only;
+       compute() and elements() are not touched, so the regression gate cannot see it. */
+    ['Rev. no. @ epoch', D.entry.custom ? 'n/a (planned)' : String(D.E.rev)]
   ];
   document.getElementById('derived').innerHTML = dv.map(d=>
     '<div class="dv"><dt>'+d[0]+'</dt><dd>'+d[1]+'</dd></div>').join('');
@@ -8869,6 +9425,10 @@ for(const c of CAT){
 /* `via` names the station whose figure a docked entry has taken, or is null. */
 function stdMagOf(track){
   const e = track.entry || {};
+  /* Before the lookups below, all of which match on the element set or the number. A
+     planned orbit that happens to equal the ISS's set - a preset, a what-if - would
+     otherwise take the ISS's published -1.8 and say it was docked to it. */
+  if(e.custom) return { mag: Number.isFinite(e.stdMag) ? e.stdMag : STD_MAG, known: false, via: null };
   if(Object.prototype.hasOwnProperty.call(STD_MAG_KNOWN, e.satnum))
     return { mag: STD_MAG_KNOWN[e.satnum], known: true, via: null };
   const h = STD_MAG_HOSTS.find(h => sameElementSet(e, h)) || DOCKED_AT_SNAPSHOT.get(e);
@@ -9423,6 +9983,11 @@ function drawSky(p, id){
 let dopHz = null, dopSat = null;
 
 function txFor(entry){
+  /* A planned orbit has no SatNOGS record, and its number must never be looked up: the
+     table is keyed by NORAD number and holds 98247..99416, where real objects live. The
+     one frequency it can have is the reader's own. */
+  if(entry && entry.custom)
+    return entry.dlHz > 0 ? [{ hz: entry.dlHz, mode: 'user', baud: 0, desc: 'entered in the planner', service: '' }] : [];
   return (window.Transmitters && entry) ? Transmitters.forSat(entry.satnum) : [];
 }
 /* Re-pick the default when the spacecraft changes, but never on a mere repaint -
@@ -9591,7 +10156,7 @@ function passRows(){
     const rrA = rangeRateMs(D.track, p.aos.getTime());
     const rrL = rangeRateMs(D.track, p.los.getTime());
     out.push({
-      n: i+1, sat: D.entry.name, norad: D.E.satnum,
+      n: i+1, sat: D.entry.name, norad: D.E.satnum, custom: !!D.entry.custom,
       site: OBS.name, lat: OBS.lat, lon: OBS.lon,
       aos: p.aos, los: p.los, dur: p.dur,
       maxEl: p.maxEl, maxAt: p.maxAt, maxAz: p.maxAz,
@@ -9618,6 +10183,7 @@ function passRows(){
 function tleSource(){
   const e = D.entry, pv = provOnScreen();
   const at = t => isoZ(new Date(t));
+  if(e.custom) return CUSTOM_SOURCE;       // first: never "embedded", never "fetched live"
   /* And what the last check said against it, when that was not a newer set:
      CelesTrak answering "No GP data found", or offering a newer set SGP4 cannot
      propagate - both, in practice, an object that has come down. The page says
@@ -9664,7 +10230,7 @@ function exportCSV(){
   const num = (v, d) => v === null || v === undefined ? '' : v.toFixed(d);
   const prov = [isoZ(D.E.epoch), D.entry.l1, D.entry.l2, tleSource(),
     isoZ(D.start), D.hours, MASK, OBS.altKm];
-  const body = rows.map(r => [r.n, r.sat, r.norad, r.site, r.lat, r.lon,
+  const body = rows.map(r => [r.n, r.custom ? r.sat + ' (custom orbit)' : r.sat, r.norad, r.site, r.lat, r.lon,
     isoZ(r.aos), isoZ(r.los), r.dur.toFixed(3), num(r.maxEl,3), isoZ(r.maxAt),
     num(r.maxAz,1), num(r.aosAz,1), num(r.losAz,1), num(r.minRng,1),
     num(r.rrA,6), num(r.rrL,6), num(r.freqMHz,3), num(r.dopA,3), num(r.dopL,3),
@@ -9675,7 +10241,7 @@ function exportCSV(){
      spacecraft, the site and the window's date: the part in view before the
      file is opened. */
   download(head.join(',') + '\r\n' + body.join('\r\n') + '\r\n',
-    'passes-' + slug(D.entry.name) + '-' + slug(OBS.name) + '-'
+    'passes-' + exportStem() + '-' + slug(OBS.name) + '-'
       + iso(D.start).slice(0,10) + '.csv', 'text/csv');
   hintExport(rows.length + ' pass' + (rows.length === 1 ? '' : 'es') + ' written as CSV');
 }
@@ -9738,7 +10304,8 @@ function exportICS(){
           : 'an assumed standard magnitude of ' + r.std.mag.toFixed(1))
         + '; naked-eye limit ' + NAKED_EYE_MAG.toFixed(1) : null,
       'Site ' + r.site + ' ' + latStr(r.lat) + ' ' + lonStr(r.lon),
-      'Element set epoch ' + iso(D.E.epoch)
+      'Element set epoch ' + iso(D.E.epoch),
+      r.custom ? 'Hypothetical orbit planned on the Ground Track Console: not a catalogue object, and no spacecraft is known to fly it' : null
     /* Escaped per LINE, not after the join. RFC 5545 section 3.3.11 makes
        backslash, comma and semicolon special inside a TEXT value, and this
        is the one TEXT value on the event that skipped the escaper that
@@ -9757,7 +10324,7 @@ function exportICS(){
     if(clipped) L.push('X-GT-CLIPPED:' + [r.clipA ? 'AOS' : '', r.clipL ? 'LOS' : '']
       .filter(Boolean).join(','));
     L.push(
-      fold('SUMMARY:' + esc(r.sat + ' \u2014 ' + r.maxEl.toFixed(0) + '\u00b0 '
+      fold('SUMMARY:' + esc((r.custom ? '[custom orbit] ' : '') + r.sat + ' \u2014 ' + r.maxEl.toFixed(0) + '\u00b0 '
         + compass(r.maxAz) + (r.eye === 'yes' ? ' \u2014 naked eye (est. mag ' + r.mag.toFixed(1) + ')' : '')
         + (clipped ? ' \u2014 window-clipped' : ''))),
       fold('DESCRIPTION:' + desc),
@@ -9769,10 +10336,14 @@ function exportICS(){
   }
   L.push('END:VCALENDAR');
   download(L.join('\r\n') + '\r\n',
-    'passes-' + slug(D.entry.name) + '-' + slug(OBS.name) + '.ics', 'text/calendar');
+    'passes-' + exportStem() + '-' + slug(OBS.name) + '.ics', 'text/calendar');
   hintExport(rows.length + ' pass' + (rows.length === 1 ? '' : 'es') + ' written as a calendar');
 }
 const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+/* The spacecraft part of an export's file name. A planned orbit says so ("passes-custom-..."), and a
+   name with no Latin letter or digit slugs to '' (passes--bangkok-... would break every reader that
+   expects a word there), so the stem falls back to "orbit". */
+const exportStem = () => D.entry.custom ? 'custom-' + (slug(D.entry.name) || 'orbit') : slug(D.entry.name);
 function hintExport(msg){
   const h = document.getElementById('exphint');
   if(!h) return;
@@ -9936,7 +10507,7 @@ function paintRecent(){
 function siteChanged(){
   paintSite();
   const keep = simMs, wasPlaying = playing;
-  load(CAT[curIdx]);            // the whole analysis is site-dependent
+  load(entryAt(curIdx));        // the whole analysis is site-dependent
   setSim(keep, !wasPlaying);
   if(global3D() && window.Orbit3D && Orbit3D.ok()) Orbit3D.siteMoved();
 }
@@ -10125,6 +10696,12 @@ function load(entry, trial){
      the same spacecraft - a site or span change, the window rolling on - keeps
      the window that is on screen. */
   if(PINNED && (!D || D.entry !== entry)) winStart = elements(entry.l1, entry.l2).epoch.getTime();
+  /* A designed deep-space orbit far from the window: compute() costs 1 s a month of distance from
+     the epoch (Molniya 107 ms at the epoch, 1,061 ms at 30 days, 11 s at a year; GEO 3.7 s at a
+     year), because SDP4 re-integrates its resonance terms from the epoch on every call. The window
+     goes to the epoch, as the PINNED line above does. Only on a change of spacecraft: a reader who
+     moves the window by hand afterwards has asked for it and is not snapped back. */
+  if(entry.custom && (!D || D.entry !== entry)) deepGuard(entry);
   if(winStart === null) winStart = Date.now();
   let nd;
   try { nd = compute(entry, winStart, spanH); }
@@ -10145,7 +10722,7 @@ function load(entry, trial){
          trial, the window rolling on, a span or site change - never touched
          it, and writing the name back would wipe out whatever the reader is
          typing into it at that moment. */
-      if(D.entry !== entry){ curIdx = CAT.indexOf(D.entry); box.value = D.entry.name; }
+      if(D.entry !== entry){ curIdx = indexOf(D.entry); box.value = D.entry.name; }
       winStart = D.start.getTime(); spanH = D.hours;
       paintWindow();
     }
@@ -10155,8 +10732,13 @@ function load(entry, trial){
   D = nd;
   if(!trial) loadNote('');
   document.getElementById('satname').textContent = entry.name;
-  document.getElementById('idnorad').textContent = D.E.satnum;
-  document.getElementById('idcospar').textContent = D.E.cospar;
+  /* A planned orbit has no catalogue number. Its text is set (so anything that reads these two
+     nodes keeps working and nothing invents a number), and paintCustomMarks() hides the spans
+     around them, so a "Custom orbit · edit" chip fits the header in their place. */
+  document.getElementById('idnorad').textContent = entry.custom ? 'none · custom' : D.E.satnum;
+  document.getElementById('idcospar').textContent = entry.custom ? '—' : D.E.cospar;
+  paintCustomMarks(entry);
+  if(!entry.custom) lastCat = CAT.indexOf(entry);         // where removing a custom orbit goes back to
   document.getElementById('idepoch').textContent = iso(D.E.epoch);
   /* Built as nodes, not as a string of HTML.
      These three values are NOT constants. refreshTLE() replaces entry.l1 and
@@ -10220,6 +10802,10 @@ function load(entry, trial){
   lastIdx = -1; paintClock(true); paintPlay();
   selectPass(0, false);
   paintRate();
+  /* Last, inside its own try: the planner repaints its saved list and its verdict from the
+     analysis just loaded, and a fault there must never turn a loaded spacecraft into a failed
+     load. A no-op until PlannerUI.init has run, so the boot load cannot reach it half-built. */
+  if(window.PlannerUI && PlannerUI.onLoad){ try { PlannerUI.onLoad(D); } catch(e){ console.error(e); } }
   return true;
 }
 /* Under the picker, because that is where the request that failed was made.
@@ -10255,7 +10841,7 @@ const OUT_OF_BRIEF = /^KNACKSAT[- ]?2\b/i;
 function paintBrief(){
   const n = document.getElementById('briefnote');
   if(!n) return;
-  n.hidden = !OUT_OF_BRIEF.test(D.entry.name);
+  n.hidden = !!D.entry.custom || !OUT_OF_BRIEF.test(D.entry.name);   // a custom orbit may be NAMED like the default
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -10270,30 +10856,61 @@ const box = document.getElementById('satsearch'),
 const SHOWN_MAX = 80;
 let curIdx = 0, shown = [], active = -1, isOpen = false, lastQ = '';
 
+/* The last row of the list opens the orbit planner, and only a planner that is up may be
+   offered: PlannerUI.enabled() is false before init, after a failed init, and in the assignment
+   snapshot, where the pill says why instead. */
+const planOn = () => !!(window.PlannerUI && PlannerUI.enabled && PlannerUI.enabled());
+
 function rank(q){
   q = q.trim().toLowerCase();
-  if(!q) return CAT.map((_,i)=>i);
+  /* The reader's own orbits lead their group. There are few of them, they are what was just
+     made, and in index order they would sit 2,158 rows down behind "N more match". They match
+     by NAME and by the word "custom" (the tag the row carries), never by number: "O0001" is a
+     placeholder, not a search term. Order: [custom starts][catalogue starts][custom contains]
+     [catalogue contains]; the empty query is the customs and then the whole catalogue. */
+  const cStarts = [], cHas = [];
+  for(let k=0;k<CUSTOM.length;k++){
+    const n = CUSTOM[k].name.toLowerCase();
+    if(!q || n.startsWith(q) || 'custom'.startsWith(q)) cStarts.push(CAT.length + k);
+    else if(n.indexOf(q) >= 0) cHas.push(CAT.length + k);
+  }
+  if(!q) return cStarts.concat(CAT.map((_,i)=>i));
   const starts = [], has = [];
   for(let i=0;i<CAT.length;i++){
     const n = CAT[i].name.toLowerCase(), id = CAT[i].satnum;
     if(n.startsWith(q) || id.startsWith(q)) starts.push(i);
     else if(n.indexOf(q) >= 0 || id.indexOf(q) >= 0) has.push(i);
   }
-  return starts.concat(has);
+  return cStarts.concat(starts, cHas, has);
 }
 function paint(q){
   lastQ = q;                                  // remember what built this list
   const hits = rank(q);
   shown = hits.slice(0, SHOWN_MAX);
-  let html = shown.map((idx,k)=>
-    '<li role="option" id="sopt'+k+'" data-idx="'+idx+'" aria-selected="'+(idx===curIdx)+'"'+
-    (k===active?' class="on"':'')+'><span class="nm">'+esc(CAT[idx].name)+
-    '</span><span class="id">'+esc(CAT[idx].satnum)+'</span></li>').join('');
+  /* Two group rows, on the empty query only and only when there is something of the reader's to
+     separate from the catalogue. They are presentation: not options, not in shown[], so every
+     index below (active, aria-activedescendant, Enter) is still a position in shown. */
+  const groups = !q.trim() && CUSTOM.length > 0;
+  let html = '', sawCus = false, sawCat = false;
+  shown.forEach((idx,k)=>{
+    const c = entryAt(idx);
+    if(groups && c.custom && !sawCus){ sawCus = true; html += '<li class="grp" role="presentation">Your orbits</li>'; }
+    if(groups && !c.custom && !sawCat){ sawCat = true; html += '<li class="grp" role="presentation">Catalogue</li>'; }
+    const cls = (k===active ? 'on' : '') + (c.custom ? (k===active ? ' cu' : 'cu') : '');
+    html += '<li role="option" id="sopt'+k+'" data-idx="'+idx+'" aria-selected="'+(idx===curIdx)+'"'+
+      (cls ? ' class="'+cls+'"' : '')+'><span class="nm">'+esc(c.name)+'</span><span class="id'+
+      (c.custom ? ' tag' : '')+'">'+(c.custom ? 'custom' : esc(c.satnum))+'</span></li>';
+  });
   if(!hits.length) html = '<li class="note">Nothing in the catalogue matches that</li>';
   else if(hits.length > SHOWN_MAX)
     html += '<li class="note">'+(hits.length-SHOWN_MAX)+' more match — keep typing to narrow</li>';
+  const plan = planOn();
+  /* One virtual option after the real ones: ArrowDown reaches it (active === shown.length), Enter
+     or a click opens the planner. It is a constant string; nothing typed reaches it. */
+  if(plan) html += '<li class="plan'+(active === shown.length ? ' on' : '')+
+    '" role="option" id="soptplan" data-plan="1" aria-selected="false">+ Plan a custom orbit…</li>';
   listEl.innerHTML = html;
-  box.setAttribute('aria-activedescendant', active>=0 ? 'sopt'+active : '');
+  box.setAttribute('aria-activedescendant', active < 0 ? '' : (plan && active === shown.length) ? 'soptplan' : 'sopt'+active);
 }
 function openList(q){
   isOpen = true; listEl.hidden = false; box.setAttribute('aria-expanded','true'); paint(q);
@@ -10301,17 +10918,310 @@ function openList(q){
 function closeList(restore){
   isOpen = false; listEl.hidden = true; box.setAttribute('aria-expanded','false');
   box.setAttribute('aria-activedescendant',''); active = -1;
-  if(restore) box.value = CAT[curIdx].name;
+  if(restore) box.value = entryAt(curIdx).name;
 }
 function choose(idx){
-  if(idx == null || !CAT[idx]) return;
-  curIdx = idx; closeList(false); box.value = CAT[idx].name; box.blur();
-  stop(); load(CAT[idx]);
+  if(idx == null || !entryAt(idx)) return;
+  curIdx = idx; closeList(false); box.value = entryAt(idx).name; box.blur();
+  stop(); load(entryAt(idx));
 }
+/* The Plan row, or Enter on a query that matched nothing. The list is closed first (that puts the
+   current spacecraft's name back in the field); the planner then takes the focus. The opener it
+   will return to on Escape is #planopen, not the field, whose focus handler would reopen all
+   2,158 rows. */
+function openPlan(q){
+  const name = String(q || '').trim();
+  closeList(true);
+  try { PlannerUI.open({ from: 'picker', name: name }); } catch(e){ console.error(e); }
+}
+
+/* ---- the reader's own orbits ---------------------------------------------- *
+ * earth/planner.js builds them and validates them; this is where they live.
+ * A custom entry is the same {name, l1, l2, satnum} a catalogue entry is, made by
+ * writing the elements into a TLE so the whole existing pipeline runs on it
+ * unchanged, plus custom:true. THAT flag is what every guard below tests - never
+ * the shape of the number.
+ *
+ * The planner is on only when all five modules are here (plannerOn). Without any one of
+ * them nothing below runs: the stored record is left exactly as it is, no custom row or
+ * Plan row is painted, the pill stays hidden, and the page is the console it was.  */
+const CUSTOM_KEY = 'gt.custom';
+let customNext = 1, lastCat = -1, lastSaveOk = true, mkFault = false;
+const customSatnum = n => 'O' + String(n).padStart(4, '0');
+/* 'O', because NORAD's Alpha-5 scheme skips I and O (they read as 1 and 0): no real
+   catalogue number can ever begin with it, in any future numbering. Digits would
+   collide - this catalogue already holds 98247 to 99416. */
+const plannerOn = () => !!(window.Planner && window.Advisor && window.AdvisorCopy && window.PlannerUI && window.Lifetime);
+/* One signal for "the list of the reader's orbits changed": the planner repaints its saved list
+   on it, and the picker and the count are repainted by the functions below. A listener that
+   throws is reported by the browser, not here; a throw from dispatch itself is not worth a page. */
+const customsChanged = () => { try { window.dispatchEvent(new CustomEvent('gt-customs-changed')); } catch(e){ console.error(e); } };
+
+/* rec: {id, name, el, made, dlHz?, stdMag?}, every field already validated. Never throws to its
+   caller: restoreCustoms, addCustom and the storage merge count a null as a refused record. A
+   THROW (as opposed to a refusal) sets mkFault, so that restoreCustoms does not take a fault of
+   the planner for a record that was bad and rewrite the saved list without it. */
+function mkCustom(rec){
+  mkCustom.why = null;
+  try {
+    const satnum = customSatnum(+rec.id.slice(1)), t = Planner.toTLE(rec.el, satnum);
+    const entry = { name: rec.name, l1: t.l1, l2: t.l2, satnum, custom: true, cid: rec.id, el: rec.el, made: rec.made };
+    /* copied only after a range test; absent means "no claim", never an error */
+    if(Number.isFinite(rec.stdMag) && rec.stdMag >= -10 && rec.stdMag <= 25) entry.stdMag = rec.stdMag;
+    if(Number.isFinite(rec.dlHz) && rec.dlHz >= 1e6 && rec.dlHz <= 1e11) entry.dlHz = rec.dlHz;
+    /* The gate the network and cache paths pass, plus the checksum they never asked for, plus one
+       more thing no text check can: SGP4 has to be able to start from it. satellite.js validates
+       nothing - a garbage pair reads back error 0 and a NaN a - so verifyTLE is the only guard. */
+    if(!tleOk(entry, satnum)) return null;
+    const v = Planner.verifyTLE(entry.l1, entry.l2, entry.el, satellite);
+    if(!v.ok){ mkCustom.why = v.errors.length ? v.errors[0] : null; return null; }
+    return entry;
+  } catch(e){ console.error(e); mkFault = true; return null; }
+}
+/* A deep-space orbit (period of 225 minutes or more) far from the window: the window goes to its
+   epoch (D39). Called by load() on a change of spacecraft and by addCustom/updateCustom before
+   their load, which own the epoch change; never when the reader moves the window by hand. */
+function deepGuard(entry){
+  if(!entry || !entry.custom || !entry.el || !Planner.isDeep(entry.el.a)) return false;
+  const ws = winStart === null ? Date.now() : winStart;
+  if(Math.abs(ws - entry.el.epoch) <= Planner.LIMITS.deepFarDays*864e5) return false;
+  winStart = entry.el.epoch;
+  return true;
+}
+/* What load() writes for an orbit the reader designed, with fixed ids and no module dependency: a
+   missing module must not leave a stored orbit loadable without the "this orbit is fictional"
+   disclosure. Every one of these elements has its own [hidden]{display:none} rule where an
+   author rule would otherwise beat the attribute (the chip is inline-flex, a section is flex). */
+function paintCustomMarks(entry){
+  const on = !!entry.custom, byId = id => document.getElementById(id);
+  const hide = (el, v) => { if(el) el.hidden = v; };
+  for(const id of ['idnorad', 'idcospar']){          // the number's span and the separator after it
+    const b = byId(id), span = b && b.parentNode, sep = span && span.nextElementSibling;
+    hide(span, on);
+    if(sep && sep.classList.contains('sep')) hide(sep, on);
+  }
+  hide(byId('customchip'), !on);
+  hide(byId('customnote'), !on);
+  hide(byId('tleactions'), !on);
+  if(on){                                              // the Professor's read-only section is for a catalogue spacecraft; PlannerUI shows it again for the next one
+    hide(byId('sec-prof'), true);
+    hide(byId('rp-nav'), true);
+  }
+  const sl = byId('srcline');                          // static text in the markup: said again per entry
+  if(sl){
+    if(sl.dataset.def === undefined) sl.dataset.def = sl.textContent;
+    sl.textContent = on ? 'Synthesized from your elements · not a real TLE' : sl.dataset.def;
+  }
+}
+/* What is stored is the planner's inputs and nothing derived: no lines, no flags, no number.
+   The lines are rebuilt on read, so every stored byte passes the same validator as the form.
+   An empty list keeps the counter ({v, next, items:[]}), or the first orbit after a reload would
+   be c1 / O0001 again. */
+function saveCustoms(){
+  if(PINNED) return true;             // the assignment snapshot neither reads nor writes
+  let ok = true;
+  try {
+    const items = CUSTOM.filter(c => c.el).map(c => ({ id: c.cid, name: c.name, made: c.made, el: Planner.storable(c.el) }));
+    if(!items.length && customNext <= 1) localStorage.removeItem(CUSTOM_KEY);
+    else localStorage.setItem(CUSTOM_KEY, JSON.stringify({ v: Planner.SCHEMA, next: customNext, items: items }));
+  } catch(e){ ok = false; }           // blocked, full, or a private window: the session still works
+  lastSaveOk = ok;
+  return ok;
+}
+function restoreCustoms(){
+  if(PINNED || !plannerOn()) return;  // the stored record stays untouched: sanitizeStore calls validate, which needs Lifetime
+  try {
+    let raw = null;
+    try { raw = localStorage.getItem(CUSTOM_KEY); } catch(e){ return; }
+    const got = Planner.sanitizeStore(raw);
+    if(got.why){                      // a record of another version, or not ours at all
+      try {
+        if(got.why !== 'too-large') localStorage.setItem(CUSTOM_KEY + '.bak', String(raw));
+        localStorage.removeItem(CUSTOM_KEY);
+      } catch(e){}
+      return;
+    }
+    customNext = got.next;
+    let bad = got.dropped;
+    mkFault = false;
+    for(const rec of got.items){ const e = mkCustom(rec); if(e) CUSTOM.push(e); else bad++; }
+    if(bad && !mkFault) saveCustoms();   // what was refused does not come back next time
+    if(CUSTOM.length) customsChanged();
+  } catch(e){ console.error(e); }     // a throw leaves the list as it is and the console running
+}
+function uniqueName(n, except){
+  const have = new Set(CUSTOM.filter(c => c !== except).map(c => c.name.toLowerCase()));
+  if(!have.has(n.toLowerCase())) return n;
+  const max = Planner.LIMITS.nameMax;
+  for(let k = 2; k < 100; k++){ const t = Array.from(n).slice(0, max - String(k).length - 3).join('') + ' (' + k + ')'; if(!have.has(t.toLowerCase())) return t; }
+  return n;
+}
+/* "2,158 spacecraft" or "2,158 + 2 of yours": one line beside the Plan pill, with no suffix (the
+   old " - type to search" made the pill wrap and the header 104 px at 1440). */
+function paintCount(){
+  countEl.textContent = CAT.length.toLocaleString('en-US') + (CUSTOM.length ? ' + ' + CUSTOM.length + ' of yours' : ' spacecraft');
+}
+/* SGP4's refusal, as the planner's error object. The code is the number satellite.js gave
+   (1 = a mean element out of range, 6 = decayed ...), 0 when it gave none. */
+function sgp4Refusal(entry, code){
+  const c = typeof code === 'number' ? code : 0;
+  return { field: '', code: 'err.sgp4', sgp4: c, msg: entry.name + ' cannot be propagated anywhere in this window (' +
+    sgp4Why(typeof code === 'number' ? code : null) + ').' };
+}
+const customFail = (code, msg, extra, field) => ({ ok: false, errors: [Object.assign({ field: field || '', code: code, msg: msg }, extra || {})] });
+/* Why mkCustom said no: verifyTLE's own err.sgp4 object when it refused the lines (its sgp4 member is
+   the number satellite.js gave), else the plain sentence. mkCustom never throws, so a planner that
+   faulted lands here too, and the reader is told the elements were refused, not that the page broke. */
+const mkRefusal = () => mkCustom.why || { field: '', code: 'err.sgp4', sgp4: 0, msg: 'SGP4 cannot start from those elements.' };
+const offMsg = () => PINNED ? 'The orbit planner is off in the assignment snapshot (?tle=embedded).'
+                            : 'The orbit planner is not available on this page.';
+
+/* input: {name, el, dlHz?, stdMag?, cid?, at?, show?}. Nothing is kept unless the analysis loads.
+   cid and at hand back the same number and place (Undo of a delete); show:false is the Undo of an
+   orbit that was not on screen, which must not take over the globe or the clock. */
+function addCustom(input){
+  input = input || {};
+  if(PINNED || !plannerOn()) return customFail('planner.off', offMsg());
+  if(CUSTOM.length >= Planner.LIMITS.maxCustom)
+    return customFail('err.cap', 'At most ' + Planner.LIMITS.maxCustom + ' custom orbits; remove one first.', { cap: Planner.LIMITS.maxCustom });
+  const name = Planner.cleanName(input.name);
+  if(!name) return customFail('err.name.empty', 'Give the orbit a name.', null, 'name');
+  const v = Planner.validate(input.el);
+  if(!v.ok) return { ok: false, errors: v.errors };
+  const used = new Set(CUSTOM.map(c => c.cid));
+  let cid = typeof input.cid === 'string' && /^c[1-9]\d{0,3}$/.test(input.cid) && !used.has(input.cid) ? input.cid : null;
+  if(!cid){
+    let n = Math.max(1, customNext);
+    while(n <= 9999 && used.has('c' + n)) n++;
+    if(n > 9999) return customFail('planner.full', 'This browser has used every orbit number; delete the saved orbits.');
+    cid = 'c' + n;
+  }
+  const entry = mkCustom({ id: cid, name: uniqueName(name), el: v.el, made: Date.now(), dlHz: input.dlHz, stdMag: input.stdMag });
+  if(!entry) return { ok: false, errors: [mkRefusal()] };
+  return commitCustom(entry, input.at, input.show, true);
+}
+function commitCustom(entry, at, show, persist){
+  const prevNext = customNext, n = +entry.cid.slice(1);
+  CUSTOM.splice(Number.isInteger(at) && at >= 0 && at <= CUSTOM.length ? at : CUSTOM.length, 0, entry);
+  customNext = Math.max(customNext, n + 1);
+  let moved = false;
+  if(show !== false){
+    moved = deepGuard(entry);
+    curIdx = indexOf(entry); box.value = entry.name; stop();
+    /* The TRIAL form: load() writes the console's #loadnote only when trial is false, and a failed
+       Add is the planner's message, not the console's. A trial load does not clear an older note,
+       so a success clears it here. */
+    if(!load(entry, true)){           // load() has put the controls, the window and the span back
+      const f = load.failed, code = f && typeof f === 'object' && 'sgp4' in f ? f.sgp4 : null;
+      CUSTOM.splice(CUSTOM.indexOf(entry), 1); customNext = prevNext; curIdx = indexOf(D.entry);
+      return { ok: false, errors: [sgp4Refusal(entry, code)] };
+    }
+    loadNote('');
+  } else if(D) curIdx = indexOf(D.entry);       // the splice may have moved the one on screen
+  paintCount(); if(isOpen) paint(lastQ);
+  const saved = persist === false ? true : saveCustoms();
+  customsChanged();
+  return { ok: true, entry, saved, windowMoved: moved };
+}
+/* Test hook only (window.__gt.addCustomTLE): a custom entry from raw lines, so a catalogue
+   entry's own TLE can be run down the custom path and compared. Not persisted: it has no
+   elements to store. */
+function addCustomTLE(name, l1, l2){
+  return commitCustom({ name, l1, l2, satnum: l1.substring(2, 7).trim(), custom: true,
+    cid: 'c' + customNext, el: null, made: Date.now() }, undefined, true, false);
+}
+/* Editing is in place. The entry keeps its object identity, so D.entry === entry stays true and
+   the window, the span and a typed Doppler frequency survive; it keeps its id and its number, so
+   nothing keyed on either moves. If the new elements cannot be analysed the old ones are put
+   back - the pattern refreshTLE() uses for a newer set SGP4 cannot run. */
+function updateCustom(entry, input){
+  input = input || {};
+  if(PINNED || !plannerOn()) return customFail('planner.off', offMsg());
+  if(CUSTOM.indexOf(entry) < 0) return customFail('planner.nothing', 'That orbit is no longer in the list.');
+  const name = Planner.cleanName(input.name);
+  if(!name) return customFail('err.name.empty', 'Give the orbit a name.', null, 'name');
+  const v = Planner.validate(input.el);
+  if(!v.ok) return { ok: false, errors: v.errors };
+  const next = mkCustom({ id: entry.cid, name: uniqueName(name, entry), el: v.el, made: entry.made,
+    dlHz: input.dlHz !== undefined ? input.dlHz : entry.dlHz, stdMag: input.stdMag !== undefined ? input.stdMag : entry.stdMag });
+  if(!next) return { ok: false, errors: [mkRefusal()] };
+  const KEYS = ['name', 'l1', 'l2', 'el', 'dlHz', 'stdMag', '__life'];
+  const take = (to, from) => { for(const k of KEYS){ if(from[k] === undefined) delete to[k]; else to[k] = from[k]; } };
+  const onScreen = !!D && D.entry === entry;
+  let moved = false;
+  if(onScreen){
+    const held = {}; take(held, entry);
+    const keep = simMs, was = playing;
+    take(entry, next); entry.__life = null;
+    moved = deepGuard(entry);
+    if(!load(entry, true)){           // the old elements go back; load() restored the window and span
+      const f = load.failed, code = f && typeof f === 'object' && 'sgp4' in f ? f.sgp4 : null;
+      take(entry, held);
+      return { ok: false, errors: [sgp4Refusal(next, code)] };
+    }
+    loadNote('');
+    if(!moved) setSim(keep, !was);    // load() reset the clock to the window start; the reader's instant stays
+    box.value = entry.name;
+  } else {
+    /* Off screen: analyse the candidate where it would be loaded (the epoch, for a deep-space orbit
+       far from the window, as deepGuard would put it) before anything is stored. */
+    const ws = winStart === null ? Date.now() : winStart;
+    const t0 = Planner.isDeep(next.el.a) && Math.abs(ws - next.el.epoch) > Planner.LIMITS.deepFarDays*864e5 ? next.el.epoch : ws;
+    try { compute(next, t0, spanH); }
+    catch(err){ return { ok: false, errors: [sgp4Refusal(next, err && typeof err === 'object' && 'sgp4' in err ? err.sgp4 : null)] }; }
+    take(entry, next); entry.__life = null;
+  }
+  if(isOpen) paint(lastQ);
+  const saved = saveCustoms();
+  customsChanged();
+  return { ok: true, entry, saved, windowMoved: moved };
+}
+function removeCustom(entry){
+  const k = CUSTOM.indexOf(entry);
+  if(k < 0) return false;
+  if(D && D.entry === entry){         // on screen: leave it first, and only then let it go
+    const order = [lastCat, DEFAULT].concat(WANT.map(re => CAT.findIndex(c => re.test(c.name))), CAT.map((_, i) => i));
+    let gone = false;
+    for(const i of order){
+      if(i < 0) continue;
+      curIdx = i; box.value = CAT[i].name; stop();
+      if(load(CAT[i])){ gone = true; break; }
+    }
+    if(!gone) return false;           // nothing will load: the orbit stays, and so does the picker
+  }
+  CUSTOM.splice(k, 1);
+  curIdx = indexOf(D.entry);          // virtual indices above k moved down by one
+  paintCount(); if(isOpen) paint(lastQ);
+  saveCustoms();
+  customsChanged();
+  return true;
+}
+/* Another tab changed the saved orbits. Take what it added; never pull the orbit on screen out
+   from under the reader. Last writer wins otherwise: the merge adds and never removes, so an orbit
+   deleted in this tab comes back here when the other tab next saves (the README says so). The
+   listener exists only when the planner does, and its whole body is guarded: sanitizeStore calls
+   validate, and an uncaught throw in a listener is a page error. */
+if(plannerOn()) window.addEventListener('storage', e => {
+  try {
+    if(PINNED || e.key !== CUSTOM_KEY || (e.storageArea && e.storageArea !== localStorage)) return;
+    const got = Planner.sanitizeStore(e.newValue);
+    if(got.why) return;
+    let added = 0;
+    for(const rec of got.items){
+      if(CUSTOM.length >= Planner.LIMITS.maxCustom) break;
+      if(CUSTOM.some(c => c.cid === rec.id)) continue;
+      const c = mkCustom(rec); if(c){ CUSTOM.push(c); added++; }
+    }
+    customNext = Math.max(customNext, got.next);
+    paintCount(); if(isOpen) paint(lastQ);
+    if(added) customsChanged();
+  } catch(err){ console.error(err); }
+});
 function moveActive(d){
   if(!isOpen){ openList(''); return; }
-  if(!shown.length) return;
-  active = (active + d + shown.length) % shown.length;
+  const n = shown.length + (planOn() ? 1 : 0);    // the Plan row is the option after the last hit
+  if(!n) return;
+  active = (active + d + n) % n;
   paint(lastQ);                               // repaint the SAME list, not a new one
   const el = listEl.querySelector('.on');
   if(el) el.scrollIntoView({block:'nearest'});
@@ -10323,8 +11233,10 @@ box.addEventListener('keydown', e=>{
   else if(e.key === 'ArrowUp'){ e.preventDefault(); moveActive(-1); }
   else if(e.key === 'Enter'){
     e.preventDefault();
-    if(active >= 0) choose(shown[active]);
+    if(active >= 0 && active < shown.length) choose(shown[active]);
+    else if(planOn() && active === shown.length) openPlan(lastQ);   // the Plan row
     else if(shown.length) choose(shown[0]);
+    else if(planOn() && box.value.trim()) openPlan(box.value);      // no match: the query becomes the name
   }
   else if(e.key === 'Escape'){ e.preventDefault(); closeList(true); box.blur(); }
 });
@@ -10332,10 +11244,14 @@ box.addEventListener('keydown', e=>{
 // synthetic (assistive tech, automation) that dispatches only a plain click
 listEl.addEventListener('click', e=>{
   if(!isOpen) return;
+  if(e.target.closest('li[data-plan]')){ openPlan(lastQ); return; }
   const li = e.target.closest('li[data-idx]');
   if(li) choose(+li.dataset.idx);
 });
 listEl.addEventListener('mousedown', e=>{           // mousedown beats the blur
+  /* preventDefault, exactly as for the rows: the default action of this mousedown would blur the
+     field that PlannerUI.open() has just focused, and the planner would open with no focus. */
+  if(e.target.closest('li[data-plan]')){ e.preventDefault(); openPlan(lastQ); return; }
   const li = e.target.closest('li[data-idx]');
   if(li){ e.preventDefault(); choose(+li.dataset.idx); }
 });
@@ -10403,7 +11319,7 @@ function fromSiteInput(v){
   const t = wall - tzAt(wall)*3600000;
   return wall - tzAt(t)*3600000;
 }
-function setWindow(ms){ winStart = ms; stop(); load(CAT[curIdx]); }
+function setWindow(ms){ winStart = ms; stop(); load(entryAt(curIdx)); }
 
 /* Slide the analysis window to contain simMs, keeping the clock where it is.
    load() recomputes everything and resets simMs to the window start, so the
@@ -10421,7 +11337,7 @@ function rollWindow(){
   for(let i = 0; i < 64 && (at > start + span || at < start); i++)
     start += at > start ? span : -span;
   winStart = start;
-  if(!load(CAT[curIdx])){
+  if(!load(entryAt(curIdx))){
     /* Played on into time SGP4 cannot propagate - an object decaying under the
        running clock. load() has put the window back; stop at its edge rather
        than retrying the same failure on every animation frame. */
@@ -10448,11 +11364,15 @@ function paintWindow(){
   // a TLE is only good for a few days either side of its epoch - say so plainly
   const off = (D.start.getTime() - D.E.epoch.getTime())/86400000;
   const note = document.getElementById('winnote');
-  const far = Math.abs(off) > 3;
-  note.classList.toggle('warn', far);
+  /* "SGP4 drifts this far out" is about real element sets, which the true orbit leaves as
+     perturbations the model lacks pile up. A designed orbit has no truth behind it: the
+     model IS the orbit, so far from the epoch it is not wrong, only far from the epoch, where
+     the mean anomaly M is defined. Said plainly, and never as a warning. */
+  const cust = !!D.entry.custom, far = Math.abs(off) > 3;
+  note.classList.toggle('warn', far && !cust);
   note.textContent = (Math.abs(off) < 0.05 ? 'window starts at the epoch'
     : (off > 0 ? '+' : '') + off.toFixed(1) + ' d from epoch')
-    + (far ? ' — SGP4 drifts this far out' : '');
+    + (far ? (cust ? ' — M belongs to the epoch' : ' — SGP4 drifts this far out') : '');
 }
 document.getElementById('tpepoch').addEventListener('click', ()=>setWindow(D.E.epoch.getTime()));
 document.getElementById('tpnow').addEventListener('click', ()=>setWindow(Date.now()));
@@ -10465,7 +11385,7 @@ document.getElementById('winStartIn').addEventListener('change', e=>{
   if(isFinite(t)) setWindow(t);
 });
 document.querySelectorAll('.bar-window .span').forEach(b=>b.addEventListener('click', ()=>{
-  spanH = +b.dataset.h; stop(); load(CAT[curIdx]);
+  spanH = +b.dataset.h; stop(); load(entryAt(curIdx));
 }));
 cv.addEventListener('mousemove', e=>{
   const r = cv.getBoundingClientRect();
@@ -10564,6 +11484,10 @@ function tleOk(rec, satnum){
 }
 
 async function fetchTLE(satnum){
+  /* The second layer: only a NORAD number (one to five digits) is ever put in a URL or used as a
+     storage key. refreshTLE's custom flag is the first layer; this one holds if that is ever
+     bypassed, and it also keeps a number from a stored or typed source out of the query. */
+  if(!/^\d{1,5}$/.test(String(satnum))) return null;
   const key = 'tle:'+satnum;
   try {
     const c = JSON.parse(localStorage.getItem(key) || 'null');
@@ -10600,6 +11524,11 @@ async function fetchTLE(satnum){
 }
 
 async function refreshTLE(entry){
+  /* No request of any kind for a planned orbit, pinned or not: CelesTrak would be asked for a
+     number that belongs to nobody, and were it ever a real one the reply would be adopted as
+     "newer" and the reader's orbit silently replaced by another object's. First, before the
+     PINNED branch, so no __prov is written for it either. */
+  if(entry.custom) return;
   /* Pinned to the embedded set on purpose; said so, rather than "checking". */
   if(PINNED){ entry.__prov = {pinned:true}; if(D && D.entry === entry) paintAges(); return; }
   if(entry.__next && Date.now() < entry.__next) return;
@@ -10743,6 +11672,7 @@ function lifeClear(){
    what it is about to do, and gives the range rather than a typical time,
    since there is no typical time to give. */
 function lifeOffer(entry){
+  if(entry.custom){ lifeCustom(entry); return; }     // before anything keyed on the number
   const my = ++lifeReq;
   lifeClear();
   const hit = Lifetime.cached(entry.satnum);
@@ -10754,6 +11684,81 @@ function lifeOffer(entry){
     '<br><br><button class="btn" id="lifego" type="button">Estimate remaining life</button>', '');
   const b = document.getElementById('lifego');
   if(b) b.addEventListener('click', () => runLife(entry, my));
+}
+
+/* The Decay section of a planned orbit. It has no record of past element sets and must not ask for
+   one (nothing is requested, there is no "Estimate remaining life" button), and it must not print
+   a date: an orbit that no spacecraft flies has no calendar to decay on. What it has is the area
+   over mass the reader typed, and the page's own atmosphere model (Advisor.life, which is
+   Lifetime.integrate for a circular orbit and an orbit-averaged march for an eccentric one) run
+   forward from that, three times: drag as typed, three times as strong, a third as strong. The
+   range is an assumption band and says so, in durations after the epoch.
+
+   The cost is paid once per orbit: the result is kept on the entry, keyed on the four numbers it
+   depends on, and updateCustom clears it. Circular is about 3 ms, an eccentric orbit up to about
+   130 ms. */
+const lifeHours = d => { const h = Math.max(1, Math.round(d*24)); return h + (h === 1 ? ' hour' : ' hours'); };
+/* a span of time, never a date: hours under two days, then the page's own days/months/years */
+const lifeSpan = d => d === Infinity ? 'more than a century' : d < 2 ? lifeHours(d) : lifeFmtDays(d);
+/* the Decay chart's x axis: days after the epoch, "+4 h", "+30 d", "+2.7 y" */
+const lifeAxis = d => d < 2 ? Math.max(1, Math.round(d*24)) + ' h' : d < 120 ? Math.round(d) + ' d'
+  : (d/365.25 < 10 ? (d/365.25).toFixed(1) : String(Math.round(d/365.25))) + ' y';
+function lifeCustom(entry){
+  lifeReq++; lifeClear();
+  const hist = document.getElementById('lifehist');
+  if(!entry.el || !window.Advisor){
+    lifeSet('Not forecast', '', 'This entry carries no elements to forecast from.', '');
+    return;
+  }
+  const el = entry.el, key = [el.a, el.e, el.i, el.am].join();
+  let L = null;
+  if(entry.__life && entry.__life.key === key) L = entry.__life.life;
+  else {
+    /* inside a try: this runs inside load(), and a throw here would abort the rest of the analysis
+       of an orbit that has already loaded */
+    try { L = Advisor.life(el); entry.__life = { key, life: L }; }
+    catch(err){ console.error(err); lifeSet('Not forecast', '', 'The decay could not be worked out for this orbit.', ''); return; }
+  }
+  const hp = isFinite(L.h0) ? Math.round(L.h0).toLocaleString('en-US') : '—';
+  const spanTxt = 'planned orbit — nothing was requested';
+  hist.textContent = 'none — planned orbit';
+  if(L.model === 'none'){
+    const sub = 'perigee ' + hp + ' km';
+    if(L.why === 'deep')
+      lifeSet('Not forecast', sub, 'A period of 225 minutes or more. What shortens the life of an orbit this high is the Moon and the Sun pulling on its perigee, not drag, and this page models neither, so no estimate is offered.', spanTxt);
+    else if(L.why === 'high-perigee')
+      lifeSet('No drag estimate', sub, 'Perigee is <b>' + hp + ' km</b>, above the 1,000 km where the atmosphere this page knows ends, so no estimate is offered. For a compact satellite the air does not decide how long this orbit lasts; for a very light sail or balloon it still might.', spanTxt);
+    else if(L.why === 'high-apogee' || L.why === 'ecc-high')
+      lifeSet('Not forecast', sub, 'This orbit reaches beyond 5,000 km or is more eccentric than 0.3: the Moon and the Sun, not drag, decide where its perigee goes, and this page models neither.', spanTxt);
+    else if(L.why === 'reentry')
+      lifeSet('Re-entering', sub, 'Perigee is <b>' + hp + ' km</b>, under the 120 km line this page calls re-entry; it does not come round many more times.', spanTxt);
+    else
+      lifeSet('No drag', '', 'An area-to-mass ratio of 0 never decays.', spanTxt);
+    return;
+  }
+  const eccentric = L.model === 'eccentric', epoch = el.epoch;
+  lifeState = { custom: true, eccentric,
+    P: [{ t: epoch, sma: L.h0, ecc: el.e }],
+    r: { hNow: L.h0, tNow: epoch, rate: L.rate0, verdict: 'custom', track: L.track, simpleTrack: L.fastTrack, trendTrack: L.slowTrack } };
+  document.getElementById('lifealt').textContent = L.h0.toFixed(1) + ' km';
+  document.getElementById('liferate').textContent = L.rate0.toFixed(3) + ' km/day';
+  const am = el.am.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + ' m²/kg';
+  /* Every piece is a constant or a number the page worked out; nothing the reader typed as text
+     reaches this string (the name is not in it). */
+  lifeSet(L.mid === Infinity ? 'More than a century' : lifeSpan(L.mid),
+    L.lo === Infinity ? 'more than a century even with drag three times as strong'
+      : 'between ' + lifeSpan(L.lo) + ' and ' + lifeSpan(L.hi) + ' after the epoch',
+    'This is the page’s atmosphere model run forward from the area-to-mass ratio you typed, <b>' + am + '</b>. ' +
+    'It has no history to fit, so the range is wide on purpose: the drag as a whole, air density and your guess together, ' +
+    'is allowed a factor of 3 either way, and a solar cycle alone swings the air at 400 km by about a factor of ten. ' +
+    'The globe’s own propagation starts at this rate and ' +
+    (eccentric
+      ? 'then follows its own atmosphere, so it can reach the ground sooner or later than this (against SGP4 the ratio has run from about a third to nearly three times): a rough cross-check only.'
+      : 'then decays more slowly, because SGP4’s air density falls off more gently with height; scrolled years ahead it can reach the ground up to about three times later than the mid-case.') +
+    ' No element-set history was requested, because none exists.' +
+    (eccentric ? ' Drag is applied orbit-averaged, so it bites at perigee, <b>' + hp + ' km</b>, and the chart shows perigee height.' : ''),
+    'forecast from your drag assumption, not from a history');
+  drawLife();
 }
 
 /* Why there is no history to fit, in the words of what actually happened. One
@@ -10788,7 +11793,7 @@ function lifeWhyNot(entry, got){
 }
 
 async function runLife(entry, my){
-  if(my !== lifeReq) return;
+  if(entry.custom || my !== lifeReq) return;      // a planned orbit has no history to ask for
   const t0 = Date.now();
   let tick = null;
   const say = () => lifeSet('Fetching…', Math.round((Date.now()-t0)/1000) + ' s',
@@ -10984,11 +11989,20 @@ function drawLife(){
   }
   const {P, r} = lifeState;
   const proj = r.track || null;
-  const t0 = P[0].t, tEnd = proj ? r.tNow + proj[proj.length-1].t*86400000
+  /* A planned orbit's forecast: the axis runs to the END OF THE LONGEST of the three runs. The stock
+     code takes the end from the mid-case run, but here the x1/3 run is three times longer and is the
+     one that sets the headline's upper bound, so most of the band would be clipped at the canvas
+     edge; and the bottom of the height range takes in all three, since the x3 run drops below the
+     mid-case one. No calendar date is drawn anywhere for it: the labels are days after the epoch. */
+  const cust = !!lifeState.custom;
+  const lastT = a => a && a.length ? a[a.length-1].t : 0;
+  const t0 = P[0].t, tEnd = cust ? r.tNow + (Math.max(lastT(r.track), lastT(r.simpleTrack), lastT(r.trendTrack)) || 1)*86400000
+                                 : proj ? r.tNow + proj[proj.length-1].t*86400000
                                  : P[P.length-1].t;
   let hMin = Infinity, hMax = -Infinity;
   P.forEach(p => { if(p.sma<hMin) hMin=p.sma; if(p.sma>hMax) hMax=p.sma; });
   if(proj) proj.forEach(p => { if(p.h<hMin) hMin=p.h; if(p.h>hMax) hMax=p.h; });
+  if(cust) [r.simpleTrack, r.trendTrack].forEach(a => { if(a) a.forEach(p => { if(p.h<hMin) hMin=p.h; if(p.h>hMax) hMax=p.h; }); });
   const pad = Math.max(4, (hMax-hMin)*0.08);
   hMin = Math.max(0, hMin-pad); hMax = hMax+pad;
   const X = t => L + (t - t0)/(tEnd - t0)*(Wc-L-R);
@@ -11008,7 +12022,7 @@ function drawLife(){
   for(let i=0;i<=3;i++){
     const t = t0 + (tEnd-t0)*i/3;
     g.textAlign = i === 0 ? 'left' : i === 3 ? 'right' : 'center';
-    g.fillText(iso(new Date(t)).slice(0,7), X(t), Hc-B+7);
+    g.fillText(cust ? (i === 0 ? 'epoch' : '+' + lifeAxis((t - t0)/86400000)) : iso(new Date(t)).slice(0,7), X(t), Hc-B+7);
   }
   // the 120 km line
   if(hMin <= 130){
@@ -11053,6 +12067,15 @@ function drawLife(){
      as probably re-entered - drew a projection and a band a twentieth of a pixel
      wide, and the key still offered swatches for both. */
   const seen = a => !!a && X(r.tNow + a[a.length-1].t*86400000) - xn >= 3;
+  if(cust){
+    /* the stock legend says "observed (N element sets)", which would be false: there is one point,
+       the epoch, and nothing was observed. Colours are CSS tokens, never user text. */
+    document.getElementById('lifelegend').innerHTML =
+      '<span><i style="background:'+contact+'"></i>model, ' + (lifeState.eccentric ? 'perigee height' : 'your drag') + '</span>' +
+      '<span><i style="background:'+contact+';opacity:.35"></i>drag three times as strong to a third</span>';
+    cv.__geom = {X, Y, L, R, T, B, Wc, Hc, t0, tEnd, hMin, hMax};
+    return;
+  }
   document.getElementById('lifelegend').innerHTML =
     '<span><i style="background:'+track+'"></i>observed (' + P.length + ' element sets)</span>' +
     (seen(proj) ? '<span><i style="background:'+contact+'"></i>projected decay</span>' : '') +
@@ -11073,20 +12096,30 @@ function drawLife(){
     const t = gm.t0 + (x - gm.L)/(gm.Wc - gm.L - gm.R)*(gm.tEnd - gm.t0);
     const {P, r} = lifeState;
     let h = null, kind = '';
-    if(t <= P[P.length-1].t){
+    if(!lifeState.custom && t <= P[P.length-1].t){
       let lo = 0, hi = P.length-1;
       while(lo < hi){ const m = (lo+hi)>>1; if(P[m].t < t) lo = m+1; else hi = m; }
       h = P[lo].sma; kind = 'observed';
     } else if(r.track){
       const d = (t - r.tNow)/86400000;
-      const A = r.track;
+      let A = r.track;
+      /* A planned orbit's axis runs to the end of its LONGEST run, the x1/3-drag one (D42), which is three times
+         longer than the mid-case run for a decaying orbit. Past the end of the mid-case run that is the only model
+         still above the 120 km line, and the band drawn there is its upper edge: reading the mid-case run's last
+         point ("120.0 km") over two thirds of the chart would contradict the picture, so the readout follows the
+         x1/3 run from there (the words stay "model": the legend under the chart names the band). */
+      if(lifeState.custom && r.trendTrack && r.trendTrack.length && d > A[A.length-1].t) A = r.trendTrack;
       let lo = 0, hi = A.length-1;
       while(lo < hi){ const m = (lo+hi)>>1; if(A[m].t < d) lo = m+1; else hi = m; }
       h = A[lo].h; kind = 'projected';
     }
     if(h === null){ tip.classList.remove('on'); return; }
-    tip.innerHTML = iso(new Date(t)).slice(0,10) + '<br>' + h.toFixed(1) + ' km · ' + kind;
-    tip.style.left = Math.min(gm.Wc - 118, Math.max(0, x + 12)) + 'px';
+    tip.innerHTML = lifeState.custom
+      ? '+' + lifeAxis((t - r.tNow)/86400000) + ' after epoch<br>' + h.toFixed(1) + ' km · model'    // numbers only, no date
+      : iso(new Date(t)).slice(0,10) + '<br>' + h.toFixed(1) + ' km · ' + kind;
+    /* the box stays inside the chart: its own width, not a fixed 118 px (the line "+2.7 y after epoch" is 139 px wide,
+       and at the far right of a 390 px screen the box ended 7 px past the edge and widened the whole page) */
+    tip.style.left = Math.min(gm.Wc - Math.max(118, tip.offsetWidth), Math.max(0, x + 12)) + 'px';
     tip.style.top  = (gm.Y(h) - 8) + 'px';
     tip.classList.add('on');
   });
@@ -11133,6 +12166,9 @@ document.querySelector('.viewport').addEventListener('mousedown', e=>{
 /* One sentence, used in three places, so the page never disagrees with itself
    about where the numbers on screen came from. */
 function liveLine(now){
+  /* Read off the entry, not off __prov: paintAges() runs inside load(), before refreshTLE() has had
+     a chance to record anything (and refreshTLE never records anything for a planned orbit). */
+  if(D && D.entry.custom) return ['custom', 'Custom orbit — built on this page from the elements you entered. There is no live source to check it against, and nothing was fetched.'];
   const tleLive = provOnScreen();
   if(!tleLive) return ['checking', 'Checking for a newer element set…'];
   if(tleLive.pinned)  return ['snap', 'Assignment snapshot — the <b>embedded</b> element set, not refreshed.'];
@@ -11161,8 +12197,30 @@ function liveLine(now){
   return ['snap', 'No live source reachable — '+
           (emb ? 'showing the embedded snapshot.' : 'keeping the set on screen, fetched live earlier.')];
 }
+/* A planned orbit has no measured element set to age, so nothing here goes stale. The age is signed:
+   ago() clamps at zero, so an epoch in the future (a window opened ahead of now) needs its own
+   wording. Everything interpolated into the two innerHTML strings is a constant, a number, or esc(). */
+function paintAgesCustom(){
+  const now = Date.now(), d = D.E.epoch.getTime() - now;          // + is ahead of now
+  const when = Math.abs(d) < 90000 ? 'epoch now' : d > 0 ? 'epoch in ' + ago(d) : 'epoch ' + ago(-d) + ' ago';
+  const chip = document.getElementById('agechip');
+  document.getElementById('agetext').textContent = 'custom orbit · ' + when;
+  chip.classList.remove('stale');
+  chip.title = 'A planned orbit: there is no measured element set to age, so nothing here goes stale.';
+  const ltext = liveLine(now)[1];
+  const rp = document.getElementById('railprov');
+  if(rp) rp.innerHTML = 'Epoch <b>' + iso(D.E.epoch).replace('Z','') + '</b><br>' +
+    '<span class="prov-custom">Custom orbit, your elements</span><br>' + esc(when);
+  document.getElementById('tlemeta').innerHTML =
+    '<span class="prov-custom">' + ltext + '</span><br>' +
+    'The two lines above are a synthetic element set written from your inputs so that SGP4 can run them. ' +
+    'Its catalogue number, <b>' + esc(D.entry.satnum) + '</b>, is a placeholder: NORAD’s Alpha-5 numbering never uses the letter O, ' +
+    'so it cannot be mistaken for a real object.<br>' +
+    'Epoch ' + esc(when.replace(/^epoch /, '')) + '. A designed orbit has no measured truth behind it, so the drift SGP4 shows away from its epoch is the model’s own.';
+}
 function paintAges(){
   if(!D) return;
+  if(D.entry.custom){ paintAgesCustom(); return; }
   const now = Date.now();
   const epochAgeMs = now - D.E.epoch.getTime();
   const stale = epochAgeMs > 3*86400000;
@@ -11197,7 +12255,7 @@ function paintAges(){
    only have to duplicate that guard. */
 function tickAges(){
   paintAges();
-  const entry = CAT[curIdx];
+  const entry = entryAt(curIdx);
   if(entry) refreshTLE(entry);        // no-op until __next comes due
 }
 setInterval(tickAges, 30000);
@@ -11508,7 +12566,13 @@ document.addEventListener('visibilitychange', () => {
 
 curIdx = DEFAULT;
 box.value = CAT[curIdx].name;
-countEl.textContent = CAT.length.toLocaleString('en-US')+' spacecraft — type to search';
+/* After CAT, before the first paint of the count, and calling no analysis. Guarded twice: by
+   plannerOn() (without all five modules sanitizeStore's validate would throw and the saved record
+   would be neither shown nor trusted) and by a try, because a throw anywhere in here used to abort
+   the whole page before bootSite(), bootExport() and the first load(), on every reload, for as long
+   as the record stayed in storage. restoreCustoms and each mkCustom inside it are guarded too. */
+if(plannerOn()){ try { restoreCustoms(); } catch(e){ console.error(e); } }
+paintCount();
 /* Before the first analysis, not after: every figure on the page is computed at
    the site, so restoring a saved one afterwards would mean computing twice and
    showing the wrong answer in between. */
@@ -11528,6 +12592,38 @@ if(!load(CAT[curIdx])){
     if(load(CAT[i])){ loadNote(said + ' Showing ' + CAT[i].name + ' instead.'); break; }
   }
 }
+/* The orbit planner's way into the page. After the boot load, never before it: PlannerUI.onLoad (the
+   last statement of load()) is a no-op until init has returned true, so the boot load can never
+   reach a controller that is half built. Everything the controller may do to the console goes through
+   here; it holds no reference to the page's own variables. */
+const plannerHost = {
+  obs: () => OBS, mask: MASK, now: () => Date.now(), sat: satellite,
+  catalogue: () => CAT, customs: () => CUSTOM, current: () => D,
+  window: () => ({ startMs: winStart === null ? Date.now() : winStart, hours: spanH }),
+  /* The analysis behind the Professor's numbers: a whole compute() in the window now on screen, kept
+     out of the console (nothing is painted). null when compute refuses, and WITHOUT computing for a
+     deep-space orbit more than 3 days from the window: SDP4 re-integrates its resonance terms from
+     the epoch on every call, so the cost grows with the distance (a Molniya 107 ms at the epoch,
+     11 s a year away), and the Professor says nothing measured there instead of freezing the page. */
+  trial: (entry, t0, hours) => {
+    try {
+      if(entry.el && Planner.isDeep(entry.el.a) && Math.abs(t0 - entry.el.epoch) > Planner.LIMITS.deepTrialDays*864e5) return null;
+      const d = compute(entry, t0, hours);
+      if(!d.E.altMeasured) return null;
+      return { n: d.passes.length, totalS: d.totalS,
+        longestS: d.passes.reduce((m, p) => Math.max(m, p.dur), 0), bestEl: d.passes.reduce((m, p) => Math.max(m, p.maxEl), 0),
+        altMin: d.E.perigeeAlt, altMax: d.E.apogeeAlt,
+        surfSwing: d.E.surfMax - d.E.surfMin, rSwing: d.E.rMax - d.E.rMin, reentry: !!d.reentry };
+    } catch(e){ return null; }
+  },
+  add: addCustom, update: updateCustom, remove: removeCustom,
+  show: e => choose(indexOf(e)),
+  pinned: PINNED, storageOk: () => lastSaveOk,
+  tracked: e => !e.custom, entryTle: e => ({ l1: e.l1, l2: e.l2 })
+};
+/* Called under PINNED too: the controller then unhides the pill as aria-disabled with the sentence
+   and a way back, and returns false. A page without the five modules shows nothing at all. */
+if(plannerOn()){ try { PlannerUI.init(plannerHost); } catch(e){ console.error(e); } }
 if('IntersectionObserver' in window){
   new IntersectionObserver(es => {
     mapVisible = es[0].isIntersecting;

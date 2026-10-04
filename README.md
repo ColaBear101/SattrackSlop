@@ -22,7 +22,8 @@ and what happens without it:
   tables without it. Every page pins what it loads by a Subresource Integrity hash as well as by
   version, so a changed file is refused rather than run.
 - **On load, optional:** the webfonts from Google Fonts (system fonts otherwise). On the Earth
-  page, the current element set for the spacecraft on screen, from CelesTrak's `gp.php` with
+  page, the current element set for the spacecraft on screen (never for an orbit you designed
+  yourself), from CelesTrak's `gp.php` with
   `tle.ivanstanojevic.me` as the fallback, asked for when a spacecraft is put on screen and every
   three hours while it stays there; an answer is reused for three hours and a failure retried
   after five minutes (the embedded snapshot otherwise; never under `?tle=embedded`). Also the VIIRS
@@ -42,7 +43,8 @@ and what happens without it:
 Three pages over one shared core. The layout says which is which:
 
 ```
-index.html          Earth ground track, elements, Bangkok visibility, decay forecast
+index.html          Earth ground track, elements, Bangkok visibility, decay forecast,
+                    and orbits you design yourself
 moon-track.html     Moon-centred: lunar orbiters and landing sites
 moon.html           Earth–Moon system and the five libration points
 
@@ -65,6 +67,13 @@ earth/
                       the projection, the iPhone's compass
   arview.js           the AR view: the motion sensors, the rear camera, and the
                       sky drawn over the picture
+  planner.js          your own orbits, the maths: typed mean elements to a Two-Line
+                      Element set, validation, the matched B*, the eleven presets
+  advisor.js          the Professor's numbers: the kernels, the lifetime model and
+                      the dictionary of figures worked out for an orbit
+  advisor-copy.js     the Professor's words: 87 items, each one condition and one text
+  plannerui.js        the planner's form, the Professor's panel, the saved list, and
+                      the Professor's section on the spacecraft on screen
 
 moon/
   lunar.js            ELP-2000 lunar ephemeris + CR3BP libration points
@@ -907,6 +916,454 @@ since the backtest says this range runs about two months early, the true date is
 April than before it: moved by the 63-day median, into June 2027, which is the month the page now
 gives under the date.
 
+## Your own orbits: the planner and the Professor
+
+Type the elements of an orbit nobody flies and the console treats it as it treats a catalogue
+spacecraft: the globe and ground track, the Bangkok passes, the naked-eye verdict (on an assumed
+standard magnitude), the Doppler card (which asks for a frequency, since a designed orbit has no
+published downlink), both exports and the Decay section all run on it. The same drawer carries a
+second panel, the **Professor**: what kind of orbit this is, whether it will survive, what the Sun
+does to it, what it does over the observer and what to be careful of, in figures worked out from
+what was typed, with one-click fixes that change the form and nothing else. It is for learning,
+sizing and comparing orbits: the orbit is exactly what SGP4 makes of the elements, with no thrust,
+no station-keeping and no radiation pressure. The limits are collected under **What is checked, and
+what is not: the planner and the Professor**.
+
+### Opening it
+
+*Plan an orbit* sits beside the spacecraft count (*+ Plan* at 1,080 px and below). The picker's last
+row, *+ Plan a custom orbit…*, opens it too, and so does Enter on a search that matches nothing (the
+search becomes the name); on a designed orbit so do the header's *Custom orbit · edit* chip and
+*Edit in planner* under its element set. It takes the room there is: a drawer in the rail's place
+from 901 px wide and 561 px tall, a panel under the globe at 900 px and narrower (the Professor
+beside the form from 641 px), a full-screen dialog when the window is wide but 560 px tall or less.
+
+The form takes a name; a starting point (the spacecraft on screen, a saved orbit, or one of eleven
+presets, from an ISS-like orbit to Molniya and Tundra); the orbit as altitudes, as *a* and *e*, or
+as a period, with inclination, node (RAAN or local time of the ascending node), argument of perigee
+and mean anomaly; the epoch, in UTC whatever zone the browser is in; and what the craft is.
+Altitudes are **mean** altitudes, a(1∓e) − 6378.137 km, so the element card, which reads them off
+the propagation (section (a)), can differ by kilometres to tens of kilometres; the Professor says by
+how much for the orbit typed. A name a catalogue spacecraft or a saved orbit already has is refused.
+
+Typing is never blocked or rewritten (`97.` stays `97.`), and a starting point fills the form and
+nothing else. **The console changes only on *Add to console*, *Update on globe* or *Save as new*,**
+and an orbit SGP4 cannot fly is refused with SGP4's own reason and nothing kept. Notes follow 160 ms
+after the last keystroke; at 500 ms the page's own pass finder runs the draft over the window on
+screen, painting nothing, so the pass count and minutes in view the Professor quotes are the rail's.
+
+### How the elements become a TLE
+
+The planner does not make a second kind of object. It writes the two 69-character lines a catalogue
+entry has, and the existing path (SGP4, passes, exports) runs on them unchanged: KNACKSAT-2's own
+two lines, sent down the custom path, give bit-identical elements, passes and ground track (all
+8,641 samples, 987,552 bytes of JSON compared). The *Earth observation, sun-synchronous, 700 km*
+preset (LTAN 10:30, epoch 2026-10-01 12:00 UTC) writes:
+
+```
+1 O0001U          26274.50000000  .00000000  00000-0  53966-4 0    14
+2 O0001  98.2130 167.7354 0000000   0.0000   0.0000 14.56987942    04
+```
+
+Everything else the form does not supply is blanks and zeros, and the page prints the revolution
+number as `n/a (planned)`. The elements are SGP4 *mean* elements, as in section (a), so a real
+spacecraft's elements typed back in give the orbit SGP4 draws for it (*The spacecraft on screen*, as
+a starting point, does that, with its B* worked back to an area over mass). An osculating element is
+a different number (6 km in `a` for KNACKSAT-2, section (a)); there is no conversion, and one typed
+in as a mean element is wrong by that much. Four traps, each measured, each with a check that fails
+when it is stepped in:
+
+- **Kozai against Brouwer.** The 14.56987942 is a *Kozai* mean motion; SGP4 turns it into the
+  Brouwer `a` the card prints. Going from a typed `a` to the `n` to write needs the inverse, which
+  has no closed form, so the planner iterates: five passes here, at most seven over 60,000 valid
+  orbits (e to 0.995, `a` to 1.2 million km). Kepler's third law is not the inverse: on the written
+  `n` it lands 2.9 km above the 7,078.137 km typed here, and at 6,878.137 km it is 6.41 km low at
+  i = 0 and 3.02 km high at i = 97.8. **The verified residual:** SGP4 hands back the typed `a` to the
+  rounding of `n` (eight decimals, a half-unit of 5·10⁻⁹ rev/day): 1.5 mm for a low orbit, 0.14 m at
+  geostationary, 37 m at 393,200 km. That bound plus 20 % is the tolerance of every round-trip
+  check; the worst measured was 0.83 of it over 5,000 random orbits, 0.75 over a 90-orbit grid and
+  0.60 over 20,000 low-Earth ones, and the preset above is 0.4 mm off. The two largest orbits
+  allowed (400,000 km circular; 393,200 km at e = 0.5) propagate a whole period with no refused
+  sample.
+- **The rounding order.** A TLE holds e to 10⁻⁷ and i to 10⁻⁴°. They are rounded first, the
+  inversion runs on the rounded values, and only then is `n` rounded. Round them after the inversion
+  and 7,010 of 20,000 random low-Earth orbits come back from SGP4 outside the bound, the worst at 3.5
+  times it, and one golden pair of lines differs in its own text (`15.23267821`, check digit 8, for
+  `15.23267823`, 0).
+- **Which radius, which rotation.** WGS-72's 6378.135 km un-normalises `a`; 6378.137 km (WGS-84) is
+  the datum of every altitude; each constant taken from SGP4 is compared with `satellite.constants`
+  bit for bit. A repeating track needs `gstime`'s 360.98564736629 °/day, not the 360.985605 of
+  `BODY.omega` (4.2·10⁻⁵ °/day off), which moves the node after 233 revolutions from 7·10⁻⁵° to
+  7.5·10⁻⁴°.
+- **SGP4 accepts anything.** `satellite.js` validates nothing: garbage lines read back as error 0 and
+  a bad checksum is accepted. `Planner.verifyTLE` is the only guard: length, checksums, layout, every
+  element read back through SGP4 within the quantum of what was typed, then SGP4 asked for the epoch
+  itself and for 400 samples of one period, and the orbit refused if the epoch or all 400 are
+  refused (a part of each revolution underground is a warning). The page keeps an orbit only if its
+  own gate and `verifyTLE` both pass.
+
+### The placeholder number
+
+A designed orbit has no catalogue number, and an invented one must not be mistakable for a real
+object's. It is `O0001`, `O0002` and on: NORAD's Alpha-5 numbering, which extends the five-character
+field past 99,999, skips the letters I and O (they read as 1 and 0), so no real object can carry a
+number beginning with O. Digits would sit in a range this catalogue already uses: thirteen numbers
+from 98247 to 99416, each with a SatNOGS downlink.
+
+The number is never looked up; identity is the flag `custom`, not the number. A custom entry
+carrying the real number 25544 still finds no downlink; one whose lines equal the ISS's is not
+"docked to" it for brightness; one named KNACKSAT-2 does not raise *Outside the brief*. Adding an
+orbit, and the re-check after it, make **zero requests to any host** (`verify-custom.js` counts
+them), and `fetchTLE` also refuses anything that is not one to five digits, so a second layer holds
+with the first removed. The counter only grows (clearing site data restarts it at `O0001`), and
+*Undo* of a delete hands back the same number. *Copy as TLE* says that some tools want a numeric
+catalogue number, so `O0001` has to be replaced.
+
+### Drag: area over mass, not B*
+
+A student knows an area and a mass, not a B*, so the planner asks for the area over the mass in
+m²/kg, with the drag coefficient fixed at 2.2 (shown, never typed). *What it is* fills it: *Typical
+satellite* 0.0043 (the default; Cd·A/m of 0.0095), *Small satellite* 0.010, *3U CubeSat* 0.009,
+*Dense and compact* 0.002, *Large satellite or station* 0.0012 (the ISS's own fitted B*, worked
+back), or *Custom*. The default is measured from the embedded catalogue: its B* values, worked back
+through the same conversion the planner uses the other way, give a median Cd·A/m of 0.0095 for
+near-circular satellites with a perigee of 500 to 700 km. That is a middle, not a constant: 0.0078
+at 300 to 500 km, 0.0150 at 700 to 1,000 km, and 0.0091 however "low orbit" is cut (1,418 to 1,466
+sets). All of these are *fitted* figures, not measured ones.
+
+SGP4 still wants a B*, so the planner chooses the one for which SGP4's decay rate at the epoch
+height equals the rate of the page's own atmosphere (the table the Decay section uses),
+orbit-averaged when e > 0. **No height-independent constant does that.** B* per unit Cd·A/m is
+0.0506 at 360 km, 0.0368 at 420, 0.0225 at 500 and 0.0055 at 700; the textbook
+B* = ½·Cd·(A/m)·0.15696615 is one constant, 0.0785, which is 1.6 times too much at 360 km, 2.1 at
+420, 3.5 at 500 and 14 at 700. Against SGP4 itself (circular, 51.6°, osculating `a` sampled once per
+nodal period for two days) the matched decay rate is within 0.2 % from 500 to 990 km (0.9983 to
+0.9989), 0.4 % at 400 (1.0038) and 4.7 % at 300, then 1.21 at 250 and 1.17 at 200, where SGP4
+treats low perigees differently. B* is not monotone in perigee: it falls to 4.18·10⁻⁴ at 150 km and
+rises to 5.84·10⁻⁴ at 200 km, because SGP4 switches one of its own height parameters at 156 km.
+Below a 120 km perigee it is held at its 120 km value, since an unmatched one means nothing there;
+that orbit is a *Below the re-entry line* Problem and Add stays enabled. Above 120 km a B* over 0.1
+is refused (*Too much drag for SGP4 at this height*) and the error offers the largest area over mass
+that passes: 0.61 m²/kg at 120 km, 0.74 at 200, 1.1 at 400, 2.0 at 500, 4.1 at 600, 8.2 at 700.
+
+**SGP4 against the physical model.** The Professor and the Decay section use one lifetime model, the
+page's own atmosphere; the globe uses SGP4 with the matched B*. They agree on the rate at the epoch
+and then part. Circular, area over mass 0.010, 51.6°, days from the epoch to 120 km; the model's
+range is drag ×3, ×1 and ×⅓:
+
+| Height | Model: ×3 / ×1 / ×⅓ | SGP4 reaches 120 km | SGP4 ÷ model's ×1 |
+|---|---|---|---|
+| 300 km | 6 / 18 / 53 | day 28 | 1.59 |
+| 400 km | 47 / 141 / 422 | day 269 | 1.91 |
+| 500 km | 282 / 847 / 2,542 | day 1,907 | 2.25 |
+| 600 km | 1,440 / 4,321 / 12,964 | day 11,365 | 2.63 |
+| 650 km | 3,089 / 9,268 / 27,805 | day 25,010 | 2.70 |
+| 700 km | 6,385 / 19,156 / past the cap | after day 40,000 | above 2.08 |
+
+The globe comes down later than the model's middle case, by 1.6 to 2.7 times here, and inside the
+range, but the margin to its top is not wide: at 600 and 650 km SGP4's day is 0.88 and 0.90 of the
+×⅓ figure. This comparison catches the textbook B* (the globe then falls at 650 km on day 2,522 and
+at 700 km on day 3,838, below the range) but not a B* twice too big, which stays inside the range at
+every height (days 14, 135, 954, 5,683, 12,505 and 27,290 at 300, 400, 500, 600, 650 and 700 km).
+The rate comparison above is the sharp test.
+
+For an **eccentric** orbit the ratio is not one-sided (area over mass 0.020, 51.6°, argument of
+perigee 0):
+
+| Perigee × apogee | e | Model's ×1 | SGP4 reaches 120 km | SGP4 ÷ model |
+|---|---|---|---|---|
+| 700 × 750 km | 0.0035 | day 13,301 | day 36,696 | 2.76 |
+| 300 × 450 km | 0.011 | day 33 | day 47 | 1.44 |
+| 400 × 800 km | 0.029 | day 669 | day 843 | 1.26 |
+| 400 × 1,400 km | 0.069 | day 2,311 | day 1,733 | 0.75 |
+| 500 × 1,500 km | 0.068 | day 11,812 | day 10,547 | 0.89 |
+| 300 × 2,800 km | 0.158 | day 1,278 | day 477 | 0.37 |
+| 300 × 5,000 km | 0.260 | day 2,824 | day 751 | 0.27 |
+
+The globe can be faster or slower, and at 300 × 5,000 km it is below a third of the model's figure,
+outside the range. `verify-planner.js` asserts that each of the last six rows lies between 0.25 and
+3; the first row is in no suite. For these orbits the Decay section says "sooner or later" and calls
+the comparison a rough cross-check only.
+
+### The Professor
+
+Two layers, one contract between them. `earth/advisor.js` works the numbers out of the elements and
+hands over a flat dictionary of figures (144 keys in the contract: `h_mean`, `period`, `sso_inc`,
+`life_mid` …). Its rates are SGP4's own secular terms, not first-order J2, which would put the
+sun-synchronous inclination 0.024° low (97.4019° at 500 km for SGP4's 97.4260°) and slide the local
+time by about 4.65 minutes a year; its Sun is the page's own, so the eclipse and beta angle quoted
+are the ones the globe's shading uses. `earth/advisor-copy.js` holds the 87 things that can be said,
+each a record: a condition on the dictionary, a title, a body, a basis line and sometimes buttons.
+Sixty-seven are advice, in five groups (*What kind of orbit is this?* 21, *Will it survive?* 15,
+*Sun and eclipse* 7, *Ground track and Bangkok*, or whichever site is set, 12, *Caveats* 12); twenty
+are messages about the input. There is no logic in a template, and an item whose figure has no value
+is dropped rather than written with `NaN` in it.
+
+Each item carries one of five words, a glyph (a circle with a tick, a circle with an *i*, a
+triangle, a square with a cross) and a coloured border, so the scale reads in greyscale and aloud:
+**Good**, **Note**, **Check**, **Problem**, **Fix this** (a Problem on an input, which stops the
+Add). The panel's heading counts what is *to check*: the Checks, Problems and Fix-thises; Notes and
+Goods are not in it and the spoken summary never reads them out. Eight of the sixty-seven pieces of
+advice are Goods: the point is to say what is right as well as what is wrong.
+
+The words keep to a **ladder of certainty**. *Is* means computed here from these numbers. *About* or
+*roughly* means a closed form, rounded. *Usually* and *often* mean convention. *Between X and Y* is
+a range, the only way a lifetime is ever written. *This page does not model* is a stated limit. A
+bold figure is always a number worked out from the elements or the page's own run. The ladder is a
+convention written at the head of `earth/advisor-copy.js`; no check reads a sentence for the right
+rung. What is checked, on every item rendered with real numbers, is the rest of the voice: a title of
+at most 48 characters, a body of at most 70 words (the longest is 66), no sentence past 32 words,
+none of fifteen words ("wrong", "obviously", "just", "guarantee" among them), no contraction, "I" or
+"we", no `NaN` or hole, and that a bold figure is a number. The observer is `{site}`, never a
+literal Bangkok; a check moves the observer and reads every item again.
+
+**Fixes.** Twenty-six buttons sit on twenty-two items. A button writes the form and nothing else: it
+says what it did (*Set i to 97.43 (was 51.64).*), moves the focus to the first field it changed and
+offers **Undo**, one level deep. A *Raise* or *Lower* button moves the orbit the way it says by more
+than 5 km (checked for every such button of every orbit rendered), and 348 buttons are applied
+through the planner to confirm each is accepted and does what it promised. Heights round the safe
+way, to 10 km (up for *raise to*, down for *lower to*), so a 25-year fix is never above 25 years: at
+the typical satellite the mid-case 2-, 5- and 25-year heights are 443.2, 495.5 and 594.0 km, and the
+buttons say 450, 490 and 590. At 550 km there is no 25-year button, since the orbit is already below
+that height; *Lower it to 490 km (about 5 years)* is the one offered. Where no honest height exists
+(a two-year life needs an area over mass below about 5, a 25-year one below about 0.5) the button is
+absent and the item stays. A fix that resizes a sun-synchronous orbit solves its inclination again.
+
+**The label.** The panel's name is one constant, `AdvisorCopy.ADVISOR_LABEL`, in
+`earth/advisor-copy.js`: `'Professor’s notes'`. The heading, the region's accessible name, the
+spoken summary (a separate status, 1.2 s after the last change and only when the set of things to
+check has changed) and the tooltip on each *Basis* line read it, and nothing else does: no title,
+body or button names the speaker or contains the label. To rename the panel, change that one line.
+`advisor-copy-checks.js` and `verify-advisor.js` stub it to `Tutor` and confirm that no string of any
+advice changes, and "Professor" appears once in the four modules outside a comment, as the
+constant's definition. The panel's footer says what it is: closed-form estimates, good for
+learning, sizing and comparing, and for a real mission a tool such as GMAT.
+
+**On the catalogue spacecraft.** The Professor also reads whatever spacecraft is on the globe: under
+*Orbital elements at epoch* a section, *Professor’s notes on KNACKSAT-2* (the name follows the
+spacecraft), holds the same five groups in the same words, built by the same code as the planner’s
+panel, and a link to it ends the hint under that heading. It is worked out from the spacecraft’s own
+two lines, not validated first (the catalogue holds a set with its perigee underground, two with e
+above 0.9 and one with a B* of −0.27, and the Professor describes them as they are), and the passes it
+quotes are the page’s own run. It has no buttons and none of the notes that talk about what was
+typed; it leaves lifetime to the forecast fitted to the spacecraft’s own history under *Orbital
+decay* (*Lifetime: see Orbital decay* links there), because an assumed drag set beside that forecast
+would contradict it. It is built after the spacecraft has loaded, in an idle moment (the median is
+0.6 ms and the slowest of the 2,158 sets 6 ms, so nothing the console computes waits for it), and
+it is hidden for a designed orbit (the planner is that orbit’s panel), in the assignment snapshot
+(`?tle=embedded`, where the planner is off), when any planner module is missing and, with a message
+on the console, if building it ever fails. At the window of 2026-10-01 12:00Z, 24 h, Bangkok, eight
+spacecraft (KNACKSAT-2, the ISS, SENTINEL-2A, LANDSAT 9, NOAA 20, THEOS and two geostationary ones,
+which add the 225-minute note) get exactly the notes expected of them; the one note that changes with
+the day is the one about the best pass of the window, which needs that pass to stay under 60°.
+`verify-planner-ui.js` group 20 holds all of this.
+
+### Saved orbits
+
+An orbit is kept in `localStorage` under `gt.custom`, as the typed elements and nothing derived:
+
+```
+{"v":1,"next":2,"items":[{"id":"c1","name":"Polar 600","made":1790856000000,
+  "el":{"a":6978.137,"e":0,"i":97.8,"raan":120.5,"argp":90,"M":0,"epoch":1790856000000,"am":0.0043}}]}
+```
+
+No lines, number, flag or B* is stored, so every stored byte passes the same validator as the form
+and the TLE is rebuilt on every read. At most **12** orbits and 24 code points of name; the
+thirteenth Add is refused and nothing is evicted. A page opened with nothing saved writes nothing and
+adds no request of its own, and it opens on the catalogue default, never on a saved orbit. If
+storage is blocked or full the orbit works for the visit and the form says that it will not be
+remembered.
+
+**Validated on read.** `Planner.sanitizeStore` treats a stored record as hostile. Above 65,536
+characters it is refused before parsing and dropped unread; a record that is not JSON or is of
+another version is moved aside to `gt.custom.bak` (replacing an earlier one), not destroyed. An item
+survives only if its id is `c` and one to four digits, its name passes the cleaner and its elements
+pass the form's own validator. Only the named fields are read (no spread, no `Object.assign` from
+storage), so a `__proto__` key dies. Ten poisoned stores are fixtures in node (not JSON, another
+version, an array, 70,000 characters, NaN and strings where numbers go, e = 1.5, a stored TLE and
+`custom` flag, a `__proto__` key and ids that are not `cN`, thirty orbits, and a name of markup, a
+formula and a forged calendar line); the page's suite runs them and an eleventh, a perigee 5 km
+above the ground, which the form accepts and SGP4 refuses. A name is cleaned whenever it is made:
+control and bidirectional characters become spaces, a leading `= + - @ | ' "` is stripped until none
+is left (a spreadsheet would run a formula), and it is cut at 24 code points.
+
+The counter survives an empty list (`{"v":1,"next":3,"items":[]}`), or the first orbit after
+deleting them all would be `O0001` again, and stops at `O9999`: past it the page says "This browser
+has used every orbit number" rather than hand one out twice. **Tabs are last-writer-wins.** A second
+tab takes the orbits the first one added and never removes one, above all not the one on its screen,
+so an orbit deleted in one tab can come back from another tab's next save; tombstones were weighed
+and left out as more machinery than twelve orbits justify. The store is per browser and per origin,
+never synced; Chromium gives every page opened from a file the one origin `file://`, so two copies of
+this project on one disk share a list.
+
+### Decay for a planned orbit
+
+A planned orbit has no history of element sets to fit, so the Decay section cannot do what it does
+for KNACKSAT-2, and it makes no request. What it has is the area over mass typed and the page's own
+atmosphere, **run forward three times**: the drag as typed, three times as strong, a third as
+strong. The band is a factor of 3 either way because the drag as a whole, air density and the guess
+about the craft together, is allowed that much, and a solar cycle alone swings the air at 400 km by
+about a factor of ten. It is an assumed range, not an uncertainty, and the reverse of the calibrated
+forecast in *Why not just extrapolate the line*: there, fitting B to a history makes a band built by
+scaling density exactly zero wide; here B is a guess, so the band is the point.
+
+It is **never a date**. An orbit no spacecraft flies has no calendar to decay on, so the headline is
+a duration (*27.5 years*), the sub-line a range (*between 9.2 years and 82.5 years after the epoch*,
+for a 600 km orbit of the typical satellite), and the chart's axis is time since the epoch (`epoch`,
+`+11 d`, `+22 d`, `+33 d` where the longest run is 33 days), running to the end of the longest of
+the three runs so the band is not clipped. At the typical satellite (area over mass 0.0043,
+circular, 51.6°):
+
+| Height | Drag ×3 | Middle | Drag ×⅓ |
+|---|---|---|---|
+| 300 km | 14 days | 41 days | 4.0 months |
+| 400 km | 3.6 months | 10.7 months | 2.7 years |
+| 500 km | 1.8 years | 5.4 years | 16.2 years |
+| 600 km | 9.2 years | 27.5 years | 82.5 years |
+| 700 km | 40.7 years | more than a century | more than a century |
+
+The model is `Lifetime.integrate` for a circular orbit (e under 0.002) and an orbit-averaged march
+on perigee for 0.002 ≤ e ≤ 0.3 with an apogee up to 5,000 km and a perigee from 120 to 1,000 km; the
+two agree within 1 % at e = 0.002 (0.9909, 0.9928 and 0.9933 at 400, 500 and 600 km), so nothing
+jumps as the eccentricity knob crosses it. Elsewhere there is no estimate and the section says why:
+a period of 225 minutes or more (the Moon and Sun, not drag, decide what happens to perigee), a
+perigee above 1,000 km (above the atmosphere this page knows; a very light sail might still feel
+it), an apogee past 5,000 km or e above 0.3, a perigee under 120 km (*Re-entering*), or an area over
+mass of 0 (*No drag*).
+
+### Exports and `?tle=embedded`
+
+The CSV and calendar of a designed orbit say so. **No column is added**: columns are only ever
+appended, and `verify-export.js` pins the order from `spacecraft` to the end (the clip flags,
+`est_magnitude`, then the eight provenance columns), so one added in the middle would move every
+column a reader finds by position. The `satellite` column ends ` (custom orbit)`; `norad` is the
+placeholder, which also keeps the calendar's `UID` unique between two designed orbits; `tle_source`
+reads *custom orbit planned on this page from user-entered elements; not a catalogue object; nothing
+was fetched*. The calendar's `SUMMARY` starts `[custom orbit] ` and its `DESCRIPTION` says no
+spacecraft is known to fly the orbit. File names read `passes-custom-<name>-<site>-<date>.csv`. Both
+exports still refuse an orbit SGP4 takes under 120 km inside the window.
+
+`?tle=embedded`, the assignment snapshot, turns the planner **off by design**: nothing is restored or
+written, the saved store is neither listed nor modified (another tab's change is not merged in
+either), and the count reads `2,158 spacecraft`. The *Plan* pill stays, focusable and marked
+`aria-disabled`, with the sentence saying why and a link back to the live element sets.
+
+### What is checked, and what is not: the planner and the Professor
+
+The checks are the repository's usual kind: a second implementation, SGP4 itself, or a count of what
+the page does, and a fault put in on purpose to see which check dies.
+
+**In node.** `verification/verify-planner.js` (666 checks, about 8 s) holds the planner to
+`satellite.js`, an independent regex checksum and real element sets:
+
+- The TLE writer: its checksum agrees with an independent one on all 4,316 catalogue lines; the B*
+  and epoch vectors and two golden pairs of lines match to the character; 5,000 random valid orbits
+  (epochs 2000–2056, `a` to 400,000 km, e to 0.95) are accepted by `verifyTLE` and read back by SGP4
+  to 5.0·10⁻⁵° in the angles, 5.0·10⁻⁸ in e and 0.43 ms in the epoch; `brouwerFromKozai` equals
+  `satrec.a` on all 2,158 catalogue sets (worst 1.5·10⁻¹¹ km). Garbage lines, bad checksums and a
+  perigee underground are refused.
+- SGP4's secular rates equal the satrec's to 10⁻⁹ °/day over 340 orbits; at ten heights from 300 to
+  5,000 km SGP4 itself, not the planner, measures the node rate at the sun-synchronous root:
+  0.985643 to 0.985653 °/day against the Sun's 0.985647. The matched B* and the lifetime model as
+  above, and the drag integral against a 32,768-node reference to 4·10⁻⁴ (perigees to 500 km) and
+  1.7·10⁻³ (950 km). Each of the fourteen error codes is raised by exactly its condition; 6,525
+  hostile forms throw nothing; the module reads no clock.
+- The `i = 180°` singularity: SGP4's position at i = 179.99°, e = 0.01 differs from its mirror image
+  (i = 0.01°) by 864 to 865 km after a day, whatever `a` (6,700 to 11,500 km). The planner computes
+  the error from the elements the TLE will hold (857 km here; SGP4's measured error is at most 1.010
+  times that over 48 cases) and blocks the Add above 100 km.
+- Forty-nine faults put into `planner.js` one at a time (no inversion, the wrong rounding order, the
+  textbook B*, `BODY.omega`, `mu = 398600.4418`, no 120 km clamp …): every one failed a check.
+
+`verification/verify-advisor.js` (394 checks, about 80 s) holds the Professor to SGP4 and to real
+element sets. It runs the checks of `advisor-copy-checks.js` (88 on their own, under a second)
+again against the real dictionary:
+
+- The Sun to an independent one within 0.0083° over 500 dates, and equal to the page's `sunEci` to
+  the last bit. Local time of the node against SGP4's node crossing: 0.000 minutes at +0, +3, +30 and
+  +90 days for five orbits; the daytime pass over Bangkok and Hobart against SGP4's own passes,
+  within 0.1 h for five local times.
+- Five published repeating orbits (Landsat 233/16, Sentinel-2 143/10, Sentinel-1 175/12, Envisat
+  501/35, TOPEX/Jason 127/10) to 0.02 km and 0.002°, and a sixth, TerraSAR-X from the catalogue, to
+  0.5 km (it comes out 1 m off); SGP4 closes a 233/16 track to 6·10⁻⁵°.
+- Eclipse: the circular closed form against SGP4 and a cone test, 35 cases, runs from 0.44 of a
+  percentage point of the orbit too short to 0.15 too long, and 1.2 points short at worst, near the
+  critical beta. The sampled year used for 0.005 ≤ e < 0.05 matches a 1,440-sample brute force on
+  every eclipse-free day (8 of 8 cases) and on the longest eclipse to 0.22 min; the circular formula
+  is up to 19 days out there (1,000 km, e = 0.04).
+- A geostationary satellite's elevation from Bangkok against `satellite.js` look angles (0.03° at six
+  longitudes) and its drift against 150 real sets (0.012 °/day). Each of the 67 pieces of advice
+  fires in at least one orbit and stays quiet in at least one; 300 seeded forms and the eleven
+  presets render with nothing unresolved (2,525 items, 625 buttons); every orbit of an 851-orbit
+  grid gets a *what kind of orbit* item, none both polar and retrograde.
+- Fifty-eight faults put into the advisor, its words and the planner: 57 killed by a named check; the
+  survivor is an equivalent mutant (a condition on one button that the item's own condition implies).
+  The mutation scripts, like the planner's, are not in the repository.
+
+**In the page.** `verification/verify-custom.js` (203 checks in 24 groups, about three to four
+minutes): zero requests; the differential above; the eleven poisoned stores; blocked storage; the
+thirteenth Add; the counter; two tabs; an Add SGP4 cannot load, refused with the console's note
+untouched; the page opening cleanly with any one of the five modules missing, with a stored orbit
+and with a `Planner.toTLE` that throws; a deep-space orbit a year from the window.
+`verification/verify-custom-mutants.js` takes 79 guards out of a copy of `index.html` one at a time
+and each is caught by a named check; 3 more, second layers behind a tested first one, survive as
+listed (25 to 35 minutes; not in `npm test`). `verification/verify-planner-ui.js` drives the
+planner's own screen the way a student does: the form, the notes, the fixes, the saved list, twelve
+viewport sizes in both colour schemes, and the Professor’s section on catalogue spacecraft (eight
+real ones, eleven awkward sets through the picker, and the section hidden for a designed orbit, with
+the planner off, in the snapshot and when its build throws). `node verification/regress.js` still reads `BIT-IDENTICAL` on
+all 67,488 values with the planner loaded: none of this touches `compute()` or `elements()`.
+
+**Not checked, and limits.**
+
+- **The lifetime is an assumed band, not a forecast, and never a date.** SGP4 takes 1.6 to 2.7 times
+  as long as the model's middle case on a circular orbit, with 10 to 12 % to spare under the band's
+  top at 600 and 650 km; on an eccentric one it can run 0.27 or 2.8 times the model's figure, the
+  first outside the band. The eccentric model is checked against the circular one as e → 0, against
+  a 32,768-node quadrature of its drag integral and against the rough SGP4 comparison above, not
+  against real eccentric decays. There is no solar-cycle model: the atmosphere is the page's fixed
+  table.
+- B* below a 120 km perigee is held at its 120 km value. The retrograde-equatorial bound is measured
+  only under 225 minutes (above it the figure is the same term, labelled *on the order of*). The
+  eclipse is umbra only, with a cylindrical shadow, and numeric only for 0.005 ≤ e < 0.05; from
+  e = 0.05 the sun items stay silent, and where the closed form hands over to the sampled year, at
+  e = 0.005, the count of eclipse-free days can step by a few (282 to 285 at 700 km, LTAN 06:00).
+  The radiation bands and the South Atlantic Anomaly are textbook figures with no percentages.
+  SDP4's resonance leaves a drift on a geostationary orbit whose Kepler period was set: 0.013 °/day
+  east for the preset over ten days (no secant fix is offered). The critical inclination offered for
+  a Molniya-like orbit (63.4° or 116.6°) is the J2/J4 value; with the Sun and Moon terms a deep
+  orbit's own root sits up to about half a degree off, and the Molniya preset at 116.6° drifts its
+  perigee at −0.0060 °/day, over the 0.0055 line, so that Check fires and its button, which sets i to
+  116.6°, changes nothing. The pass counts and minutes in view are the page's own pass finder, never
+  a closed-form estimate.
+- No osculating input, no maneuvers, thrust, station-keeping or radiation pressure, no perturbation
+  beyond SGP4 and no solar-cycle model. Only the orbit on screen is drawn on the globe; the others
+  are in the picker, not the 3D cloud. No share link, no export or import of saved orbits, no
+  constellation, no sync, and no look-alikes, debris or launch sites from the Professor, which does
+  not compute them.
+- `O0001` is not a NORAD number, and tools that want digits will refuse a copied set. The epoch runs
+  2000 to 2056 (the TLE's two-digit year), and the mean anomaly belongs to its epoch: a geostationary
+  satellite moves 0.25° for a minute's change in it.
+- Moving the window by hand far from a deep-space orbit's epoch is slow, as for any catalogue
+  geostationary set with an old epoch. The page's `compute()` over 24 h, in headless Chromium (two
+  runs of a script, not a suite, on a busy machine): a designed Molniya takes 0.1 to 0.2 s at its
+  epoch, 1 to 2 s 30 days away and 22 to 30 s a year away (11 s on a quieter machine, when it was
+  first measured); a geostationary one 0.2 s, 0.8 s and 7 s; a 700 km sun-synchronous one 0.1 s
+  anywhere.
+  So Add, Update and choosing a saved deep-space orbit move the window to the epoch when it is more
+  than 10 days away, and the Professor's own pass finder skips a deep-space draft more than 3 days
+  from the window.
+- Phone decimal keypads have no minus sign and no colon: the node box switches to a text keypad for
+  a local time, and a negative angle is typed as its positive equivalent (330 for −30).
+- **Screen readers were not tried.** The live regions follow the page's own pattern, but no real
+  reader was run. Firefox and Safari were not exercised, the `storage` event between tabs was
+  exercised in Chromium only, no real phone was used, and the AR view was not run with a designed
+  orbit as its target.
+- `satellite.js` is pinned at 6.0.1, and the 225-minute switch to SDP4, the `i = 180°` singularity
+  and the meaning of its mean elements were measured on that version. A bump must re-run
+  `verify-planner.js`; its first group compares every constant it takes with `satellite.constants`.
+- None of this is mission analysis. For that, use a tool made for it: GMAT, or STK.
+
 ## The Earth–Moon system page
 
 `moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration points
@@ -1294,6 +1751,13 @@ verbatim in `earth/wmm.js`, copied in by script from `WMM2025COF.zip`
 `verification/WMM.COF` is the same file committed as a second copy. The same zip's
 `WMM2025_TestValues.txt` is `verification/WMM2025_TestValues.txt`, and is what the model is checked
 against. The zip's README offers test values of its own; they are the previous model's.
+
+**Orbits you design are not in this catalogue.** One made in the planner is built in the page from
+the elements typed and is never added to the 2,158: the catalogue, its count in the regression gate
+and the 3D cloud do not see it, and nothing is requested for it from any host (the suites count the
+requests). Its element set is synthetic, numbered `O0001` and up so that it cannot be mistaken for a
+real object, and the page says so under the element set. What the browser keeps is the typed
+elements, in `localStorage` under `gt.custom` (see *Your own orbits*).
 
 ## Taking the answer away
 
@@ -1739,14 +2203,18 @@ npm install          # Playwright, once
 npm test             # the offline suite; must end BIT-IDENTICAL
 ```
 
-`npm test` runs the second implementation, the element-vector geometry and the regression gate,
-then every check below from `refresh` to `layout` in that order, and stops at the first failure.
-Individually:
+`npm test` runs the second implementation, the element-vector geometry, the planner and Professor
+checks and the regression gate, then the browser checks from `refresh` to `layout` in that order
+(`custom` after `catalogue`), then `planner-ui`, and stops at the first failure. Individually:
 
 ```
 npm run verify       # independent second implementation of elements/elevation/visibility,
                      # and that index.html pins by hash the satellite.js bytes it runs on
 npm run evec         # element-vector geometry, across e = 0.00013 to 0.91
+npm run planner      # your own orbits, the maths: the TLE writer, the Kozai inversion, the matched
+                     # B*, validation and the saved store, against satellite.js (node only, ~8 s)
+npm run advisor      # the Professor: kernels against SGP4, all 87 items, every text rendered
+                     # (node only, about 80 s)
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
@@ -1754,6 +2222,8 @@ npm run optical      # shadow cone geometry, brightness, and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
+npm run custom       # what the console does with an orbit that is not in the catalogue: zero
+                     # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)
 npm run timeline     # the window rolling forward past its end, and the next pass beyond it
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
@@ -1763,6 +2233,8 @@ npm run ar           # the AR view: WMM2025 against NOAA's test values, the sens
                      # spacecraft, the phone held sideways, the globe paused while covered
 npm run layout       # phone, tablet and desktop: nothing over the globe's buttons, the layers
                      # toggle, captions, the header's links, an 11 px floor, the Terms section
+npm run planner-ui   # the planner's own screen, driven as a student drives it: the form, the
+                     # Professor's panel, the fixes, the saved list, the layouts, the details
 npm run snapshot     # (re)write verification/baseline.json
 npm run gate         # compare the live code against it — must print BIT-IDENTICAL
 ```
@@ -1770,6 +2242,20 @@ npm run gate         # compare the live code against it — must print BIT-IDENT
 Every one of those blocks NASA's imagery service before loading the page, so the globe falls back
 to its drawn coastlines. Two reasons: the timings some of them measure are wall-clock, and a
 megabyte of JPEG fetched ten times a run is rude to a service that is free.
+
+`npm run ar` has two checks that depend on which pass the clock lands on: *out of frame to the right*
+and its *above and to the right* twin aim the virtual phone 40° and 30° in azimuth away from the
+spacecraft at the highest pass in the window and expect it to be out of frame, with a pointer. On 4
+October 2026 that pass peaked at 79.3°, where 40° of azimuth is about 7° on the sky, so the spacecraft
+stayed in frame and both checks failed with *no pointer*. They fail the same way against the committed
+page and the committed `verify-ar.js`, without the planner. Since `npm test` stops at the first
+failure, on such a day it stops at `ar` and never reaches `layout` or `planner-ui`; run those two by
+name.
+
+A few checks measure wall-clock time, so on a machine busy with something else one can fail while
+nothing is wrong: the advisor suite's budget of 120 ms at the 95th percentile for a whole advisor
+pass read 128 ms once while this was written, and passed on the next run. Run it again before
+looking for a fault.
 
 The lunar checks, and the globe imagery check, are kept **out** of `npm test`, because they fetch
 from JPL Horizons and NASA GIBS and a clean run should not depend on someone else's uptime:

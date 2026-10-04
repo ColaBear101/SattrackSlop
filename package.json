@@ -17,11 +17,16 @@
     "",
     "'test' is the offline suite. The lunar checks fetch from JPL Horizons, so",
     "they are kept out of it - a clean `npm test` should not depend on someone",
-    "else's uptime."
+    "else's uptime. It also chains the orbit planner and advisor suites; `custom`",
+    "and `planner-ui` are the long ones."
   ],
   "scripts": {
     "verify": "node verification/verify.js",
+    "planner": "node verification/verify-planner.js",
+    "advisor": "node verification/verify-advisor.js",
     "evec": "node verification/verify-evec.js",
+    "custom": "node verification/verify-custom.js",
+    "planner-ui": "node verification/verify-planner-ui.js",
     "refresh": "node verification/verify-refresh.js",
     "pov": "node verification/verify-pov.js",
     "doppler": "node verification/verify-doppler.js",
@@ -31,7 +36,7 @@
     "catalogue": "node verification/verify-catalogue.js",
     "snapshot": "node verification/snapshot.js",
     "gate": "node verification/regress.js",
-    "test": "npm run verify && npm run evec && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical && npm run site && npm run export && npm run catalogue && npm run timeline && npm run elements && npm run lifetime && npm run ar && npm run layout",
+    "test": "npm run verify && npm run evec && npm run planner && npm run advisor && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical && npm run site && npm run export && npm run catalogue && npm run custom && npm run timeline && npm run elements && npm run lifetime && npm run ar && npm run layout && npm run planner-ui",
     "moon": "node verification/verify-moon.js",
     "moon:chain": "node verification/verify-lunar-chain.js",
     "moon:bake": "node verification/fetch-lunar-ephem.js",

@@ -747,6 +747,7 @@ function setSiteState(v){
 function setPovState(v){
   if(pov === v) return;
   pov = v;
+  if(fovRing) fovRing.visible = fovOn && !pov;
   if(v){
     if(follow){ follow = false; if(onFollow) onFollow(false); }
     if(siteLock){ siteLock = false; if(onSite) onSite(false); }
@@ -1112,7 +1113,7 @@ function updateFov(pv, gmst){
   }
   fovRing.geometry.attributes.position.needsUpdate = true;
   fovRing.geometry.computeBoundingSphere();
-  fovRing.visible = fovOn;
+  fovRing.visible = fovOn && !pov;     // from the spacecraft the ring is just a line under the camera
 }
 
 /* ---- input ---------------------------------------------------------------- */
@@ -1631,7 +1632,7 @@ global.Orbit3D = {
   setPlaying(p){ playing = p; },
   setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
-  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn; },
+  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn && !pov; },
   /* Hiding the planet is how you actually look at an orbit: the geometry stops
      being occluded by the thing it goes around. */
   /* Exposed alongside scene and camera so a check can force a frame and read

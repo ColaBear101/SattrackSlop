@@ -33,7 +33,14 @@ describe.skipIf(!built)('the production bundle', () => {
 
   it('is a document with a doctype, a language and a description', () => {
     expect(html.trimStart().toLowerCase().startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain('<html lang="en">');
+    expect(html).toMatch(/<html lang="en"[ >]/);
     expect(html).toContain('<meta name="description"');
+  });
+
+  it('chooses the theme in the head, before the stylesheet can paint', () => {
+    const inline = html.indexOf("localStorage.getItem('gt.prefs')");
+    const sheet = html.indexOf('rel="stylesheet"');
+    expect(inline).toBeGreaterThan(-1);
+    expect(sheet).toBeGreaterThan(inline);
   });
 });

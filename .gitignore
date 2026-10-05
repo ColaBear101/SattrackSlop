@@ -26,3 +26,5 @@ coverage/
 .vercel
 .env*
 verification/.logs/
+verification/screens/
+.logs/

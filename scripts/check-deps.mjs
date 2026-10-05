@@ -53,16 +53,33 @@ export function importsOf(code) {
   return out;
 }
 
+/* `import type { X } from '...'` and `export type { X } from '...'`: erased when the code is built, so they carry a
+   name across a boundary without carrying any code. */
+const TYPE_ONLY = /\b(?:import|export)\s+type\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]/g;
+function typeOnlyCounts(code) {
+  const n = new Map();
+  let m;
+  TYPE_ONLY.lastIndex = 0;
+  while ((m = TYPE_ONLY.exec(code))) n.set(m[1], (n.get(m[1]) || 0) + 1);
+  return n;
+}
+
 export function violations(files) {            // files: [{ rel, code }]
   const bad = [];
   for (const { rel, code } of files) {
     const from = layerOf(rel);
     if (!from) continue;
+    /* One exception, on purpose: the browser's API client may name the server's `Api` type (that is how a route's
+       schema becomes a compile error in the client), as a type-only import. A value import of server code would put
+       the server in the bundle, and is still a violation: a specifier imported both ways is exempted once per
+       type-only statement and flagged for the rest. */
+    const typeOnly = typeOnlyCounts(code), used = new Map();
     for (const spec of importsOf(code)) {
       if (!spec.startsWith('.')) continue;     // packages are not layered
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel.split(path.sep).join('/')), spec));
       const to = layerOf(target);
       if (!to || to === from) continue;
+      if (to === 'server' && (used.get(spec) || 0) < (typeOnly.get(spec) || 0)) { used.set(spec, (used.get(spec) || 0) + 1); continue; }
       if (!ALLOWED[from].includes(to)) bad.push(rel + ' (' + from + ') imports ' + spec + ' (' + to + ')');
     }
   }
@@ -87,12 +104,15 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       { rel: 'server/app.ts', code: "const m = await import('../src/lib/core/body.js');" },
       { rel: 'shared/tle.ts', code: "export * from '../src/lib/catalogue/parse.js';" },
       { rel: 'src/scene/globe.ts', code: "import { ui } from '../state/ui.svelte';" },
-      { rel: 'src/workers/a.worker.ts', code: "const w = new URL('../components/B.svelte', import.meta.url);" }
+      { rel: 'src/workers/a.worker.ts', code: "const w = new URL('../components/B.svelte', import.meta.url);" },
+      { rel: 'src/lib/net/api.ts', code: "import { treaty } from '@elysia/eden'; import { createApi } from '../../../server/app';" },
+      { rel: 'src/lib/net/api.ts', code: "import type { Api } from '../../../server/app'; import { createApi } from '../../../server/app';" }
     ];
     const fine = [
       { rel: 'src/lib/analysis/x.ts', code: "import { RE } from '../core/constants.js'; import { tleOk } from '../../../shared/tle.js'; import sat from 'satellite.js';" },
       { rel: 'src/components/A.svelte', code: "import { clock } from '../state/clock.svelte'; const s = await import('../scene/globe.js');" },
-      { rel: 'server/app.ts', code: "import { tleOk } from '../shared/tle.js'; import { Elysia } from 'elysia';" }
+      { rel: 'server/app.ts', code: "import { tleOk } from '../shared/tle.js'; import { Elysia } from 'elysia';" },
+      { rel: 'src/lib/net/api.ts', code: "import { treaty } from '@elysia/eden';\nimport type { Api } from '../../../server/app';\nimport type {\n  A,\n  B\n} from '../../../server/app';" }
     ];
     const got = violations(planted), ok = violations(fine);
     if (got.length !== planted.length || ok.length !== 0) {

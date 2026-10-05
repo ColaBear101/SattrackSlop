@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -7,6 +7,16 @@
 <meta name="description" content="Read a Two-Line Element set, report the Keplerian elements, plot a day of SGP4 ground track and total the time a spacecraft is visible from your site above a 5° mask.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>
+/* Set the theme before the first paint, from the saved choice (key gt.prefs) or else the system, so a dark
+   visitor never sees a white flash. src/state/prefs.svelte.ts owns it from there. */
+(function () {
+  var t = 'auto';
+  try { t = (JSON.parse(localStorage.getItem('gt.prefs') || '{}') || {}).theme || 'auto'; } catch (e) {}
+  var dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+})();
+</script>
 </head>
 <body>
 <div id="app"></div>

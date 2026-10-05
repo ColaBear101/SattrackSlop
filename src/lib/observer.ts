@@ -12,7 +12,7 @@ export const RECENT_MAX = 6;
 export interface KeyValue { getItem(k: string): string | null; setItem(k: string, v: string): void }
 
 /** A site as the page saved it: the engine's Site plus the place's region label. */
-export interface SavedSite extends Site { zone?: string; where?: string }
+export interface SavedSite extends Site { where?: string }
 
 export function siteValid(o: unknown): o is SavedSite {
   const s = o as Partial<SavedSite> | null | undefined;
@@ -33,8 +33,17 @@ export function normalizeSite(o: Partial<SavedSite>, zoneOffsetHours: number | n
     tz: Number.isFinite(+(o.tz as number)) && o.tz !== undefined && o.tz !== null
       ? +o.tz : zoneOffsetHours !== null ? zoneOffsetHours : Math.round(+o.lon! / 15)
   };
-  if (o.zone) site.zone = o.zone;
+  /* applied, a site always says whether it has a zone: a bare coordinate has none (null), as the old applySite left it */
+  site.zone = o.zone || null;
   return site;
+}
+
+/** The saved site as stored, before it is normalised (the page re-reads its zone against this browser first). */
+export function loadSavedSite(store: KeyValue): SavedSite | null {
+  try {
+    const j = JSON.parse(store.getItem(SITE_KEY) || 'null');
+    return siteValid(j) ? j : null;
+  } catch { return null; }
 }
 
 export function loadSite(store: KeyValue): Site | null {

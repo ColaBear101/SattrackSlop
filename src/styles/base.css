@@ -15,7 +15,7 @@ body {
 h1, h2, h3 { font-family: var(--font-head); font-weight: 600; margin: 0; text-wrap: balance; }
 h2 { font-size: var(--fs-4); letter-spacing: -0.012em; }
 p { margin: 0; }
-a { color: var(--track); }
+a { color: var(--link); }
 code, kbd, pre, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }

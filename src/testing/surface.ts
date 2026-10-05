@@ -1,5 +1,10 @@
 import { app } from '../state/app.svelte';
-import { getEngine, getObs, MASK } from '../state/engine';
+import { doppler } from '../state/doppler.svelte';
+import { getEngine, getObs, getOptics, MASK, sun } from '../state/engine';
+import { live } from '../state/live.svelte';
+import { buildExports } from '../lib/export';
+import { tleSourceText } from '../lib/export/source';
+import { tzAt } from '../lib/places';
 
 /* The test surface: what the verification suites reach into. It exists only when the harness set
    window.__GT_TEST__ before the page loaded, and main.ts loads this file as a separate chunk then, so a
@@ -12,6 +17,7 @@ import { getEngine, getObs, MASK } from '../state/engine';
 export async function install(): Promise<void> {
   await app.ready;
   const e = () => getEngine();
+  const o = () => getOptics();
   const gt = {
     compute: (...a: Parameters<ReturnType<typeof e>['compute']>) => e().compute(...a),
     elements: (...a: Parameters<ReturnType<typeof e>['elements']>) => e().elements(...a),
@@ -24,6 +30,46 @@ export async function install(): Promise<void> {
     dopplerHz: (...a: Parameters<ReturnType<typeof e>['dopplerHz']>) => e().dopplerHz(...a),
     stepFor: (h: number) => e().stepFor(h),
     passStepFor: (h: number) => e().passStepFor(h),
+
+    /* the Sun and the optical verdict (observer-bound, so they follow it) */
+    sunEci: (...a: Parameters<typeof sun.sunEci>) => sun.sunEci(...a),
+    subsolar: (...a: Parameters<typeof sun.subsolar>) => sun.subsolar(...a),
+    sunElevation: (...a: Parameters<typeof sun.sunElevation>) => sun.sunElevation(...a),
+    sunlitState: (...a: Parameters<ReturnType<typeof o>['sunlitState']>) => o().sunlitState(...a),
+    opticalAt: (...a: Parameters<ReturnType<typeof o>['opticalAt']>) => o().opticalAt(...a),
+    passOptical: (...a: Parameters<ReturnType<typeof o>['passOptical']>) => o().passOptical(...a),
+    estMagnitude: (...a: Parameters<ReturnType<typeof o>['estMagnitude']>) => o().estMagnitude(...a),
+    stdMagOf: (...a: Parameters<ReturnType<typeof o>['stdMagOf']>) => o().stdMagOf(...a),
+    get STD_MAG() { return o().STD_MAG; },
+    get NAKED_EYE_MAG() { return o().NAKED_EYE_MAG; },
+    get DARK_SUN_EL() { return o().DARK_SUN_EL; },
+
+    /** the pass table as the exports write it (the same rows), for the analysis on screen */
+    passRows: () => {
+      const D = app.analysis, entry = app.entry;
+      if (!D || !entry) return [];
+      return buildExports({
+        D, OBS: getObs(), MASK, dopHz: doppler.hz, eng: e(), optics: o(),
+        sourceText: tleSourceText({ custom: false, prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry), l1: entry.l1, l2: entry.l2, cached: null })
+      }).passRows();
+    },
+
+    /** The observer, as the old page's applySite did it: validate, resolve the zone, move - and nothing else (no reload;
+     *  the caller computes against it). `persist` writes the site. */
+    applySite: (site: Parameters<typeof app.applySite>[0], persist?: boolean) =>
+      app.applySite(site, { persist: !!persist, reanalyze: false }),
+    tzAt: (ms: number) => tzAt(getObs(), ms),
+
+    /** the refresh's bookkeeping, which the old page kept on the entry as __next and __prov */
+    live: {
+      next: (satnum: string) => live.nextOf(satnum),
+      makeDue: (satnum: string) => live.makeDue(satnum),
+      prov: (satnum: string) => live.provOf(satnum),
+      /** record what a check said, as refresh would have (a test stands in for the network); null clears it */
+      setProv: (satnum: string, p: Parameters<typeof live.prov.set>[1] | null) => { if (p) live.prov.set(satnum, p); else live.prov.delete(satnum); },
+      check: () => (app.entry ? live.check(app.entry) : Promise.resolve())
+    },
+
     get C_KMS() { return e().C_KMS; },
     get OBS() { return getObs(); },
     MASK,

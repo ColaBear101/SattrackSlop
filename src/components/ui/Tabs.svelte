@@ -4,9 +4,11 @@
   /* A tablist with the keyboard behaviour people expect: arrows move between tabs, Home/End jump, only the
      selected tab is in the tab order, and the panel is labelled by its tab. `variant` is only appearance. */
   interface Tab { id: string; label: string }
-  let { tabs, value, label, onchange, variant = 'underline', children }: {
+  let { tabs, value, label, onchange, variant = 'underline', keepMounted = false, children }: {
     tabs: Tab[]; value: string; label: string; onchange: (id: string) => void;
     variant?: 'underline' | 'pill'; children: Snippet<[string]>;
+    /** keep every panel in the page (hidden unless selected), so what is in them is there to be found and read */
+    keepMounted?: boolean;
   } = $props();
 
   const uid = Math.random().toString(36).slice(2, 7);
@@ -31,7 +33,7 @@
   </div>
   {#each tabs as t (t.id)}
     <div class="panel" role="tabpanel" id="panel-{uid}-{t.id}" aria-labelledby="tab-{uid}-{t.id}" hidden={t.id !== value}>
-      {#if t.id === value}{@render children(t.id)}{/if}
+      {#if keepMounted || t.id === value}{@render children(t.id)}{/if}
     </div>
   {/each}
 </div>

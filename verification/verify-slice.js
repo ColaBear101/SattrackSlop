@@ -41,10 +41,13 @@ function chk(name, ok, detail) {
     await page.waitForSelector('#totalsub', { timeout: 30000 });
     const name = await page.textContent('#satname');
     const sub = (await page.textContent('#totalsub')).replace(/\s+/g, ' ').trim();
+    const exact = (await page.textContent('#totalexact')).replace(/\s+/g, ' ').trim();
     const big = (await page.textContent('#totalbig')).trim();
     const rows = await page.$$eval('#passbody tr', trs => trs.length);
     chk('?tle=embedded opens on KNACKSAT-2', name === 'KNACKSAT-2', name);
-    chk('...which reads 899.7 s over 2 passes (the README figure)', /899\.7 s over 2 passes/.test(sub), sub);
+    chk('...which reads 899.7 s over 2 passes (the README figure)', /899\.7 s over 2 passes/.test(exact), exact);
+    chk('...saying which window and which set, under the answer',
+        /15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC\+7/.test(sub) && /epoch 2026-09-12 07:29Z, embedded/.test(sub), sub);
     chk('...as 15.0 min in the headline', big === '15.0 min', big);
     chk('...with two rows in the pass list', rows === 2, String(rows));
     chk('a visitor has no test surface', await page.evaluate(() => typeof window.__gt === 'undefined'));
@@ -75,6 +78,47 @@ function chk(name, ok, detail) {
         r.keys === 'entry,track,satrec,E,start,end,pts,passes,totalS,meanAlt,lambda,step,hours,drawStride,reentry', r.keys);
     chk('OBS is exactly {lat, lon, altKm, name, tz} and the mask is 5', r.obs === 'lat,lon,altKm,name,tz' && r.mask === 5, r.obs + ' / ' + r.mask);
     chk('no page error', errs.length === 0, errs.join(' | ') || 'none');
+    await browser.close();
+  }
+
+  /* ---- the keys: what the transport and the stage answer to, and what they leave to the focused control ---- */
+  {
+    const { chromium } = H.playwright({ testFlag: false });
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(srv.page + '?tle=embedded', { waitUntil: 'load' });
+    await page.waitForSelector('#totalbig', { timeout: 30000 });
+    const label = () => page.getAttribute('#tpplay', 'aria-label');
+    const was = await label();
+    await page.keyboard.press('Space');
+    const toggled = await label();
+    chk('Space plays and pauses the clock', was !== toggled, was + ' -> ' + toggled);
+    await page.keyboard.press('Space');
+    chk('...and again', (await label()) === was);
+    const rate0 = await page.textContent('#tpratev');
+    await page.keyboard.press(']'); await page.keyboard.press(']');
+    const rate1 = await page.textContent('#tpratev');
+    chk('] doubles the rate and [ halves it', rate0.trim() === '1.0×' && rate1.trim() === '4.0×', rate0 + ' -> ' + rate1);
+    await page.keyboard.press('[');
+    chk('...', (await page.textContent('#tpratev')).trim() === '2.0×');
+    const t0 = Date.parse((await page.textContent('#tpclock')).trim().replace(' ', 'T') + 'Z');
+    await page.keyboard.press('ArrowRight');
+    const t1 = Date.parse((await page.textContent('#tpclock')).trim().replace(' ', 'T') + 'Z');
+    chk('the right arrow steps the clock on a minute, and stops it there', t1 - t0 >= 59000 && t1 - t0 <= 61000 && (await label()) === 'Play', (t1 - t0) / 1000 + ' s');
+    await page.keyboard.press('g');
+    chk('g shows the Globe and m the Map', (await page.getAttribute('[role=tab]:has-text("Globe")', 'aria-selected')) === 'true');
+    await page.keyboard.press('m');
+    chk('...', (await page.getAttribute('[role=tab]:has-text("Map")', 'aria-selected')) === 'true');
+    /* a key that means something where the focus is is left to it: Space on a focused button presses that button,
+       not the clock; typing a letter into the picker's field does not switch tabs */
+    await page.focus('#tpplay');
+    const before = await label();
+    await page.keyboard.press('Space');
+    chk('Space on a focused button is that button\'s, and nothing else\'s', (await label()) !== before);
+    await page.click('#satname');
+    await page.keyboard.type('gm');
+    chk('typing in the picker is the picker\'s',
+        (await page.inputValue('#satsearch')) === 'gm' && (await page.getAttribute('[role=tab]:has-text("Map")', 'aria-selected')) === 'true');
     await browser.close();
   }
 

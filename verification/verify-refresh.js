@@ -58,7 +58,13 @@ function withMeanMotion(l2, n) {
   return body + checksum(body);
 }
 
-let served = null, hits = 0, fails = 0;
+/* The page asks the data-cache API first and the sources directly only when no API answers (CHANGES-FROM-LEGACY.md, 7).
+   Run as it is, this checks the path the old page had, since the harness answers /api/** with a 503 and the page falls
+   back. Run with GT_API=up (the "refresh-api" stage), /api/tle/<n> answers as the real API does from what this suite serves,
+   and every phase is checked again through it: same outcomes, and the sources are asked by the API, not the page. */
+const API_UP = process.env.GT_API === 'up';
+
+let served = null, hits = 0, fails = 0, directMine = 0;
 let mine = null, gone = false, altServed = null, altHits = 0;
 const chk = (name, ok, detail) => {
   if (!ok) fails++;
@@ -88,11 +94,29 @@ const chk = (name, ok, detail) => {
        in which its own check is visibly still running. */
     const id = new URL(r.request().url()).searchParams.get('CATNR');
     if (mine && id !== mine) { await new Promise(res => setTimeout(res, 1500)); return r.abort(); }
-    hits++;
+    hits++; directMine++;
     if (gone) return r.fulfill({ status: 404, contentType: 'text/plain', body: 'No GP data found' });
     return served ? r.fulfill({ status: 200, contentType: 'text/plain', body: served })
                   : r.abort();
   });
+
+  /* The API, as the page sees it: answers carry x-gt-api, and say what the source behind them said. */
+  const apiAnswer = r => {
+    const id = r.request().url().split('?')[0].split('/').pop();
+    const h = { 'x-gt-api': '1', 'content-type': 'application/json', 'cache-control': 'no-store' };
+    const json = (status, o) => r.fulfill({ status, headers: h, body: JSON.stringify(o) });
+    if (mine && id !== mine) {            // another spacecraft: its sources are down
+      return json(502, { error: 'upstream_unavailable', tried: [{ src: 'CelesTrak', outcome: 'unreachable' }, { src: 'TLE API', outcome: 'unreachable' }] });
+    }
+    hits++;
+    const at = Date.now();
+    if (gone) return json(200, { status: 'gone', norad: String(+id), src: 'CelesTrak', at });
+    if (!served) return json(502, { error: 'upstream_unavailable', tried: [{ src: 'CelesTrak', outcome: 'unreachable' }, { src: 'TLE API', outcome: 'unreachable' }] });
+    const [l1, l2] = served.split('\n');
+    return json(200, { status: 'ok', norad: String(+id), l1, l2, src: 'CelesTrak', at, epoch: at });
+  };
+  if (API_UP) await page.route('**/api/tle/*', apiAnswer);
+  console.log('\nmode           : ' + (API_UP ? 'API up (the page asks /api/tle/<n>)' : 'API down (the page asks the sources directly)'));
 
   await page.goto(PAGE, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
@@ -103,7 +127,7 @@ const chk = (name, ok, detail) => {
   const base = await page.evaluate(() => {
     const e = __gt.D.entry;
     return { satnum: e.satnum, name: e.name, l1: e.l1, l2: e.l2,
-             next: e.__next, now: Date.now(), epoch: __gt.D.E.epoch.getTime() };
+             next: __gt.live ? __gt.live.next(e.satnum) : e.__next, now: Date.now(), epoch: __gt.D.E.epoch.getTime() };
   });
   mine = base.satnum;
   console.log('\nspacecraft     : ' + base.name + '  (NORAD ' + base.satnum + ')');
@@ -120,14 +144,14 @@ const chk = (name, ok, detail) => {
     const before = hits;
     await page.evaluate(() => {
       localStorage.removeItem('tle:' + __gt.D.entry.satnum);
-      __gt.D.entry.__next = 0;
+      if (__gt.live) __gt.live.makeDue(__gt.D.entry.satnum); else __gt.D.entry.__next = 0;
       document.dispatchEvent(new Event('visibilitychange'));
     });
     for (let i = 0; i < 60 && hits === before; i++) await page.waitForTimeout(100);
     await page.waitForTimeout(700);
   };
   const state = () => page.evaluate(() => ({
-    next: __gt.D.entry.__next, now: Date.now(), epoch: __gt.D.E.epoch.getTime(),
+    next: __gt.live ? __gt.live.next(__gt.D.entry.satnum) : __gt.D.entry.__next, now: Date.now(), epoch: __gt.D.E.epoch.getTime(),
     meta: document.getElementById('tlemeta').textContent.replace(/\s+/g, ' ').trim()
   }));
 
@@ -186,7 +210,7 @@ const chk = (name, ok, detail) => {
   const idleBefore = hits;
   await page.evaluate(() => {
     localStorage.removeItem('tle:' + __gt.D.entry.satnum);
-    __gt.D.entry.__next = 0;
+    if (__gt.live) __gt.live.makeDue(__gt.D.entry.satnum); else __gt.D.entry.__next = 0;
   });
   console.log('\n  (waiting 32 s for an unprompted interval tick)');
   for (let i = 0; i < 330 && hits === idleBefore; i++) await page.waitForTimeout(100);
@@ -199,11 +223,7 @@ const chk = (name, ok, detail) => {
      change of spacecraft, so the line described whichever object had been
      checked last. Confirm this one, move to another whose check is slow and
      then fails, and come back - through the picker, as a user would. */
-  const pick = async q => {
-    await page.click('#satsearch');
-    await page.fill('#satsearch', q);
-    await page.keyboard.press('Enter');
-  };
+  const pick = q => H.pick(page, q);
   const cur = await page.evaluate(() => ({ l1: __gt.D.entry.l1, l2: __gt.D.entry.l2 }));
   served = cur.l1 + '\n' + cur.l2;
   await tick();
@@ -245,6 +265,7 @@ const chk = (name, ok, detail) => {
   const errsBefore = pageErrs.length;
   /* Someone is typing in the picker when the refused set comes back. The
      restore after the refusal used to write the spacecraft's name over it. */
+  if (!(await page.isVisible('#satsearch'))) await page.click('#satname');   // the rebuilt picker is opened from the title
   await page.fill('#satsearch', 'GOES 1');
   await tick();
   st = await state();
@@ -258,10 +279,10 @@ const chk = (name, ok, detail) => {
       st.meta.slice(0, 90));
   chk('...and leaves alone what was being typed in the picker', typed === 'GOES 1',
       JSON.stringify(typed));
-  await page.click('.bar-window .span[data-h="72"]');
+  await H.clickWindow(page, '[data-h="72"]');
   await page.waitForTimeout(1200);
   const span72 = await page.evaluate(() => __gt.D.hours);
-  await page.click('.bar-window .span[data-h="24"]');
+  await H.clickWindow(page, '[data-h="24"]');
   await page.waitForTimeout(900);
   chk('...and the span still changes afterwards, without a page error',
       span72 === 72 && pageErrs.length === errsBefore,
@@ -297,6 +318,7 @@ const chk = (name, ok, detail) => {
   const newer = withEpoch(base.l1, 1) + '\n' + base.l2;
   await pin.route(GP, r => { pinHits++; return r.fulfill({ status: 200, contentType: 'text/plain', body: newer }); });
   await pin.route(ALT, r => { pinHits++; return r.abort(); });
+  await pin.route('**/api/**', r => { pinHits++; return r.abort(); });
   await pin.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
   await pin.goto(PAGE + '?tle=embedded', { waitUntil: 'load' });
   await pin.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
@@ -320,7 +342,7 @@ const chk = (name, ok, detail) => {
       /over 24 h from 2026-09-12 14:29 UTC\+7/.test(ps.sub) && /epoch 2026-09-12 07:29Z, embedded/.test(ps.sub)
       && /Assignment snapshot/.test(ps.meta), ps.sub);
   await pin.evaluate(() => {
-    __gt.D.entry.__next = 0;
+    if (__gt.live) __gt.live.makeDue(__gt.D.entry.satnum); else __gt.D.entry.__next = 0;
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await pin.waitForTimeout(800);
@@ -328,6 +350,8 @@ const chk = (name, ok, detail) => {
   chk('the default is flagged in the answer block as outside the brief', ps.brief, ps.name);
   await pin.context().close();
 
+  if (API_UP) chk('through the API, the page does not ask CelesTrak itself - bar the one check made while the API had nothing',
+      directMine <= 1, directMine + ' direct request(s) for this spacecraft');
   console.log('\npage errors: ' + (pageErrs.length ? pageErrs.join(' | ') : 'none'));
   console.log('mocked requests served: ' + hits);
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

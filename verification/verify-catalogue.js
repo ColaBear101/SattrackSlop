@@ -66,21 +66,17 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     const note = document.getElementById('loadnote'), re = document.getElementById('reentry');
     return {
       shown: __gt.D.entry.name, masthead: document.getElementById('satname').textContent,
-      picker: document.getElementById('satsearch').value,
+      /* the old combobox shows the current name in its field; the rebuilt picker is the title, and its field exists only while it is open */
+      picker: (() => { const b = document.getElementById('satsearch'); return b && b.offsetParent !== null && b.value ? b.value : document.getElementById('satname').textContent; })(),
       start: __gt.D.start.getTime(), hours: __gt.D.hours,
       winIn: document.getElementById('winStartIn').value,
-      span: (document.querySelector('.bar-window .span[aria-pressed="true"]') || {}).textContent,
+      span: (document.querySelector('[data-h][aria-pressed="true"]') || {}).textContent,
       note: note.hidden ? '' : note.textContent,
       reentry: re.hidden ? '' : re.textContent,
       field: __gt.D.reentry, passes: __gt.D.passes.length
     };
   });
-  const pick = async q => {
-    await page.click('#satsearch');
-    await page.fill('#satsearch', q);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(900);
-  };
+  const pick = async q => { await H.pick(page, q); await page.waitForTimeout(900); };
   const setWindow = ms => page.evaluate(v => {
     const inp = document.getElementById('winStartIn');
     inp.value = v; inp.dispatchEvent(new Event('change'));
@@ -107,13 +103,13 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 
   /* The regression that made this more than cosmetic: curIdx had moved, so
      every later reload re-ran the failure. */
-  await page.click('.bar-window .span[data-h="72"]');
+  await H.clickWindow(page, '[data-h="72"]');
   await page.waitForTimeout(1200);
   s = await state();
   chk('a later span change loads normally', errs.length === errsBefore && s.hours === 72
       && s.shown === 'KNACKSAT-2', s.shown + ', ' + s.hours + ' h, errors ' + (errs.length - errsBefore));
   chk('...and the refusal note clears once something loads', s.note === '', s.note || 'hidden');
-  await page.click('.bar-window .span[data-h="24"]');
+  await H.clickWindow(page, '[data-h="24"]');
   await page.waitForTimeout(900);
 
   // ---- propagated, but below the entry interface ---------------------------
@@ -142,7 +138,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   /* Into the day it came down. The window still has samples, so it loads, and
      SGP4's error 6 part-way through is the instant it reports the orbit meeting
      the ground. */
-  await page.click('#winNextD');
+  await H.clickWindow(page, '#winNextD');
   await page.waitForTimeout(1200);
   s = await state();
   chk('a day later it still loads, up to the moment SGP4 gives up',
@@ -153,7 +149,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 
   /* A day after that there is nothing to propagate. The window must stay where
      it was, and say so, rather than moving the controls without the analysis. */
-  await page.click('#winNextD');
+  await H.clickWindow(page, '#winNextD');
   await page.waitForTimeout(1200);
   s = await state();
   chk('a window SGP4 cannot fill is refused, not half-applied',

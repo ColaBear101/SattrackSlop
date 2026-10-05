@@ -34,6 +34,7 @@ const STAGES = [
   { name: 'slice',       script: 'verify-slice.js',      kind: 'numbers', fast: true, target: 'new' },
   { name: 'advisor',     script: 'verify-advisor.js',    alone: true, fast: true },
   { name: 'refresh',     script: 'verify-refresh.js',    alone: true },
+  { name: 'refresh-api', script: 'verify-refresh.js',    alone: true, env: { GT_API: 'up' }, target: 'new' },
   { name: 'pov',         script: 'verify-pov.js' },
   { name: 'doppler',     script: 'verify-doppler.js' },
   { name: 'optical',     script: 'verify-optical.js' },
@@ -66,7 +67,7 @@ function run(stage) {
   return new Promise(resolve => {
     const t0 = Date.now();
     const log = fs.createWriteStream(path.join(LOGS, stage.name + '.log'));
-    const child = cp.spawn(process.execPath, [path.join(DIR, stage.script)], { cwd: ROOT, env: process.env });
+    const child = cp.spawn(process.execPath, [path.join(DIR, stage.script)], { cwd: ROOT, env: Object.assign({}, process.env, stage.env || {}) });
     let tail = '';
     const take = d => { log.write(d); tail = (tail + d).slice(-4000); };
     child.stdout.on('data', take); child.stderr.on('data', take);

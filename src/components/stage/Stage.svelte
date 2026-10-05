@@ -5,6 +5,7 @@
   import { MASK } from '../../state/engine';
   import { compass } from '../../lib/text/fmt';
   import { latStr, lonStr } from '../../lib/observer';
+  import { tzLabelAt } from '../../lib/places';
   import Tabs from '../ui/Tabs.svelte';
   import Icon from '../ui/Icon.svelte';
   import GroundTrackMap from './GroundTrackMap.svelte';
@@ -12,14 +13,17 @@
   /* The stage: the spacecraft's ground track now, and (milestone M6) the 3D globe on the other tab. The readouts
      under the map are the spacecraft's position and the look from the observer at the instant on the clock. */
   const cur = $derived(app.sampleAt(clock.tick.ms));
+  const nm = $derived(app.site.name);
+  const pos = $derived(latStr(app.site.lat) + ' ' + lonStr(app.site.lon));
+  /* [id of the value, id of the label, label, value] - the ids are the old page's */
   const items = $derived(!cur ? [] : [
-    ['Latitude', latStr(cur.lat)],
-    ['Longitude', lonStr(cur.lon)],
-    ['Altitude', cur.alt.toFixed(1) + ' km'],
-    ['Elevation', cur.el.toFixed(2) + '°'],
-    ['Azimuth', cur.az.toFixed(1) + '° ' + compass(cur.az)],
-    ['Slant range', cur.rng.toFixed(0) + ' km']
-  ] as [string, string][]);
+    ['r-lat', '', 'Latitude', latStr(cur.lat)],
+    ['r-lon', '', 'Longitude', lonStr(cur.lon)],
+    ['r-alt', '', 'Altitude', cur.alt.toFixed(1) + ' km'],
+    ['r-el', 'lbl-roel', 'Elevation @ ' + nm, cur.el.toFixed(2) + '°'],
+    ['r-az', 'lbl-roaz', 'Azimuth @ ' + nm, cur.az.toFixed(1) + '° ' + compass(cur.az)],
+    ['r-rng', '', 'Slant range', cur.rng.toFixed(0) + ' km']
+  ] as [string, string, string, string][]);
 </script>
 
 <section class="stage" aria-label="Spacecraft position">
@@ -29,13 +33,15 @@
       {#if id === 'map'}
         <GroundTrackMap />
         <ul class="legend" aria-label="Key">
-          <li><i class="k track"></i> Ground track</li>
-          <li><i class="k contact"></i> In view above {MASK}°</li>
-          <li><i class="k observer"></i> {app.site.name} and its reach</li>
-          <li><i class="k fov"></i> Spacecraft footprint</li>
+          <li><i class="k track"></i> Sub-satellite track</li>
+          <li><i class="k contact"></i> <span id="lbl-inview">In view from {nm} (el ≥ {MASK}°)</span></li>
+          <li><i class="k dot"></i> <span id="lbl-sitepos">{nm} {pos}</span></li>
+          <li><i class="k observer"></i> <span id="lbl-sitering">{nm} {MASK}° access circle</span></li>
+          <li><i class="k fov"></i> Spacecraft footprint (ground above {MASK}°)</li>
+          <li><i class="k night"></i> Sunlit / night side at the shown instant</li>
         </ul>
         <dl class="readouts">
-          {#each items as [k, v] (k)}<div><dt class="eyebrow">{k}</dt><dd class="mono">{v}</dd></div>{/each}
+          {#each items as [id, lid, k, v] (id)}<div><dt class="eyebrow" id={lid || undefined}>{k}</dt><dd class="mono" class:hot={id === 'r-el' && !!cur && cur.el >= MASK} {id}>{v}</dd></div>{/each}
         </dl>
       {:else}
         <div class="globe" id="globe-placeholder">
@@ -59,6 +65,9 @@
   .k.track { background: var(--track); } .k.contact { background: var(--contact); height: 4px; }
   .k.observer { background: transparent; border-top: 2px dashed var(--observer); height: 0; }
   .k.fov { background: transparent; border-top: 2px solid var(--fov); height: 0; }
+  .k.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--observer); }
+  .k.night { width: 14px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, var(--swday) 50%, var(--swnight) 50%); border: 1px solid var(--rule); }
+  .readouts dd.hot { color: var(--contact); }
   .readouts {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-3) var(--space-4); margin: 0;
     padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--r-3); background: var(--panel);

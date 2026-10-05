@@ -17,9 +17,11 @@
   $effect(() => { if (open) { query = ''; active = 0; } });
   $effect(() => { query; active = 0; });
 
+  /* Closed whether or not it loaded: the title names the spacecraft on screen, and a refusal is said in the note under the bar
+     (the old combobox put the current name back in its field; here there is no field to put it in). */
   function choose(i: number) {
     const entry = app.catalogue[i];
-    if (entry && app.select(entry)) open = false;
+    if (entry) { app.select(entry); open = false; }
   }
 
   function key(e: KeyboardEvent) {

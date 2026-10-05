@@ -181,9 +181,10 @@ function parseCSV(text) {
      the file's and not merely the page's, which it matches. compute() reads the
      site from the page's observer, so it is applied there and restored after. */
   const rep = await page.evaluate(({ l1, l2, start, span, lat, lon, alt }) => {
-    const O = __gt.OBS, was = { name: O.name, lat: O.lat, lon: O.lon, altKm: O.altKm, tz: O.tz, zone: O.zone };
+    const O0 = __gt.OBS, was = { name: O0.name, lat: O0.lat, lon: O0.lon, altKm: O0.altKm, tz: O0.tz, zone: O0.zone };
     __gt.applySite({ name: 'elsewhere', lat: -33.9, lon: 18.4, altKm: 1.2 }, false);
     __gt.applySite({ name: 'from the file', lat: +lat, lon: +lon, altKm: +alt }, false);
+    const O = __gt.OBS;        // the observer is replaced, not mutated, when it moves: read the current one
     const site = [O.lat, O.lon, O.altKm];
     const d = __gt.compute({ name: 'from the file', l1, l2, satnum: l1.substring(2, 7).trim() },
                            Date.parse(start), +span);
@@ -212,12 +213,14 @@ function parseCSV(text) {
      wrote plain "embedded". The check's outcome is set on the entry directly,
      as refreshTLE() records it, since the network is blocked here. */
   const gone = await page.evaluate(() => {
-    const e = __gt.D.entry, held = e.__prov, at = Date.parse('2026-09-20T06:00:00Z');
-    e.__prov = { gone: 'CelesTrak', at };
+    const e = __gt.D.entry, at = Date.parse('2026-09-20T06:00:00Z');
+    /* the old page hung the record on the entry; the rebuilt one keeps it by number, behind __gt.live */
+    const held = __gt.live ? __gt.live.prov(e.satnum) : e.__prov;
+    if (__gt.live) __gt.live.setProv(e.satnum, { gone: 'CelesTrak', at }); else e.__prov = { gone: 'CelesTrak', at };
     return held;
   });
   const gc = parseCSV((await grab('exp-csv')).text);
-  await page.evaluate(held => { __gt.D.entry.__prov = held; }, gone);
+  await page.evaluate(held => { if (__gt.live) __gt.live.setProv(__gt.D.entry.satnum, held); else __gt.D.entry.__prov = held; }, gone);
   chk('a set CelesTrak no longer carries is recorded as such in tle_source',
       gc.slice(1).every(r => r[idx('tle_source')] === 'embedded; CelesTrak reports no current set 2026-09-20T06:00:00.000Z'),
       gc[1][idx('tle_source')]);
@@ -238,15 +241,7 @@ function parseCSV(text) {
      never reached above. The site name is typed by a user, though, and
      "Bangkok, KMUTNB" is the obvious thing to type - so move the observer to a
      name that forces it and check the file still parses. */
-  await page.evaluate(() => {
-    document.getElementById('siteopen').click();
-    document.getElementById('s-name').value = 'Bangkok, "KMUTNB" site';
-    document.getElementById('s-lat').value = 13.75;
-    document.getElementById('s-lon').value = 100.52;
-    document.getElementById('s-alt').value = 0;
-    document.getElementById('s-tz').value = 7;
-    document.getElementById('siteapply').click();
-  });
+  await H.setSite(page, { name: 'Bangkok, "KMUTNB" site', lat: 13.75, lon: 100.52, alt: 0, tz: 7 });
   await page.waitForTimeout(2200);
   const csv2 = await grab('exp-csv');
   const rows2 = parseCSV(csv2.text);
@@ -261,9 +256,8 @@ function parseCSV(text) {
   chk('...which required real quoting, not luck', /""/.test(csv2.text),
       'doubled quotes present in the file');
 
-  await page.evaluate(() => {
-    document.getElementById('sitereset').click();
-  });
+  await H.siteForm(page);
+  await page.click('#sitereset');
   await page.waitForTimeout(2000);
 
   // ---------------- iCalendar ---------------------------------------------
@@ -338,16 +332,7 @@ function parseCSV(text) {
      from Bangkok is above the mask for the whole window, so both of its ends are
      the window's - and before these flags neither file could tell that apart
      from a real rise and set. Loaded through the picker, as a reader would. */
-  await page.evaluate(() => {
-    const box = document.getElementById('satsearch');
-    box.value = 'INTELSAT 36';
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForTimeout(800);
-  await page.evaluate(() => {
-    const o = document.querySelector('#satlist [role=option]');
-    if (o) o.click();
-  });
+  await H.pick(page, 'INTELSAT 36');
   await page.waitForTimeout(2500);
   const geo = await page.evaluate(() => ({ name: __gt.D.entry.name,
     clip: __gt.D.passes.map(p => [p.clipA, p.clipL]) }));
@@ -382,22 +367,14 @@ function parseCSV(text) {
      summary and the estimate beside it are written at all. The default
      spacecraft's 24 hours from now rarely has such a pass, so this pins a week
      that does - HST from 2026-09-15, on its published standard magnitude. */
+  await H.pickExact(page, 'HST');
   await page.evaluate(() => {
-    const box = document.getElementById('satsearch');
-    box.value = 'HST';
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForTimeout(800);
-  await page.evaluate(() => {
-    const o = [...document.querySelectorAll('#satlist [role=option]')]
-      .find(li => /^HST$/.test((li.querySelector('.nm') || li).textContent.trim()));
-    if (o) o.click();
     const w = document.getElementById('winStartIn');
     w.value = '2026-09-15T00:00';
     w.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.waitForTimeout(2500);
-  await page.click('.bar-window .span[data-h="168"]');
+  await H.clickWindow(page, '[data-h="168"]');
   await page.waitForTimeout(3000);
   const hst = await page.evaluate(() => {
     const r = __gt.passRows();
@@ -432,9 +409,7 @@ function parseCSV(text) {
      the published figure looked up by number alone, it fell back to the
      assumed 5.0 and was exported "too faint" for the evening pass of
      2026-09-29 (12:30Z) that ISS (ZARYA) was exported "yes" for. */
-  await page.fill('#satsearch', 'ISS');
-  await page.waitForTimeout(600);
-  await page.press('#satsearch', 'Enter');
+  await H.pick(page, 'ISS');
   await page.waitForTimeout(2500);
   await page.evaluate(() => {
     const w = document.getElementById('winStartIn');
@@ -442,7 +417,7 @@ function parseCSV(text) {
     w.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.waitForTimeout(2500);
-  await page.click('.bar-window .span[data-h="24"]');
+  await H.clickWindow(page, '[data-h="24"]');
   await page.waitForTimeout(2500);
   const dock = await page.evaluate(() => {
     const r = __gt.passRows();

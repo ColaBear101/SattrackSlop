@@ -1,7 +1,6 @@
 <script lang="ts">
   import { app, SPANS } from '../../state/app.svelte';
-  import { localMinute } from '../../lib/text/fmt';
-  import { tzLabel } from '../../lib/observer';
+  import { fromSiteInput, toSiteInput, tzLabelAt } from '../../lib/places';
   import Popover from '../ui/Popover.svelte';
   import Button from '../ui/Button.svelte';
   import Segmented from '../ui/Segmented.svelte';
@@ -12,20 +11,21 @@
      tonight" is the question people arrive with. The ids are the old page's (winStartIn, winPrevD, tpnow...). */
   let open = $state(false);
   const a = $derived(app.analysis);
-  const tz = $derived(app.site.tz);
   const DAY = 86_400_000, H6 = 6 * 3_600_000;
   const spanLabel = (h: number) => (h >= 48 ? h / 24 + ' d' : h + ' h');
 
   /* the field is read and written in the observer's time, as its label says */
-  const startLocal = $derived(a ? localMinute(a.start, tz).replace(' ', 'T') : '');
-  let typed = $state('');
-  $effect(() => { typed = startLocal; });
+  const startLocal = $derived(a ? toSiteInput(app.site, a.start.getTime()) : '');
+  const zoneLabel = $derived(a ? tzLabelAt(app.site, a.start.getTime()) : '');
+  /* The field shows the window's start unless it has the focus (someone is typing in it): the old paintWindow. It is
+     read from the element when it changes, not kept in a state of its own, so whatever sets it is what is read. */
+  let startEl: HTMLInputElement | undefined = $state();
+  $effect(() => { if (startEl && document.activeElement !== startEl) startEl.value = startLocal; });
 
   function move(ms: number) { if (a) app.setWindowStart(a.start.getTime() + ms); }
-  function commit() {
-    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(typed);
-    if (!m) return;
-    app.setWindowStart(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!) - tz * 3_600_000);
+  function commit(e: Event) {
+    const t = fromSiteInput(app.site, (e.currentTarget as HTMLInputElement).value);   // the observer's time, as labelled
+    if (isFinite(t)) app.setWindowStart(t);
   }
 
   /* how far the window sits from the set's epoch: a TLE is only good for a few days either side of it */
@@ -47,9 +47,9 @@
   <div class="win">
     <p class="eyebrow">Window opens</p>
     <div class="start">
-      <input type="datetime-local" id="winStartIn" step="60" bind:value={typed} onchange={commit}
-             aria-label="Start of the analysis window, in the observer’s time ({tzLabel(tz)})">
-      <span class="tz mono" id="winTz" aria-hidden="true">{tzLabel(tz)}</span>
+      <input type="datetime-local" id="winStartIn" step="60" bind:this={startEl} onchangecapture={commit}
+             aria-label="Start of the analysis window, in the observer’s time ({zoneLabel})">
+      <span class="tz mono" id="winTz" aria-hidden="true" title="The observer’s local time, which the window start is read and written in">{zoneLabel}</span>
     </div>
     <div class="row">
       <Button id="winPrevD" size="sm" aria-label="Back one day" onclick={() => move(-DAY)}>−1 d</Button>

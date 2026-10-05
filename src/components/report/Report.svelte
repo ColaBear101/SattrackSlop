@@ -1,5 +1,6 @@
 <script lang="ts">
   import ReportNav from './ReportNav.svelte';
+  import PassesSection from './PassesSection.svelte';
 
   /* The report: what the console above summarises, written out. The sections keep the old page's anchors and
      order. Their contents arrive with the report milestone; until then each says what will be here. */
@@ -23,6 +24,9 @@
   <ReportNav />
   <div class="sheet">
     {#each sections as s (s.id)}
+      {#if s.id === 'sec-access'}
+        <PassesSection />
+      {:else}
       <section id={s.id} aria-labelledby="{s.id}-h">
         <header>
           <h2 id="{s.id}-h">{s.title}</h2>
@@ -30,6 +34,7 @@
         </header>
         <p class="stub">{s.stub}</p>
       </section>
+      {/if}
     {/each}
   </div>
 </div>

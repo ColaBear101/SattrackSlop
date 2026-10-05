@@ -205,7 +205,60 @@ function earthSource(name) {
   return path.join(ROOT, 'src', 'lib', map[name] + '.ts');
 }
 
+/* ---- driving the console, whichever build it is ----------------------------------------------------------------
+   The old page kept its controls on screen. The rebuilt one folds some of them into popovers (the spacecraft picker
+   under the title, the window controls, the observer form), so a suite that clicked them directly would be clicking
+   something that is not there. These do what a person does - open it if it is shut, then use it - and do nothing
+   extra on the old page, so a suite reads the same against either build. */
+
+/** Choose a spacecraft by typing into the picker and pressing Enter. */
+async function pick(page, q) {
+  if (!(await page.isVisible('#satsearch'))) await page.click('#satname');
+  await page.click('#satsearch');
+  await page.fill('#satsearch', q);
+  await page.keyboard.press('Enter');
+}
+
+/** Choose the spacecraft whose name is exactly this (typing narrows the list; the match is clicked, not just the first). */
+async function pickExact(page, name) {
+  if (!(await page.isVisible('#satsearch'))) await page.click('#satname');
+  await page.click('#satsearch');
+  await page.fill('#satsearch', name);
+  await page.waitForTimeout(400);
+  await page.evaluate(n => {
+    const o = [...document.querySelectorAll('#satlist [role=option]')]
+      .find(li => ((li.querySelector('.nm') || li).textContent || '').trim() === n);
+    if (o) o.click();
+  }, name);
+}
+
+/** Make the window controls usable (the old page's window bar is always on screen). */
+async function windowOpen(page) {
+  if (!(await page.$('#winOpen'))) return;
+  if (!(await page.isVisible('#winStartIn'))) await page.click('#winOpen');
+}
+/** Click something in the window controls: a step, Now, Epoch, a span. */
+async function clickWindow(page, selector) {
+  await windowOpen(page);
+  await page.click(selector);
+}
+
+/** The observer form, open, with the coordinate fields showing. */
+async function siteForm(page) {
+  if (!(await page.isVisible('#s-search'))) await page.click('#siteopen');
+  await page.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });
+}
+/** Move the observer by typing the coordinates in, as a person would, and pressing Apply. Fields left out are left alone. */
+async function setSite(page, s) {
+  await siteForm(page);
+  const v = Object.assign({}, s, { alt: s.alt !== undefined ? s.alt : s.altKm });      // the old form's own name for it is altKm
+  const map = { name: '#s-name', lat: '#s-lat', lon: '#s-lon', alt: '#s-alt', tz: '#s-tz' };
+  for (const k of Object.keys(map)) if (v[k] !== undefined) await page.fill(map[k], String(v[k]));
+  await page.click('#siteapply');
+}
+
 module.exports = {
   ROOT, TARGETS, targetName, targetRoot, serve, up, playwright, GL_ARGS, net,
-  loadClassic, earthFile, earthSource, CDN, THIRD_PARTY
+  loadClassic, earthFile, earthSource, CDN, THIRD_PARTY,
+  pick, pickExact, windowOpen, clickWindow, siteForm, setSite
 };

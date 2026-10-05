@@ -1,14 +1,19 @@
 <script lang="ts">
   import AppBar from './components/shell/AppBar.svelte';
+  import LoadNote from './components/shell/LoadNote.svelte';
   import Stage from './components/stage/Stage.svelte';
   import RailShell from './components/rail/RailShell.svelte';
   import AnswerRail from './components/rail/AnswerRail.svelte';
   import Transport from './components/transport/Transport.svelte';
   import Report from './components/report/Report.svelte';
+  import { onKey } from './state/shortcuts';
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <a class="skip" href="#main">Skip to the page</a>
 <AppBar />
+<LoadNote />
 
 <main id="main" tabindex="-1">
   <div class="console">

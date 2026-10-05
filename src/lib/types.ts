@@ -8,8 +8,9 @@ export type Satellite = typeof SatelliteJs;
 
 export interface Vec3 { x: number; y: number; z: number }
 
-/** An observer. `zone` appears only once a site picked by name has been applied. */
-export interface Site { lat: number; lon: number; altKm: number; name: string; tz: number; zone?: string }
+/** An observer. `zone` appears once a site has been applied (the IANA zone of a place picked by name, else null): the
+ *  baseline is Bangkok as it boots, which has no `zone` key at all. */
+export interface Site { lat: number; lon: number; altKm: number; name: string; tz: number; zone?: string | null }
 
 /** One catalogue record, exactly as parseCatalog reads it. Custom orbits extend it with their own fields. */
 export interface Tle { name: string; l1: string; l2: string; satnum: string }
@@ -97,6 +98,7 @@ export interface Engine {
   passStepFor(hours: number): number;
   sample(track: Track, start: Date, k: number, step: number): Sample | null;
   sampleMs(track: Track, ms: number): Sample | null;
+  fix(track: Track, ms: number): Fix | null;
   elevationAt(track: Track, ms: number): number;
   stateAt(track: Track, ms: number): Look | null;
   rangeRateMs(track: Track, ms: number): number | null;
@@ -107,4 +109,46 @@ export interface Engine {
   REENTRY_KM: number; SGP4_MU: number;
   sgp4Why(code: number | null | undefined): string;
   BODY: Body; OBS: Site; MASK: number;
+}
+
+/* ---- the Sun, the optical verdict, the transmitters (M4) ---------------------------------------------------- */
+
+/** The state and frame angle of a track at one instant: what fix() returns. */
+export interface Fix { t: Date; r: Vec3; v: Vec3; theta: number }
+
+export interface SunPosition { ra: number; dec: number; distKm: number; x: number; y: number; z: number }
+/** The low-precision Sun: where it is, where it is overhead, and how high it stands at a site. */
+export interface Sun {
+  sunEci(date: Date): SunPosition;
+  subsolar(date: Date): { lat: number; lon: number };
+  sunElevation(site: { lat: number; lon: number }, date: Date): number;
+}
+
+export type Lit = 'sun' | 'penumbra' | 'umbra';
+export interface OpticalAt {
+  lit: Lit; sunEl: number; dark: boolean; rng: number | null; phase: number | null; mag: number | null; visible: boolean;
+}
+/** The standard magnitude an object is estimated from, where it came from, and the station it is docked to if any. */
+export interface StdMag { mag: number; known: boolean; via: string | null }
+export interface PeakMag { mag: number; rng: number; phase: number; ms: number; pen: boolean }
+export interface PassOptical {
+  n: number; lit: number; dark: number; both: number; geo: number; pen: number; first: number | null; last: number | null;
+  eye: 'yes' | 'penumbra only' | 'too faint' | 'radio only'; peak: PeakMag | null; std: StdMag;
+  frac: number; penFrac: number; sunEl: number | null; litAtMid: Lit | null;
+}
+/** The catalogue as the optical code needs it: the snapshot, and each entry's set as it stands now. */
+export interface StdMagCatalogue {
+  embedded: readonly Tle[];
+  current(satnum: string): Tle | undefined;
+}
+export interface Optics {
+  sunlitState(rEci: Vec3, date: Date): Lit;
+  stdMagOf(track: { entry?: Partial<Tle> & { custom?: boolean; stdMag?: number } }): StdMag;
+  estMagnitude(rngKm: number, phase: number, stdMag: number): number;
+  viewGeometry(track: Track, s: Fix): { rng: number; phase: number } | null;
+  opticalAt(track: Track, ms: number): OpticalAt | null;
+  passOptical(track: Track, p: Pass): PassOptical | null;
+  sameElementSet(a: Partial<Tle>, b: Partial<Tle>): boolean;
+  STD_MAG: number; NAKED_EYE_MAG: number; DARK_SUN_EL: number; SUN_RADIUS_KM: number;
+  STD_MAG_KNOWN: Record<string, number>;
 }

@@ -45,7 +45,7 @@
 
 <!-- a canvas is a picture here: the same facts are in the readouts and the pass list, so it is named, not operable -->
 <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
-<canvas bind:this={canvas} role="img" aria-label={label}></canvas>
+<canvas bind:this={canvas} id="map" role="img" aria-label={label}></canvas>
 
 <style>
   /* the map keeps its 2:1 shape; on a short screen (a phone on its side) it narrows instead of growing taller than the view */

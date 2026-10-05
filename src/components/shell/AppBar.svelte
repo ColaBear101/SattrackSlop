@@ -1,31 +1,37 @@
 <script lang="ts">
+  import meta from '../../../data/catalogue.meta.json';
   import { app, PINNED } from '../../state/app.svelte';
-  import { clock } from '../../state/clock.svelte';
+  import { live } from '../../state/live.svelte';
+  import { wall } from '../../state/wall.svelte';
   import { iso } from '../../lib/text/fmt';
+  import { ages } from '../../lib/text/provenance';
   import Picker from './Picker.svelte';
   import ObserverChip from './ObserverChip.svelte';
   import ThemeToggle from './ThemeToggle.svelte';
   import Button from '../ui/Button.svelte';
 
   const E = $derived(app.analysis?.E);
-  /* how old the element set is, against the instant the clock shows (the assignment snapshot is its own thing) */
-  const ageH = $derived(E ? (clock.tick.ms - E.epoch.getTime()) / 3_600_000 : 0);
-  const age = $derived(ageH < 48 ? ageH.toFixed(1) + ' h old' : (ageH / 24).toFixed(1) + ' d old');
+  const entry = $derived(app.entry);
+  const built = new Date(meta.fetched);
+  /* how old the element set is, against the real time of day (the transport's clock can be anywhere) */
+  const A = $derived(entry && E ? ages({
+    custom: !!(entry as { custom?: boolean }).custom, prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry),
+    now: wall.now, epoch: E.epoch, name: entry.name, satnum: entry.satnum, fetched: built, source: meta.source, pinned: PINNED
+  }) : null);
 </script>
 
 <header class="bar">
   <div class="id">
     <Picker />
-    {#if E}
+    {#if E && A}
       <p class="ids mono">
-        <span>NORAD <b>{E.satnum}</b></span>
-        <span class="sep wide-only">·</span><span class="wide-only">COSPAR <b>{E.cospar}</b></span>
-        <span class="sep wide-only">·</span><span class="wide-only">Epoch <b>{iso(E.epoch)}</b></span>
+        <span>NORAD <b id="idnorad">{E.satnum}</b></span>
+        <span class="sep wide-only">·</span><span class="wide-only">COSPAR <b id="idcospar">{E.cospar}</b></span>
+        <span class="sep wide-only">·</span><span class="wide-only">Epoch <b id="idepoch">{iso(E.epoch)}</b></span>
         {#if PINNED}
           <span class="chip snapshot" title="The embedded element sets, each window opening at its set's epoch: the figures in the README">assignment snapshot</span>
-        {:else}
-          <span class="chip" class:stale={ageH > 24 * 7} title="How old this element set is at the time shown">epoch {age}</span>
         {/if}
+        <span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
       </p>
     {/if}
   </div>
@@ -51,7 +57,7 @@
     border-radius: var(--r-pill); font-size: var(--fs-0); color: var(--muted); margin-left: var(--space-1);
   }
   .chip.stale { border-color: var(--warn); color: var(--warn); }
-  .chip.snapshot { border-color: var(--track); color: var(--track); }
+  .chip.snapshot { border-color: var(--link); color: var(--link); }
   .tools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
   /* narrow: the name and the theme toggle share a row, the observer and the planner sit under them, and the

@@ -8,6 +8,7 @@ import type { Analysis, Pass, Sample, Site } from '../lib/types';
 import { clock } from './clock.svelte';
 import { doppler } from './doppler.svelte';
 import { getEngine, getObs, HOME, setCatalogueSource, setObserver } from './engine';
+import { life } from './life.svelte';
 import { live } from './live.svelte';
 import { prefs } from './prefs.svelte';
 import { readUrl, writeUrl, SPANS } from './url';
@@ -179,6 +180,7 @@ class AppState {
     if (!o.keepClock) clock.seek(nd.start.getTime());
     clock.setBounds({ t0: nd.start.getTime(), t1: nd.end.getTime(), onLeave: ms => this.rollWindow(ms) });
     this.syncUrl();
+    life.offer(entry);                            // the cached forecast, or the offer to fetch the history
     if (!o.trial) void live.check(entry);        // fire and forget; reloads if a newer set exists
     return true;
   }

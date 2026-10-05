@@ -1,5 +1,6 @@
 import { createApiClient, resolveApiBase, type ApiClient } from '../lib/net/api';
 import { createBreaker } from '../lib/net/breaker';
+import type { HistoryCtx } from '../lib/net/history-source';
 import type { TleCtx } from '../lib/net/tle-source';
 
 /* The page's network, wired once: the API client (or none), the circuit breaker that stops the page asking an API
@@ -32,4 +33,11 @@ export function tleCtx(o: { pinned: boolean; isCustom: boolean }): TleCtx {
     api,
     breaker
   };
+}
+
+/** What the decay history's fetch is given (see lib/net/history-source.ts). */
+export function historyCtx(isCustom: boolean): HistoryCtx {
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { /* blocked: the code works without it */ }
+  return { fetch: (url, init) => window.fetch(url, init), now: () => Date.now(), storage, isCustom, api, breaker };
 }

@@ -33,6 +33,10 @@ const STAGES = [
   { name: 'gate',        script: 'regress.js',           kind: 'numbers', fast: true },
   { name: 'slice',       script: 'verify-slice.js',      kind: 'numbers', fast: true, target: 'new' },
   { name: 'advisor',     script: 'verify-advisor.js',    alone: true, fast: true },
+  /* the report's words against the old page's: five spacecraft that differ in kind, from one site, for a day; the whole matrix
+     (38 x 2 spans x 3 sites, ten minutes) is the stage after it */
+  { name: 'golden-lite', script: 'golden.js',          fast: true, target: 'new', args: ['--sats', 'KNACKSAT-2;ISS (ZARYA);CLUSTER II-FM8;INTELSAT 10-02;TEN-KOH', '--sites', 'svalbard', '--spans', '24'] },
+  { name: 'golden',      script: 'golden.js',           alone: true, target: 'new' },
   { name: 'refresh',     script: 'verify-refresh.js',    alone: true },
   { name: 'refresh-api', script: 'verify-refresh.js',    alone: true, env: { GT_API: 'up' }, target: 'new' },
   { name: 'pov',         script: 'verify-pov.js' },
@@ -67,7 +71,7 @@ function run(stage) {
   return new Promise(resolve => {
     const t0 = Date.now();
     const log = fs.createWriteStream(path.join(LOGS, stage.name + '.log'));
-    const child = cp.spawn(process.execPath, [path.join(DIR, stage.script)], { cwd: ROOT, env: Object.assign({}, process.env, stage.env || {}) });
+    const child = cp.spawn(process.execPath, [path.join(DIR, stage.script)].concat(stage.args || []), { cwd: ROOT, env: Object.assign({}, process.env, stage.env || {}) });
     let tail = '';
     const take = d => { log.write(d); tail = (tail + d).slice(-4000); };
     child.stdout.on('data', take); child.stderr.on('data', take);

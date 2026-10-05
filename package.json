@@ -57,6 +57,8 @@
     "gate:lib": "node scripts/build-shims.mjs && node verification/regress.js --mode lib",
     "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
     "slice": "node verification/verify-slice.js",
+    "golden": "node verification/golden.js --target new",
+    "golden:write": "node verification/golden.js --write",
     "test:fast": "npm run check:deps && npm run check && npm run check:server && npm run build && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new && node scripts/legacy-manifest.mjs --check",
     "test:all": "npm run build && npm run build:shims && node verification/run.js",
     "gate:legacy": "node verification/regress.js --target legacy"

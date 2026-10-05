@@ -51,11 +51,14 @@
 
 <div id="dopbar" class="dopbar">
   {#if list.length}
-    <select id="dopsel" aria-label="Downlink" value={inList ? String(doppler.hz) : 'c'} onchangecapture={pick}>
-      {#each list as t (t.hz)}
-        <option value={String(t.hz)}>{(t.hz / 1e6).toFixed(3)} MHz{t.mode ? '  ' + t.mode : ''}{t.baud ? '  ' + t.baud + 'bd' : ''}</option>
+    <!-- Not keyed, and each option says for itself whether it is the one on show: the table lists a frequency once per mode
+         (TEN-KOH has two on 437.390 MHz), so the frequency is not an identity, and where two options carry the tuned one the
+         last is the one selected, as it always was. -->
+    <select id="dopsel" aria-label="Downlink" onchangecapture={pick}>
+      {#each list as t}
+        <option value={String(t.hz)} selected={t.hz === doppler.hz}>{(t.hz / 1e6).toFixed(3)} MHz{t.mode ? '  ' + t.mode : ''}{t.baud ? '  ' + t.baud + 'bd' : ''}</option>
       {/each}
-      <option value="c">Custom…</option>
+      <option value="c" selected={!inList}>Custom…</option>
     </select>
   {:else}
     <span class="none">no published downlink — enter one</span>

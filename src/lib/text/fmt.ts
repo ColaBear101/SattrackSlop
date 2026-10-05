@@ -73,5 +73,5 @@ export const localMinute = (d: Date, tzHours: number): string =>
 export const ABBR = {
   AOS: { text: 'AOS', title: 'acquisition of signal: the spacecraft rises through the 5° mask' },
   LOS: { text: 'LOS', title: 'loss of signal: the spacecraft sets through the 5° mask' },
-  STD: { text: 'std mag', title: 'standard magnitude: its brightness at 1,000 km, half lit' }
+  STD: { text: 'std\u00a0mag', title: 'standard magnitude: its brightness at 1,000 km, half lit' }       // std\u00a0mag: a no-break space, the old page's, so the line never breaks inside it
 } as const;

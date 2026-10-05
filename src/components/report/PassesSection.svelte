@@ -4,6 +4,7 @@
   import { latStr, lonStr } from '../../lib/observer';
   import { ABBR, mmss } from '../../lib/text/fmt';
   import { clipSay, passTableRow } from '../../lib/text/passfacts';
+  import SkyPlot from '../rail/SkyPlot.svelte';
 
   /* (c) The passes: every time the spacecraft clears the elevation mask in the window, as a table. A row is a button in
      effect: it picks the pass and takes the clock to its culmination, as the rail's list does. From `renderAccess()` in
@@ -28,7 +29,9 @@
     <div><dt class="eyebrow">Best elevation</dt><dd class="mono" id="bestel">{P.length ? Math.max(...P.map(p => p.maxEl)).toFixed(1) + '°' : '—'}</dd></div>
   </dl>
 
-  <p class="eyebrow cap">Access windows — click a row for its sky track</p>
+  <div class="access">
+  <div class="tbl">
+  <p class="eyebrow cap">Access windows — click a row for its sky track<span>{' · scroll sideways for more columns'}</span></p>
   <!-- it scrolls sideways on a narrow screen, so it is a region the keyboard can reach and scroll (axe: scrollable-region-focusable) -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="tablewrap" tabindex="0" role="region" aria-label="Access windows">
@@ -69,6 +72,9 @@
     window closes, so the true <abbr title={ABBR.AOS.title}>AOS</abbr> or <abbr title={ABBR.LOS.title}>LOS</abbr> lies outside
     the window and the duration counts only the part inside it. The CSV and calendar exports carry the same flag.
   </p>
+  </div>
+  <div class="sky" id="tablesky"><SkyPlot id="sky2" captionId="sky2cap" full /></div>
+  </div>
 </section>
 
 <style>
@@ -77,6 +83,8 @@
   .hint { color: var(--muted); font-size: var(--fs-1); max-width: 70ch; }
   .derived { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0 0 var(--space-4); }
   .derived dd { margin: 2px 0 0; font-size: var(--fs-3); }
+  .access { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+  @media (min-width: 1100px) { .access { grid-template-columns: minmax(0, 1fr) 380px; } .sky { position: sticky; top: 64px; } }
   .cap { margin-bottom: var(--space-2); }
   .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--r-3); background: var(--panel); }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-1); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

@@ -56,13 +56,15 @@
  *   node verification/verify-planner-ui.js        (needs playwright)
  */
 'use strict';
+const H = require('./lib/harness');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
 const GROUPS = process.env.PLANNER_UI_GROUPS ? new Set(process.env.PLANNER_UI_GROUPS.split(',').map(Number)) : null;
 const FAILFAST = !!process.env.PLANNER_UI_FAILFAST;
 const OVR = process.env.PLANNER_UI_OVR ? JSON.parse(fs.readFileSync(process.env.PLANNER_UI_OVR, 'utf8')) : {};
@@ -73,9 +75,9 @@ function serve() {
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      let file = path.join(ROOT, rel);
+      let file = path.join(SITE, rel);
       if (OVR[rel]) file = OVR[rel];
-      else if (!file.startsWith(ROOT)) { res.writeHead(404); return res.end('no'); }
+      else if (!file.startsWith(SITE)) { res.writeHead(404); return res.end('no'); }
       if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end('no'); }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
       fs.createReadStream(file).pipe(res);
@@ -1179,7 +1181,7 @@ const PRISTINE_HEADER = () => {
         await r.ctx.close();
       }
       {
-        const planner = fs.readFileSync(path.join(ROOT, 'earth/planner.js'), 'utf8');
+        const planner = fs.readFileSync(path.join(SITE, 'earth/planner.js'), 'utf8');
         const stub = planner + '\n;(function(){ var o = window.Planner.toTLE; window.Planner.toTLE = function(){ throw new Error("toTLE stub (test)"); }; })();';
         const r = await open(browser, { planner: false, init: seed, route: [['**/earth/planner.js', rt => rt.fulfill({ contentType: 'text/javascript', body: stub })]] });
         const d = await ev(r.page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, passes: __gt.D.passes.length }));

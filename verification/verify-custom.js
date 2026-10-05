@@ -54,13 +54,15 @@
  *   node verification/verify-custom.js          (needs playwright)
  */
 'use strict';
+const H = require('./lib/harness');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
 const INDEX = process.env.CUSTOM_INDEX_HTML || null;
 const GROUPS = process.env.CUSTOM_GROUPS ? new Set(process.env.CUSTOM_GROUPS.split(',').map(Number)) : null;
 const FAILFAST = !!process.env.CUSTOM_FAILFAST;
@@ -71,9 +73,9 @@ function serve() {
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      let file = path.join(ROOT, rel);
+      let file = path.join(SITE, rel);
       if (INDEX && rel === 'index.html') file = INDEX;
-      if (!file.startsWith(ROOT) && !(INDEX && file === INDEX)) { res.writeHead(404); return res.end('no'); }
+      if (!file.startsWith(SITE) && !(INDEX && file === INDEX)) { res.writeHead(404); return res.end('no'); }
       if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end('no'); }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
       fs.createReadStream(file).pipe(res);
@@ -777,7 +779,7 @@ const paintedPixels = page => page.evaluate(() => {
       await ctx.close();
     }
     // (i) a planner that throws while rebuilding a stored orbit
-    const planSrc = fs.readFileSync(path.join(ROOT, 'earth', 'planner.js'), 'utf8');
+    const planSrc = fs.readFileSync(path.join(SITE, 'earth', 'planner.js'), 'utf8');
     const boom = planSrc + '\n;(function(){ var P = window.Planner; window.Planner = Object.assign({}, P, { toTLE: function(){ throw new Error("planner fault (test)"); } }); })();\n';
     const { ctx, page, errs } = await open(browser, { init: seedInit,
       route: [['**/earth/planner.js', r => r.fulfill({ contentType: 'text/javascript', body: boom })]] });

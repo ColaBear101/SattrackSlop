@@ -30,10 +30,11 @@
  *   node verification/verify-catalogue.js          (needs playwright)
  */
 'use strict';
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 const DAY = 86400e3;
 const BKK = 7 * 3600e3;                         // the field reads Bangkok time
 const W0 = Date.UTC(2026, 8, 14, 0, 0, 0);     // COSMOS 2558 still up; ODIN long gone
@@ -46,6 +47,7 @@ const chk = (name, ok, detail) => {
 const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ timezoneId: 'UTC', acceptDownloads: true,
                                          viewport: { width: 1400, height: 900 } });

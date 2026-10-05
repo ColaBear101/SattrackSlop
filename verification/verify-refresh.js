@@ -28,10 +28,11 @@
  *
  *   node verification/verify-refresh.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 const GP   = '**celestrak.org/NORAD/elements/gp.php**';
 const ALT  = '**tle.ivanstanojevic.me/**';
 const HOUR = 3600e3, TTL = 3 * HOUR, RETRY = 5 * 60e3;
@@ -65,6 +66,7 @@ const chk = (name, ok, detail) => {
 };
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const pageErrs = [];

@@ -20,9 +20,10 @@
  * the pass table against the UTC calendar date of every pass.
  */
 'use strict';
+const H = require('./lib/harness');
 const path = require('path');
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 let fails = 0;
 function chk(name, ok, detail){
   console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  ' + name + (detail ? '   ' + detail : ''));
@@ -31,7 +32,8 @@ function chk(name, ok, detail){
 const iso = ms => new Date(ms).toISOString().slice(0, 16);
 
 (async () => {
-  const { chromium } = require('playwright');
+  const { chromium } = H.playwright();
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const page = await browser.newContext().then(c => c.newPage());
   const errs = [];

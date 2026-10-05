@@ -23,8 +23,16 @@
 const fs = require('fs');
 const { measure, BASELINE } = require('./snapshot');
 
+const argTarget = process.argv.indexOf('--target');
+if (argTarget >= 0) process.env.GT_TARGET = process.argv[argTarget + 1];
 const argTol = process.argv.indexOf('--tol');
 const TOL = argTol >= 0 ? parseFloat(process.argv[argTol + 1]) : 0;
+/* --mode page (default): the shipping build in a real browser, the authoritative gate.
+   --mode lib: the library bundle (`npm run build:shims`) in a blank Chromium page, seconds, the fast
+   pre-gate - exact, because it runs in the same engine that made the baseline (see snapshot.js). */
+const argMode = process.argv.indexOf('--mode');
+const MODE = argMode >= 0 ? process.argv[argMode + 1] : 'page';
+if (MODE !== 'page' && MODE !== 'lib') { console.error('--mode must be page or lib'); process.exit(2); }
 
 (async () => {
   if (!fs.existsSync(BASELINE)) {
@@ -32,7 +40,7 @@ const TOL = argTol >= 0 ? parseFloat(process.argv[argTol + 1]) : 0;
     process.exit(2);
   }
   let run;
-  try { run = await measure(); }
+  try { run = await measure({ mode: MODE }); }
   catch (e) { console.error('snapshot run failed: ' + (e && e.stack || e)); process.exit(2); }
   if (run.errs.length) { console.error('page errors during snapshot:\n  ' + run.errs.join('\n  ')); process.exit(2); }
 

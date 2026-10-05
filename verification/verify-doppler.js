@@ -29,10 +29,11 @@
  *
  *   node verification/verify-doppler.js
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -41,6 +42,7 @@ const chk = (name, ok, detail) => {
 };
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const page = await browser.newPage();
   const errs = [];

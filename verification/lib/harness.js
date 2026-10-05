@@ -65,6 +65,8 @@ function serve(root) {
     });
     srv.on('error', reject);
     srv.listen(0, '127.0.0.1', () => {
+      /* A suite that forgets to close it must still be able to exit. */
+      srv.unref();
       const origin = 'http://127.0.0.1:' + srv.address().port;
       resolve({
         root, origin,
@@ -92,8 +94,6 @@ async function up(opts) {
   return { target: t, root, origin: s.origin, page: s.url('index.html'), url: s.url, close: s.close };
 }
 
-/* Playwright, from the repo's own node_modules unless PW_PATH says otherwise. */
-const playwright = () => require(process.env.PW_PATH || 'playwright');
 const GL_ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 
 /* ---- the network ----------------------------------------------------------------
@@ -136,6 +136,43 @@ async function net(target, profile) {
   });
 }
 
+/* ---- Playwright --------------------------------------------------------------
+   From the repo's own node_modules unless PW_PATH says otherwise. The Chromium it returns decorates
+   every context it makes (and every page made straight from the browser) with the network profile
+   and the test flag the new app waits for, so a suite needs no per-context boilerplate:
+
+     const { chromium } = H.playwright();            // 'offline' profile
+     const { chromium } = H.playwright({ net: 'open' });   // real network (globe imagery, Horizons)
+
+   Routes a suite registers itself come later and so run first; ours is the fallback. */
+async function decorate(ctx, profile, testFlag) {
+  await net(ctx, profile);
+  if (testFlag) await ctx.addInitScript(() => { window.__GT_TEST__ = true; });
+  return ctx;
+}
+function decorateBrowser(browser, profile, testFlag) {
+  const newContext = browser.newContext.bind(browser);
+  const newPage = browser.newPage.bind(browser);
+  browser.newContext = async o => decorate(await newContext(o), profile, testFlag);
+  browser.newPage = async o => { const p = await newPage(o); await decorate(p.context(), profile, testFlag); return p; };
+  return browser;
+}
+/* options: net: 'offline' (default) | 'open';  testFlag: false to load the page the way a visitor does,
+   without window.__GT_TEST__ (the smoke test uses this to prove the test surface is not fetched). */
+function playwright(opts) {
+  const profile = (opts && opts.net) || 'offline';
+  const testFlag = !(opts && opts.testFlag === false);
+  const pw = require(process.env.PW_PATH || 'playwright');
+  const chromium = new Proxy(pw.chromium, {
+    get(target, prop) {
+      if (prop === 'launch') return async o => decorateBrowser(await target.launch(o), profile, testFlag);
+      const v = target[prop];
+      return typeof v === 'function' ? v.bind(target) : v;
+    }
+  });
+  return { chromium, firefox: pw.firefox, webkit: pw.webkit, devices: pw.devices, errors: pw.errors };
+}
+
 /* ---- loading the classic scripts under test from Node ---------------------------
    core/*.js and earth/*.js are IIFEs that attach a global. `require` worked while the
    package was CommonJS; with a module root a file's meaning depends on the nearest
@@ -144,18 +181,31 @@ function loadClassic(file) {
   const code = fs.readFileSync(file, 'utf8');
   vm.runInThisContext(code, { filename: file });
 }
-/* Where a named module of the Earth console lives for the chosen target. During the
-   migration only legacy exists; the new target's shim bundles are added with them. */
+/* Where a named module of the Earth console lives for the chosen target.
+   legacy: the classic script, legacy/core/<name>.js or legacy/earth/<name>.js.
+   new:    ONE bundle of the TypeScript modules for every name (verification/.build/earth.cjs, built by
+           `npm run build:shims` from src/lib/shims/earth.ts). The classic scripts shared a single instance of
+           each module through globalThis, and checks that wrap `globalThis.Lifetime.rho` to count calls
+           depend on it; one bundle keeps that identity, and requiring it twice is a no-op like loading a
+           script twice was. */
 function earthFile(name) {
   const t = targetName();
   if (t === 'legacy') {
     const sub = name === 'body' || name === 'propagator' ? 'core' : 'earth';
     return path.join(TARGETS.legacy, sub, name + '.js');
   }
-  return path.join(ROOT, 'verification', '.build', name + '.cjs');
+  return path.join(ROOT, 'verification', '.build', 'earth.cjs');
+}
+/* The SOURCE text of a module, for the few checks that scan it (purity, the one definition of a label).
+   legacy: the classic script. new: the verbatim TypeScript module it was moved into. */
+function earthSource(name) {
+  if (targetName() === 'legacy') return earthFile(name);
+  const map = { lifetime: 'planner/lifetime', planner: 'planner/planner', advisor: 'planner/advisor', 'advisor-copy': 'planner/advisor-copy' };
+  if (!map[name]) throw new Error('no TypeScript source recorded for module ' + name);
+  return path.join(ROOT, 'src', 'lib', map[name] + '.ts');
 }
 
 module.exports = {
   ROOT, TARGETS, targetName, targetRoot, serve, up, playwright, GL_ARGS, net,
-  loadClassic, earthFile, CDN, THIRD_PARTY
+  loadClassic, earthFile, earthSource, CDN, THIRD_PARTY
 };

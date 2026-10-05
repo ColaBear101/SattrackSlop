@@ -38,7 +38,7 @@
     "export": "node verification/verify-export.js",
     "catalogue": "node verification/verify-catalogue.js",
     "snapshot": "node verification/snapshot.js",
-    "gate": "node verification/regress.js",
+    "gate": "npm run build && node verification/regress.js --target new",
     "test": "npm run verify && npm run evec && npm run planner && npm run advisor && npm run gate && npm run refresh && npm run pov && npm run doppler && npm run optical && npm run site && npm run export && npm run catalogue && npm run custom && npm run timeline && npm run elements && npm run lifetime && npm run ar && npm run layout && npm run planner-ui",
     "moon": "node verification/verify-moon.js",
     "moon:chain": "node verification/verify-lunar-chain.js",
@@ -48,7 +48,14 @@
     "elements": "node verification/verify-elements.js",
     "lifetime": "node verification/verify-lifetime.js",
     "ar": "node verification/verify-ar.js",
-    "layout": "node verification/verify-layout.js"
+    "layout": "node verification/verify-layout.js",
+    "build:shims": "node scripts/build-shims.mjs",
+    "gate:lib": "node scripts/build-shims.mjs && node verification/regress.js --mode lib",
+    "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
+    "slice": "node verification/verify-slice.js",
+    "test:fast": "npm run check:deps && npm run check && npm run build && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new && node scripts/legacy-manifest.mjs --check",
+    "test:all": "npm run build && npm run build:shims && node verification/run.js",
+    "gate:legacy": "node verification/regress.js --target legacy"
   },
   "dependencies": {
     "satellite.js": "6.0.1",

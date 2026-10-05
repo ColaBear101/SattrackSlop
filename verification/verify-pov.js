@@ -21,10 +21,11 @@
  *
  *   node verification/verify-pov.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 const U = 1 / 6378.137;                         // km -> scene units (Earth radii)
 
 let fails = 0;
@@ -36,6 +37,7 @@ const dot3 = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errs = [];

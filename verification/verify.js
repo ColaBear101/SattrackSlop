@@ -10,6 +10,7 @@
 //
 'use strict';
 
+const H = require('./lib/harness');
 const fs   = require('fs');
 const path = require('path');
 
@@ -331,8 +332,8 @@ function main() {
 
   // ---------------------------------------------------------- CHECK 4
   hdr('CHECK 4 -- DISPLAYED SEMI-MAJOR AXIS  (core/propagator.js  vs  independent un-Kozai)');
-  require(path.join(DIR, '..', 'core/body.js'));
-  require(path.join(DIR, '..', 'core/propagator.js'));
+  require(H.earthFile('body'));
+  require(H.earthFile('propagator'));
   const EARTH = globalThis.Body.Earth(satellite);
   const shown = t => globalThis.Propagator.sgp4Track(EARTH, t, satellite).recoveredA;
   const A_TOL = 1e-9;
@@ -371,25 +372,65 @@ function main() {
   // or a replaced copy here fails this, where before the two could drift apart
   // with nothing to say so. three.js has no copy here to hash; its tag is held
   // to the same form, since without crossorigin the browser refuses the script.
-  hdr('CHECK 5 -- SGP4 BYTES  (verification/satellite.min.js  vs  index.html integrity)');
+  hdr('CHECK 5 -- WHAT RUNS IS WHAT IS PINNED  (satellite.js and three.js, by content)');
   const crypto = require('crypto');
-  const html = fs.readFileSync(path.join(DIR, '..', 'index.html'), 'utf8');
-  const tagFor = lib => (html.match(new RegExp('<script[^>]*cdnjs[^>]*/' + lib + '/[^>]*>')) || [''])[0];
+  const sriOf = f => 'sha512-' + crypto.createHash('sha512').update(fs.readFileSync(f)).digest('base64');
   const attr = (tag, a) => (tag.match(new RegExp('\\s' + a + '="([^"]*)"')) || [])[1] || null;
-  const mineSri = 'sha512-' + crypto.createHash('sha512')
-    .update(fs.readFileSync(path.join(DIR, 'satellite.min.js'))).digest('base64');
-  const satTag = tagFor('satellite\\.js'), threeTag = tagFor('three\\.js');
-  const pinned = t => /^sha512-[A-Za-z0-9+/]{86}==$/.test(attr(t, 'integrity') || '') &&
-                      attr(t, 'crossorigin') === 'anonymous';
-  console.log('satellite.min.js here : ' + mineSri);
-  console.log('index.html satellite  : ' + (attr(satTag, 'integrity') || '(no integrity attribute)') +
-              '  crossorigin=' + attr(satTag, 'crossorigin'));
-  console.log('index.html three.js   : ' + (attr(threeTag, 'integrity') || '(no integrity attribute)') +
-              '  crossorigin=' + attr(threeTag, 'crossorigin'));
-  const c5pass = attr(satTag, 'integrity') === mineSri && pinned(satTag) && pinned(threeTag);
+  const sriShape = /^sha512-[A-Za-z0-9+/]{86}==$/;
+  const mineSri = sriOf(path.join(DIR, 'satellite.min.js'));
+  let c5pass;
+
+  if (H.targetName() === 'legacy') {
+    // 5a, legacy: the old page pinned both scripts by hash in its own script tags. verification/satellite.min.js
+    // is the very file whose hash it carries, so a changed copy here or a changed pin there fails.
+    const html = fs.readFileSync(path.join(H.TARGETS.legacy, 'index.html'), 'utf8');
+    const tagFor = lib => (html.match(new RegExp('<script[^>]*cdnjs[^>]*/' + lib + '/[^>]*>')) || [''])[0];
+    const satTag = tagFor('satellite\\.js'), threeTag = tagFor('three\\.js');
+    const pinned = t => sriShape.test(attr(t, 'integrity') || '') && attr(t, 'crossorigin') === 'anonymous';
+    console.log('satellite.min.js here : ' + mineSri);
+    console.log('legacy page satellite : ' + (attr(satTag, 'integrity') || '(no integrity attribute)') + '  crossorigin=' + attr(satTag, 'crossorigin'));
+    console.log('legacy page three.js  : ' + (attr(threeTag, 'integrity') || '(no integrity attribute)') + '  crossorigin=' + attr(threeTag, 'crossorigin'));
+    c5pass = attr(satTag, 'integrity') === mineSri && pinned(satTag) && pinned(threeTag);
+  } else {
+    // 5a, the module build: nothing is fetched from a CDN any more, so there is no tag to pin. What replaces
+    // it: the two versions are exact in package.json, the lockfile holds the tarball integrity recorded here,
+    // and tests/lib/satellite-parity.test.ts proves the installed ES build is bit-identical to the vendored
+    // UMD (this file's satellite.min.js) on every element set. A bumped version or a swapped tarball fails.
+    const WANT = {
+      'satellite.js': { version: '6.0.1', integrity: 'sha512-T0qpKYSlNIH9L0yY1SRF2J6XfV9TToZuDNBXSeTW9K6fN5kwf4uidzk3+q6Rg4KVHibcLaire910C47yai0W9A==' },
+      three: { version: '0.128.0', integrity: 'sha512-i0ap/E+OaSfzw7bD1TtYnPo3VEplkl70WX5fZqZnfZsE3k3aSFudqrrC9ldFZfYFkn1zwDmBcdGfiIm/hnbyZA==' }
+    };
+    const root = path.join(DIR, '..');
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+    c5pass = true;
+    for (const [name, want] of Object.entries(WANT)) {
+      const entry = lock.packages['node_modules/' + name] || {};
+      const ok = pkg.dependencies[name] === want.version && entry.version === want.version && entry.integrity === want.integrity;
+      console.log(name.padEnd(13) + ' package.json ' + (pkg.dependencies[name] || '(missing)') + '  lock ' + (entry.version || '(missing)') + '  integrity ' + (entry.integrity === want.integrity ? 'as recorded' : 'DIFFERENT') + '  ' + (ok ? 'ok' : 'FAIL'));
+      if (!ok) c5pass = false;
+    }
+    const three = path.join(root, 'node_modules', 'three', 'build', 'three.min.js');
+    // the npm three.min.js is byte-identical to the cdnjs r128 file, which is what the Moon pages pin (5b)
+    console.log('three.min.js (npm)  : ' + (fs.existsSync(three) ? sriOf(three) : '(not installed)'));
+  }
+
+  // 5b: the Moon pages are not rebuilt and still load three.js r128 from cdnjs, pinned by hash. The hash they
+  // carry must be the hash of the bytes npm's three@0.128.0 ships (the same file), and the tag must be CORS-clean.
+  {
+    const three = path.join(DIR, '..', 'node_modules', 'three', 'build', 'three.min.js');
+    const mineThree = fs.existsSync(three) ? sriOf(three) : null;
+    for (const page of ['moon.html', 'moon-track.html']) {
+      const html = fs.readFileSync(path.join(DIR, '..', 'public', page), 'utf8');
+      const tag = (html.match(/<script[^>]*cdnjs[^>]*three\.js[^>]*>/) || [''])[0];
+      const ok = mineThree !== null && attr(tag, 'integrity') === mineThree && attr(tag, 'crossorigin') === 'anonymous';
+      console.log(page.padEnd(16) + ' three.js ' + (attr(tag, 'integrity') ? (attr(tag, 'integrity') === mineThree ? 'hash = npm three@0.128.0' : 'hash DIFFERS') : 'no integrity') + '  ' + (ok ? 'ok' : 'FAIL'));
+      if (!ok) c5pass = false;
+    }
+  }
   console.log('');
   console.log('CHECK 5: ' + (c5pass ? 'PASS' : 'FAIL') +
-              '  (the page pins, by hash, the SGP4 these checks run; three.js pinned the same way)');
+              '  (what runs is what is pinned: the Earth console by exact version and tarball hash, the Moon pages by script hash)');
 
   // ---------------------------------------------------------- verdict
   hdr('VERDICT');

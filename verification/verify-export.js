@@ -21,12 +21,13 @@
  *
  *   node verification/verify-export.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -55,6 +56,7 @@ function parseCSV(text) {
 }
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ acceptDownloads: true });
   const page = await ctx.newPage();

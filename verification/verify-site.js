@@ -25,10 +25,11 @@
  *
  *   node verification/verify-site.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -40,6 +41,7 @@ const chk = (name, ok, detail) => {
 const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 };
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const ctx = await browser.newContext();
   const page = await ctx.newPage({ viewport: { width: 1400, height: 900 } });

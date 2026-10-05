@@ -36,20 +36,22 @@
  *
  *   node verification/verify-elements.js        (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
 const TYPES = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json',
                 '.jpg':'image/jpeg', '.png':'image/png', '.css':'text/css' };
 function serve(){
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      const file = path.join(ROOT, rel);
-      if(!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+      const file = path.join(SITE, rel);
+      if(!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
         res.writeHead(404); return res.end('no');
       }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });

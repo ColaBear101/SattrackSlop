@@ -49,10 +49,12 @@ const WANTED = [
   'VELOX-1'
 ];
 
-/* Everything the baseline records, read from a page that exposes window.__gt. */
-async function capture(page) {
-  return page.evaluate(({ T0, SPANS, WANTED }) => {
-    const gt = window.__gt;
+/* Everything the baseline records, read from an object with the window.__gt shape.
+ *
+ * This ONE function runs in the browser (page.evaluate is handed its source) and in Node (`gate:lib`),
+ * so the two gates cannot measure different things. It must stay self-contained: no closure over
+ * anything in this module, because its text is what crosses into the page. */
+function MEASURE_GT(gt, T0, SPANS, WANTED) {
     const byName = new Map(gt.CAT.map(c => [c.name, c]));
     const out = { meta: {}, missing: [], sats: {} };
     out.meta = { t0: T0, spans: SPANS, catalogue: gt.CAT.length,
@@ -122,13 +124,48 @@ async function capture(page) {
       out.sats[name] = rec;
     }
     return out;
-  }, { T0, SPANS, WANTED });
+}
+
+/* ...from a page that exposes window.__gt (the shipping build, in a real browser). */
+async function capture(page) {
+  return page.evaluate(({ src, T0, SPANS, WANTED }) =>
+    (new Function('return (' + src + ')'))()(window.__gt, T0, SPANS, WANTED),
+  { src: MEASURE_GT.toString(), T0, SPANS, WANTED });
+}
+
+/* ...from the library bundle (`npm run build:shims`) loaded into a BLANK Chromium page: no app, no server,
+   a few seconds, and the fast pre-gate. Same engine and satellite.js bytes as the app; the page run stays
+   the authoritative one.
+   Why a browser and not Node: the baseline was made in Chromium, and Node's V8 evaluates some Math
+   functions differently in the last bits - the same bundle run in Node 23.5 differs from the baseline in
+   364 values by up to 1e-14 relative, and run in Chromium it is BIT-IDENTICAL. The engine is not at
+   fault; the question "did the numbers move" has to be asked of the engine that made them. */
+async function measureLib() {
+  const bundle = path.join(__dirname, '.build', 'gt.cjs');
+  if (!fs.existsSync(bundle)) throw new Error(bundle + ' is missing - run `npm run build:shims`');
+  const text = fs.readFileSync(path.join(__dirname, '..', 'data', 'catalogue.txt'), 'utf8');
+  const { chromium } = H.playwright();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const errs = [];
+    page.on('pageerror', e => errs.push(String(e)));
+    await page.goto('about:blank');
+    await page.addScriptTag({ content: fs.readFileSync(bundle, 'utf8') });
+    const result = await page.evaluate(({ src, T0, SPANS, WANTED, text }) =>
+      (new Function('return (' + src + ')'))()(globalThis.__createGtForNode(text), T0, SPANS, WANTED),
+    { src: MEASURE_GT.toString(), T0, SPANS, WANTED, text });
+    return { result, errs, target: 'lib bundle in a blank Chromium page' };
+  } finally {
+    await browser.close();
+  }
 }
 
 /* Open the chosen target in a fresh browser with the network blocked, wait for the test surface,
    and capture. Resolves to { result, errs, target }. */
 async function measure(opts) {
   opts = opts || {};
+  if (opts.mode === 'lib') return measureLib();
   const { chromium } = H.playwright();
   const server = await H.up();
   const browser = await chromium.launch();
@@ -179,7 +216,7 @@ if (require.main === module) {
       console.error('refusing to rewrite baseline.json: set GT_TARGET=legacy explicitly (and no GT_URL)');
       process.exit(2);
     }
-    const { result, errs, target } = await measure();
+    const { result, errs, target } = await measure({ mode: arg('--mode') || 'page' });
     if (errs.length) { console.error('page errors during snapshot:\n  ' + errs.join('\n  ')); process.exit(1); }
     result.meta.written = new Date().toISOString();
     fs.writeFileSync(out, JSON.stringify(result, null, 1));

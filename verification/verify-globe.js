@@ -30,10 +30,11 @@
  *
  *   node verification/verify-globe.js        (needs playwright and the network)
  */
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright({ net: 'open' });
 
 /* Served over http rather than opened as a file, for two reasons both learned
    the hard way. A file:// page has an opaque origin, so every image drawn into
@@ -42,6 +43,7 @@ const { chromium } = require('playwright');
    index.html carrying no <meta charset> at all. It is also how the page really
    runs. */
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
 const TYPES = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json',
                 '.jpg':'image/jpeg', '.png':'image/png', '.svg':'image/svg+xml',
                 '.css':'text/css', '.ico':'image/x-icon' };
@@ -49,8 +51,8 @@ function serve(){
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^[\\/]+/, '') || 'index.html';
-      const file = path.join(ROOT, rel);
-      if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+      const file = path.join(SITE, rel);
+      if (!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
         res.writeHead(404); return res.end('not here');
       }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });

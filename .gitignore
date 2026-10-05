@@ -6,6 +6,15 @@ node_modules/
 verification/.regress-current.json
 verification/.regress-snap.js
 
+# Build output and tool scratch
+dist/
+verification/.build/
+verification/last-run.json
+test-results/
+playwright-report/
+coverage/
+*.tsbuildinfo
+
 # Out of git because the token this repository is pushed with has no "workflow"
 # scope, so GitHub refuses any push that touches .github/workflows outright.
 # No workflow is committed and no CI runs on this repository, and there is no

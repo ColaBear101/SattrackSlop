@@ -2,25 +2,28 @@
   "name": "satellite-ground-track",
   "version": "1.0.0",
   "private": true,
-  "description": "Ground track console: TLE to Keplerian elements, a day of SGP4 ground track, and Bangkok visibility above a 5 degree mask. Plus a Moon-centred console and an Earth-Moon libration-point view over the same body-agnostic core.",
+  "type": "module",
+  "description": "Ground track console: TLE to Keplerian elements, a day of SGP4 ground track, and Bangkok visibility above a 5 degree mask. Plus a Moon-centred console and an Earth-Moon libration-point view, which are served unchanged from public/.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/ColaBear101/SattrackSlop.git"
   },
   "//": [
-    "The pages themselves have NO build step and NO dependencies - index.html,",
-    "moon-track.html and moon.html open straight from the filesystem. This",
-    "manifest exists only so the verification scripts can resolve playwright,",
-    "which they previously required with nothing declaring it: running the gate",
-    "on a fresh clone meant setting NODE_PATH by hand.",
-    "",
-    "'test' is the offline suite. The lunar checks fetch from JPL Horizons, so",
-    "they are kept out of it - a clean `npm test` should not depend on someone",
-    "else's uptime. It also chains the orbit planner and advisor suites; `custom`",
-    "and `planner-ui` are the long ones."
+    "The Earth console is a Svelte 5 + Vite 8 + TypeScript app (src/). Every dependency is pinned exactly:",
+    "satellite.js 6.0.1 and three 0.128.0 must not move, because the regression gate is bit-identical and",
+    "the globe's palette is tuned to r128; typescript stays on 6.0.x because svelte-check does not accept 7.",
+    "verification/ is CommonJS (its own package.json) and drives the built site over http.",
+    "legacy/ is the pre-rewrite Earth console, kept until cutover as the A/B and calibration reference."
   ],
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test:unit": "vitest run",
+    "extract-data": "node scripts/extract-data.mjs",
+    "legacy:manifest": "node scripts/legacy-manifest.mjs",
     "verify": "node verification/verify.js",
     "planner": "node verification/verify-planner.js",
     "advisor": "node verification/verify-advisor.js",
@@ -47,10 +50,23 @@
     "ar": "node verification/verify-ar.js",
     "layout": "node verification/verify-layout.js"
   },
+  "dependencies": {
+    "satellite.js": "6.0.1",
+    "three": "0.128.0"
+  },
   "devDependencies": {
-    "playwright": "^1.63.0"
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "24.19.1",
+    "@types/three": "0.128.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0",
+    "svelte": "5.57.1",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

@@ -4,7 +4,9 @@
  * the export is `export const Lifetime` instead of `global.Lifetime = `.
  * Arithmetic, order and comments are untouched; the Node suites that guard this module run against both the
  * old file and the bundle of this one (verification/lib/harness.js, GT_TARGET).
+ * One later move (M3): readPlot, parsePlot, SMA_MIN and SMA_MAX (old lines 287-316) now live in shared/plot.ts, imported below, so the API and the browser share one parser.
  */
+import { parsePlot, readPlot, SMA_MIN, SMA_MAX } from '../../../shared/plot';
 
 /* lifetime.js — orbital decay and remaining-life estimate from an SMA history.
  *
@@ -285,35 +287,9 @@ function predict(P){
 }
 
 /* ---- data ---------------------------------------------------------------- */
-/* The mean altitudes a row may have and still be read. The bounds are there to
-   throw out garbage, not orbits: the ceiling was 60,000 km, which threw out
-   every row of every high eccentric orbit - XMM-NEWTON's mean altitude is
-   60,550 km, the Cluster II spacecraft's about 65,600 - and the page then
-   reported the history as missing. Nothing past the Moon's distance is an
-   Earth orbit worth reading.                                                  */
-const SMA_MIN = 80, SMA_MAX = 400000;
-
-/* The run of rows, and how many rows there were before the bounds above. A
-   history that arrived and was all filtered out is a different answer from one
-   that never arrived, and the page says which. */
-function readPlot(txt){
-  const m = txt.match(/var plotData = "([^"]*)"/);
-  if(!m) return {P:null, rows:0, found:false};
-  const rows = m[1].split('|'); rows.shift();          // header line
-  const P = [];
-  let n = 0;
-  for(const r of rows){
-    const f = r.split(',');
-    if(f.length < 6) continue;
-    n++;
-    const t = Date.parse(f[0] + 'Z'), sma = parseFloat(f[4]);
-    if(isFinite(t) && isFinite(sma) && sma > SMA_MIN && sma < SMA_MAX)
-      P.push({t, sma, ecc: parseFloat(f[5])});
-  }
-  P.sort((a,b)=>a.t-b.t);
-  return {P: P.length ? P : null, rows:n, found:true};
-}
-function parsePlot(txt){ return readPlot(txt).P; }
+/* SMA_MIN, SMA_MAX, readPlot and parsePlot - the reading of CelesTrak's history page, with the comments
+   that explain the bounds - now live in shared/plot.ts, so the API server and this module read the page
+   with one implementation. They are the same code, imported here; `Lifetime` exposes them as before. */
 
 const HIST_TTL = 12*3600*1000;
 

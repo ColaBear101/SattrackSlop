@@ -17,10 +17,14 @@
     "legacy/ is the pre-rewrite Earth console, kept until cutover as the A/B and calibration reference."
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n web,api \"vite\" \"tsx watch serve.ts\"",
+    "dev:web": "vite",
+    "dev:api": "tsx watch serve.ts",
+    "serve": "tsx serve.ts",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check:server": "tsc -p tsconfig.server.json --noEmit",
     "test:unit": "vitest run",
     "extract-data": "node scripts/extract-data.mjs",
     "legacy:manifest": "node scripts/legacy-manifest.mjs",
@@ -53,7 +57,7 @@
     "gate:lib": "node scripts/build-shims.mjs && node verification/regress.js --mode lib",
     "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
     "slice": "node verification/verify-slice.js",
-    "test:fast": "npm run check:deps && npm run check && npm run build && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new && node scripts/legacy-manifest.mjs --check",
+    "test:fast": "npm run check:deps && npm run check && npm run check:server && npm run build && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new && node scripts/legacy-manifest.mjs --check",
     "test:all": "npm run build && npm run build:shims && node verification/run.js",
     "gate:legacy": "node verification/regress.js --target legacy"
   },

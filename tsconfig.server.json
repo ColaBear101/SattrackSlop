@@ -1,0 +1,24 @@
+{
+  "//": "Type-checks the API lane: server/, shared/, serve.ts, src/lib/net/ and their tests. `npx tsc -p tsconfig.server.json --noEmit`. Strict, no // @ts-nocheck. The root tsconfig.json is the browser app's (it sees server/ only through the type-only Api import).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "server/**/*.ts",
+    "shared/**/*.ts",
+    "serve.ts",
+    "src/lib/net/**/*.ts",
+    "tests/server/**/*.ts",
+    "tests/shared/**/*.ts",
+    "tests/net/**/*.ts"
+  ]
+}

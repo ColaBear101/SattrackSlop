@@ -37,6 +37,10 @@ const STAGES = [
      (38 x 2 spans x 3 sites, ten minutes) is the stage after it */
   { name: 'golden-lite', script: 'golden.js',          fast: true, target: 'new', args: ['--sats', 'KNACKSAT-2;ISS (ZARYA);CLUSTER II-FM8;INTELSAT 10-02;TEN-KOH', '--sites', 'svalbard', '--spans', '24'] },
   { name: 'golden',      script: 'golden.js',           alone: true, target: 'new' },
+  /* the 3D scene against the old page's: pixels and the scene graph, in 16 states (three of them here, the whole set after it) */
+  { name: 'ab3d-lite',   script: 'ab3d.js',             alone: true, fast: true, target: 'new', args: ['--target', 'new', '--fit', '--only', 'default,elements,pov'] },
+  { name: 'ab3d',        script: 'ab3d.js',             alone: true, target: 'new', args: ['--target', 'new', '--fit'] },
+  { name: 'frames',      script: 'verify-frames.js',    alone: true, target: 'new' },
   { name: 'refresh',     script: 'verify-refresh.js',    alone: true },
   { name: 'refresh-api', script: 'verify-refresh.js',    alone: true, env: { GT_API: 'up' }, target: 'new' },
   { name: 'pov',         script: 'verify-pov.js' },

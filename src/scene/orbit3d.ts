@@ -1,0 +1,1737 @@
+// @ts-nocheck - verbatim; see the header
+/* ============================================================================
+   Orbit3D — a WebGL view of the catalogue, in the frame the physics lives in.
+   The scene is ECI (true inertial): orbits are fixed loops and the Earth spins
+   underneath them by Greenwich mean sidereal time. Anything that belongs to the
+   ground — the track, Bangkok, the access footprint — is parented to the Earth
+   so it turns with it. Sunlight is a real directional light aimed from the
+   computed subsolar point, so the terminator is the actual terminator.
+   Coordinates: ECEF/ECI (x,y,z) -> scene (x, z, -y), i.e. spin axis is scene Y.
+   ========================================================================== */
+/* ---- Moved from legacy/earth/orbit3d.js (main@4eadd7a), lines 11-1695: the scene: the globe, the orbit, the track, the footprint, the catalogue cloud, the cameras, the labels.
+ * Changes from the old file, all of them marked CHANGED where they are made:
+ *   1. the wrapper: the old file was an IIFE over `global` that attached `Orbit3D`; this is a factory over the same object
+ *      (`global.THREE` and the few other globals it reaches for are handed in) that returns it, and OrbitViz is read as
+ *      `global.OrbitViz` in the five places the old file named it bare;
+ *   2. updateCloud(): the 2,158 SGP4 propagations are made when the clock has moved a second from where the dots were last
+ *      placed, not on every pass (the cull and the colours, which follow the camera, still run each pass);
+ *   3. tick(): a `pace` (setPace) the host sets, the least time between drawn frames. 0, the default, draws every animation
+ *      frame as before.
+ * Nothing else is touched: the geometry, the shaders, the palette and every figure are the old file's, which is what the pixel and
+ * scene-inventory comparison against the old page (verification/ab3d.js) holds to.
+ */
+export function makeOrbit3D(global) {
+
+const RAD = Math.PI/180, DEG = 180/Math.PI;
+/* The scene's unit is ONE BODY RADIUS, not one Earth radius. Every geometry
+   literal below (sphere 1, atmosphere 1.022, track 1.004, footprint 1.006) is
+   therefore already body-relative and needs no change when the body does —
+   which is why this file survives the swap so cheaply. */
+let BODY = null, mkTrack = null;
+let RE = 6378.137;
+let U = 1/RE;                                  // scene units: 1 = Earth radius
+const FOV_SEG = 144;                             // segments around the footprint
+
+let GT, THREE, sat;
+let renderer, scene, cam, earth, earthGroup, sunLight, ambient, cloudPts, cloudMat;
+let orbitLine, trackLine, satDot, satHalo, contactLine, footRing, bkkPin, bkkDot, fovRing;
+let markHot = null, markCold = null;                         // the marker, in view and out
+let atmo = null, wire = null, reLine = null, reTip = null;   // the globe, and what stands in for it
+let altLine = null, altTip = null;                           // surface -> spacecraft
+let labels = {}, raycaster, mouse = null, hoverIdx = -1;
+let recs = [], cloudPos, cloudColor, cloudValid = [];
+/* The dots' last propagated positions, and the instant they are for. See updateCloud. */
+let cloudRaw = null, cloudMs = NaN;
+const CLOUD_STALE_MS = 1000;
+let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
+let curPeriodS = 5400, ringMs = null, ringWall = 0;
+let curEntry = null, curRec = null, follow = true, siteLock = false, pov = false;
+let simTime = new Date(), rate = 60, playing = true, lastFrame = 0, frameNo = 0;
+/* CHANGED: the least time between two drawn frames, in ms; 0 draws every animation frame, as the old file always did. The page
+   sets it from what is happening - 60 Hz while the reader is dragging or the clock is fast, a tenth of that when a slow clock is
+   the only thing moving - and stops the loop altogether (suspend) when nothing is. */
+let pace = 0, lastDraw = 0;
+let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the origin
+/* POV is a different kind of camera. It has no distance, because it is AT the
+   spacecraft; yaw and pitch are offsets from the along-track direction (see
+   aimPov - nadir is pitch -90), and the wheel changes the lens rather than the
+   range. cam0 is deliberately never written while POV is on, so leaving the
+   mode restores the free camera exactly where it was. */
+let pov0 = { yaw: 0, pitch: 0, fov: 42 };
+const BASE_FOV = 42;                             // what the other three modes use
+let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
+let nearCull = [];                               // points too close to the camera to be useful
+let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
+let earthOn = true;
+/* Covered by the page's AR view: nothing here is seen, so nothing is drawn.
+   This stops the drawing, not the clock - the clock is the page's, so the
+   first frame back is built from GT.now() like any other. */
+let suspended = false;
+/* The trail has its own switch, and it has to be a flag rather than just the
+   mesh's visible bit: setSat() makes the whole ground-bound group visible again
+   every time a spacecraft is loaded, so a trail switched off would quietly come
+   back the moment the reader picked a different object. */
+let trackOn = true;
+/* R(+) and the altitude are both ELEMENT annotations - they measure the body
+   and the orbit the way h and e do - so the Orbital elements layer owns the
+   pair, rather than the Earth checkbox they happened to be wired to first.
+   Starts off, because that layer does.
+   Note it runs from the centre to the surface, so with the Earth drawn it is
+   inside the globe and occluded. That is honest rather than broken: the arrow is
+   where it says it is, and hiding the Earth reveals it. */
+let elementsOn = false;
+
+/* ---- small helpers -------------------------------------------------------- */
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Space does not have a light mode. Fixed palette, independent of the page theme.
+const SPACE = {
+  ocean:'#0B2033', land:'#2C4437', landline:'#496B56', grat:'#27455A', fov:'#E9F2F7',
+  track:'#17A3CC', contact:'#CE801A', observer:'#E2557E', ring:'#3A4E5A',
+  sunk:'#101A22', panel:'#0A1116', ink:'#E8EFF2', ink2:'#AEBFC8', muted:'#8096A1',
+  /* The orbit ring is geometry, not data, so it is a neutral blue-grey. It was
+     contact-orange, which on the flat map and everywhere else on the page means
+     one thing - in view from the site - so a whole orange loop through the
+     marker read as "the part of the orbit Bangkok can see". r128 writes
+     material colours out through the sRGB encode, which lifts them, so this
+     lands on screen as about #768893: dimmer than the pale footprint ring,
+     which is data, and not to be mistaken for it. */
+  orbit:'#2E3F4A'
+};
+// nudge a theme token toward an earthy target: the flat map's greys read as a
+// grey ball in 3D, where the eye expects a planet
+function mix(hex, target, k){
+  if(!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const a = p(hex), b = p(target);
+  return 'rgb(' + a.map((v,i)=>Math.round(v*(1-k)+b[i]*k)).join(',') + ')';
+}
+const col = n => new THREE.Color(SPACE[n.replace('--','')] || tok(n));
+function ecefToScene(v, s){ return new THREE.Vector3(v.x*s, v.z*s, -v.y*s); }
+function llToScene(lat, lon, r){
+  const a = lat*RAD, b = lon*RAD;
+  return new THREE.Vector3(r*Math.cos(a)*Math.cos(b), r*Math.sin(a), -r*Math.cos(a)*Math.sin(b));
+}
+
+/* ---- the Earth's surface, drawn from the same coastlines as the flat map --- */
+function earthTexture(){
+  const W = 2048, H = 1024, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const px = lon => (lon+180)/360*W, py = lat => (90-lat)/180*H;
+  g.fillStyle = SPACE.ocean; g.fillRect(0,0,W,H);
+  // a touch of depth so the oceans are not a flat slab of one value
+  const grad = g.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'rgba(255,255,255,.07)');
+  grad.addColorStop(.5,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(255,255,255,.07)');
+  g.fillStyle = grad; g.fillRect(0,0,W,H);
+  g.beginPath();
+  for(const f of GT.WORLD.features){
+    const polys = f.geometry.type==='Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for(const poly of polys) for(const ring of poly){
+      ring.forEach((p,i)=> i ? g.lineTo(px(p[0]),py(p[1])) : g.moveTo(px(p[0]),py(p[1])));
+      g.closePath();
+    }
+  }
+  g.fillStyle = SPACE.land; g.fill();
+  g.strokeStyle = SPACE.landline; g.lineWidth = 1.8; g.stroke();
+  // a faint reference cage, not a feature: at full strength it out-shouts the coastlines
+  g.strokeStyle = SPACE.grat; g.lineWidth = 1; g.globalAlpha = .22; g.beginPath();
+  for(let lon=-150; lon<=150; lon+=30){ g.moveTo(px(lon),0); g.lineTo(px(lon),H); }
+  for(let lat=-60; lat<=60; lat+=30){ g.moveTo(0,py(lat)); g.lineTo(W,py(lat)); }
+  g.stroke(); g.globalAlpha = 1;
+  const t = THREE.CanvasTexture ? new THREE.CanvasTexture(c) : new THREE.Texture(c);
+  return tuneTex(t, true);
+}
+
+/* The filtering every globe map needs, whether it was drawn here or fetched.
+   An equirectangular map converges every texel row to a point at the poles, so
+   the texture is sampled along a hugely stretched footprint there. Without
+   anisotropic filtering that reads as smeared polar caps at any grazing angle.
+
+   `srgb` is false for anything bound to the day/night shader: three.js only
+   decodes a texture's encoding for its own materials, and that shader does its
+   own gamma - marking the texture too would decode it twice. */
+function tuneTex(t, srgb){
+  if(renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  if(srgb){
+    if(THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    else if(THREE.sRGBEncoding) t.encoding = THREE.sRGBEncoding;
+  }
+  t.needsUpdate = true;
+  return t;
+}
+
+/* ---- the photographic surface -------------------------------------------- *
+ * One shader covers every imagery mode. It exists rather than a second
+ * MeshPhongMaterial for one reason: the night side.
+ *
+ * City lights are not lit by anything. They are emission, and the whole point
+ * is that they appear exactly where the Sun has gone - so the terminator has to
+ * be found per fragment from the real solar direction and the two maps
+ * crossfaded across it. No built-in material does that.
+ *
+ * The gamma is explicit. r128 applies its output encoding through a shader
+ * chunk that only the built-in materials include, so a ShaderMaterial's
+ * gl_FragColor reaches the framebuffer untouched - measured rather than
+ * assumed: a constant 0.5 comes out as byte 128 with outputEncoding set either
+ * way. Lighting has to happen in linear light or the terminator turns to mud,
+ * so the maps are decoded on the way in and the result encoded on the way out.
+ *
+ * The crossfade spans about 8 degrees either side of the geometric terminator,
+ * which is roughly the sky's own twilight and reads as dusk rather than a wipe. */
+const DAYNIGHT_VERT = [
+  'varying vec2 vUv;',
+  'varying vec3 vWN;',
+  'void main(){',
+  '  vUv = uv;',
+  /* the WORLD normal: the globe is spun by GMST on its group and the Sun
+     direction is given in world space, so a view-space normal would swing the
+     terminator round with the camera */
+  '  vWN = normalize(mat3(modelMatrix) * normal);',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+  '}'
+].join('\n');
+
+const DAYNIGHT_FRAG = [
+  'uniform sampler2D dayMap;',
+  'uniform sampler2D nightMap;',
+  'uniform vec3 sunDir;',
+  'uniform float useNight;',
+  'uniform float ambient;',
+  'uniform float nightGain;',
+  'varying vec2 vUv;',
+  'varying vec3 vWN;',
+  'vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }',
+  'void main(){',
+  '  float d = dot(normalize(vWN), normalize(sunDir));',
+  '  vec3 day = lin(texture2D(dayMap, vUv).rgb);',
+  '  vec3 c = day * (ambient + (1.0 - ambient) * clamp(d, 0.0, 1.0));',
+  '  if(useNight > 0.5){',
+  '    vec3 night = lin(texture2D(nightMap, vUv).rgb) * nightGain;',
+  '    c = mix(night, c, smoothstep(-0.14, 0.14, d));',
+  '  }',
+  '  gl_FragColor = vec4(pow(c, vec3(1.0/2.2)), 1.0);',
+  '}'
+].join('\n');
+
+let vectorMat = null, photoMat = null, surfaceKey = 'vector';
+let dayTex = null, nightTex = null, surfaceSeq = 0;
+
+function photoMaterial(){
+  if(photoMat) return photoMat;
+  photoMat = new THREE.ShaderMaterial({
+    uniforms: {
+      dayMap:   { value: null },
+      nightMap: { value: null },
+      sunDir:   { value: new THREE.Vector3(1, 0, 0) },
+      useNight: { value: 0 },
+      /* Not black on the night side even without lights: the Earth is lit by a
+         whole hemisphere of sky and by the Moon, and a pure black limb reads as
+         a hole cut in the starfield. */
+      ambient:  { value: 0.055 },
+      nightGain:{ value: 1.35 }
+    },
+    vertexShader: DAYNIGHT_VERT, fragmentShader: DAYNIGHT_FRAG
+  });
+  return photoMat;
+}
+
+/* Put a fetched surface on the globe.
+   Called once per rung of the size ladder, so it has to be safe to run with the
+   sphere already wearing the previous rung: the old textures are disposed as
+   they are replaced, or a mode switch leaks a 4096x2048 map on the GPU every
+   time. */
+function applyPhoto(stage){
+  const mat = photoMaterial();
+  const d = tuneTex(new THREE.Texture(stage.day), false);
+  if(dayTex) dayTex.dispose();
+  dayTex = d; mat.uniforms.dayMap.value = d;
+  if(stage.night){
+    if(!nightTex || nightTex.image !== stage.night){
+      const nt = tuneTex(new THREE.Texture(stage.night), false);
+      if(nightTex) nightTex.dispose();
+      nightTex = nt;
+    }
+    mat.uniforms.nightMap.value = nightTex;
+    mat.uniforms.useNight.value = 1;
+  } else {
+    /* A sampler with nothing bound is undefined behaviour on some drivers even
+       when the branch that reads it is never taken, so it keeps pointing at the
+       day map rather than at null. */
+    mat.uniforms.nightMap.value = d;
+    mat.uniforms.useNight.value = 0;
+  }
+  if(earth) earth.material = mat;
+}
+
+/* setSurface(key, onStatus)
+   onStatus gets {state, key, meta, detail} - 'loading', then 'ready' per rung,
+   or 'failed' - and 'ready' twice more whenever the reader zooms in far enough
+   to earn a sharper rung, as it starts and as it lands (see sharpen). The page
+   owns the wording; this owns the sequence.
+
+   Every callback is stamped with the request that started it and dropped if a
+   later one has begun, because these take seconds and a reader flicking through
+   the list will otherwise have the slow first choice land on top of the fast
+   second one. */
+function setSurface(key, onStatus){
+  const seq = ++surfaceSeq;
+  const say = (state, detail, meta) => {
+    if(seq === surfaceSeq && onStatus) onStatus({ state, key, detail, meta });
+  };
+  surfaceKey = key;
+  texW = texH = 0; texBusy = false; texNeedWas = -1; texDead = 0; texMeta = null; texSay = say;
+  if(key === 'vector' || !global.GlobeTex){
+    texSizes = [];
+    if(earth && vectorMat) earth.material = vectorMat;
+    say('ready', null, null);
+    return;
+  }
+  const m = global.GlobeTex.modes().filter(x => x.key === key)[0];
+  texSizes = (m && m.sizes) || [];
+  say('loading', null, null);
+  texBusy = true;
+  /* The widest rung this view can use, which is never past the GPU's own
+     ceiling - see texRung. */
+  const cap = texRung();
+  global.GlobeTex.load(key, stage => {
+    if(seq !== surfaceSeq) return;            // superseded while in flight
+    applyPhoto(stage);
+    texW = stage.w; texH = stage.h; texMeta = stage.meta;
+    if(stage.last) texBusy = false;
+    say('ready', texDetail(stage.last ? '' : ', sharpening…'), stage.meta);
+  }, null, cap).catch(err => {
+    /* Falling back rather than leaving a half-dressed globe: whatever went
+       wrong, the vector surface always works and the reader is told which one
+       they are looking at. */
+    if(seq !== surfaceSeq) return;
+    texBusy = false; texW = texH = 0; texSizes = [];
+    surfaceKey = 'vector';
+    if(earth && vectorMat) earth.material = vectorMat;
+    say('failed', (err && err.message) || 'imagery unavailable', null);
+  });
+}
+
+/* ---- how much map the view can use ---------------------------------------- *
+ * The ladder used to stop only at the GPU's ceiling, and most phones report
+ * 8192 or more - so a phone at the opening zoom fetched the 6.6 MB map for a
+ * globe 560 device pixels across, when the 0.6 MB one already put about a
+ * texel under every pixel. The rung is now chosen for the view in front of the
+ * reader, and a sharper one fetched when the view changes to one that can use
+ * it.
+ *
+ * What a view can resolve is set by the one point where the map is most
+ * magnified. For the three orbiting cameras that is the middle of the disc: the
+ * point nearest the eye, and square on to it, where everywhere else is
+ * foreshortened and packs the texels closer. There a unit of surface spans
+ * f/(d-1) pixels - f the focal length in device pixels, d the camera's distance
+ * from the centre in body radii - and an equirectangular map W texels wide puts
+ * W/2pi of them on a unit of the equator, and on a unit of any meridian. So the
+ * view can use a map up to
+ *
+ *        W = 2 pi f / (d - 1)
+ *
+ * wide. At the opening 4.2 radii and 42 degrees that is 2.56 times the drawing
+ * buffer's height: 1811 for a 1440x900 window, 2246 for a phone (878 px of
+ * buffer at its capped 2x), 3621 for the same window on a 2x display.
+ *
+ * A rung counts as enough within a quarter of that - a texel no wider than 1.25
+ * pixels at the single most magnified point, which bilinear filtering does not
+ * show. That is what hands the phone the 2048 rather than the 4096, a 1.4 MB
+ * difference for nothing visible. Zoomed in to 1.25 radii every rung is short,
+ * and the best the GPU takes is fetched.
+ *
+ * POV needs no sum. The lens is on the ground from a few hundred kilometres,
+ * where a screen pixel is a few hundred metres and even the 8192's texel is
+ * 4.9 km.
+ *
+ * Save-Data, or a connection the browser rates 3G or slower, holds the coarse
+ * rung whatever the view: the reader has asked for the bytes not to be spent,
+ * or would wait a minute for them. The note beside the picker says so. */
+let texSizes = [], texW = 0, texH = 0, texBusy = false, texMeta = null, texSay = null;
+let texNeedWas = -1, texStillAt = 0, texDead = 0;
+const TEX_SLACK = 1.25;
+function lean(){
+  const nav = global.navigator || {};
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection;
+  return !!c && (c.saveData === true || /2g|3g/.test(c.effectiveType || ''));
+}
+function texNeed(){
+  if(pov) return Infinity;
+  const cv = renderer && renderer.domElement;
+  /* The layout's height times the pixel ratio rather than canvas.height: the
+     buffer is sized in tick(), and the page asks for its surface before the
+     first frame has run. */
+  const hPx = cv ? cv.clientHeight * renderer.getPixelRatio() : 0;
+  if(!(hPx > 0)) return 0;
+  const f = hPx/2 / Math.tan(BASE_FOV*RAD/2);
+  return 2*Math.PI*f / Math.max(cam0.dist - 1, 1e-3);
+}
+function texRung(){
+  /* The GPU's ceiling first. 8192 on a software renderer, 16384 on a discrete
+     card, as low as 4096 on some phones - and a texture past it is not a
+     sharper globe, it is a failed upload after the bytes have been paid for. */
+  const gpu = (renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || Infinity;
+  let fit = texSizes.filter(w => w <= gpu);
+  if(!fit.length) fit = texSizes.slice(0, 1);
+  if(!fit.length) return 0;
+  if(lean()) return fit[0];
+  const need = texNeed();
+  for(const w of fit) if(w*TEX_SLACK >= need) return w;
+  return fit[fit.length - 1];
+}
+function texDetail(tail){
+  const held = !tail && lean() && texSizes.some(w => w > texW);
+  if(!held) return texW + '×' + texH + tail;
+  /* Say which of lean()'s two reasons it was: a reader on a slow link has
+     not asked to save data. */
+  const nav = global.navigator || {};
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection || {};
+  return texW + '×' + texH + (c.saveData === true ? ', kept small to save data'
+                                                  : ', kept small for a slow connection');
+}
+
+/* Called every frame. Fetches the sharper rung once the view has stood still
+   for a moment - the need unchanged for 400 ms - or a wheel spin from 4.2 radii
+   to 1.25 would buy the 4096 on its way to the 8192. Timed from the last change
+   of the VIEW, not of the rung it wants: a zoom that spends a few slow frames
+   crossing the 4096's band has a steady rung for that long, and is still
+   moving. Never steps DOWN: a map already on the GPU costs nothing more to
+   keep. A failed sharpening leaves the working map where it is and is not
+   retried for that rung. */
+function sharpen(ts){
+  if(texBusy || !texW || !earthOn || !texSizes.length || !global.GlobeTex) return;
+  const need = texNeed();
+  if(need !== texNeedWas){ texNeedWas = need; texStillAt = ts; }      // still moving
+  const want = texRung();
+  if(want <= texW || want === texDead) return;
+  if(ts - texStillAt < 400) return;
+  const seq = surfaceSeq, key = surfaceKey, say = texSay;
+  texBusy = true;
+  say('ready', texDetail(', sharpening…'), texMeta);
+  global.GlobeTex.load(key, stage => {
+    if(seq !== surfaceSeq) return;
+    applyPhoto(stage);
+    texW = stage.w; texH = stage.h; texMeta = stage.meta; texBusy = false;
+    say('ready', texDetail(''), stage.meta);
+  }, null, want, texW).catch(() => {
+    if(seq !== surfaceSeq) return;
+    texBusy = false; texDead = want;
+    say('ready', texDetail(''), texMeta);
+  });
+}
+
+/* ---- sun direction in ECI, from the subsolar point ------------------------ */
+function sunVec(date){
+  const jd = date.getTime()/86400000 + 2440587.5, n = jd - 2451545.0;
+  const L = (280.460 + 0.9856474*n) % 360;
+  const g = ((357.528 + 0.9856003*n) % 360)*RAD;
+  const lam = (L + 1.915*Math.sin(g) + 0.020*Math.sin(2*g))*RAD;
+  const eps = 23.439*RAD;
+  const dec = Math.asin(Math.sin(eps)*Math.sin(lam));
+  const ra  = Math.atan2(Math.cos(eps)*Math.sin(lam), Math.cos(lam));
+  // ECI unit vector -> scene axes
+  const x = Math.cos(dec)*Math.cos(ra), y = Math.cos(dec)*Math.sin(ra), z = Math.sin(dec);
+  return new THREE.Vector3(x, z, -y);
+}
+
+/* ---- build ---------------------------------------------------------------- */
+function build(canvas){
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+  // r128 renders linear by default; without this the globe comes out washed out
+  if(THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+  scene = new THREE.Scene();
+  cam = new THREE.PerspectiveCamera(42, 2, 0.01, 2000);
+
+  ambient = new THREE.AmbientLight(0xffffff, 0.22); scene.add(ambient);
+  sunLight = new THREE.DirectionalLight(0xfff6e8, 1.25); scene.add(sunLight);
+
+  earthGroup = new THREE.Group(); scene.add(earthGroup);
+  earth = new THREE.Mesh(
+    // more rings toward the poles: at 64 height segments the polar triangle fan
+    // is coarse enough to visibly kink the coastline of Antarctica
+    new THREE.SphereGeometry(1, 160, 96),
+    new THREE.MeshPhongMaterial({map: earthTexture(), shininess: 6, specular: 0x0a1014})
+  );
+  /* Kept so a photographic surface can be taken off again without rebuilding
+     the coastline canvas, and so a failed fetch has something to fall back to. */
+  vectorMat = earth.material;
+  earthGroup.add(earth);
+
+  // rim of atmosphere: a back-faced shell brightened at grazing angles
+  atmo = new THREE.Mesh(new THREE.SphereGeometry(1.022, 64, 48),
+    new THREE.ShaderMaterial({
+      transparent:true, side:THREE.BackSide, depthWrite:false, blending:THREE.AdditiveBlending,
+      uniforms:{ tint:{value: new THREE.Color(0x3fa9d8)} },
+      vertexShader:'varying vec3 vN; varying vec3 vP;'+
+        'void main(){ vN=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.);'+
+        'vP=mv.xyz; gl_Position=projectionMatrix*mv; }',
+      fragmentShader:'uniform vec3 tint; varying vec3 vN; varying vec3 vP;'+
+        'void main(){ float f=pow(clamp(1.0-abs(dot(normalize(vN),normalize(-vP))),0.,1.),2.6);'+
+        'gl_FragColor=vec4(tint,f*0.85); }'
+    }));
+  scene.add(atmo);
+
+  /* With the globe hidden the orbit has nothing to be relative to, so leave a
+     wire sphere behind for scale and attitude. It rides the Earth group, so it
+     still turns with the planet. */
+  wire = new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 16, 8)),
+    new THREE.LineBasicMaterial({ color: new THREE.Color(SPACE.grat),
+      transparent:true, opacity:.24 }));
+  wire.visible = false;
+  earthGroup.add(wire);
+
+  // R(+) : from the centre out to the surface, along the radius vector, so the
+  // gap between its tip and the spacecraft is the altitude
+  const reGeo = new THREE.BufferGeometry();
+  reGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  reLine = new THREE.Line(reGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.ink), transparent:true, opacity:.9 }));
+  reTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.ink), transparent:true }));
+  reTip.userData.arrowHead = true; reTip.userData.baseOpacity = 1;
+  reLine.visible = reTip.visible = false;
+  scene.add(reLine); scene.add(reTip);
+
+  // the remainder of r: from the surface to the spacecraft. Drawn in the track
+  // colour because altitude is the quantity the ground track is a shadow of.
+  const altGeo = new THREE.BufferGeometry();
+  altGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  altLine = new THREE.Line(altGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.track), transparent:true, opacity:.95 }));
+  altTip = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.072, 10),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPACE.track), transparent:true }));
+  altTip.userData.arrowHead = true; altTip.userData.baseOpacity = 1;
+  altLine.visible = altTip.visible = false;
+  scene.add(altLine); scene.add(altTip);
+
+
+  // ground-bound overlays ride the Earth
+  trackLine = mkLine(0, '--track', 1);
+  trackLine.material.opacity = 0.30;
+  earthGroup.add(trackLine);
+  footRing = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineDashedMaterial({color: col('--observer'), dashSize:.035, gapSize:.028}));
+  earthGroup.add(footRing);
+
+  // What the spacecraft can see right now: the ground it holds above 5 degrees.
+  // Pale rather than another hue - the three data colours are already as far
+  // apart as they can get under deuteranopia, so a fourth channel is lightness.
+  const fovGeo = new THREE.BufferGeometry();
+  fovGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((FOV_SEG+1)*3), 3));
+  fovRing = new THREE.Line(fovGeo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(SPACE.fov), transparent:true, opacity:.72 }));
+  earthGroup.add(fovRing);
+  bkkPin = new THREE.Group(); earthGroup.add(bkkPin);
+  bkkPin.add(new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({color: col('--observer')})));
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 10),
+    new THREE.MeshBasicMaterial({color: col('--observer')}));
+  bkkPin.add(dot); bkkDot = dot;
+  placeSite();
+
+  // inertial overlays
+  orbitLine = mkLine(0, '--orbit', 2); scene.add(orbitLine);
+  /* Contact-orange is kept for exactly what the flat map uses it for: the line
+     of sight while the pass is up, and the marker while it is. Out of view the
+     marker is track-cyan, as the map's is - see the colour swap in tick(). */
+  contactLine = mkLine(2, '--contact', 1); scene.add(contactLine);
+  satDot = new THREE.Mesh(new THREE.SphereGeometry(0.016, 14, 12),
+    new THREE.MeshBasicMaterial({color: col('--track')}));
+  scene.add(satDot);
+  satHalo = new THREE.Mesh(new THREE.RingGeometry(0.030, 0.037, 28),
+    new THREE.MeshBasicMaterial({color: col('--track'), transparent:true, opacity:.65,
+                                 side:THREE.DoubleSide, depthWrite:false}));
+  scene.add(satHalo);
+  markHot = col('--contact'); markCold = col('--track');
+
+  buildCloud();
+  raycaster = new THREE.Raycaster();
+  if(raycaster.params.Points) raycaster.params.Points.threshold = 0.028;
+  bindInput(canvas);
+}
+function mkLine(n, tokenName, width){
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(Math.max(n,2)*3), 3));
+  return new THREE.Line(geo, new THREE.LineBasicMaterial({
+    color: col(tokenName), transparent:true, opacity: width>1?.95:.75 }));
+}
+/* There was a starfield here: 2600 points at random on a shell. It was
+   decoration pretending to be sky - the constellations were wrong because there
+   were none, and in POV mode you could look up at a sky that does not exist.
+   orbitviz.js already carries the real one, 2865 HYG catalogue stars at their
+   actual right ascension and declination, so the invented one is deleted rather
+   than kept as a fallback. The real layer is now on by default.  */
+
+// untextured points rasterise as hard squares, which is the single loudest
+// 'this is a WebGL demo' tell
+function discTexture(){
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(S/2,S/2,0, S/2,S/2,S/2);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(.5,'rgba(255,255,255,.95)');
+  gr.addColorStop(.78,'rgba(255,255,255,.35)');
+  gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(S/2,S/2,S/2,0,7); g.fill();
+  return new THREE.CanvasTexture(c);
+}
+
+/* ---- the whole catalogue as a point cloud --------------------------------- */
+function buildCloud(){
+  /* One Track per catalogue object. The cloud does not care what propagates
+     them, only that each answers at(ms) — so a mixed catalogue of Earth TLEs
+     and lunar element sets would work here unchanged. */
+  recs = GT.CAT.map(c => { try { const t = mkTrack(c);
+    return (t && t.ok) ? t : null; } catch(e){ return null; } });
+  const n = recs.length;
+  cloudPos = new Float32Array(n*3);
+  cloudColor = new Float32Array(n*3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(cloudPos,3));
+  g.setAttribute('color', new THREE.BufferAttribute(cloudColor,3));
+  cloudMat = new THREE.PointsMaterial({ size: 0.030, vertexColors:true, map: discTexture(),
+    transparent:true, opacity:.92, depthWrite:false, sizeAttenuation:true });
+  cloudPts = new THREE.Points(g, cloudMat);
+  cloudPts.frustumCulled = false;
+  scene.add(cloudPts);
+}
+/* CHANGED from the old file (see the header): the 2,158 SGP4 calls are made when the clock has moved a second or more from the
+   instant the dots were last placed, not on every pass. A low orbit covers 7.6 km a second - about a third of a pixel at the
+   opening zoom - so a dot is not visibly out of place, and at real time the catalogue is propagated once a second instead of
+   twenty times (the profile of the old page: about 12 % of a core at 60 fps, nearly all of it this loop). A seek, a faster
+   clock, or the first call is always more than a second away and is worked out exactly as before. The cull and the colours
+   still run on every pass, because they follow the CAMERA, and a zoom must not wait a second to clear a dot off the lens. */
+function updateCloud(date){
+  const base = col('--track'), hot = col('--contact');
+  const gmst = BODY.spin(date);
+  const nowMs = date.getTime();
+  if(!cloudRaw) cloudRaw = new Float32Array(recs.length*3);
+  if(!(Math.abs(nowMs - cloudMs) < CLOUD_STALE_MS)){        // also true while cloudMs is NaN
+    cloudMs = nowMs;
+    for(let i=0;i<recs.length;i++){
+      const r = recs[i]; let ok = false;
+      if(r){
+        const st = r.at(nowMs);
+        const pv = st ? {position: st.r} : null;
+        if(pv && pv.position && isFinite(pv.position.x)){
+          cloudRaw[i*3]   = pv.position.x*U;
+          cloudRaw[i*3+1] = pv.position.z*U;
+          cloudRaw[i*3+2] = -pv.position.y*U;
+          ok = true;
+        }
+      }
+      cloudValid[i] = ok;
+    }
+  }
+  // A satellite that happens to sit between the eye and the Earth renders as a
+  // huge blob across the view - a high orbit at low zoom does this constantly.
+  // Fade anything that close, and take it out of the pick list while faded.
+  const camPos = cam.position, camR = camPos.length();
+  const cullR = Math.max(0.40, 0.30*camR);
+  for(let i=0;i<recs.length;i++){
+    const ok = cloudValid[i];
+    if(ok){
+      cloudPos[i*3] = cloudRaw[i*3]; cloudPos[i*3+1] = cloudRaw[i*3+1]; cloudPos[i*3+2] = cloudRaw[i*3+2];
+    } else { cloudPos[i*3] = cloudPos[i*3+1] = cloudPos[i*3+2] = 1e6; }
+    const c = (curEntry && GT.CAT[i] === curEntry) ? hot : base;
+    const dim = (curEntry && GT.CAT[i] === curEntry) ? 1 : (i===hoverIdx ? 1 : .55);
+    let culled = false;
+    if(ok){
+      const dxc = cloudPos[i*3]-camPos.x, dyc = cloudPos[i*3+1]-camPos.y, dzc = cloudPos[i*3+2]-camPos.z;
+      if(dxc*dxc + dyc*dyc + dzc*dzc < cullR*cullR){
+        // PointsMaterial carries no per-vertex alpha, so fading the colour just
+        // painted a black disc over a lit Earth. Take the point out instead.
+        cloudPos[i*3] = cloudPos[i*3+1] = cloudPos[i*3+2] = 1e6;
+        culled = true;
+      }
+    }
+    nearCull[i] = culled;
+    cloudColor[i*3] = c.r*dim; cloudColor[i*3+1] = c.g*dim; cloudColor[i*3+2] = c.b*dim;
+  }
+  cloudPts.geometry.attributes.position.needsUpdate = true;
+  cloudPts.geometry.attributes.color.needsUpdate = true;
+  return gmst;
+}
+
+/* ---- focused satellite: orbit loop, ground track, footprint ---------------- */
+function setSat(entry, elements, win){
+  curEntry = entry;
+  try { curRec = mkTrack(entry); } catch(e){ curRec = null; }
+  if(!curRec || !curRec.ok){
+    // do not leave the last spacecraft's geometry standing under a new name
+    curRec = null; trackPts = []; trackMs = []; ringMs = null;
+    [orbitLine, trackLine, footRing].forEach(o=>{ if(o) o.visible = false; });
+    satDot.visible = satHalo.visible = contactLine.visible = false;
+    if(labels.name){ labels.name.textContent = entry.name; labels.name.style.display = 'none'; }
+    return;
+  }
+  if(orbitLine) orbitLine.visible = true;
+  if(footRing) footRing.visible = true;
+  if(trackLine) trackLine.visible = trackOn;   // ...but the trail keeps its switch
+  /* periodShown when the page supplies one: for a near-equatorial GEO object
+     the node-to-node period can be 9 % short, which left a gap of a tenth of
+     the ring on the globe. */
+  const periodS = elements && (elements.periodShown || elements.period)
+                ? (elements.periodShown || elements.period) : 5400;
+  if(!(GT && GT.now))                              // only self-clocked scenes reset time
+    simTime = new Date(elements && elements.epoch ? elements.epoch.getTime() : Date.now());
+  // sample across the ANALYSIS WINDOW, not from the epoch: the clock runs
+  // inside the window, and a track that does not cover it draws nothing
+  // Sample a little BEFORE the window too: the clock starts at the window's
+  // first instant, so without some history the trail has nothing to draw on
+  // arrival. PAD covers the longest fixed trail setting.
+  const PAD = 6*3600000;
+  const winStartMs = (win && win.start) ? win.start
+                   : (elements && elements.epoch ? elements.epoch.getTime() : simTime.getTime());
+  const anchor = new Date(winStartMs - PAD);
+  const spanMs = ((win && win.hours) ? win.hours*3600000 : 86400000) + PAD;
+
+  curPeriodS = periodS;
+  buildRing(simTime.getTime());
+
+  // 24 h of sub-satellite points, sampled fine enough that a short trail still
+  // reads as a curve rather than a polygon
+  trackPts = []; trackMs = [];
+  const steps = 5040, dtms = spanMs/steps;            // span/5040, ~20 s over a day + pad
+  for(let k=0;k<=steps;k++){
+    const ms = anchor.getTime() + k*dtms;
+    let st = curRec.at(ms); let pv = st ? {position: st.r, velocity: st.v} : null;
+    if(!pv || !pv.position) continue;
+    const gd = BODY.toGeodetic(pv.position, BODY.spin(new Date(ms)));
+    trackPts.push(llToScene(gd.latitude*DEG, gd.longitude*DEG, 1.004));
+    trackMs.push(ms);
+  }
+  trackLine.geometry.dispose();
+  const cap = trackPts.length;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap*3), 3));
+  g.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(cap*3), 3));
+  trackLine.geometry = g;
+  trackLine.material.vertexColors = true;
+  trackLine.material.opacity = 1;
+  trackLine.material.needsUpdate = true;
+  if(trailSpan === null) trailSpan = periodS*1000;     // default: one revolution
+  updateTrail(simTime.getTime());
+
+  // 5-degree access footprint around the observer, at mean altitude
+  let alt = 500;
+  { let st = curRec.at(anchor.getTime()); let pv = st ? {position: st.r} : null;
+    if(pv && pv.position) alt = BODY.toGeodetic(pv.position, BODY.spin(anchor)).height; }
+  const eps = GT.MASK*RAD;
+  const lam = Math.acos(RE*Math.cos(eps)/(RE+alt)) - eps;
+  const lat1 = GT.OBS.lat*RAD, lon1 = GT.OBS.lon*RAD, fp = [];
+  for(let b=0;b<=360;b+=3){
+    const th = b*RAD;
+    const la = Math.asin(Math.sin(lat1)*Math.cos(lam) + Math.cos(lat1)*Math.sin(lam)*Math.cos(th));
+    const lo = lon1 + Math.atan2(Math.sin(th)*Math.sin(lam)*Math.cos(lat1),
+                                 Math.cos(lam) - Math.sin(lat1)*Math.sin(la));
+    fp.push(llToScene(la*DEG, lo*DEG, 1.006));
+  }
+  footRing.geometry.dispose();
+  footRing.geometry = new THREE.BufferGeometry().setFromPoints(fp);
+  footRing.computeLineDistances();
+  if(labels.name) labels.name.textContent = entry.name;
+}
+
+/* The site pin, as a function of the site rather than a fixed geometry. It was
+   built inline from GT.OBS once at init, which is correct exactly until the
+   observer moves - and the page can move it now. */
+function placeSite(){
+  if(!bkkPin || !bkkPin.children.length) return;
+  const base = llToScene(GT.OBS.lat, GT.OBS.lon, 1.001);
+  const top  = llToScene(GT.OBS.lat, GT.OBS.lon, 1.075);
+  const line = bkkPin.children[0];
+  if(line && line.geometry) line.geometry.setFromPoints([base, top]);
+  if(bkkDot) bkkDot.position.copy(top);
+}
+
+function setFollowState(v){
+  if(follow === v) return;
+  follow = v;
+  if(v && siteLock){ siteLock = false; if(onSite) onSite(false); }
+  if(v && pov){ pov = false; if(onPov) onPov(false); }
+  if(onFollow) onFollow(v);                      // the button must track the camera
+}
+// Holding a ground site needs a mode, not a one-shot aim: the scene is inertial,
+// so a fixed camera longitude is a right ascension and the site rotates out of
+// frame within seconds. This re-aims every frame by the current GMST.
+function setSiteState(v){
+  if(siteLock === v) return;
+  siteLock = v;
+  if(v){
+    if(follow){ follow = false; if(onFollow) onFollow(false); }
+    if(pov){ pov = false; if(onPov) onPov(false); }
+    cam0.lat = GT.OBS.lat + 6;
+    cam0.dist = Math.min(cam0.dist, 4.2);
+  }
+  if(onSite) onSite(v);
+}
+
+/* The other three modes are all the SAME camera: a point at cam0.dist from the
+   origin, looking at the origin. They differ only in how the bearing is chosen.
+   POV is not that camera - it sits on the spacecraft - so it is exclusive with
+   both of the others, and it owns the drag and the wheel while it is on. */
+function setPovState(v){
+  if(pov === v) return;
+  pov = v;
+  if(fovRing) fovRing.visible = fovOn && !pov;
+  if(v){
+    if(follow){ follow = false; if(onFollow) onFollow(false); }
+    if(siteLock){ siteLock = false; if(onSite) onSite(false); }
+    pov0.yaw = 0; pov0.pitch = 0;                // re-entering re-centres on the track ahead
+  }
+  if(onPov) onPov(v);
+}
+
+/* Ground sample distance at the boresight: how much ground one rendered pixel
+   covers, where the view axis actually meets the surface.
+
+   Measured, not approximated. The obvious formula - range times the per-pixel
+   angle, divided by cos(incidence) - is a derivative, and it runs away exactly
+   where the geometry gets interesting: near the horizon cos(incidence) goes to
+   zero and it reports a footprint the pixel does not have. So instead four
+   extra rays are cast, half a pixel either side of the boresight in each screen
+   axis, and the ground distance between the pairs IS the answer. Near the limb
+   the outer ray simply misses the body and the readout says so, which is the
+   truth: that pixel's footprint runs off past the horizon and has no size.
+
+   The two numbers are the screen's own horizontal and vertical, which is why
+   they can sit in the same reading order as the field of view above them. That
+   is exact rather than convenient: the camera is yawed then pitched from a
+   basis whose up IS the zenith and is never rolled, so the screen-vertical axis
+   lies in the plane through the spacecraft, the boresight and the body centre -
+   the incidence plane - and the screen-horizontal axis is perpendicular to it.
+   Vertical therefore carries the whole of the obliquity stretch and horizontal
+   carries none, which is what makes them worth printing separately: looking
+   forward at a shallow angle they differ by an order of magnitude.
+
+   Distances come from the sphere the scene actually draws. The view has no
+   flattening in it - the globe is a SphereGeometry(1) - so measuring against an
+   ellipsoid would describe a picture that is not on screen; the difference is
+   under a third of a percent either way.
+
+   Pixels are the drawing buffer's, not CSS pixels: those are the samples that
+   exist, and on a 2x display there are twice as many of them as the layout
+   suggests. */
+function gsdAt(){
+  const cv = renderer && renderer.domElement;
+  if(!cv || !(cv.width > 0) || !(cv.height > 0)) return null;
+  const ty = Math.tan(pov0.fov*RAD/2);
+  const hy = ty / cv.height;                  // HALF a pixel at the image plane z = -1
+  const hx = ty * cam.aspect / cv.width;
+  const P = cam.position, r2 = P.lengthSq();
+  if(!(r2 > 1)) return null;                  // inside the body: nothing to sample
+
+  /* One pencil of five rays - the centre and half a pixel each way in both
+     screen axes - cast about whatever direction it is given, so the boresight
+     and the straight-down reference go through the same code rather than one
+     being measured and the other trusted to a formula. */
+  function pencil(fwd, ax, ay){
+    function hit(x, y){
+      const d = fwd.clone().addScaledVector(ax, x).addScaledVector(ay, y).normalize();
+      const b = P.dot(d), disc = b*b - (r2 - 1);
+      if(disc < 0) return null;               // the ray passes the body by
+      const t = -b - Math.sqrt(disc);
+      if(!(t > 0)) return null;               // the body is behind the camera
+      return { p: P.clone().addScaledVector(d, t), d: d, t: t };
+    }
+    const c = hit(0, 0);
+    if(!c) return null;
+    const xp = hit(hx, 0), xm = hit(-hx, 0), yp = hit(0, hy), ym = hit(0, -hy);
+    if(!xp || !xm || !yp || !ym) return null; // the pixel straddles the limb
+    return { x: xp.p.distanceTo(xm.p)*RE*1000,   // metres per pixel, across the look
+             y: yp.p.distanceTo(ym.p)*RE*1000,   //                   along it
+             hit: c.p,                           // where the boresight met the ground
+             range: c.t*RE,
+             inc: Math.acos(Math.max(-1, Math.min(1,
+                    -c.d.dot(c.p.clone().normalize()))))*DEG };
+  }
+
+  const q = cam.quaternion;
+  const camX = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+  const camY = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+  const fwd  = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+
+  /* Straight down from where the spacecraft is now, in the same lens. This is
+     the figure a spec sheet quotes, and it exists whatever the camera happens
+     to be pointed at - which matters because POV enters looking along-track,
+     and a horizontal ray from any positive altitude never meets the sphere. A
+     readout that is blank in its opening frame reads as broken, so the nadir
+     value stands in and says that it has. */
+  const down = P.clone().normalize().negate();
+  let ny = camY.clone().addScaledVector(down, -camY.dot(down));
+  if(ny.lengthSq() < 1e-12) ny = camX.clone().addScaledVector(down, -camX.dot(down));
+  ny.normalize();
+  const nadir = pencil(down, new THREE.Vector3().crossVectors(ny, down).normalize(), ny);
+  /* ...and whether that point is in the picture at all. The camera is never
+     rolled, so nadir lies on the screen's vertical centre line, below the
+     middle; it is in frame when it is in front and within the lens's half
+     height. From low orbit it never is while the boresight clears the limb -
+     the horizon is 70 degrees and more off nadir there, the widest lens 45 -
+     but from GEO the whole disc is 17 degrees across and both happen at once. */
+  const dz = down.dot(fwd);
+  const nadirSeen = dz > 0 && Math.abs(down.dot(camY)/dz) <= ty
+                            && Math.abs(down.dot(camX)/dz) <= ty*cam.aspect;
+
+  const bore = pencil(fwd, camX, camY);
+  if(!bore && !nadir) return null;
+  return bore ? { x: bore.x, y: bore.y, range: bore.range, inc: bore.inc,
+                  nadir: nadir ? nadir.x : null, onBody: true, hit: bore.hit, nadirSeen }
+              : { x: nadir.x, y: nadir.y, range: nadir.range, inc: nadir.inc,
+                  nadir: nadir.x, onBody: false, hit: null, nadirSeen };
+}
+
+/* 3 significant figures is the most this is worth: the underlying orbit is a
+   TLE, and the last digit of a metre would be inventing precision. */
+function gsdText(g){
+  const sig = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+  const big = Math.max(g.x, g.y), k = big >= 10000;
+  const a = k ? g.x/1000 : g.x, b = k ? g.y/1000 : g.y;
+  return { text: sig(a) + ' × ' + sig(b), unit: k ? 'km/px' : 'm/px' };
+}
+
+/* ---- the POV minimap ------------------------------------------------------ *
+ * POV is the one camera mode that takes away the thing every other mode gives
+ * for free: where the spacecraft actually is. Through a 20-degree lens the
+ * Earth is a textured wall, and a reader who has pitched down and yawed around
+ * has no way back to "over the south Pacific, looking north-east".
+ *
+ * So: the whole world at once, flat, with four things on it - where the
+ * spacecraft is, the circle it can currently see, where the camera is pointed
+ * inside that circle, and the observer. Equirectangular because that is the
+ * projection the ground track below already uses and the one whose distortion a
+ * reader of this page has already made their peace with.
+ *
+ * The coastlines are drawn once into an offscreen canvas and blitted. They are
+ * a few thousand line segments and the rest of this runs every frame.           */
+let miniBase = null, miniW = 0, miniH = 0;
+/* The sub-satellite point for the frame being drawn. updateFov() derives it
+   already, and propagating a second time for the minimap would be a second
+   SGP4 call per frame to answer a question just answered. */
+let lastGd = null;
+
+function miniCoast(w, h){
+  if(miniBase && miniW === w && miniH === h) return miniBase;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const px = lon => (lon+180)/360*w, py = lat => (90-lat)/180*h;
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(120,150,166,.30)'; g.lineWidth = 1;
+  g.beginPath();
+  for(let lon=-120; lon<=120; lon+=60){ g.moveTo(px(lon),0); g.lineTo(px(lon),h); }
+  for(const lat of [-60,-30,0,30,60]){ g.moveTo(0,py(lat)); g.lineTo(w,py(lat)); }
+  g.stroke();
+  g.beginPath();
+  for(const f of GT.WORLD.features){
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for(const poly of polys) for(const ring of poly){
+      ring.forEach((p,i) => i ? g.lineTo(px(p[0]),py(p[1])) : g.moveTo(px(p[0]),py(p[1])));
+      g.closePath();
+    }
+  }
+  g.fillStyle = 'rgba(58,88,72,.55)'; g.fill();
+  g.strokeStyle = 'rgba(112,160,128,.85)'; g.lineWidth = 1; g.stroke();
+  miniBase = c; miniW = w; miniH = h;
+  return c;
+}
+
+/* Scene coordinates back to a place on the planet. The globe is spun by GMST on
+   its group, so the point has to come back into the group's frame first; after
+   that this is just the inverse of llToScene. */
+function sceneToLatLon(p){
+  const v = p.clone();
+  earthGroup.updateWorldMatrix(true, false);
+  earthGroup.worldToLocal(v);
+  const r = v.length();
+  if(!(r > 0)) return null;
+  return { lat: Math.asin(v.y/r)*DEG, lon: Math.atan2(-v.z, v.x)*DEG };
+}
+
+/* A small-circle of angular radius lam about a point, in degrees, as a list of
+   [lon,lat] - the same spherical construction the 3D access ring uses. */
+function smallCircle(latDeg, lonDeg, lam, steps){
+  const lat = latDeg*RAD, lon = lonDeg*RAD;
+  const sinLat = Math.sin(lat), cosLat = Math.cos(lat);
+  const cosL = Math.cos(lam), sinL = Math.sin(lam), out = [];
+  for(let k=0;k<=steps;k++){
+    const th = k/steps*Math.PI*2;
+    const la = Math.asin(sinLat*cosL + cosLat*sinL*Math.cos(th));
+    const lo = lon + Math.atan2(Math.sin(th)*sinL*cosLat, cosL - sinLat*Math.sin(la));
+    out.push([((lo*DEG + 540) % 360) - 180, la*DEG]);
+  }
+  return out;
+}
+
+function drawMini(gd, gsd){
+  const cv = labels.mini;
+  if(!cv) return;
+  if(!pov || !gd){ cv.hidden = true; return; }
+  cv.hidden = false;
+  const w = cv.width, h = cv.height;
+  const g = cv.getContext('2d');
+  const px = lon => (lon+180)/360*w, py = lat => (90-lat)/180*h;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(miniCoast(w, h), 0, 0);
+
+  const satLat = gd.latitude*DEG, satLon = gd.longitude*DEG;
+
+  /* The circle the spacecraft can see right now, by the same geometry as the
+     3D ring: cos of the Earth-centre angle is (Re/(Re+h))cos(eps), less the
+     mask. Drawn as segments so the dateline breaks the stroke instead of
+     drawing a line straight back across the map. */
+  const eps = GT.MASK*RAD, inner = RE*Math.cos(eps)/(RE + gd.height);
+  if(inner <= 1){
+    const ring = smallCircle(satLat, satLon, Math.acos(inner) - eps, 72);
+    g.strokeStyle = 'rgba(233,242,247,.55)'; g.lineWidth = 1.6;
+    g.beginPath();
+    let prev = null;
+    for(const [lo, la] of ring){
+      if(prev !== null && Math.abs(lo - prev) > 180) g.moveTo(px(lo), py(la));
+      else if(prev === null) g.moveTo(px(lo), py(la));
+      else g.lineTo(px(lo), py(la));
+      prev = lo;
+    }
+    g.stroke();
+  }
+
+  // the observer
+  g.fillStyle = SPACE.observer;
+  g.beginPath(); g.arc(px(GT.OBS.lon), py(GT.OBS.lat), 2.6, 0, 7); g.fill();
+
+  /* Where the lens is actually pointed. This is the whole reason the minimap
+     exists in POV and not elsewhere: the dot says where you are, this says
+     which way you are facing. Reuses the boresight the GSD readout already
+     casts rather than casting it again. */
+  if(gsd && gsd.onBody && gsd.hit){
+    const look = sceneToLatLon(gsd.hit);
+    if(look){
+      const dx = Math.abs(look.lon - satLon) > 180 ? null : 1;
+      g.strokeStyle = 'rgba(206,128,26,.85)'; g.lineWidth = 1.4;
+      if(dx){
+        g.beginPath();
+        g.moveTo(px(satLon), py(satLat));
+        g.lineTo(px(look.lon), py(look.lat));
+        g.stroke();
+      }
+      g.fillStyle = SPACE.contact;
+      g.beginPath(); g.arc(px(look.lon), py(look.lat), 3.4, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(10,16,20,.9)'; g.lineWidth = 1;
+      g.beginPath(); g.arc(px(look.lon), py(look.lat), 3.4, 0, 7); g.stroke();
+    }
+  }
+
+  // the spacecraft itself, drawn last so nothing sits on top of it
+  g.fillStyle = SPACE.track;
+  g.beginPath(); g.arc(px(satLon), py(satLat), 3.6, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(10,16,20,.9)'; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(px(satLon), py(satLat), 3.6, 0, 7); g.stroke();
+}
+
+/* Aim the POV camera: looking FORWARD along the velocity vector, with zenith up.
+   It used to look at nadir, and that was a mistake for one specific reason.
+   Looking straight down puts the view axis on the yaw axis, so dragging
+   sideways - which yaws about the local vertical - only ROLLED the image
+   instead of turning the head. The camera felt stuck, because in that pose the
+   horizontal drag had nowhere to send you. Facing along-track separates the two
+   axes: yaw turns left and right, pitch looks up and down, and nadir is simply
+   pitch -90, still one drag away.
+
+   Rebuilt from the same basis every frame rather than accumulated onto the
+   previous orientation: a long drag would otherwise walk the roll off true, and
+   the error would never come back. */
+function aimPov(satPos, satVel){
+  const zenith = satPos.clone().normalize();
+  let ahead = (satVel && satVel.lengthSq() > 1e-12)
+    ? satVel.clone() : new THREE.Vector3(0, 1, 0);
+  ahead.addScaledVector(zenith, -ahead.dot(zenith));    // the local-horizontal part
+  if(ahead.lengthSq() < 1e-12){                         // velocity parallel to r: pick anything
+    ahead.set(0, 1, 0).addScaledVector(zenith, -zenith.y);
+    if(ahead.lengthSq() < 1e-12) ahead.set(1, 0, 0).addScaledVector(zenith, -zenith.x);
+  }
+  ahead.normalize();
+  const right = new THREE.Vector3().crossVectors(ahead, zenith).normalize();
+  /* three.js cameras look down their own -Z, so the basis is (right, up, back).
+     back = -ahead makes the view direction +ahead: straight down the track. */
+  const back = ahead.clone().negate();
+  cam.position.copy(satPos);
+  cam.quaternion.setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(right, zenith, back));
+  cam.rotateY(pov0.yaw*RAD);
+  cam.rotateX(pov0.pitch*RAD);
+  if(cam.fov !== pov0.fov){ cam.fov = pov0.fov; cam.updateProjectionMatrix(); }
+}
+
+// One revolution centred on the given instant, in inertial space.
+function buildRing(centreMs){
+  if(!curRec) return;
+  const N = 360, half = curPeriodS*1000/2, pts = [];
+  for(let k=0;k<=N;k++){
+    const t = new Date(centreMs - half + k*curPeriodS*1000/N);
+    const st0 = curRec.at(t.getTime()); const pv = st0 ? {position: st0.r} : null;
+    if(pv && pv.position)
+      pts.push(new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U));
+  }
+  if(!pts.length) return;
+  orbitLine.geometry.dispose();
+  orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  ringMs = centreMs;
+}
+
+// first index whose time is >= ms (times are monotonic)
+function seek(ms){
+  let lo = 0, hi = trackMs.length - 1;
+  if(!trackMs.length || ms <= trackMs[0]) return 0;
+  if(ms >= trackMs[hi]) return hi;
+  while(lo < hi){ const mid = (lo+hi) >> 1;
+    if(trackMs[mid] < ms) lo = mid+1; else hi = mid; }
+  return lo;
+}
+/* Draw only the slice of track inside the trail window, fading the tail out so
+   the line reads as motion rather than as a static wire cage. */
+function updateTrail(nowMs){
+  if(!trackPts.length || !trackLine.geometry.attributes.color) return;
+  let i0, i1;
+  if(trailSpan === Infinity){ i0 = 0; i1 = trackPts.length-1; }
+  else { i0 = seek(nowMs - trailSpan); i1 = seek(nowMs + trailLead); }
+  const geo = trackLine.geometry;
+  if(i1 <= i0){ geo.setDrawRange(0,0); return; }
+  const pos = geo.attributes.position.array, col = geo.attributes.color.array;
+  const c = col3(SPACE.track), span = Math.max(1, i1-i0);
+  let m = 0;
+  for(let i=i0;i<=i1;i++){
+    const p = trackPts[i];
+    pos[m*3] = p.x; pos[m*3+1] = p.y; pos[m*3+2] = p.z;
+    const f = (i-i0)/span;                       // 0 at the tail, 1 at the head
+    const k = trailSpan === Infinity ? 0.55 : 0.10 + 0.90*f*f;
+    col[m*3] = c[0]*k; col[m*3+1] = c[1]*k; col[m*3+2] = c[2]*k;
+    m++;
+  }
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.setDrawRange(0, m);
+  geo.computeBoundingSphere();
+}
+function col3(hex){
+  const c = new THREE.Color(hex); return [c.r, c.g, c.b];
+}
+
+/* The ground circle inside which the spacecraft sits above MASK degrees. The
+   central angle comes straight from the geometry: cos of the Earth-centre angle
+   is (Re/(Re+h))·cos(eps), less the mask itself. */
+function updateFov(pv, gmst){
+  if(!fovRing) return;
+  if(!pv || !pv.position){ fovRing.visible = false; lastGd = null; return; }
+  const gd = BODY.toGeodetic(pv.position, gmst);
+  lastGd = gd;
+  const lat = gd.latitude, lon = gd.longitude, h = gd.height;
+  const eps = GT.MASK*RAD;
+  const inner = RE*Math.cos(eps)/(RE+h);
+  if(!(inner <= 1)){ fovRing.visible = false; return; }     // below the horizon everywhere
+  const lam = Math.acos(inner) - eps;
+  const arr = fovRing.geometry.attributes.position.array;
+  const sinLat = Math.sin(lat), cosLat = Math.cos(lat), cosL = Math.cos(lam), sinL = Math.sin(lam);
+  for(let k=0;k<=FOV_SEG;k++){
+    const th = k/FOV_SEG*Math.PI*2;
+    const la = Math.asin(sinLat*cosL + cosLat*sinL*Math.cos(th));
+    const lo = lon + Math.atan2(Math.sin(th)*sinL*cosLat, cosL - sinLat*Math.sin(la));
+    const v = llToScene(la*DEG, lo*DEG, 1.003);
+    arr[k*3] = v.x; arr[k*3+1] = v.y; arr[k*3+2] = v.z;
+  }
+  fovRing.geometry.attributes.position.needsUpdate = true;
+  fovRing.geometry.computeBoundingSphere();
+  fovRing.visible = fovOn && !pov;     // from the spacecraft the ring is just a line under the camera
+}
+
+/* ---- input ---------------------------------------------------------------- */
+function bindInput(canvas){
+  const pt = e => ({x: e.touches ? e.touches[0].clientX : e.clientX,
+                    y: e.touches ? e.touches[0].clientY : e.clientY});
+  const down = e => {
+    if(e.touches && e.touches.length === 2){
+      pinch0 = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
+                          e.touches[0].clientY-e.touches[1].clientY);
+      return;
+    }
+    dragging = true; lastPt = pt(e); downPt = pt(e); travel = 0;
+    canvas.style.cursor = 'grabbing';
+  };
+  const move = e => {
+    if(e.touches && e.touches.length === 2 && pinch0){
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
+                           e.touches[0].clientY-e.touches[1].clientY);
+      if(pov){
+        pov0.fov = Math.max(8, Math.min(90, pov0.fov * pinch0/d));
+      } else {
+        setFollowState(false); setSiteState(false);
+        cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * pinch0/d));
+      }
+      pinch0 = d; e.preventDefault(); return;
+    }
+    const p = pt(e);
+    if(dragging && lastPt){
+      /* A drag drops the other camera modes, because moving the camera IS
+         leaving them. In POV it is not: looking around is what the mode is for,
+         so the drag turns the head and stays aboard. */
+      if(pov){
+        /* Pitch stops just short of +-90: straight down and straight up are
+           gimbal poles, where yaw and roll collapse onto each other and the
+           view tumbles. 89 reaches nadir for all practical purposes without
+           ever standing on the singularity. */
+        pov0.yaw -= (p.x-lastPt.x)*0.30;
+        pov0.pitch = Math.max(-89, Math.min(89, pov0.pitch - (p.y-lastPt.y)*0.30));
+      } else {
+        setFollowState(false); setSiteState(false);
+        cam0.lon -= (p.x-lastPt.x)*0.32;
+        cam0.lat = Math.max(-88, Math.min(88, cam0.lat + (p.y-lastPt.y)*0.32));
+      }
+      travel += Math.abs(p.x-lastPt.x) + Math.abs(p.y-lastPt.y);
+      lastPt = p; e.preventDefault();
+    } else if(!e.touches){
+      const r = canvas.getBoundingClientRect();
+      mouse = new THREE.Vector2(((p.x-r.left)/r.width)*2-1, -((p.y-r.top)/r.height)*2+1);
+    }
+  };
+  const up = () => { dragging = false; lastPt = null; pinch0 = 0; canvas.style.cursor = 'grab'; };
+  canvas.addEventListener('mousedown', down);
+  canvas.addEventListener('touchstart', down, {passive:true});
+  window.addEventListener('mousemove', move);
+  canvas.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('mouseup', up);
+  window.addEventListener('touchend', up);
+  canvas.addEventListener('mouseleave', ()=>{ mouse = null; hoverIdx = -1;
+    if(global.OrbitViz && global.OrbitViz.setHover) global.OrbitViz.setHover(null); });
+  canvas.addEventListener('wheel', e => {
+    /* There is no range to change from inside the spacecraft, so in POV the
+       wheel is a lens instead: 8 deg is a long telephoto on the limb, 90 deg
+       takes in the whole horizon. */
+    if(pov) pov0.fov = Math.max(8, Math.min(90, pov0.fov * (1 + Math.sign(e.deltaY)*0.09)));
+    else    cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * (1 + Math.sign(e.deltaY)*0.12)));
+    e.preventDefault();
+  }, {passive:false});
+  // click fires after mouseup however far the pointer travelled, and hoverIdx is
+  // frozen during a drag - so a rotate that began over a point would load it
+  canvas.addEventListener('click', (e) => {
+    if(!cloudPts || !cloudPts.visible) return;      // nothing on screen to pick
+    // Measure how far the pointer actually MOVED, not the length of the path it
+    // wandered: summing every delta made ordinary hand jitter look like a drag,
+    // so real clicks were being thrown away.
+    if(downPt){
+      const dx = e.clientX - downPt.x, dy = e.clientY - downPt.y;
+      if(Math.hypot(dx, dy) > 6) return;
+    }
+    // re-pick under the cursor rather than trusting hoverIdx, which may be stale
+    const r = canvas.getBoundingClientRect();
+    const m = new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,
+                                -((e.clientY-r.top)/r.height)*2+1);
+    raycaster.setFromCamera(m, cam);
+    const hit = raycaster.intersectObject(cloudPts, false);
+    for(const x of hit){
+      if(pickable(x.index)){
+        if(onPick) onPick(x.index, e.clientX, e.clientY);
+        return;
+      }
+    }
+  });
+}
+
+/* Can catalogue point i be hovered or clicked? It has to exist, not be faded
+   out for sitting on top of the camera, and not be round the back of the
+   globe. three.js raycasts straight through the sphere - it tests the cloud
+   alone - so a point on the far side under the cursor used to win over the
+   planet in front of it, and its name was drawn on the near face and a click
+   loaded it. */
+let pickV = null;
+function pickable(i){
+  if(!cloudValid[i] || nearCull[i]) return false;
+  if(!pickV) pickV = new THREE.Vector3();
+  return !behindEarth(pickV.set(cloudPos[i*3], cloudPos[i*3+1], cloudPos[i*3+2]));
+}
+
+/* ---- frame ---------------------------------------------------------------- */
+function tick(ts){
+  requestAnimationFrame(tick);
+  // the loop stays scheduled, so resuming can never start a second one
+  if(suspended){ lastFrame = 0; return; }
+  if(pace > 0 && lastDraw && ts - lastDraw < pace - 2) return;          // not yet: the frame is skipped whole
+  lastDraw = ts;
+  const dt = lastFrame ? Math.min((ts-lastFrame)/1000, .25) : 0;
+  lastFrame = ts; frameNo++;
+  // the page owns sim time; the scene follows it so the globe and the flat map
+  // can never drift apart
+  simTime = (GT && GT.now) ? GT.now() : new Date(simTime.getTime() + dt*rate*1000);
+
+  const canvas = renderer.domElement;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const wantDpr = Math.min(window.devicePixelRatio||1, 2);
+  if(renderer.getPixelRatio() !== wantDpr) renderer.setPixelRatio(wantDpr);  // moved screens
+  if(canvas.width !== Math.floor(w*renderer.getPixelRatio()) ||
+     canvas.height !== Math.floor(h*renderer.getPixelRatio())){
+    renderer.setSize(w, h, false);
+    cam.aspect = w/Math.max(h,1); cam.updateProjectionMatrix();
+  }
+
+  // the Earth turns under the orbits
+  const gmst = (frameNo % 3 === 1) ? updateCloud(simTime) : BODY.spin(simTime);
+  earthGroup.rotation.y = gmst;
+  sunLight.position.copy(sunVec(simTime)).multiplyScalar(50);
+  /* The same vector the lamp uses, unscaled, so the painted terminator and the
+     lit terminator are the same line and not two answers to one question. */
+  if(photoMat) photoMat.uniforms.sunDir.value.copy(sunVec(simTime));
+
+  const nowMs = simTime.getTime();
+  updateTrail(nowMs);
+  // at 3600x the clock crosses two simulated minutes every ~33 ms, so throttle
+  // the rebuild on wall time too rather than spending 30 rebuilds a second
+  if(curRec && (ringMs === null || (Math.abs(nowMs - ringMs) > 120000 && ts - ringWall > 120))){
+    buildRing(nowMs); ringWall = ts;
+  }
+
+  // focused spacecraft
+  let satPos = null, satVel = null, el = -90;
+  if(curRec){
+    const st1 = curRec.at(simTime.getTime()); const pv = st1 ? {position: st1.r, velocity: st1.v} : null;
+    updateFov(pv, gmst);
+    if(pv && pv.position){
+      satPos = new THREE.Vector3(pv.position.x*U, pv.position.z*U, -pv.position.y*U);
+      // direction only - the POV basis normalises it - so no scale factor here
+      if(pv.velocity)
+        satVel = new THREE.Vector3(pv.velocity.x, pv.velocity.z, -pv.velocity.y);
+      satDot.position.copy(satPos);
+      satHalo.position.copy(satPos);
+      // in POV the camera IS the spacecraft, so the halo has nothing to turn to
+      if(!pov) satHalo.lookAt(cam.position);
+      const look = BODY.lookAngles(GT.OBS, BODY.toFixed(pv.position, gmst));
+      el = look.elevation*DEG;
+    }
+  }
+  /* The marker sits exactly where the POV camera does, so drawing it fills the
+     frame with the inside of a sprite. */
+  satDot.visible = satHalo.visible = !!satPos && !pov;
+
+  /* Altitude is the number people actually want, so it is drawn whenever there
+     is a spacecraft - not only when the planet is hidden. R(+) still is, because
+     it runs from the centre to the surface and would be buried inside the globe
+     with nothing to see. */
+  if(satPos){
+    const dir = satPos.clone().normalize();
+    const tip = dir.clone().multiplyScalar(1);
+    if(elementsOn){
+      const arr = reLine.geometry.attributes.position.array;
+      arr[0]=0; arr[1]=0; arr[2]=0; arr[3]=tip.x; arr[4]=tip.y; arr[5]=tip.z;
+      reLine.geometry.attributes.position.needsUpdate = true;
+      reLine.geometry.computeBoundingSphere();
+      reTip.position.copy(dir).multiplyScalar(1 - 0.036);
+      reTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+      reLine.visible = reTip.visible = true;
+      if(labels.earth) labels.earth.__vec = dir.clone().multiplyScalar(0.40);
+    } else {
+      reLine.visible = reTip.visible = false;
+      if(labels.earth) labels.earth.__vec = null;
+    }
+
+    /* Drive the arrow's visibility from whether there IS a spacecraft. It used
+       to be set in showEarth(), and when the altitude was decoupled from the
+       Earth toggle those were the only two lines that ever set it TRUE - so it
+       was built invisible at line 190 and stayed that way. The label kept
+       updating, which is what made it look fixed. */
+    altLine.visible = altTip.visible = elementsOn;
+    // and the rest of the way: surface -> spacecraft is the altitude
+    const arr2 = altLine.geometry.attributes.position.array;
+    arr2[0]=tip.x; arr2[1]=tip.y; arr2[2]=tip.z;
+    arr2[3]=satPos.x; arr2[4]=satPos.y; arr2[5]=satPos.z;
+    altLine.geometry.attributes.position.needsUpdate = true;
+    altLine.geometry.computeBoundingSphere();
+    const rLen = satPos.length();
+    altTip.position.copy(dir).multiplyScalar(Math.max(1.0, rLen - 0.036));
+    altTip.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    if(labels.alt){
+      labels.alt.__vec = elementsOn ? dir.clone().multiplyScalar((1 + rLen)/2) : null;
+      const km = (rLen - 1)/U;
+      /* This is |r| - R(+), measured from the SPHERE that is actually drawn.
+         The panel's altitude is geodetic, above the WGS-84 ellipsoid, whose
+         radius at mid latitudes is ~10 km less - so the two legitimately differ
+         and the label has to say which one it is. */
+      const txt = '|r| − R⊕ = ' + (km >= 10000 ? Math.round(km).toLocaleString('en-US')
+                                          : km.toFixed(0)) + ' km';
+      if(labels.alt.textContent !== txt) labels.alt.textContent = txt;
+    }
+  } else {
+    altLine.visible = altTip.visible = false;
+    reLine.visible = reTip.visible = false;
+    if(labels.earth) labels.earth.__vec = null;
+    if(labels.alt) labels.alt.__vec = null;
+  }
+
+
+  // line of sight, drawn only while the pass is actually up
+  const seen = satPos && el >= GT.MASK;
+  contactLine.visible = !!seen;
+  /* ...and the marker turns orange with it, the flat map's rule exactly: cyan
+     is the spacecraft, orange is the spacecraft in view from the site. */
+  const mc = seen ? markHot : markCold;
+  if(mc && !satDot.material.color.equals(mc)){
+    satDot.material.color.copy(mc); satHalo.material.color.copy(mc);
+  }
+  if(seen){
+    const b = llToScene(GT.OBS.lat, GT.OBS.lon, 1.0).applyAxisAngle(new THREE.Vector3(0,1,0), gmst);
+    const arr = contactLine.geometry.attributes.position.array;
+    arr[0]=b.x; arr[1]=b.y; arr[2]=b.z;
+    arr[3]=satPos.x; arr[4]=satPos.y; arr[5]=satPos.z;
+    contactLine.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // camera
+  if(pov && satPos){
+    aimPov(satPos, satVel);
+  } else {
+    if(siteLock){
+      cam0.lon = GT.OBS.lon + gmst*DEG;           // ride the Earth's rotation
+    } else if(follow && satPos){
+      const r = satPos.length();
+      cam0.lat = Math.asin(satPos.y/r)*DEG;
+      cam0.lon = Math.atan2(-satPos.z, satPos.x)*DEG;
+    }
+    const la = cam0.lat*RAD, lo = cam0.lon*RAD;
+    cam.position.set(cam0.dist*Math.cos(la)*Math.cos(lo),
+                     cam0.dist*Math.sin(la),
+                     -cam0.dist*Math.cos(la)*Math.sin(lo));
+    cam.lookAt(0,0,0);
+    if(cam.fov !== BASE_FOV){ cam.fov = BASE_FOV; cam.updateProjectionMatrix(); }
+  }
+  /* The atmosphere is a back-faced additive shell at 1.022: from outside it
+     draws a rim, from inside it washes the whole frame. A POV camera on
+     anything below about 140 km altitude is inside it. */
+  if(atmo) atmo.visible = earthOn && !(pov && cam.position.length() < 1.03);
+
+  // world-sized markers balloon as you zoom in; scale them with distance so they
+  // stay roughly constant on screen
+  /* cam0.dist is the free camera's range from the origin and means nothing in
+     POV, where the camera is at the spacecraft. Left as it was, the site pin and
+     the 2158-point cloud would render at whatever size the free camera happened
+     to be the last time it was used. */
+  const camR = pov ? cam.position.length() : cam0.dist;
+  const mk = Math.max(0.30, Math.min(2.4, camR/4.2));
+  satDot.scale.setScalar(mk); satHalo.scale.setScalar(mk);
+  if(bkkDot) bkkDot.scale.setScalar(mk);
+  if(cloudMat) cloudMat.size = 0.030*Math.max(0.55, Math.min(1.8, mk));
+
+  // project() below needs this frame's camera, not last frame's
+  cam.updateMatrixWorld();
+  cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+
+  // hover pick against the cloud. Hidden is not the same as absent: three.js
+  // will happily raycast an invisible object, which left the whole catalogue
+  // clickable after the checkbox was cleared.
+  if(mouse && !dragging && cloudPts.visible){
+    raycaster.setFromCamera(mouse, cam);
+    const hit = raycaster.intersectObject(cloudPts, false);
+    let idx = -1;
+    for(const x of hit){ if(pickable(x.index)){ idx = x.index; break; } }
+    if(idx !== hoverIdx){ hoverIdx = idx; canvas.style.cursor = idx>=0 ? 'pointer' : 'grab'; }
+  } else if(hoverIdx !== -1 && (dragging || !cloudPts.visible)){
+    hoverIdx = -1;                                  // drop a stale hover
+    canvas.style.cursor = dragging ? 'grabbing' : 'grab';
+  }
+  /* Who owns the pointer, in order.
+     A LABEL wins outright, including over the catalogue: it is explicit UI
+     drawn on top, and the alternative is that it almost never wins at all -
+     2158 catalogue points blanket the view, so nearly every label has one
+     behind it. When a label wins, the catalogue hover is dropped too, so a
+     click on the omega label does not load whatever happened to be behind it.
+     Failing that the catalogue wins, because clicking a point loads that
+     spacecraft and an arc under the cursor must not eat that.
+     Element GEOMETRY comes last, on what is left. */
+  if(global.OrbitViz && global.OrbitViz.setHover){
+    if(mouse && !dragging){
+      const onLabel = global.OrbitViz.pickLabel ? global.OrbitViz.pickLabel(mouse) : null;
+      if(onLabel){
+        if(hoverIdx !== -1){ hoverIdx = -1; canvas.style.cursor = 'pointer'; }
+        global.OrbitViz.setHover(onLabel);
+      } else if(hoverIdx >= 0){
+        global.OrbitViz.setHover(null);
+      } else {
+        raycaster.setFromCamera(mouse, cam);
+        global.OrbitViz.setHover(global.OrbitViz.pick(raycaster, mouse));
+      }
+    } else global.OrbitViz.setHover(null);
+  }
+  paintLabels(satPos, el);
+  fadeHeads();
+  sharpen(ts);                                    // after the camera has moved for this frame
+  renderer.render(scene, cam);
+}
+
+/* An arrowhead the camera has closed on stops being a pointer and becomes a
+   wall of flat colour across the view. Every cone tagged arrowHead - these two
+   and orbitviz's - fades out over 20 to 10 of its own lengths from the eye and
+   is gone inside that. At the default zoom the nearest head is ~44 lengths
+   away; in POV the velocity head sits at ~8, filling the middle of the view. Done through the MATERIAL, so it never fights the code
+   that owns object.visible; baseOpacity is what it fades from. */
+let headPos = null;                             // THREE is not loaded when this file is
+function fadeHeads(){
+  if(!headPos) headPos = new THREE.Vector3();
+  scene.traverseVisible(function(o){
+    if(!o.userData.arrowHead) return;
+    const len = (o.geometry.parameters && o.geometry.parameters.height) || 0.07;
+    o.updateWorldMatrix(true, false);            // moved this frame; render refreshes it later
+    const d = cam.position.distanceTo(headPos.setFromMatrixPosition(o.matrixWorld));
+    const t = Math.min(1, Math.max(0, (d - 10*len) / (10*len)));
+    o.material.opacity = o.userData.baseOpacity * t;
+    o.material.visible = t > 0;
+  });
+}
+
+/* Is a point on the far side of the globe from the eye? True when the ray from
+   the camera to it meets the unit sphere before it gets there - the test
+   orbitviz already applies to its own labels, and the job moon3d's facing
+   test does for its site labels.
+   A DOM label has no depth. The marker it names is depth-tested and vanishes
+   behind the planet, but the text went on being drawn over the visible face -
+   in the Bangkok camera, a bold KNACKSAT-2 over the Indian Ocean while the
+   spacecraft was over South America at -68 degrees. That is the one reading a
+   site-centred view must never give, and in that camera the spacecraft is
+   behind the disc for most of every orbit.
+   Only while the Earth is drawn: hiding it is how you see what it was in front
+   of, so with it off nothing stands in the way. */
+let rayD = null;                                 // scratch; THREE is not loaded when this file is
+function behindEarth(p){
+  if(!earthOn || !p) return false;
+  if(!rayD) rayD = new THREE.Vector3();
+  const c = cam.position;
+  rayD.subVectors(p, c);
+  const L = rayD.length();
+  if(!(L > 0)) return false;
+  rayD.divideScalar(L);
+  const b = c.dot(rayD), disc = b*b - (c.lengthSq() - 1);
+  if(disc <= 0) return false;                    // the sightline misses the sphere
+  const t = -b - Math.sqrt(disc);                // where it first meets it
+  return t > 0 && t < L;
+}
+
+function paintLabels(satPos, el){
+  const box = renderer.domElement.getBoundingClientRect();
+  /* `solid` asks for the occlusion test. R(+) is exempt: its anchor is INSIDE
+     the globe by construction, labelling an arrow from the centre, and the
+     label is how that arrow is read at all while the Earth is drawn over it. */
+  const place = (node, vec, solid) => {
+    if(!node) return;
+    if(!vec){ node.style.display='none'; return; }
+    const v = vec.clone().project(cam);
+    if(v.z > 1){ node.style.display='none'; return; }
+    if(solid && behindEarth(vec)){ node.style.display='none'; return; }
+    node.style.display = 'block';
+    node.style.left = ((v.x*0.5+0.5)*box.width) + 'px';
+    node.style.top  = ((-v.y*0.5+0.5)*box.height) + 'px';
+  };
+  /* In POV the camera sits exactly ON satPos, so projecting that point is
+     degenerate - it lands on the near plane and skitters around the frame with
+     every sub-pixel of camera motion. There is also nothing to label: you are
+     inside the thing. Hide it. */
+  place(labels.name, pov ? null : satPos, true);
+  place(labels.earth, labels.earth ? labels.earth.__vec : null, false);
+  place(labels.alt, labels.alt ? labels.alt.__vec : null, true);
+  /* R(+) and the altitude both lie ALONG the radius vector, and the default
+     Satellite camera sits on that same line - looking straight down it. Every
+     point on a ray through the eye projects to one pixel, so the two labels
+     landed exactly on top of each other and the altitude simply was not there
+     to be read. That is what "unchecking Earth only shows R(+)" actually was:
+     not a missing label, a vanishing point.
+     Nothing can be done about the foreshortening - it is the honest projection
+     of that camera - but the text can be pulled apart so both are legible. */
+  if(labels.earth && labels.alt &&
+     labels.earth.style.display === 'block' && labels.alt.style.display === 'block'){
+    const dy = Math.abs(parseFloat(labels.alt.style.top) - parseFloat(labels.earth.style.top));
+    const dx = Math.abs(parseFloat(labels.alt.style.left) - parseFloat(labels.earth.style.left));
+    labels.alt.style.marginTop = (dx < 90 && dy < 16) ? '15px' : '0px';
+  } else if(labels.alt) labels.alt.style.marginTop = '0px';
+  if(labels.hover){
+    if(hoverIdx >= 0){
+      labels.hover.textContent = GT.CAT[hoverIdx].name;
+      place(labels.hover, new THREE.Vector3(cloudPos[hoverIdx*3], cloudPos[hoverIdx*3+1], cloudPos[hoverIdx*3+2]), true);
+    } else labels.hover.style.display = 'none';
+  }
+  if(labels.clock) labels.clock.textContent = GT.fmtUTC(simTime);
+  if(labels.clockLocal) labels.clockLocal.textContent = GT.fmtLocal(simTime);
+  if(labels.el){
+    const up = el >= GT.MASK;
+    labels.el.textContent = (el > -90 ? el.toFixed(1)+'°' : '—');
+    labels.el.className = 'o3-el' + (up ? ' up' : '');
+  }
+  /* The lens, but only while looking through it. The wheel drives pov0.fov from
+     8 to 90 degrees and until now changed the view with nothing to say what it
+     had changed it to.
+     Both figures are given because three.js stores the VERTICAL angle while a
+     camera is normally quoted by its horizontal one, and the two differ by the
+     aspect ratio - on a wide viewport by a lot. Printing only cam.fov would be
+     a number that matches no spec sheet.
+     The focal length is the 35 mm equivalent, from the horizontal angle: it is
+     the form anyone who has held a camera reads instantly, where 42 degrees
+     means nothing. */
+  if(labels.fov){
+    if(pov){
+      const v = pov0.fov;
+      const h = 2*Math.atan(Math.tan(v*RAD/2) * cam.aspect)*DEG;
+      const f = 36 / (2*Math.tan(h*RAD/2));
+      labels.fov.textContent = h.toFixed(1)+'° × '+v.toFixed(1)+'°';
+      labels.fov.title = 'horizontal × vertical field of view — about '
+                       + f.toFixed(0) + ' mm on 35 mm';
+      if(labels.fovmm) labels.fovmm.textContent = '≈' + f.toFixed(0) + ' mm';
+      labels.fov.parentNode.hidden = false;
+    } else labels.fov.parentNode.hidden = true;
+  }
+  /* The scale of what the lens is pointed at. FOV alone says how wide the view
+     is in angle; this says what that is worth on the ground, which is the
+     number that changes when you pitch down towards nadir without touching the
+     wheel at all.
+     The row stays put while the boresight is off the body rather than vanishing
+     and shoving the layout about - it just has nothing to report. */
+  /* One cast per frame, shared. The readout and the minimap are asking the
+     same question - where does the boresight meet the ground - and casting it
+     twice would be ten rays for five answers, with the standing risk of the
+     two disagreeing inside a single frame. */
+  const gsdNow = pov ? gsdAt() : null;
+  /* After the camera has been aimed for this frame, because the boresight the
+     minimap draws is the camera's. */
+  drawMini(lastGd, gsdNow);
+  if(labels.gsd){
+    if(pov){
+      const g = gsdNow;
+      if(g && g.onBody){
+        const t = gsdText(g);
+        labels.gsd.textContent = t.text;
+        if(labels.gsdu) labels.gsdu.textContent = t.unit;
+        labels.gsd.title = 'ground covered by one rendered pixel, across × along '
+          + 'the look direction — slant range ' + g.range.toFixed(0)
+          + ' km, incidence ' + g.inc.toFixed(1) + '°'
+          + (g.nadir ? ', ' + gsdText({x:g.nadir, y:g.nadir}).text.split(' × ')[0]
+                     + ' ' + gsdText({x:g.nadir, y:g.nadir}).unit + ' straight down' : '');
+      } else if(g){
+        /* The view axis clears the limb, so the pixel under the crosshair has no
+           bounded footprint. Rather than print nothing, fall back to the value
+           straight down and label it as such - including, when it is, that the
+           point it describes is not on screen. POV opens facing along-track,
+           and from low orbit that puts nadir 90 degrees below the middle of
+           the view; "at nadir" alone read as a figure for the ground in it. */
+        const t = gsdText(g);
+        labels.gsd.textContent = t.text.split(' × ')[0];
+        if(labels.gsdu) labels.gsdu.textContent = t.unit + ' at nadir' + (g.nadirSeen ? '' : ', below frame');
+        labels.gsd.title = 'the centre of the view clears the limb, so a pixel '
+          + 'there covers no bounded patch of ground — this is the figure '
+          + 'straight down from the spacecraft instead, in the same lens';
+      } else {
+        labels.gsd.textContent = '—';
+        if(labels.gsdu) labels.gsdu.textContent = '';
+        labels.gsd.title = 'no ground in view';
+      }
+      labels.gsd.parentNode.hidden = false;
+    } else labels.gsd.parentNode.hidden = true;
+  }
+}
+
+/* ---- theme ---------------------------------------------------------------- */
+function retheme(){
+  /* The globe keeps its own palette - space has no light mode - so a theme flip
+     needs no repaint here. Kept as a no-op so callers need not care. */
+}
+
+/* ---- public --------------------------------------------------------------- */
+const Orbit3D = {
+  init(opts){
+    GT = opts.gt; THREE = global.THREE; sat = opts.satellite;
+    BODY = opts.body; mkTrack = opts.mkTrack;
+    if(!THREE || !THREE.WebGLRenderer || !BODY || !mkTrack) return false;
+    RE = BODY.Re; U = 1/RE;
+    try {
+      build(opts.canvas);
+    } catch(e){ return false; }
+    labels = opts.labels || {};
+    onPick = opts.onPick; onFollow = opts.onFollow; onSite = opts.onSite;
+    onPov = opts.onPov;
+    started = true;
+    requestAnimationFrame(tick);
+    return true;
+  },
+  setSat, retheme,
+  get scene(){ return scene; },        // the sky layers hang off the same scene
+  get camera(){ return cam; },         // and are projected through the same camera
+  get time(){ return simTime; },
+  set time(d){ simTime = new Date(d); },
+  setRate(r){ rate = r; },
+  /* the host's frame pacing (see 'pace' above) */
+  setPace(ms){ pace = Math.max(0, +ms || 0); },
+  get pace(){ return pace; },
+  setPlaying(p){ playing = p; },
+  setFollow(f){ setFollowState(!!f); },
+  get follow(){ return follow; },
+  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn && !pov; },
+  /* Hiding the planet is how you actually look at an orbit: the geometry stops
+     being occluded by the thing it goes around. */
+  /* Exposed alongside scene and camera so a check can force a frame and read
+     the pixels back: a WebGL drawing buffer is gone by the next task, so
+     measuring what was actually painted means rendering and reading in one go. */
+  get renderer(){ return renderer; },
+  /* The globe's surface. The list comes from GlobeTex so the page does not
+     carry a second copy of it that can fall out of step. */
+  surfaces(){ return global.GlobeTex ? global.GlobeTex.modes() : [{key:'vector', label:'Coastlines'}]; },
+  setSurface(key, onStatus){ setSurface(key, onStatus); },
+  get surface(){ return surfaceKey; },
+  /* Driven by the Orbital elements checkbox, which lives in the page. */
+  showRVector(v){ elementsOn = !!v; },
+  get rVector(){ return elementsOn; },
+  showEarth(v){
+    earthOn = !!v;
+    if(earth) earth.visible = earthOn;
+    if(atmo) atmo.visible = earthOn;
+    if(wire) wire.visible = !earthOn;
+    /* R(+) is no longer tied to this - see elementsOn. */
+    /* The altitude arrow is NOT tied to this. It lives above the surface, so
+       the globe never occludes it, and it carries the one number a reader
+       wants off a 3D view. Hiding it with the planet was the old behaviour and
+       the wrong one. */
+
+  },
+  get earth(){ return earthOn; },
+  get fov(){ return fovOn; },
+  showCloud(v){
+    if(!cloudPts) return;
+    cloudPts.visible = v;
+    if(!v){ hoverIdx = -1; if(labels.hover) labels.hover.style.display = 'none'; }
+  },
+  showTrack(v){ trackOn = !!v; if(trackLine) trackLine.visible = trackOn; },
+  get track(){ return trackOn; },
+  // the scene is inertial, so a fixed camera longitude is a right ascension and
+  // drifts across the ground as the clock runs. Aim at where Bangkok actually is.
+  setSite(v){ setSiteState(!!v); },
+  /* The observer moved. GT.OBS is mutated in place by the page rather than
+     replaced, so the reference here is still live - only the geometry built
+     from it at init has to be rebuilt, and the site-lock camera re-aimed. */
+  siteMoved(){
+    placeSite();
+    if(siteLock) cam0.lat = GT.OBS.lat + 6;
+  },
+  setTrail(ms){                                   // a number of ms, or Infinity
+    trailSpan = ms;
+    if(trackPts.length) updateTrail(simTime.getTime());
+  },
+  get trail(){ return trailSpan; },
+  get site(){ return siteLock; },
+  // the view FROM the spacecraft, rather than of it
+  setPov(v){ setPovState(!!v); },
+  get pov(){ return pov; },
+  freeCam(){ setFollowState(false); setSiteState(false); setPovState(false); },
+  // stop drawing while something covers the globe; the camera mode is kept
+  suspend(v){ suspended = !!v; },
+  get suspended(){ return suspended; },
+  ok(){ return started; }
+};
+return Orbit3D;
+}

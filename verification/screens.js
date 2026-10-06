@@ -29,7 +29,7 @@ const THEMES = ['light', 'dark'];
   fs.mkdirSync(OUT, { recursive: true });
   const srv = await H.up({ target: 'new' });
   const { chromium } = H.playwright({ testFlag: false });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: H.GL_ARGS });       // software WebGL: the page opens on the globe
   const written = [];
 
   for (const v of VIEWS) {
@@ -50,7 +50,8 @@ const THEMES = ['light', 'dark'];
       await page.evaluate(() => document.fonts.ready);
       /* pause (a picture of one instant) without Playwright scrolling the button into view, which would move the page */
       await page.evaluate(() => document.getElementById('tpplay').click());
-      await page.waitForTimeout(400);
+      await page.waitForFunction(() => { const n = document.getElementById('o3name'); return !!n && n.textContent !== '—' && n.style.display === 'block'; }, null, { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(600);
 
       const snap = async name => {
         await page.evaluate(() => window.scrollTo(0, 0));

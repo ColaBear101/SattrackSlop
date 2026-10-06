@@ -80,7 +80,8 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   }), T0);
   /* The flat map's site label is painted, not laid out, so it is read off the
      canvas: every string filled on #map during one forced redraw. */
-  const mapTexts = () => page.evaluate(async () => {
+  const mapTexts = async () => { await H.showMap(page); const t = await mapTextsNow(); await H.showGlobe(page); return t; };
+  const mapTextsNow = () => page.evaluate(async () => {
     const seen = [], proto = CanvasRenderingContext2D.prototype, orig = proto.fillText;
     proto.fillText = function (t, ...a) {
       if (this.canvas && this.canvas.id === 'map') seen.push(String(t));

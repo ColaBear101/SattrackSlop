@@ -257,8 +257,19 @@ async function setSite(page, s) {
   await page.click('#siteapply');
 }
 
+/** Bring the flat map into view. The rebuilt console keeps it on a tab beside the globe; the old page shows both. */
+async function showMap(page) {
+  const t = await page.$('[role=tab]:has-text("Map")');
+  if (t && (await t.getAttribute('aria-selected')) !== 'true') { await t.click(); await page.waitForTimeout(250); }
+}
+/** ...and the globe. */
+async function showGlobe(page) {
+  const t = await page.$('[role=tab]:has-text("Globe")');
+  if (t && (await t.getAttribute('aria-selected')) !== 'true') { await t.click(); await page.waitForTimeout(250); }
+}
+
 module.exports = {
   ROOT, TARGETS, targetName, targetRoot, serve, up, playwright, GL_ARGS, net,
   loadClassic, earthFile, earthSource, CDN, THIRD_PARTY,
-  pick, pickExact, windowOpen, clickWindow, siteForm, setSite
+  pick, pickExact, windowOpen, clickWindow, siteForm, setSite, showMap, showGlobe
 };

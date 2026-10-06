@@ -5,6 +5,7 @@
   import { prefs } from '../../state/prefs.svelte';
   import { MASK, satellite } from '../../state/engine';
   import { makeSun } from '../../lib/core/sun';
+  import { globe } from './globe-state.svelte';
   import { MapPainter, readColors, type MapColors } from './draw-map';
 
   /* The flat ground-track map: 24 h of track, the passes above the mask in orange, the day/night line, the
@@ -30,11 +31,12 @@
   $effect(() => {
     resized; const col = colors, a = app.analysis;
     const ms = clock.tick.ms;
-    if (!painter || !col || !a) return;
+    /* the map is drawn while it is showing: a tab not chosen is hidden, and has no size to draw into */
+    if (!painter || !col || !a || prefs.tab !== 'map') return;
     const date = new Date(ms);
     painter.draw({
       analysis: a, site: app.site, mask: MASK, world: app.world, cur: app.sampleAt(ms),
-      subsolar: sun.subsolar(date), footprint: true, colors: col
+      subsolar: sun.subsolar(date), footprint: globe.layers.footprint, colors: col
     });
   });
 

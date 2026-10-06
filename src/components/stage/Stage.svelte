@@ -7,11 +7,12 @@
   import { latStr, lonStr } from '../../lib/observer';
   import { tzLabelAt } from '../../lib/places';
   import Tabs from '../ui/Tabs.svelte';
-  import Icon from '../ui/Icon.svelte';
   import GroundTrackMap from './GroundTrackMap.svelte';
+  import Globe from './Globe.svelte';
 
-  /* The stage: the spacecraft's ground track now, and (milestone M6) the 3D globe on the other tab. The readouts
-     under the map are the spacecraft's position and the look from the observer at the instant on the clock. */
+  /* The stage: the 3D globe, and the flat map of the ground track beside it as a tab. Both stay in the page, the one not
+     chosen hidden, so the globe keeps its place and the map's key and readouts are there to be read. The readouts under the map
+     are the spacecraft's position and the look from the observer at the instant on the clock. */
   const cur = $derived(app.sampleAt(clock.tick.ms));
   const nm = $derived(app.site.name);
   const pos = $derived(latStr(app.site.lat) + ' ' + lonStr(app.site.lon));
@@ -27,8 +28,8 @@
 </script>
 
 <section class="stage" aria-label="Spacecraft position">
-  <Tabs tabs={[{ id: 'map', label: 'Map' }, { id: 'globe', label: 'Globe' }]} value={prefs.tab} label="View"
-        variant="pill" onchange={id => prefs.setTab(id as StageTab)}>
+  <Tabs tabs={[{ id: 'globe', label: 'Globe' }, { id: 'map', label: 'Map' }]} value={prefs.tab} label="View"
+        variant="pill" keepMounted onchange={id => prefs.setTab(id as StageTab)}>
     {#snippet children(id)}
       {#if id === 'map'}
         <GroundTrackMap />
@@ -44,12 +45,7 @@
           {#each items as [id, lid, k, v] (id)}<div><dt class="eyebrow" id={lid || undefined}>{k}</dt><dd class="mono" class:hot={id === 'r-el' && !!cur && cur.el >= MASK} {id}>{v}</dd></div>{/each}
         </dl>
       {:else}
-        <div class="globe" id="globe-placeholder">
-          <Icon name="globe" size={40} />
-          <p><b>The 3D globe is rebuilt in a later milestone.</b></p>
-          <p>It keeps the camera modes (free, spacecraft, site, point of view), trails, the day and night split and the sky layers.
-             Until then the map shows the same track.</p>
-        </div>
+        <Globe />
       {/if}
     {/snippet}
   </Tabs>
@@ -78,10 +74,4 @@
     .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: var(--space-3); gap: var(--space-3) var(--space-2); }
     .readouts .eyebrow { letter-spacing: .06em; }
   }
-  .globe {
-    display: grid; place-content: center; justify-items: center; gap: var(--space-3); text-align: center;
-    min-height: 320px; padding: var(--space-6); border-radius: var(--r-3); background: var(--void); color: #AEBFC8;
-  }
-  .globe p { max-width: 42ch; margin: 0; font-size: var(--fs-1); }
-  .globe b { color: #E8EFF2; }
 </style>

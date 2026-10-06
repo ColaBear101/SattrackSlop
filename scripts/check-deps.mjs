@@ -19,12 +19,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /* layer of a path relative to the repo root, or null when it is outside the rules */
 export function layerOf(rel) {
-  rel = rel.split(path.sep).join('/');
+  /* a directory (import '../../scene') is the folder's index: it is in the layer of the folder */
+  rel = rel.split(path.sep).join('/') + '/';
   if (rel.startsWith('src/lib/')) return 'lib';
   if (rel.startsWith('src/state/')) return 'state';
   if (rel.startsWith('src/scene/')) return 'scene';
   if (rel.startsWith('src/workers/')) return 'workers';
   if (rel.startsWith('src/components/')) return 'components';
+  if (rel.startsWith('src/assets/')) return 'assets';    // images and the like: imported by URL, importing nothing
   if (rel.startsWith('src/')) return 'app';           // main.ts, App.svelte, testing/, contract/
   if (rel.startsWith('server/')) return 'server';
   if (rel.startsWith('shared/')) return 'shared';
@@ -35,12 +37,13 @@ export function layerOf(rel) {
 export const ALLOWED = {
   lib: ['shared'],
   state: ['lib', 'shared'],
-  scene: ['lib', 'shared'],
+  scene: ['lib', 'shared', 'assets'],
   workers: ['lib', 'shared'],
-  components: ['lib', 'state', 'scene', 'shared'],
-  app: ['lib', 'state', 'scene', 'workers', 'components', 'shared', 'app'],
+  components: ['lib', 'state', 'scene', 'shared', 'assets'],
+  app: ['lib', 'state', 'scene', 'workers', 'components', 'shared', 'assets', 'app'],
   server: ['shared'],
-  shared: []
+  shared: [],
+  assets: []
 };
 
 const SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]|new\s+URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url/g;

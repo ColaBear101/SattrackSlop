@@ -204,17 +204,8 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
         off0 ? 'visible = ' + off0.visible : 'mesh gone');
 
     /* Load a different spacecraft. This is the regression. */
-    await page.evaluate(() => {
-      const box = document.getElementById('satsearch');
-      const other = __gt.CAT.find(c => String(c.satnum) !== String(__gt.D.E.satnum));
-      box.value = other.name;
-      box.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await page.waitForTimeout(800);
-    await page.evaluate(() => {
-      const o = document.querySelector('#satlist [role=option]');
-      if (o) o.click();
-    });
+    const otherName = await page.evaluate(() => __gt.CAT.find(c => String(c.satnum) !== String(__gt.D.E.satnum)).name);
+    await H.pickExact(page, otherName);                    // through the picker, whichever build it is
     await page.waitForTimeout(2500);
     const offAfter = await trailMesh();
     chk('...and stays off when a different spacecraft is loaded',

@@ -373,11 +373,8 @@ const clipped = m => m.tags.filter(t =>
      variables, which would only prove the page agrees with itself. */
   const sat = require('./satellite.min.js');
   const MU72 = sat.constants.mu, A84 = 6378.137, F84 = 1/298.257223563, E2 = F84*(2 - F84);
-  const pick = name => page.evaluate(n => {
-    const b = document.getElementById('satsearch');
-    b.value = n; b.dispatchEvent(new Event('input', { bubbles: true }));
-    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  }, name).then(() => page.waitForFunction(n => window.__gt.D.entry.name === n, name, { timeout: 20000 }));
+  const pick = name => H.pickExact(page, name)           // through the picker, whichever build it is
+    .then(() => page.waitForFunction(n => window.__gt.D.entry.name === n, name, { timeout: 20000 }));
   const panel = () => page.evaluate(() => {
     const D = window.__gt.D, E = D.E;
     // keyed by the symbol where there is one: the osculating row names some
@@ -611,7 +608,7 @@ const clipped = m => m.tags.filter(t =>
 
   /* A long window relaxes both steps, and the prose has to follow. */
   await pick('KNACKSAT-2');
-  await page.evaluate(() => document.querySelector('.bar-window .span[data-h="72"]').click());
+  await page.evaluate(() => document.querySelector('[data-h="72"]').click());
   await page.waitForFunction(() => window.__gt.D.hours === 72, null, { timeout: 30000 });
   pn = await panel();
   chk('...and follows the window: 15 s scan, 30 s track on a 3 d span',

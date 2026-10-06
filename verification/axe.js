@@ -27,7 +27,8 @@ const VIEWS = [
   const AxeBuilder = require('@axe-core/playwright').default || require('@axe-core/playwright');
   const srv = await H.up({ target: 'new' });
   const { chromium } = H.playwright({ testFlag: false });
-  const browser = await chromium.launch();
+  /* software WebGL, so the globe is really there to be scanned: the page opens on it */
+  const browser = await chromium.launch({ args: H.GL_ARGS });
   let total = 0, ok = 0;
   const rules = new Map();   // rule id -> what failed, where, and a sample
 
@@ -41,10 +42,14 @@ const VIEWS = [
       await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });
       await page.evaluate(() => document.fonts.ready);
       await page.evaluate(() => document.getElementById('tpplay').click());
+      /* the scene is a chunk of its own and the globe draws a moment after the page: wait for its first label */
+      await page.waitForFunction(() => { const n = document.getElementById('o3name'); return !!n && n.textContent !== '—' && n.style.display === 'block'; }, null, { timeout: 15000 }).catch(() => {});
       await page.waitForTimeout(400);
 
       const states = [
         ['default', async () => {}],
+        ['layers', async () => { await page.evaluate(() => document.getElementById('layerstoggle').click()); await page.waitForTimeout(250); }],
+        ['map', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim() === 'Map').click()); await page.waitForTimeout(400); }],
         ['window', async () => { await page.evaluate(() => document.getElementById('winOpen').click()); await page.waitForTimeout(250); }],
         ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }]
       ];

@@ -304,7 +304,7 @@ class AppState {
     const atHome = Math.abs(this.site.lat - HOME.lat) < 1e-9 && Math.abs(this.site.lon - HOME.lon) < 1e-9;
     writeUrl({
       sat: this.entry?.satnum, span: this.hours,
-      site: { lat: this.site.lat, lon: this.site.lon }, tab: prefs.tab === 'map' ? undefined : prefs.tab
+      site: { lat: this.site.lat, lon: this.site.lon }, tab: prefs.tab === 'globe' ? undefined : prefs.tab
     }, { span: 24, atHome });
   }
 }

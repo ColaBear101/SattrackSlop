@@ -442,11 +442,7 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
      so the fallback runs - while nadir itself is ten degrees below the middle
      of a 42-degree frame, plainly in the picture. The label must drop the
      claim there rather than contradict the view. */
-  await page.evaluate(n => {
-    const b = document.getElementById('satsearch');
-    b.value = n; b.dispatchEvent(new Event('input', { bubbles: true }));
-    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  }, 'GOES 18');
+  await H.pickExact(page, 'GOES 18');                     // through the picker, whichever build it is
   await page.waitForFunction(() => window.__gt.D.entry.name === 'GOES 18', null, { timeout: 20000 });
   await page.evaluate(() => { Orbit3D.freeCam(); Orbit3D.setPov(true); });
   await page.waitForTimeout(600);

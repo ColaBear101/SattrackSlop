@@ -130,7 +130,7 @@
     <button type="button" class="chip" id="siteopen" {...props} title="Change the observer">
       <Icon name="pin" size={16} />
       <span class="where">{app.site.name}</span>
-      <span class="tz mono" id="lbl-tz1">{tzLabelAt(app.site, clock.tick.ms)}</span>
+      <span class="tz mono">{tzLabelAt(app.site, clock.tick.ms)}</span>
     </button>
   {/snippet}
 

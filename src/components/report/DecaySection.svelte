@@ -42,6 +42,7 @@
     if (!code || !colors) return;
     const r = code.drawLife(canvas, st, colors);
     geom = r.geom; key = r.key; tip = null;
+    (canvas as HTMLCanvasElement & { __geom?: Geom | null }).__geom = r.geom;       // where the chart put its axes, kept on the canvas as the old page kept it: the suites read it
   });
 
   function move(e: PointerEvent) {

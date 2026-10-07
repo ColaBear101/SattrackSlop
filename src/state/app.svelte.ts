@@ -1,8 +1,9 @@
 import catalogueUrl from '../../data/catalogue.txt?url';
 import worldUrl from '../../data/world.json?url';
 import { parseCatalog, type CatalogueEntry } from '../lib/catalogue/parse';
+import { isCustom } from '../lib/planner/custom';
 import { loadSavedSite, loadRecents, normalizeSite, remember, saveSite, SITE_KEY, type SavedSite } from '../lib/observer';
-import { offsetAt, zoneKnown } from '../lib/places';
+import { DEVICE_SITE, offsetAt, zoneKnown } from '../lib/places';
 import { iso, spanLabel } from '../lib/text/fmt';
 import type { Analysis, Pass, Sample, Site } from '../lib/types';
 import { clock } from './clock.svelte';
@@ -60,13 +61,30 @@ class AppState {
   /** A fatal problem: the catalogue could not be read at all. */
   error = $state<string | null>(null);
   loading = $state(true);
+  /** Counts the analyses committed. An orbit the reader designed is edited IN PLACE (the entry object keeps its identity, so everything
+   *  that holds it - the window, the clock, a typed Doppler frequency - survives), and a reactive read of a field of an object that
+   *  did not change identity does not notice; a view that prints one reads this too. */
+  rev = $state(0);
+
+  /** The entry on screen, read so that an in-place edit of it (an orbit the reader designed) is noticed. */
+  get current(): CatalogueEntry | null { void this.rev; return this.entry; }
 
   /** Resolves with the catalogue once it is parsed (the test surface waits on this). */
   ready: Promise<CatalogueEntry[]>;
   /** Why the last load failed, when it did: SGP4's error number is `sgp4`. Not reactive: read right after load(). */
   lastFailure: (Error & { sgp4?: number }) | null = null;
 
+  /** What runs last in every load that went through, on the analysis it made: the planner's own panel follows the spacecraft with it. A
+   *  throw from it is reported and never fails the load. */
+  afterLoad: ((D: Analysis) => void) | null = null;
+  /** Where a window should open for a deep-space orbit of the reader's own that is far from it (the planner's rule), or null. Set when the
+   *  planner's maths is here. */
+  deepStart: ((entry: CatalogueEntry, winStart: number | null) => number | null) | null = null;
+  /** The catalogue index of the last catalogue entry that loaded: where removing an orbit of the reader's goes back to. */
+  lastCat = -1;
+
   private byKey = new Map<string, CatalogueEntry>();
+  private byIndex = new Map<string, number>();
   private afterWindow = new WeakMap<Analysis, Pass | null>();
 
   constructor() {
@@ -91,7 +109,7 @@ class AppState {
       .then(r => { if (!r.ok) throw new Error('catalogue: HTTP ' + r.status); return r.text(); })
       .then(text => {
         this.catalogue = parseCatalog(text);
-        for (const c of this.catalogue) this.byKey.set(c.satnum, c);
+        this.catalogue.forEach((c, i) => { this.byKey.set(c.satnum, c); this.byIndex.set(c.satnum, i); });
         setCatalogueSource({ embedded: this.catalogue, current: n => { const e = this.byKey.get(n); return e ? live.effective(e) : undefined; } });
         this.loading = false;
         this.boot(url.sat);
@@ -135,8 +153,13 @@ class AppState {
   embedded(satnum: string): CatalogueEntry | undefined { return this.byKey.get(satnum); }
   /** Are the two lines of this entry the embedded ones (read off the lines, not off a flag)? */
   isEmbedded(e: { satnum: string; l1: string; l2: string }): boolean {
+    if (isCustom(e)) return false;                // the flag, never the number: the test hook gives one a real catalogue number
     const o = this.byKey.get(e.satnum);
     return !!o && o.l1 === e.l1 && o.l2 === e.l2;
+  }
+  /** The catalogue index of an entry, or -1 (a spacecraft is its number: the entry on screen may carry a live set's lines). */
+  catIndex(e: { satnum: string } | null | undefined): number {
+    return e && !isCustom(e) ? this.byIndex.get(e.satnum) ?? -1 : -1;
   }
 
   /* ---- loading an analysis ---------------------------------------------------------------------------------- */
@@ -147,13 +170,18 @@ class AppState {
      analysis still on screen was computed (nothing is committed until it works), and the page says why. */
   load(entry: CatalogueEntry, o: LoadOptions = {}): boolean {
     const D = this.analysis, eng = getEngine();
-    const same = !!D && D.entry.satnum === entry.satnum;
+    /* The same spacecraft is the same number - the entry on screen may carry a live set's lines - except for an orbit of the reader's
+       own, which is the same object: its number is a placeholder, and the test hook gives one a real catalogue number. */
+    const same = !!D && (isCustom(entry) || isCustom(D.entry) ? D.entry === entry : D.entry.satnum === entry.satnum);
     let start = o.start !== undefined ? o.start : this.startMs;
     const hours = o.hours ?? this.hours;
     /* In the assignment snapshot a window opens at the element set's epoch, on a change of spacecraft too: the
        README times each one from its own. Reloading the same spacecraft - a site or span change, the window rolling
        on - keeps the window that is on screen. */
     if (PINNED && !same) start = eng.elements(entry.l1, entry.l2).epoch.getTime();
+    /* A deep-space orbit of the reader's own, picked from far from the window, opens at its epoch (D39): it is passed as the start, so
+       nothing is moved until the analysis has worked. */
+    if (isCustom(entry) && !same && o.start === undefined && this.deepStart) { const s = this.deepStart(entry, start); if (s !== null) start = s; }
     if (start === null) start = Date.now();
     let nd: Analysis;
     try { nd = eng.compute(entry, start, hours); }
@@ -175,14 +203,30 @@ class AppState {
     this.hours = hours;
     this.entry = entry;
     this.analysis = nd;
+    this.rev++;
     this.selPass = 0;
+    if (!isCustom(entry)) this.lastCat = this.catIndex(entry);
     if (!o.trial) this.note = '';
     if (!o.keepClock) clock.seek(nd.start.getTime());
     clock.setBounds({ t0: nd.start.getTime(), t1: nd.end.getTime(), onLeave: ms => this.rollWindow(ms) });
     this.syncUrl();
     life.offer(entry);                            // the cached forecast, or the offer to fetch the history
     if (!o.trial) void live.check(entry);        // fire and forget; reloads if a newer set exists
+    if (this.afterLoad) { try { this.afterLoad(nd); } catch (err) { console.error(err); } }   // last, and its own failure is not the load's
     return true;
+  }
+
+  /** Leave the entry on screen for a catalogue one, as removing an orbit of the reader's own does: the last catalogue spacecraft shown,
+   *  then the default, the rest of the preference list, then the catalogue in order; the first that loads wins. False when none does. */
+  loadFallback(): boolean {
+    const wants = WANT.map(re => this.catalogue.findIndex(c => re.test(c.name)));
+    const first = wants.find(i => i >= 0) ?? 0;
+    const order = [this.lastCat, first].concat(wants, this.catalogue.map((_, i) => i));
+    for (const i of order) {
+      const e = i < 0 ? undefined : this.catalogue[i];
+      if (e && this.select(e)) return true;
+    }
+    return false;
   }
 
   /** The reader picked a spacecraft. */
@@ -194,7 +238,7 @@ class AppState {
   setSpan(hours: number): void { if (this.entry) this.load(this.entry, { hours }); }
 
   /** Open the window at an instant (Now, Epoch, a typed time, a step of a day). The clock goes to its start. */
-  setWindowStart(ms: number): void { if (this.entry) this.load(this.entry, { start: ms }); }
+  setWindowStart(ms: number): boolean { return !!this.entry && this.load(this.entry, { start: ms }); }
 
   /* Slide the analysis window to contain `at`, keeping the clock where it is. load() recomputes everything, so the
      instant is captured first and put back afterwards.
@@ -303,8 +347,11 @@ class AppState {
   private syncUrl(): void {
     const atHome = Math.abs(this.site.lat - HOME.lat) < 1e-9 && Math.abs(this.site.lon - HOME.lon) < 1e-9;
     writeUrl({
-      sat: this.entry?.satnum, span: this.hours,
-      site: { lat: this.site.lat, lon: this.site.lon }, tab: prefs.tab === 'globe' ? undefined : prefs.tab
+      sat: this.entry && !isCustom(this.entry) ? this.entry.satnum : undefined,   // an orbit of the reader's own is nobody's number: not a link
+      span: this.hours,
+      /* where this device said it was is saved in this browser like any site, and is never written into the address bar: history, bookmarks
+         and share sheets would carry it */
+      site: this.site.name === DEVICE_SITE ? undefined : { lat: this.site.lat, lon: this.site.lon }, tab: prefs.tab === 'globe' ? undefined : prefs.tab
     }, { span: 24, atHome });
   }
 }

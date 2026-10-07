@@ -6,7 +6,8 @@
  * testing" has to be a switch rather than an edit, so both now live here.
  *
  *   GT_TARGET=legacy   the pre-rewrite Earth console, served from legacy/   (default for now)
- *   GT_TARGET=new      the production build, served from dist/
+ *   GT_TARGET=new      the production build, served from dist/ (or from GT_DIST, a build made somewhere else:
+ *                      `vite build --outDir <dir>`, so two runs never share a folder)
  *   GT_URL=<url>       test something already running (a preview, a deployment)
  *   PW_PATH=<path>     where to find playwright, when it is not in node_modules
  *
@@ -22,7 +23,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const TARGETS = { legacy: path.join(ROOT, 'legacy'), new: path.join(ROOT, 'dist') };
+const TARGETS = { legacy: path.join(ROOT, 'legacy'), new: process.env.GT_DIST ? path.resolve(process.env.GT_DIST) : path.join(ROOT, 'dist') };
 
 function targetName() {
   const t = process.env.GT_TARGET || 'legacy';
@@ -211,6 +212,58 @@ function earthSource(name) {
    something that is not there. These do what a person does - open it if it is shut, then use it - and do nothing
    extra on the old page, so a suite reads the same against either build. */
 
+/** The spacecraft picker, open (the old page's is a field that is always on screen; the rebuilt one is a popover under the title). */
+async function openPicker(page) {
+  if (!(await page.isVisible('#satsearch'))) {
+    await page.click('#satname');
+    await page.waitForSelector('#satsearch', { state: 'visible', timeout: 5000 });
+  }
+}
+/** Is the picker a popover under the title (the rebuilt page: the title is a button and the search field exists only while it is open), or a
+ *  field that is always on the page (the old one)? */
+const pickerIsPopover = page => page.evaluate(() => { const t = document.getElementById('satname'); return !!(t && t.closest('button')); });
+/** ...shut again: Escape, and the field is gone. Nothing to do on the old page, where the field is permanent (waiting for it to go would only
+ *  wait out the timeout). On the rebuilt page a popover that is still open 5 s after Escape is an error, not something to carry on past: whatever
+ *  reads the page next would be reading it with the list over it. */
+async function closePicker(page) {
+  if (!(await pickerIsPopover(page)) || !(await page.isVisible('#satsearch'))) return;
+  await page.keyboard.press('Escape');
+  try { await page.waitForSelector('#satsearch', { state: 'detached', timeout: 5000 }); }
+  catch (e) { throw new Error('closePicker: the spacecraft picker is still open 5 s after Escape (#satsearch is still in the page)'); }
+}
+/** Is the picker shut? The old page's field is permanent, so there is nothing to ask there (true). A shut popover of the rebuilt page holds no
+ *  search field, no list and no count line: they are in the page only while it is open. */
+async function pickerShut(page) {
+  if (!(await pickerIsPopover(page))) return true;
+  return page.evaluate(() => !document.getElementById('satsearch') && !document.getElementById('satlist') && !document.getElementById('satcount'));
+}
+/** The count line under the picker ("2,158 spacecraft", "2,158 + 2 of yours"), read the way a person does: open it, look, shut it. */
+async function satCount(page) {
+  const was = await page.isVisible('#satsearch');
+  await openPicker(page);
+  const t = await page.evaluate(() => (document.getElementById('satcount') || {}).textContent || '');
+  if (!was) await closePicker(page);
+  return t;
+}
+/** The name of the spacecraft on screen as the picker shows it (the old page's field value; the rebuilt title's text). */
+const pickerName = page => page.evaluate(() => {
+  const f = document.getElementById('satsearch'), t = document.getElementById('satname');
+  /* The old page's field always holds the name of what is on screen, and its masthead is a separate heading (a suite that asks for the
+     picker's text checks the two are in step). The rebuilt page's search box exists only while the popover is open and holds the QUERY;
+     the title, a button, is what names the spacecraft. */
+  if (f && !(t && t.closest('button'))) return f.value;
+  return t ? t.textContent : '';
+});
+
+/** The notes an open picker shows ("Nothing in the catalogue matches that", "N more match..."): rows of the old page's list, paragraphs under the rebuilt page's. */
+const pickerNotes = page => page.evaluate(() => [...document.querySelectorAll('#satlist li.note, .search ~ p.note')].map(n => n.textContent));
+/** Type a query into the picker (open it first if it is shut), without choosing anything. */
+async function typeInPicker(page, q) {
+  await openPicker(page);
+  await page.click('#satsearch');
+  await page.fill('#satsearch', q);
+}
+
 /** Choose a spacecraft by typing into the picker and pressing Enter. */
 async function pick(page, q) {
   if (!(await page.isVisible('#satsearch'))) await page.click('#satname');
@@ -256,6 +309,15 @@ async function setSite(page, s) {
   for (const k of Object.keys(map)) if (v[k] !== undefined) await page.fill(map[k], String(v[k]));
   await page.click('#siteapply');
 }
+/** ...and shut again. The rebuilt page's observer form is a popover that stays open after Apply, over the header and the stage under it, and
+ *  a tap there would land on it; the old page's form is part of the page, and nothing is done to it. */
+async function closeSiteForm(page) {
+  const pop = '[role=dialog][aria-label="Observer"]';
+  if (!(await page.isVisible(pop))) return;
+  await page.keyboard.press('Escape');
+  /* a form that does not shut is a defect, not a thing to wait out: say so (the next tap would land on it) */
+  await page.waitForSelector(pop, { state: 'hidden', timeout: 5000 }).catch(() => { throw new Error('closeSiteForm: the observer form is still open 5 s after Escape'); });
+}
 
 /** Bring the flat map into view. The rebuilt console keeps it on a tab beside the globe; the old page shows both. */
 async function showMap(page) {
@@ -267,9 +329,17 @@ async function showGlobe(page) {
   const t = await page.$('[role=tab]:has-text("Globe")');
   if (t && (await t.getAttribute('aria-selected')) !== 'true') { await t.click(); await page.waitForTimeout(250); }
 }
+/** One of the answer rail's tabs (Passes, Orbit, Source), brought into view: opened first when the rail is a sheet or panel that is folded. The old
+ *  page shows everything the rail holds at once, so on it this does nothing. */
+async function showRailTab(page, label) {
+  const peek = await page.$('.rail .peek');
+  if (peek && (await peek.getAttribute('aria-expanded')) !== 'true') { await peek.click(); await page.waitForTimeout(150); }
+  const t = await page.$('.rail [role=tab]:has-text("' + label + '")');
+  if (t && (await t.getAttribute('aria-selected')) !== 'true') { await t.click(); await page.waitForTimeout(150); }
+}
 
 module.exports = {
   ROOT, TARGETS, targetName, targetRoot, serve, up, playwright, GL_ARGS, net,
   loadClassic, earthFile, earthSource, CDN, THIRD_PARTY,
-  pick, pickExact, windowOpen, clickWindow, siteForm, setSite, showMap, showGlobe
+  openPicker, closePicker, pickerIsPopover, pickerShut, satCount, pickerName, pickerNotes, typeInPicker, pick, pickExact, windowOpen, clickWindow, siteForm, setSite, closeSiteForm, showMap, showGlobe, showRailTab
 };

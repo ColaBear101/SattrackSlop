@@ -55,7 +55,10 @@ const STAGES = [
   { name: 'lifetime',    script: 'verify-lifetime.js' },
   { name: 'ar',          script: 'verify-ar.js',         alone: true },
   { name: 'layout',      script: 'verify-layout.js',     alone: true },
-  { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true }
+  { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true },
+  /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits
+     (the test surface brings both up eagerly). Rebuilt page only: the old page had no chunks to arrive. */
+  { name: 'visitor',     script: 'verify-visitor.js',    alone: true, target: 'new' }
 ];
 
 const argv = process.argv.slice(2);

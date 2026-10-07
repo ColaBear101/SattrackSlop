@@ -1,5 +1,12 @@
-import { app } from '../state/app.svelte';
+import { app, PINNED } from '../state/app.svelte';
+import { custom, customApi } from '../state/custom.svelte';
 import { doppler } from '../state/doppler.svelte';
+import { life } from '../state/life.svelte';
+import { tleCtx } from '../state/net';
+import { fetchLiveTle } from '../lib/net/tle-source';
+import { isCustom } from '../lib/planner/custom';
+import { session } from '../components/planner/session.svelte';
+import { ar } from '../components/ar/session.svelte';
 import { getEngine, getObs, getOptics, MASK, satellite, sun } from '../state/engine';
 import { live } from '../state/live.svelte';
 import { buildExports } from '../lib/export';
@@ -52,7 +59,7 @@ export async function install(): Promise<void> {
       if (!D || !entry) return [];
       return buildExports({
         D, OBS: getObs(), MASK, dopHz: doppler.hz, eng: e(), optics: o(),
-        sourceText: tleSourceText({ custom: false, prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry), l1: entry.l1, l2: entry.l2, cached: null })
+        sourceText: tleSourceText({ custom: isCustom(entry), prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry), l1: entry.l1, l2: entry.l2, cached: null })
       }).passRows();
     },
 
@@ -71,6 +78,19 @@ export async function install(): Promise<void> {
       setProv: (satnum: string, p: Parameters<typeof live.prov.set>[1] | null) => { if (p) live.prov.set(satnum, p); else live.prov.delete(satnum); },
       check: () => (app.entry ? live.check(app.entry) : Promise.resolve())
     },
+
+    /* the reader's own orbits: the list itself (the planner's host hands out the same array), and the one place that changes it */
+    get CUSTOM() { return custom.list; },
+    entryAt: customApi.entryAt,
+    indexOf: customApi.indexOf,
+    addCustom: customApi.add,
+    updateCustom: customApi.update,
+    removeCustom: customApi.remove,
+    addCustomTLE: customApi.addTLE,
+    /** the element-set fetch and the decay request, called directly (the suites exercise their second layers of defence) */
+    fetchTLE: (n: unknown) => fetchLiveTle(n, tleCtx({ pinned: PINNED, isCustom: false })),
+    runLife: (entry: Parameters<typeof life.run>[0], my: number) => life.run(entry, my),
+    get lifeReq() { return life.seq; },
 
     get C_KMS() { return e().C_KMS; },
     get OBS() { return getObs(); },
@@ -92,5 +112,26 @@ export async function install(): Promise<void> {
     if (globe.scene!.viz) w.OrbitViz = globe.scene!.viz;
     w.THREE = { Vector3: THREE.Vector3, REVISION: THREE.REVISION };
   }
+  /* The orbit planner, under the names the old page's scripts had. The suites look at the controller and at the host it was given, and spy
+     on the controller's `init`, so both are put on the window BEFORE init is called (session.onBuilt), and the four modules are the same
+     objects the page itself runs: a suite that patches one is patching the page's own. The planner is brought up in the snapshot too, where
+     init says no and the pill says why. A planner that cannot be had (its chunk is gone) leaves the console as it was. */
+  /* A fault the suites can arm before the page loads (window.__GT_FAULT__): the planner's TLE writer throws, as a planner that is broken would,
+     so that what the console does about it is observable. Put in before anything is built with the modules. */
+  session.onMods = mods => {
+    if ((w.__GT_FAULT__ as { toTLE?: boolean } | undefined)?.toTLE) mods.Planner.toTLE = () => { throw new Error('planner fault (test)'); };
+  };
+  session.onBuilt = ({ ui, host, mods }) => {
+    w.Planner = mods.Planner; w.Advisor = mods.Advisor; w.AdvisorCopy = mods.AdvisorCopy; w.Lifetime = mods.Lifetime;
+    w.__host = host;
+    w.PlannerUI = ui;
+  };
+  try { await session.start(); } catch (err) { console.error(err); }
+  if (session.hook) w.__planner = session.hook;
+  /* The AR view and the two libraries under it, as the old page's script tags made them globals: the suites read the libraries and drive the
+     controller (open, close, project, probe, state, isOpen). Brought up on a desktop too (the button is only offered to a finger). */
+  try {
+    if (await ar.start() && ar.chunk && ar.ui) { w.SkyAR = ar.chunk.SkyAR; w.WMM = ar.chunk.WMM; w.ARView = ar.ui; }
+  } catch (err) { console.error(err); }
   w.__gt = gt;
 }

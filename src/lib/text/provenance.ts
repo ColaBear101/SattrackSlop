@@ -94,8 +94,9 @@ function agesCustom(a: AgesIn, [, line]: [LiveState, Inline]): Ages {
   const when = Math.abs(d) < 90000 ? 'epoch now' : d > 0 ? 'epoch in ' + ago(d) : 'epoch ' + ago(-d) + ' ago';
   return {
     chip: { text: 'custom orbit · ' + when, stale: false, title: 'A planned orbit: there is no measured element set to age, so nothing here goes stale.' },
-    state: 'custom', line, linePlain: plain(line),
-    railHead: ['Epoch ', b(iso(a.epoch).replace('Z', '')), br], railTail: [br, 'Custom orbit, your elements', br, when],
+    /* the rail's own short label, not the long sentence (that is the paragraph under the element set's): the old page's railprov */
+    state: 'custom', line, linePlain: 'Custom orbit, your elements',
+    railHead: ['Epoch ', b(iso(a.epoch).replace('Z', '')), br], railTail: [br, when],
     metaRest: [br,
       'The two lines above are a synthetic element set written from your inputs so that SGP4 can run them. ',
       'Its catalogue number, ', b(a.satnum), ', is a placeholder: NORAD’s Alpha-5 numbering never uses the letter O, ',

@@ -7,6 +7,8 @@
   import { latStr, lonStr } from '../../lib/observer';
   import { tzLabelAt } from '../../lib/places';
   import Tabs from '../ui/Tabs.svelte';
+  import Button from '../ui/Button.svelte';
+  import { ar } from '../ar/session.svelte';
   import GroundTrackMap from './GroundTrackMap.svelte';
   import Globe from './Globe.svelte';
 
@@ -28,6 +30,13 @@
 </script>
 
 <section class="stage" aria-label="Spacecraft position">
+  <!-- The sky through the phone's camera: offered where the primary pointer is a finger, once the view is up (it is brought in before it is
+       offered, never on the tap, so the tap can ask for the camera and the motion sensors itself). It sits in the row of the stage's tabs,
+       so it is there on the map as well, and where there is no WebGL. The node is always in the page, hidden where it is not offered. -->
+  <div class="ar-slot">
+    <Button id="arbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="AR: the sky through the camera"
+            onclick={() => ar.open()}><abbr title="augmented reality: the sky drawn over this phone's camera, where it points">AR</abbr></Button>
+  </div>
   <Tabs tabs={[{ id: 'globe', label: 'Globe' }, { id: 'map', label: 'Map' }]} value={prefs.tab} label="View"
         variant="pill" keepMounted onchange={id => prefs.setTab(id as StageTab)}>
     {#snippet children(id)}
@@ -52,7 +61,10 @@
 </section>
 
 <style>
-  .stage { padding: var(--space-4); min-width: 0; }
+  .stage { position: relative; padding: var(--space-4); min-width: 0; }
+  .ar-slot { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 3; }
+  .ar-slot :global(abbr) { text-decoration: none; cursor: inherit; }
+  .ar-slot :global(.btn[hidden]) { display: none; }
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
      and readouts (about 250 px of them, the tabs and the padding) without the stage having to scroll */
   @media (min-width: 1100px) { .stage { --map-max: max(420px, calc((100dvh - var(--bar-h) - var(--transport-h) - 250px) * 2)); } }
@@ -71,6 +83,7 @@
   .readouts dd { margin: 2px 0 0; font-size: var(--fs-2); }
   @media (max-width: 719px) {
     .stage { padding: var(--space-3); }
+    .ar-slot { top: var(--space-3); right: var(--space-3); }
     .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: var(--space-3); gap: var(--space-3) var(--space-2); }
     .readouts .eyebrow { letter-spacing: .06em; }
   }

@@ -1,0 +1,875 @@
+{
+  "about": "The browser-level mutants of the REBUILT page. Each is ONE exact-text edit of one file under src/ (find must match exactly once), made in a scratch copy by verification/mutate-new.js, built with vite and run against verify-custom.js on the groups named. A mutant the groups let through is a gap in the suite (SURVIVED); a mutant marked equivalent is a guard nothing in the page can reach and must survive (the reason says why). The ids m01-m79 are the mutants of the old page that verify-custom-mutants.js applies to legacy/index.html (see behaviours-custom.json for the map); the others are named for what they remove.",
+  "mutants": [
+    {
+      "id": "m20",
+      "intent": "The \"Custom orbit - edit\" chip is never hidden again: it shows on a catalogue spacecraft (D37).",
+      "file": "components/shell/AppBar.svelte",
+      "find": "id=\"customchip\" hidden={!entry.custom}",
+      "replace": "id=\"customchip\" hidden={false}",
+      "groups": [
+        1
+      ]
+    },
+    {
+      "id": "m21",
+      "intent": "The element-set buttons (Edit in planner, Copy as TLE) show on a catalogue spacecraft.",
+      "file": "components/rail/SourceBlock.svelte",
+      "find": "id=\"tleactions\" hidden={!entry.custom}",
+      "replace": "id=\"tleactions\" hidden={false}",
+      "groups": [
+        1
+      ]
+    },
+    {
+      "id": "m22",
+      "intent": "The custom note (\"Your orbit. Designed here ...\") shows on a catalogue spacecraft.",
+      "file": "components/rail/AnswerRail.svelte",
+      "find": "id=\"customnote\" hidden={!mine}",
+      "replace": "id=\"customnote\" hidden={false}",
+      "groups": [
+        1
+      ]
+    },
+    {
+      "id": "m66",
+      "intent": "The count keeps a \" - type to search\" suffix (D15: one line beside the pill).",
+      "file": "components/shell/Picker.svelte",
+      "find": "' of yours' : ' spacecraft'}",
+      "replace": "' of yours' : ' spacecraft - type to search'}",
+      "groups": [
+        1
+      ]
+    },
+    {
+      "id": "popover-kept",
+      "intent": "The picker keeps its field, list and count line in the page while it is shut (hidden, not gone): \"the picker names it\" would then be asked of a popover that did not close, and the list-closed check would read a hidden list.",
+      "file": "components/shell/Picker.svelte",
+      "find": "<Popover bind:open label=\"Choose a spacecraft\" width={420}>",
+      "replace": "<Popover bind:open label=\"Choose a spacecraft\" width={420} keepMounted>",
+      "groups": [
+        1,
+        4
+      ]
+    },
+    {
+      "id": "drawer-open",
+      "intent": "The planner drawer is built without its hidden attribute: with the planner up and nothing asked, the drawer is showing.",
+      "file": "components/planner/PlannerPanel.svelte",
+      "find": "<aside class=\"planner\" id=\"planner\" role=\"region\" aria-labelledby=\"pl-title\" hidden>",
+      "replace": "<aside class=\"planner\" id=\"planner\" role=\"region\" aria-labelledby=\"pl-title\">",
+      "groups": [
+        1
+      ]
+    },
+    {
+      "id": "m01",
+      "intent": "The refresh's own guard for an orbit of the reader's is removed (the digit guard of fetchLiveTle still holds): every load and the 30 s beat would record a check for a number that belongs to nobody.",
+      "file": "state/live.svelte.ts",
+      "find": "    if (custom) return;\n",
+      "replace": "",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m05",
+      "intent": "The Decay panel's custom branch is removed: a planned orbit is offered the history button and the cache is probed by its number.",
+      "file": "state/life.svelte.ts",
+      "find": "if (isCustom(entry)) { this.view = LIFE_NOTHING;",
+      "replace": "if (false) { this.view = LIFE_NOTHING;",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m10",
+      "intent": "The Rev. no. cell prints the revolution count of a planned orbit (0) instead of \"n/a (planned)\".",
+      "file": "lib/analysis/elements-report.ts",
+      "find": "D.entry.custom ? 'n/a (planned)' : String(D.E.rev)",
+      "replace": "String(D.E.rev)",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m13",
+      "intent": "The CSV's tle_source loses its custom branch: it says \"embedded\" or \"fetched live\" for an orbit that is neither.",
+      "file": "lib/export/source.ts",
+      "find": "  if (custom) return CUSTOM_SOURCE;",
+      "replace": "  if (false) return CUSTOM_SOURCE;",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m14",
+      "intent": "The lines under the element set lose their custom branch: they would say \"fetched live earlier\" or \"checking for a newer set\".",
+      "file": "lib/text/provenance.ts",
+      "find": "  if (custom) return ['custom', 'Custom orbit",
+      "replace": "  if (false) return ['custom', 'Custom orbit",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m15",
+      "intent": "The age text loses its custom branch: a planned orbit is aged like a measured set.",
+      "file": "lib/text/provenance.ts",
+      "find": "  if (a.custom) return agesCustom(a, ll);",
+      "replace": "",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m16",
+      "intent": "The age chip of a planned orbit goes stale.",
+      "file": "lib/text/provenance.ts",
+      "find": "text: 'custom orbit · ' + when, stale: false,",
+      "replace": "text: 'custom orbit · ' + when, stale: true,",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m17",
+      "intent": "The element-set heading keeps the catalogue wording for a custom orbit (D31).",
+      "file": "components/rail/SourceBlock.svelte",
+      "find": "{entry.custom ? CUSTOM_SRCLINE : 'SatNOGS DB · Space-Track · CelesTrak'}",
+      "replace": "{'SatNOGS DB · Space-Track · CelesTrak'}",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m18",
+      "intent": "The NORAD span is not hidden for a custom orbit (D16): a made-up number beside a real label.",
+      "file": "components/shell/AppBar.svelte",
+      "find": "<span hidden={entry.custom}>NORAD",
+      "replace": "<span>NORAD",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m19",
+      "intent": "The \"Custom orbit - edit\" chip is never shown.",
+      "file": "components/shell/AppBar.svelte",
+      "find": "id=\"customchip\" hidden={!entry.custom}",
+      "replace": "id=\"customchip\" hidden",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m23",
+      "intent": "The CSV's satellite column loses \" (custom orbit)\".",
+      "file": "lib/export/passes.ts",
+      "find": "r.custom ? r.sat + ' (custom orbit)' : r.sat",
+      "replace": "r.sat",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m24",
+      "intent": "The calendar SUMMARY loses its \"[custom orbit] \" prefix.",
+      "file": "lib/export/passes.ts",
+      "find": "esc((r.custom ? '[custom orbit] ' : '') + r.sat",
+      "replace": "esc(r.sat",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m25",
+      "intent": "The calendar DESCRIPTION loses its \"Hypothetical orbit planned on the Ground Track Console\" line.",
+      "file": "lib/export/passes.ts",
+      "find": "r.custom ? 'Hypothetical orbit planned on the Ground Track Console: not a catalogue object, and no spacecraft is known to fly it' : null",
+      "replace": "null",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m26",
+      "intent": "The export file name has no \"custom-\" stem.",
+      "file": "lib/export/passes.ts",
+      "find": "D.entry.custom ? 'custom-' + (slug(D.entry.name) || 'orbit') : slug(D.entry.name)",
+      "replace": "slug(D.entry.name)",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "m61",
+      "intent": "indexOf is blind to the custom list: a custom orbit has no place in the picker's index space.",
+      "file": "state/custom.svelte.ts",
+      "find": "if (isCustom(e)) { const k = this.list.indexOf(e); return k >= 0 ? app.catalogue.length + k : -1; }",
+      "replace": "if (isCustom(e)) { return -1; }",
+      "groups": [
+        2
+      ]
+    },
+    {
+      "id": "net-tle-api-only",
+      "intent": "A custom orbit's number is sent ONLY to this page's own /api/tle (nothing to CelesTrak or the mirror). The old counter, which watched the two sources, could not see it; the widened one counts /api/tle too.",
+      "file": "state/live.svelte.ts",
+      "find": "    if (custom) return;\n",
+      "replace": "    if (custom) { void tleCtx({ pinned: host.pinned, isCustom: false }).api?.tle(String(Number(entry.satnum))); return; }\n",
+      "groups": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "m06",
+      "intent": "stdMagOf's custom guard is removed: an orbit with the ISS's lines reads \"docked to ISS (ZARYA)\", std mag -1.8.",
+      "file": "lib/analysis/optics.ts",
+      "find": "    if(e.custom) return { mag: Number.isFinite(e.stdMag)",
+      "replace": "    if(false) return { mag: Number.isFinite(e.stdMag)",
+      "groups": [
+        3
+      ]
+    },
+    {
+      "id": "m07",
+      "intent": "The downlink table's custom guard is removed: a planned orbit that carries a real catalogue number gets that satellite's SatNOGS downlinks.",
+      "file": "lib/analysis/doppler.ts",
+      "find": "  if (entry && entry.custom)",
+      "replace": "  if (false)",
+      "groups": [
+        3
+      ]
+    },
+    {
+      "id": "m08",
+      "intent": "The \"Outside the brief\" note's custom guard is removed: a custom orbit NAMED like the default raises it.",
+      "file": "lib/text/notices.ts",
+      "find": "!custom && OUT_OF_BRIEF.test(name)",
+      "replace": "OUT_OF_BRIEF.test(name)",
+      "groups": [
+        3
+      ]
+    },
+    {
+      "id": "m51",
+      "intent": "The last catalogue spacecraft viewed is not remembered: removing the orbit on screen goes to the default instead.",
+      "file": "state/app.svelte.ts",
+      "find": "const order = [this.lastCat, first].concat(",
+      "replace": "const order = [first].concat(",
+      "groups": [
+        4
+      ]
+    },
+    {
+      "id": "m56",
+      "intent": "The picker finds a custom orbit by its placeholder number.",
+      "file": "lib/catalogue/rank.ts",
+      "find": "if (!q || n.startsWith(q) || 'custom'.startsWith(q)) cStarts.push(cat.length + k);",
+      "replace": "if (!q || n.startsWith(q) || 'custom'.startsWith(q) || String((mine[k] as { satnum?: string }).satnum).toLowerCase().startsWith(q)) cStarts.push(cat.length + k);",
+      "groups": [
+        4
+      ]
+    },
+    {
+      "id": "m60",
+      "intent": "choose() loads the catalogue entry at the index: a custom row of the picker loads nothing.",
+      "file": "components/shell/Picker.svelte",
+      "find": "const entry = custom.entryAt(i);",
+      "replace": "const entry = app.catalogue[i];",
+      "groups": [
+        4
+      ]
+    },
+    {
+      "id": "m28",
+      "intent": "The stored record is trusted (no sanitizeStore): poisoned stores are listed.",
+      "file": "lib/planner/custom.ts",
+      "find": "  const got = P.sanitizeStore(raw);\n  if (got.why) return { why: got.why, next: 1",
+      "replace": "  const got = (() => { try { const j = JSON.parse(raw as string); return { items: j.items || [], next: 1, dropped: 0, why: null as string | null }; } catch { return { items: [], next: 1, dropped: 0, why: 'unreadable' as string | null }; } })();\n  if (got.why) return { why: got.why, next: 1",
+      "groups": [
+        5
+      ]
+    },
+    {
+      "id": "m36",
+      "intent": "A stored record SGP4 cannot start from is listed (verifyTLE ignored).",
+      "file": "lib/planner/custom.ts",
+      "find": "    const v = P.verifyTLE(entry.l1, entry.l2, entry.el!, sat);\n    if (!v.ok) return",
+      "replace": "    const v = { ok: true, errors: [] as PlannerError[] };\n    if (!v.ok) return",
+      "groups": [
+        5
+      ]
+    },
+    {
+      "id": "cap-merge",
+      "intent": "The twelve-orbit cap is not applied when another tab's record is merged: a tab holding ten orbits takes all twelve that arrive. (Not the cap on reading a store at boot: Planner.sanitizeStore applies that first, so the same edit to readStore would be equivalent. This one was labelled 'cap-restore' and aimed at group 5, which could not see it; it SURVIVED the first full run, and the suite gained the check in group 13 that kills it.)",
+      "file": "lib/planner/custom.ts",
+      "find": "    if (have.length + added.length >= P.LIMITS.maxCustom) break;",
+      "replace": "",
+      "groups": [
+        13
+      ]
+    },
+    {
+      "id": "g5-list-html",
+      "intent": "The picker writes a name as HTML: a stored name that is a complete tag (<b>x</b>, <img src=x>) becomes an element in the list.",
+      "file": "components/shell/Picker.svelte",
+      "find": "<span class=\"nm\">{c.name}</span>",
+      "replace": "<span class=\"nm\">{@html c.name}</span>",
+      "groups": [
+        5
+      ]
+    },
+    {
+      "id": "g5-title-html",
+      "intent": "The title writes the name on screen as HTML: an orbit named <img src=x> puts an image in the heading.",
+      "file": "components/shell/Picker.svelte",
+      "find": "<span id=\"satname\">{app.current?.name ?? 'Ground Track Console'}</span>",
+      "replace": "<span id=\"satname\">{@html app.current?.name ?? 'Ground Track Console'}</span>",
+      "groups": [
+        5
+      ]
+    },
+    {
+      "id": "g5-raw-html",
+      "intent": "The raw element set's heading writes the name as HTML: an orbit named <img src=x> (or <b>x</b>) on screen puts an element in the lines under the element set.",
+      "file": "components/rail/SourceBlock.svelte",
+      "find": "<b>{entry.name}</b>",
+      "replace": "<b>{@html entry.name}</b>",
+      "groups": [
+        5
+      ]
+    },
+    {
+      "id": "save-swallowed",
+      "intent": "A save that storage refuses still reports success: \"saved: true\" while nothing was kept.",
+      "file": "state/custom.svelte.ts",
+      "find": "    } catch { ok = false; }\n    this.saveOk = ok;",
+      "replace": "    } catch { /* swallowed */ }\n    this.saveOk = ok;",
+      "groups": [
+        6,
+        22
+      ]
+    },
+    {
+      "id": "m29",
+      "intent": "The saved orbits are restored under ?tle=embedded.",
+      "file": "state/custom.svelte.ts",
+      "find": "if (PINNED || !P || this.restored) return;",
+      "replace": "if (!P || this.restored) return;",
+      "groups": [
+        7
+      ]
+    },
+    {
+      "id": "m34",
+      "intent": "The storage listener merges another tab's orbit under ?tle=embedded.",
+      "file": "state/custom.svelte.ts",
+      "find": "if (!P || PINNED || e.key !== CUSTOM_KEY",
+      "replace": "if (!P || e.key !== CUSTOM_KEY",
+      "groups": [
+        7
+      ]
+    },
+    {
+      "id": "m73",
+      "intent": "PlannerUI.init is not called under ?tle=embedded: the pill never says why.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "try { target.init(host); } catch (e) { console.error(e); }",
+      "replace": "if (!PINNED) try { target.init(host); } catch (e) { console.error(e); }",
+      "groups": [
+        7
+      ]
+    },
+    {
+      "id": "add-off",
+      "intent": "Add is not refused under ?tle=embedded: the snapshot takes a custom orbit.",
+      "file": "state/custom.svelte.ts",
+      "find": "    if (PINNED || !P) return customFail('planner.off', offMsg(PINNED));\n    if (this.list.length >= P.LIMITS.maxCustom)",
+      "replace": "    if (!P) return customFail('planner.off', offMsg(PINNED));\n    if (this.list.length >= P.LIMITS.maxCustom)",
+      "groups": [
+        7
+      ]
+    },
+    {
+      "id": "no-elements-paint",
+      "intent": "An entry with no elements (the test hook) gets the \"could not be worked out\" words instead of \"no elements to forecast from\".",
+      "file": "state/life.svelte.ts",
+      "find": "if (!el) paint = W.lifeCustomPaint(null, null);",
+      "replace": "if (!el) paint = W.lifeCustomFailed();",
+      "groups": [
+        8
+      ]
+    },
+    {
+      "id": "deep-guard",
+      "intent": "The deep-orbit guard of Advisor.life is removed: a geostationary orbit runs the forward decay loop (30.7 s unguarded).",
+      "file": "lib/planner/advisor.ts",
+      "find": "  if(P.periodMin(a) >= P.LIMITS.deepPeriodMin){ out.why = 'deep'; return out; }",
+      "replace": "",
+      "groups": [
+        9
+      ]
+    },
+    {
+      "id": "m67",
+      "intent": "The custom Decay chart labels its x axis with calendar months.",
+      "file": "components/report/draw-life.ts",
+      "find": "cust ? (i === 0 ? 'epoch' : '+' + lifeAxis((t - t0) / 86400000)) : iso(new Date(t)).slice(0, 7)",
+      "replace": "iso(new Date(t)).slice(0, 7)",
+      "groups": [
+        9
+      ]
+    },
+    {
+      "id": "m68",
+      "intent": "The custom Decay axis ends with the mid-case run: the x1/3 run is clipped at the edge.",
+      "file": "components/report/draw-life.ts",
+      "find": "Math.max(lastT(r.track), lastT(r.simpleTrack), lastT(r.trendTrack)) || 1",
+      "replace": "lastT(r.track) || 1",
+      "groups": [
+        9
+      ]
+    },
+    {
+      "id": "m69",
+      "intent": "The custom Decay tooltip prints a calendar date.",
+      "file": "components/report/draw-life.ts",
+      "find": "? '+' + lifeAxis((t - r.tNow) / 86400000) + ' after epoch\\n' + h.toFixed(1) + ' km · model'",
+      "replace": "? iso(new Date(t)).slice(0, 10) + '\\n' + h.toFixed(1) + ' km · model'",
+      "groups": [
+        9
+      ]
+    },
+    {
+      "id": "m70",
+      "intent": "The custom Decay legend says \"observed (N element sets)\".",
+      "file": "components/report/draw-life.ts",
+      "find": "text: 'model, ' + (st.eccentric ? 'perigee height' : 'your drag') },",
+      "replace": "text: 'observed (1 element sets)' },",
+      "groups": [
+        9
+      ]
+    },
+    {
+      "id": "m48",
+      "intent": "An edit of the orbit on screen drops the reader's instant on the clock.",
+      "file": "state/custom.svelte.ts",
+      "find": "keepClock: !moved",
+      "replace": "keepClock: false",
+      "groups": [
+        10
+      ]
+    },
+    {
+      "id": "m49",
+      "intent": "An edit of an orbit off screen is not tried before it is stored.",
+      "file": "state/custom.svelte.ts",
+      "find": "      try { getEngine().compute(next, t0, app.hours); }\n      catch (err) {",
+      "replace": "      try { /* not tried */ }\n      catch (err) {",
+      "groups": [
+        10
+      ]
+    },
+    {
+      "id": "m50",
+      "intent": "A refused edit does not put the old elements back.",
+      "file": "state/custom.svelte.ts",
+      "find": "        take(entry, held);\n        return",
+      "replace": "        return",
+      "groups": [
+        10
+      ]
+    },
+    {
+      "id": "m02",
+      "intent": "The one-to-five-digit guard of the element-set fetch is removed (the refresh's guard still holds): fetchTLE('O0001') asks for CATNR=O0001.",
+      "file": "lib/net/tle-source.ts",
+      "find": "  if (!isNoradId(norad)) return null;\n  const satnum",
+      "replace": "  const satnum",
+      "groups": [
+        11
+      ]
+    },
+    {
+      "id": "m04",
+      "intent": "run()'s custom return is removed: the decay history of a planned orbit could be requested by a direct call.",
+      "file": "state/life.svelte.ts",
+      "find": "    if (isCustom(entry) || my !== this.req) return;",
+      "replace": "    if (my !== this.req) return;",
+      "groups": [
+        11
+      ]
+    },
+    {
+      "id": "sun-differs",
+      "intent": "The page's sunEci differs from Advisor.sunEci in a constant (the Professor's eclipse would not be the globe's).",
+      "file": "lib/core/sun.ts",
+      "find": "const L = (280.460 + 0.9856474*n) % 360;",
+      "replace": "const L = (280.461 + 0.9856474*n) % 360;",
+      "groups": [
+        12
+      ]
+    },
+    {
+      "id": "storage-takes-nothing",
+      "intent": "A storage event from another tab is read but its orbits are never added.",
+      "file": "state/custom.svelte.ts",
+      "find": "      for (const c of m.added) this.list.push(c);\n      this.next = m.next;",
+      "replace": "      this.next = m.next;",
+      "groups": [
+        13
+      ]
+    },
+    {
+      "id": "storage-silent",
+      "intent": "A merge from another tab never fires gt-customs-changed: the planner's saved list does not follow.",
+      "file": "state/custom.svelte.ts",
+      "find": "      if (m.added.length) customsChanged();",
+      "replace": "",
+      "groups": [
+        13
+      ]
+    },
+    {
+      "id": "m38",
+      "intent": "gt-customs-changed is never dispatched.",
+      "file": "state/custom.svelte.ts",
+      "find": "window.dispatchEvent(new CustomEvent('gt-customs-changed'));",
+      "replace": "/* never */",
+      "groups": [
+        14
+      ]
+    },
+    {
+      "id": "m31",
+      "intent": "makeCustom lets a planner fault out and restore does not catch it: the page dies on every load while the record stays in storage.",
+      "file": "lib/planner/custom.ts",
+      "find": "  } catch (e) {\n    console.error(e);\n    return { entry: null, why: null, fault: true };",
+      "replace": "  } catch (e) {\n    throw e;",
+      "groups": [
+        15
+      ]
+    },
+    {
+      "id": "m32",
+      "intent": "A planner fault is taken for a bad record: the saved list is rewritten without the orbits it could not rebuild.",
+      "file": "lib/planner/custom.ts",
+      "find": "    if (m.fault) fault = true;\n",
+      "replace": "",
+      "groups": [
+        15
+      ]
+    },
+    {
+      "id": "pill-wrapper-shown",
+      "intent": "A planner that failed to load leaves its pill on the bar.",
+      "file": "components/shell/AppBar.svelte",
+      "find": "<div class=\"t-plan\" hidden={session.failed}>",
+      "replace": "<div class=\"t-plan\" hidden={false}>",
+      "groups": [
+        15
+      ]
+    },
+    {
+      "id": "m39",
+      "intent": "The cap is off by one: a 13th orbit is kept.",
+      "file": "state/custom.svelte.ts",
+      "find": "if (this.list.length >= P.LIMITS.maxCustom)",
+      "replace": "if (this.list.length > P.LIMITS.maxCustom)",
+      "groups": [
+        16
+      ]
+    },
+    {
+      "id": "m43",
+      "intent": "A refused Add keeps the counter it took.",
+      "file": "state/custom.svelte.ts",
+      "find": "        this.next = prevNext;\n",
+      "replace": "",
+      "groups": [
+        16
+      ]
+    },
+    {
+      "id": "m44",
+      "intent": "An Add loads as a real load, not a trial: a refusal writes the console's #loadnote.",
+      "file": "state/custom.svelte.ts",
+      "find": "if (!app.load(entry, { trial: true, start: ds ?? undefined })) {",
+      "replace": "if (!app.load(entry, { start: ds ?? undefined })) {",
+      "groups": [
+        16
+      ]
+    },
+    {
+      "id": "m45",
+      "intent": "A successful Add leaves an older console note on screen.",
+      "file": "state/custom.svelte.ts",
+      "find": "      app.note = '';\n    }\n    this.rev++;\n    const saved = persist",
+      "replace": "    }\n    this.rev++;\n    const saved = persist",
+      "groups": [
+        17
+      ]
+    },
+    {
+      "id": "m41",
+      "intent": "A cid already in use is trusted: two orbits share a number.",
+      "file": "lib/planner/custom.ts",
+      "find": "CID_RE.test(wanted) && !used.has(wanted)",
+      "replace": "CID_RE.test(wanted)",
+      "groups": [
+        17
+      ]
+    },
+    {
+      "id": "m42",
+      "intent": "A duplicate name among the reader's own is not numbered.",
+      "file": "lib/planner/custom.ts",
+      "find": "  if (!have.has(n.toLowerCase())) return n;",
+      "replace": "  return n;",
+      "groups": [
+        17
+      ]
+    },
+    {
+      "id": "place-ignored",
+      "intent": "The place handed back with Undo of a delete is ignored: the orbit returns at the end of the list.",
+      "file": "state/custom.svelte.ts",
+      "find": "this.list.splice(typeof at === 'number' && Number.isInteger(at) && at >= 0 && at <= this.list.length ? at : this.list.length, 0, entry);",
+      "replace": "this.list.splice(this.list.length, 0, entry);",
+      "groups": [
+        17
+      ]
+    },
+    {
+      "id": "show-false-shows",
+      "intent": "show:false still takes over the screen and the clock.",
+      "file": "state/custom.svelte.ts",
+      "find": "    if (show !== false) {\n      /* The TRIAL form",
+      "replace": "    if (true) {\n      /* The TRIAL form",
+      "groups": [
+        17
+      ]
+    },
+    {
+      "id": "m35",
+      "intent": "An emptied list removes the key and the counter with it: the next orbit after a reload is c1 / O0001 again.",
+      "file": "lib/planner/custom.ts",
+      "find": "  if (!items.length && next <= 1) return null;",
+      "replace": "  if (!items.length) return null;",
+      "groups": [
+        18
+      ]
+    },
+    {
+      "id": "m40",
+      "intent": "The counter is not stopped at 9999.",
+      "file": "lib/planner/custom.ts",
+      "find": "  return n > 9999 ? null : 'c' + n;",
+      "replace": "  return 'c' + n;",
+      "groups": [
+        18
+      ]
+    },
+    {
+      "id": "m27",
+      "intent": "The export file name of an all-non-Latin name has no fallback (passes-custom--bangkok).",
+      "file": "lib/export/passes.ts",
+      "find": "'custom-' + (slug(D.entry.name) || 'orbit')",
+      "replace": "'custom-' + slug(D.entry.name)",
+      "groups": [
+        19
+      ]
+    },
+    {
+      "id": "m11",
+      "intent": "The window note's \"SGP4 drifts this far out\" is a warning (orange) for a custom orbit too.",
+      "file": "components/transport/WindowPopover.svelte",
+      "find": "class:warn={far && !mine}",
+      "replace": "class:warn={far}",
+      "groups": [
+        20
+      ]
+    },
+    {
+      "id": "m12",
+      "intent": "A custom orbit is told \"SGP4 drifts this far out\" instead of \"M belongs to the epoch\".",
+      "file": "components/transport/WindowPopover.svelte",
+      "find": "(mine ? ' — M belongs to the epoch' : ' — SGP4 drifts this far out')",
+      "replace": "' — SGP4 drifts this far out'",
+      "groups": [
+        20
+      ]
+    },
+    {
+      "id": "m52",
+      "intent": "deepStart does nothing: the window never moves to a deep-space orbit's epoch (a Molniya a year off took seconds).",
+      "file": "lib/planner/custom.ts",
+      "find": "if (!isCustom(entry) || !entry.el || !P.isDeep(entry.el.a)) return null;",
+      "replace": "return null;",
+      "groups": [
+        21
+      ]
+    },
+    {
+      "id": "m53",
+      "intent": "Choosing a custom orbit from the picker does not move the window to a far deep-space orbit's epoch.",
+      "file": "state/app.svelte.ts",
+      "find": "if (isCustom(entry) && !same && o.start === undefined && this.deepStart) {",
+      "replace": "if (false) {",
+      "groups": [
+        21
+      ]
+    },
+    {
+      "id": "m54",
+      "intent": "Updating the orbit on screen does not move the window to a far deep-space epoch.",
+      "file": "state/custom.svelte.ts",
+      "find": "      const ds = deepStart(P, entry, app.startMs, Date.now());\n      moved = ds !== null;\n      /* The reader",
+      "replace": "      const ds = null as number | null;\n      moved = ds !== null;\n      /* The reader",
+      "groups": [
+        21
+      ]
+    },
+    {
+      "id": "m55",
+      "intent": "The Professor's trial pass does not skip a deep-space draft far from the window (seconds of SDP4).",
+      "file": "components/planner/session.svelte.ts",
+      "find": "if (entry.el && P.isDeep(entry.el.a) && Math.abs(t0 - entry.el.epoch) > P.LIMITS.deepTrialDays * 864e5) return null;",
+      "replace": "",
+      "groups": [
+        21
+      ]
+    },
+    {
+      "id": "m74",
+      "intent": "host.window() reports the clock, not the window on screen.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "window: () => ({ startMs: app.startMs === null ? Date.now() : app.startMs, hours: app.hours }),",
+      "replace": "window: () => ({ startMs: Date.now(), hours: app.hours }),",
+      "groups": [
+        22
+      ]
+    },
+    {
+      "id": "m75",
+      "intent": "host.obs() hands out a copy of the observer, not the live one.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "obs: () => getObs(), mask: MASK",
+      "replace": "obs: () => ({ ...getObs() }), mask: MASK",
+      "groups": [
+        22
+      ]
+    },
+    {
+      "id": "m76",
+      "intent": "host.show() shows nothing.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "show: e => app.select(e),",
+      "replace": "show: e => false,",
+      "groups": [
+        22
+      ]
+    },
+    {
+      "id": "m77",
+      "intent": "host.storageOk() is always true.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "storageOk: () => custom.storageOk()",
+      "replace": "storageOk: () => true",
+      "groups": [
+        22
+      ]
+    },
+    {
+      "id": "m78",
+      "intent": "host.tracked() says a custom orbit is tracked.",
+      "file": "components/planner/session.svelte.ts",
+      "find": "tracked: e => !isCustom(e)",
+      "replace": "tracked: e => true",
+      "groups": [
+        22
+      ]
+    },
+    {
+      "id": "m57",
+      "intent": "The picker writes its group rows for a typed query too.",
+      "file": "components/shell/Picker.svelte",
+      "find": "const groups = $derived(!query.trim() && custom.count > 0);",
+      "replace": "const groups = $derived(custom.count > 0);",
+      "groups": [
+        23
+      ]
+    },
+    {
+      "id": "m58",
+      "intent": "The picker always offers the Plan row, even with the planner off.",
+      "file": "components/shell/Picker.svelte",
+      "find": "const planOn = $derived(session.enabled && !PINNED);",
+      "replace": "const planOn = $derived(true);",
+      "groups": [
+        23
+      ]
+    },
+    {
+      "id": "m71",
+      "intent": "load() never calls the planner's onLoad.",
+      "file": "state/app.svelte.ts",
+      "find": "if (this.afterLoad) { try { this.afterLoad(nd); } catch (err) { console.error(err); } }",
+      "replace": "",
+      "groups": [
+        24
+      ]
+    },
+    {
+      "id": "m72",
+      "intent": "load() calls the planner's onLoad without a try: a planner fault fails the load.",
+      "file": "state/app.svelte.ts",
+      "find": "if (this.afterLoad) { try { this.afterLoad(nd); } catch (err) { console.error(err); } }",
+      "replace": "if (this.afterLoad) this.afterLoad(nd);",
+      "groups": [
+        24
+      ]
+    },
+    {
+      "id": "e2",
+      "intent": "EQUIVALENT: save() has no PINNED guard. Add, update and remove refuse first under ?tle=embedded, restore and the storage listener return first: nothing calls it.",
+      "file": "state/custom.svelte.ts",
+      "find": "  private save(): boolean {\n    if (PINNED) return true;\n",
+      "replace": "  private save(): boolean {\n",
+      "groups": [
+        7
+      ],
+      "equivalent": true,
+      "reason": "save() is reached only by add, update, remove and restore, each of which has returned already under ?tle=embedded; the guard is a second layer that no path of the page can reach."
+    },
+    {
+      "id": "e3",
+      "intent": "EQUIVALENT: an in-place edit does not clear the forecast memo a second time (take() has already removed __life, which `next` does not carry; the memo key is a, e, i and am, every input the forecast reads).",
+      "file": "state/custom.svelte.ts",
+      "find": "      take(entry, next);\n      entry.__life = null;\n      const ds",
+      "replace": "      take(entry, next);\n      const ds",
+      "groups": [
+        9,
+        10
+      ],
+      "equivalent": true,
+      "reason": "take(entry, next) already deletes __life because the replacement has none (KEYS lists it), so the assignment after it changes nothing."
+    },
+    {
+      "id": "e4",
+      "intent": "EQUIVALENT in the page: the history source's own custom guard is a second layer behind state/life.svelte.ts, which never builds a history source for a planned orbit (the unit test tests/net/history-source.test.ts is what reaches it).",
+      "file": "lib/net/history-source.ts",
+      "find": "    if (!isNoradId(norad) || ctx.isCustom) return null;\n    const satnum",
+      "replace": "    if (!isNoradId(norad)) return null;\n    const satnum",
+      "groups": [
+        11
+      ],
+      "equivalent": true,
+      "reason": "The page builds the history source with isCustom false and only for an entry that already passed life.svelte.ts's own custom return; no path puts a custom orbit in front of it. tests/net/history-source.test.ts guards the layer by calling it directly."
+    }
+  ]
+}

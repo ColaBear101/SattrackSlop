@@ -110,6 +110,9 @@ export function search(q: string, count = 6, signal?: AbortSignal, fetchFn: type
 /** Where this device thinks it is. The browser gives coordinates and an accuracy, never a name or a zone - so
  *  the name is the coordinates and the zone is the one the browser itself is set to, which for the device you
  *  are holding is the right answer and needs no request. */
+/** What the observer is called when the device itself said where it is. */
+export const DEVICE_SITE = 'My location';
+
 export function here(): Promise<Place> {
   return new Promise((res, rej) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return rej(new Error('this browser has no location service'));
@@ -118,7 +121,7 @@ export function here(): Promise<Place> {
       let zone: string | null = null;
       try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { /* no Intl */ }
       res({
-        name: 'My location',
+        name: DEVICE_SITE,
         where: c.accuracy ? '±' + Math.round(c.accuracy) + ' m' : '',
         lat: c.latitude, lon: c.longitude,
         altKm: isFinite(c.altitude as number) && c.altitude !== null ? c.altitude / 1000 : 0,

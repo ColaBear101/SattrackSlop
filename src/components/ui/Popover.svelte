@@ -9,7 +9,7 @@
     open?: boolean; label: string; align?: 'start' | 'end'; width?: number;
     /** keep the panel's contents in the page while it is closed (hidden): for fields whose value other code reads */
     keepMounted?: boolean;
-    trigger: Snippet<[{ onclick: () => void; 'aria-expanded': boolean; 'aria-haspopup': 'dialog'; 'aria-controls': string }]>;
+    trigger: Snippet<[{ onclick: () => void; 'aria-expanded': boolean; 'aria-haspopup': 'dialog'; 'aria-controls': string | undefined }]>;
     children: Snippet;
   } = $props();
 
@@ -29,12 +29,16 @@
      in the frame it opens, so nothing flashes. Focus must not scroll: the panel is still where it was first
      placed, possibly below the fold, and focusing it there used to drag the whole page down to it. */
   let up = $state(false);
+  /* The edge the panel hangs from: the one asked for, unless that runs it off the screen - the observer's chip is at the left of a phone and
+     its panel, hung from the chip's right edge, ran off the left, Apply and all. */
+  let edge = $state<'start' | 'end' | null>(null);
   $effect(() => {
-    if (!open || !panel) { up = false; return; }
+    if (!open || !panel) { up = false; edge = null; return; }
     const r = root.getBoundingClientRect();
     const need = panel.offsetHeight + 12;
     const below = innerHeight - r.bottom, above = r.top;
     up = below < need && above > below;
+    edge = align === 'end' ? (r.right - panel.offsetWidth >= 0 ? 'end' : 'start') : (r.left + panel.offsetWidth <= innerWidth ? 'start' : 'end');
     panel.querySelector<HTMLElement>('input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])')
       ?.focus({ preventScroll: true });
   });
@@ -43,9 +47,10 @@
 <svelte:window onpointerdown={outside} onkeydown={key} />
 
 <div class="pop" bind:this={root}>
-  {@render trigger({ onclick: () => (open = !open), 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-controls': id })}
+  <!-- aria-controls names the panel only while there is one: a shut popover that is not kept mounted has nothing to point at -->
+  {@render trigger({ onclick: () => (open = !open), 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-controls': open || keepMounted ? id : undefined })}
   {#if open || keepMounted}
-    <div class="panel {align}" class:up {id} role="dialog" aria-label={label} hidden={!open} style="--w:{width}px" bind:this={panel}>
+    <div class="panel {edge ?? align}" class:up {id} role="dialog" aria-label={label} hidden={!open} style="--w:{width}px" bind:this={panel}>
       {@render children()}
     </div>
   {/if}

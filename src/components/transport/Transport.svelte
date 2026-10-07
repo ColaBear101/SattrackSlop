@@ -112,6 +112,6 @@
     .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* still the slider's name */
     .rate { grid-template-columns: 1fr auto; }
     .ticks { display: none; }
-    .clock { display: flex; justify-content: space-between; text-align: left; }
+    .clock { display: flex; flex-wrap: wrap; column-gap: var(--space-3); justify-content: space-between; text-align: left; }   /* two lines when they do not fit: on a 360 px phone one line made the page wider than the screen */
   }
 </style>

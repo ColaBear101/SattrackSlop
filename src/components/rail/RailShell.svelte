@@ -32,7 +32,7 @@
   const next = $derived(nextPass(a, clock.tick.ms));
 </script>
 
-<svelte:window onkeydown={e => { if (e.key === 'Escape' && mode === 'sheet' && open) open = false; }} />
+<svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open) open = false; }} />
 
 <aside class="rail {mode}" class:open aria-label="Answer">
   {#if mode !== 'side'}

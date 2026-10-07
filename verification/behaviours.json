@@ -1,0 +1,1345 @@
+[
+ {
+  "n": 1,
+  "behaviour": "pill: aria-expanded=false, aria-controls=planner, name 'Plan an orbit', svg[aria-hidden], text 'Plan an orbit', inside .hintrow with #satcount; #planner hidden; #satcount '2,158 spacecraft' (no suffix)",
+  "groups": [
+   1
+  ],
+  "covering": [
+   "verify-planner-ui g1 check #planopen sits in its row (the old page's hint row beside the count; the rebuilt header's cell for it): aria-e",
+   "verify-planner-ui g1 check #planner is hidden and #satcount reads \"2,158 spacecraft\" (D15: no suffix)"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The pill sits in the header bar's own cell (.t-plan), not in a hint row beside the count: the count is in the picker's popover (L6, L10), read by opening it (harness satCount)."
+ },
+ {
+  "n": 2,
+  "behaviour": "closed planner: header <=100 px and within 3 px of PRISTINE_HEADER, .app 900 tall, six visible .seglabel, every visible .viewport .btn (>=8) hit-testable; header still <=100 px with a custom orbit loaded",
+  "groups": [
+   1,
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g1 check at 1440x900 the header is at most 100 px and within 3 px of the pre-planner header (<...> against <...>), the ",
+   "verify-planner-ui g1 check every button on the globe (<...>) is reachable with the planner closed (<...>)",
+   "verify-planner-ui g4 check with a custom orbit loaded the header is still at most 100 px (<...>)"
+  ],
+  "class": [
+   "layout",
+   "structure"
+  ],
+  "port": "retarget",
+  "note": "Six captions became two (Camera and Trail, L21). The \"header before the planner\" is the same header with the pill's cell taken out of the layout (the rebuilt header never had another form). The console fills the screen under the header. At 1440 px the rebuilt header is a fixed height, so the height figures are true by construction; the pill, the chip and the age lying inside it unclipped (__T.boxed) is what is measured there."
+ },
+ {
+  "n": 3,
+  "behaviour": "click opens: aria-expanded true, focus #pl-name, .app[data-planning], .rail display:none, mode drawer, role=region, globe cell + planner widths = viewport (the globe's own box >=528 on the old page, >=496 on the rebuilt one, at 901 px; the globe's overlays do not collide), all globe buttons still reachable; pill is a toggle that keeps focus",
+  "groups": [
+   1,
+   9,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g1 check a click opens it: aria-expanded true, the focus on #pl-name, .app[data-planning], the rail not displayed, a dr",
+   "verify-planner-ui g1 check the globe's cell is the viewport minus the planner (<...> + <...> = <...>) and at least 528 px",
+   "verify-planner-ui g1 check the stage's cell is the viewport minus the planner (<...> + <...> = <...>)",
+   "verify-planner-ui g1 check the globe itself (its own box, inside the stage's gutters) is at least <...> px wide with the drawer open (<...> px here",
+   "verify-planner-ui g1 check in the drawer the planner is a region, not a dialog",
+   "verify-planner-ui g9 check <...>: with the drawer open every globe button is still reachable (<...>)",
+   "verify-planner-ui g9 check <...>: the rail is hidden and <...> + planner fill the width (<...> + <...> of <...>)",
+   "verify-planner-ui g9 check <...>: at the narrowest drawer width the globe itself is still at least <...> px wide (<...>",
+   "verify-planner-ui g9 check <...>: nothing collides on the globe with the drawer open: the clock, the camera, trail and Layers rows, the key and the drag hint each lie inside it and none overlaps another (<...> boxes in <...> px)",
+   "verify-planner-ui g19 check the pill is a toggle: pressed while open it closes the planner (aria-expanded false) and keeps the focus on it"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The rail is hidden by its zone while the drawer is open, so \"rail not displayed\" reads whether the rail has a box (__T.railShown). The old page's globe is its own cell; the rebuilt stage keeps a 16 px gutter on each side of it, so the cell the planner takes width from (.stage-zone) and the globe (.viewport) are two boxes: at 901 px the cell is 529 px and the globe 497. The lead's decision: the gutters stay, the floor is stated for the globe's own box with a deliberate new value of 496 px (the old page keeps 528), the cell sum is a check of its own, and \"globe\" is said only of the globe's box (CHANGES-FROM-LEGACY row P). The first port had moved the floor to the cell, which kept the 528 true while the globe was 497. Added on the rebuilt page only: nothing on the globe collides at the four drawer sizes (the clock, the camera, trail and Layers rows, the key, the drag hint); it found the clock's UTC running into the camera row's caption at 901 px, fixed in App.svelte (the captions go up to 940 px, as on a phone)."
+ },
+ {
+  "n": 4,
+  "behaviour": "Escape inside returns focus to opener (pill, #customchip, #tle-edit, pill after picker Plan row) and restores rail; Close button returns to pill; Escape with focus outside leaves it open; chip and Edit in planner open the orbit in the form (primary 'Shown on globe', #pl-savenew shown, #pf-sub 'On the globe now: Opener test · N passes from Bangkok, M min in 24 h')",
+  "groups": [
+   1,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g1 check Escape with the focus inside closes it, the focus returns to the pill, the rail is back",
+   "verify-planner-ui g1 check a custom orbit can be added through the page for the openers below",
+   "verify-planner-ui g1 check the chip opens the planner with that orbit in the form: the name field focused, \"Shown on globe\", Save as new ",
+   "verify-planner-ui g1 check ...and the verdict line says the orbit is on the globe, with its passes",
+   "verify-planner-ui g1 check Escape from the chip returns the focus to the chip",
+   "verify-planner-ui g1 check \"Edit in planner\" opens it with the focus in the name field",
+   "verify-planner-ui g1 check Escape from \"Edit in planner\" returns the focus to it",
+   "verify-planner-ui g1 check the picker row then Escape: the focus is on the pill and the list is closed (never back in the search box)",
+   "verify-planner-ui g19 check Escape with the focus outside the planner (on a globe button) leaves it open and the focus where it was",
+   "verify-planner-ui g19 check Close closes it and the focus returns to the pill that opened it"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The element-set card is the rail's Source tab (L14); the suite brings the tab up (harness showRailTab) before pressing Edit in planner. The picker is a popover (L10)."
+ },
+ {
+  "n": 5,
+  "behaviour": "picker Plan row: no-match query lists li.note 'Nothing in the catalogue matches that' (no full stop) and li.plan (role=option, last child of #satlist); Enter opens planner with query as name, #pl-name focused, list closed, #satsearch.value back to current spacecraft; 'ISS'+Enter still picks first hit, planner stays shut; ArrowDown past last hit reaches Plan row (aria-activedescendant=soptplan, li.on#soptplan)",
+  "groups": [
+   1,
+   5,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g1 check a query that matches nothing says \"Nothing in the catalogue matches that\" and lists the Plan row, last, as an ",
+   "verify-planner-ui g1 check Enter on that query opens the planner with the query as the name, the field focused, the list closed and the p",
+   "verify-planner-ui g1 check \"ISS\" and Enter still pick the first hit, a catalogue spacecraft; the planner stays shut",
+   "verify-planner-ui g1 check ArrowDown from the last catalogue hit (<...> hits) reaches the Plan row, and aria-activedescendant names it",
+   "verify-planner-ui g5 check the closed-form pass runs 160 ms after the last keystroke, not before (measured <...> ms), and has changed the",
+   "verify-planner-ui g5 check the trial pass runs 500 ms after the last keystroke, once for the whole burst (measured <...> ms, <...> trial)",
+   "verify-planner-ui g20 check visual: the groups sit one under the next with no dead air (the page's section{gap:16px} must not spread them:"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The picker is a popover opened first (harness openPicker); its note is a sentence with a full stop (L25) in a paragraph after the list (L6); the first hit is highlighted on open, so the walk to the last hit takes one press fewer. \"Back on the spacecraft on screen\" is read from the title where the box is gone, which would pass for a picker that kept the old query; so on the rebuilt page the picker is also opened again and its box must be empty (folded into the same check)."
+ },
+ {
+  "n": 6,
+  "behaviour": "planner open at 12 viewports x 2 schemes: no horizontal page scroll, no visible planner text <11 px, no inner overflow, every visible planner control hit-testable after scrollIntoView; no sideways scroll at 10 widths with 0/1/12 customs, closed and open",
+  "groups": [
+   9,
+   10
+  ],
+  "covering": [
+   "verify-planner-ui g9 check <...>: no sideways scroll (<...> of <...>)",
+   "verify-planner-ui g9 check <...>: no visible text under <...> px",
+   "verify-planner-ui g9 check <...>: nothing overflows inside the planner",
+   "verify-planner-ui g9 check <...>: every visible planner control is reachable by a pointer (<...>)",
+   "verify-planner-ui g10 check <...>: no sideways scroll at any of those widths",
+   "verify-planner-ui g10 check <...>: no sideways scroll with the planner open at any of those widths"
+  ],
+  "class": [
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "Text floor 12 px on the rebuilt page (L5), 11 px on the old one: one number per build (SEL.minText)."
+ },
+ {
+  "n": 7,
+  "behaviour": "mode(): drawer (>=901 wide and >=561 tall), sheet (>=901 wide and <=560 tall: 1280x540, 915x412), flow (<=900 wide); Add wholly in view without scrolling in drawer and sheet",
+  "groups": [
+   9
+  ],
+  "covering": [
+   "verify-planner-ui g9 check <...>: the presentation is a <...> (mode() says <...>)",
+   "verify-planner-ui g9 check <...>: Add is in view without scrolling (<...> to <...> of <...>)"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 8,
+  "behaviour": "header height: open == closed (<0.6 px) at 10 widths x (0,1,12 customs); closed within 3 px of pre-planner header and <= max(100, pristine+3); with chip on screen <=100 or +3 and chip inside header; 390x844 touch with 12 orbits within 16 px",
+  "groups": [
+   4,
+   9,
+   10
+  ],
+  "covering": [
+   "verify-planner-ui g4 check with a custom orbit loaded the header is still at most 100 px (<...>)",
+   "verify-planner-ui g9 check <...>: the header is <...> px open and <...> closed (the same)",
+   "verify-planner-ui g10 check <...>: the closed header is within 3 px of the pre-planner header at 1440, 1280, 1100, 1080, 1060, 1040, 1024,",
+   "verify-planner-ui g10 check <...>: with the planner open the header is exactly the height it is closed, at every width (worst difference <",
+   "verify-planner-ui g10 check with a custom orbit on screen (the \"Custom orbit · edit\" chip shown, the number fields hidden) the header is a",
+   "verify-planner-ui g10 check on a touch screen (390x844) with 12 orbits the header is within 16 px of the pre-planner one (<...> against <."
+  ],
+  "class": [
+   "layout",
+   "structure"
+  ],
+  "port": "retarget",
+  "note": "Same measure, same tolerances: the closed header against the header with the pill's cell taken out, and open against closed. From 1100 px up the rebuilt header is one row of a fixed height (height: var(--bar-h)), so those two height figures are true by construction there and the check names say so; what can fail there is the box test folded into the same checks (__T.boxed): the pill, the custom chip and the age chip lie inside the header's box, their own words fit their own box, and no ancestor that clips (the .ids line is overflow:hidden) hides part of them. Below 1100 px the header grows with its content, and the height figures are measured."
+ },
+ {
+  "n": 9,
+  "behaviour": "sheet: role=dialog, aria-modal=true, fills screen (w=iw,h=ih), html.pl-sheet + overflow hidden, focus #pl-name; Escape restores role=region, no aria-modal, scroll, focus on pill; resizing 915x700 <-> 915x412 flips drawer<->sheet live (inert 0 <-> 8)",
+  "groups": [
+   9,
+   11
+  ],
+  "covering": [
+   "verify-planner-ui g9 check <...>: the sheet is a dialog with aria-modal and fills the screen",
+   "verify-planner-ui g9 check no page error across the sizes of one kind of screen <...>",
+   "verify-planner-ui g11 check role=\"dialog\", aria-modal=\"true\", html.pl-sheet with the page scroll locked, the focus in the planner (#pl-nam",
+   "verify-planner-ui g11 check Escape closes the sheet, releases every inert, restores role=\"region\" and the scroll, and returns the focus to",
+   "verify-planner-ui g11 check resizing out of the sheet while it is open (915x700): a drawer, role=\"region\", no aria-modal, nothing inert, s",
+   "verify-planner-ui g11 check ...and back into it: a dialog again with every sibling along the path inert (the old page's eight)"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The sheet inerts every sibling along the path planner -> .planner-zone -> .console -> main.app -> #app -> body except the sprite, scripts and #pl-live: the expectation is that walk (computed in the page), with the siblings named for each build."
+ },
+ {
+  "n": 10,
+  "behaviour": "flow: transport bar position:static while planning, rail still shown, heading just below sticky header (0..40 px); narrow Add keeps panel open, status ends 'The globe is above.' + Show globe button, page does not scroll by itself (±60 px); Show globe scrolls .viewport to top below header",
+  "groups": [
+   9,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g9 check <...>: narrow: the transport bar is static while planning, the rail is still displayed, the heading was brough",
+   "verify-planner-ui g19 check narrow Add: the panel stays open, the status ends \"The globe is above.\" with a Show globe button, and the page",
+   "verify-planner-ui g19 check Show globe scrolls the globe to the top of the screen (below the header where that is sticky): its top is at <"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The transport is .transport and the rail is a folded panel or sheet in the flow presentation; the reading is whether it has a box."
+ },
+ {
+  "n": 11,
+  "behaviour": "Start from: a preset fills the form ONLY (no D or #satname change, no orbit added, note changes, status 'Loaded the Molniya preset into the form. Nothing is on the globe until you add it.', focus stays on the select; Molniya = 525.939 | 39826.061 | 63.4 | 0 | 270 | 0 | 0.0043); optgroups 'On screen: screen' / 'Low Earth orbit: iss,sso,dd,landsat,thai,cube,knack' / 'Medium and high: gps,geo,molniya,tundra', 'Your orbits' (value c:<cid>) appears with a saved orbit; craft select writes A/m (cubesat 0.009, '4 kg and about 0.035 m² average cross-section.'); typing A/m selects Custom, 0.002 selects Dense; Now sets epoch to the second and keeps M; GEO screen craft = typical + 'No drag information at this height: a typical satellite is assumed'; after Add the select reads the saved orbit with 'The elements as you typed them.'",
+  "groups": [
+   2,
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g2 check a preset fills the form and nothing else: __gt.D.entry and #satname unchanged, no orbit added, the note under ",
+   "verify-planner-ui g2 check Molniya fills 525.939 x 39826.061 km, i 63.4, argp 270, A/m 0.0043 (the preset's own a and e, shown to 3 place",
+   "verify-planner-ui g2 check the craft select writes the A/m and shows its sentence",
+   "verify-planner-ui g2 check typing A/m by hand selects Custom",
+   "verify-planner-ui g2 check ...unless the figure is a craft's (0.002 is Dense and compact)",
+   "verify-planner-ui g2 check Now sets the epoch to the second (the clock's 03:04:05.678 reads 03:04:05) and keeps M",
+   "verify-planner-ui g2 check \"Start from\" lists On screen, then the presets by group, the default being sso",
+   "verify-planner-ui g2 check a geostationary spacecraft carries no drag information: Typical satellite, with the sentence that says so (<..",
+   "verify-planner-ui g2 check \"Your orbits\" appears in the list once there is a saved orbit",
+   "verify-planner-ui g2 check choosing one of your own orbits fills the form (the typed name is kept) and leaves the console alone",
+   "verify-planner-ui g4 check after Add \"Start from\" reads the saved orbit (under Your orbits) and the sentence under it says \"The elements "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 12,
+  "behaviour": "shape lenses: a/e (26554.137, 0.74), period (717.72 min), altitudes round-trip to 1e-3 in boxes and 1e-6 km in the model (also 300x1500 eccentric); e is one value in #pl-e and #pl-e-p",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check the a-and-e lens converts 525.939 x 39826.061 without loss (a 26554.137, e 0.74)",
+   "verify-planner-ui g2 check the period lens: 717.72 min, e 0.74",
+   "verify-planner-ui g2 check and back to altitudes, to 1e-3 km in the boxes",
+   "verify-planner-ui g2 check the model itself (not the rounded boxes) closes to 1e-6 km after three lens changes",
+   "verify-planner-ui g2 check an eccentric 300 x 1,500 km orbit likewise closes to 1e-6 km (altitudes -> a,e -> period -> altitudes)",
+   "verify-planner-ui g2 check e is one model value shown in both boxes, carried across the lens switch"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 13,
+  "behaviour": "node lens: sso preset shows LTAN '10:30' (inputmode text, unit hh:mm, aria-pressed); RAAN lens shows Planner.raanFromLtan (inputmode decimal, unit °); RAAN->LTAN->RAAN within 0.01°; '10:30','10.5','10,5' same node; changing epoch keeps typed LTAN",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check the LTAN lens: 10:30, inputmode \"text\" (a colon is needed), unit hh:mm",
+   "verify-planner-ui g2 check the RAAN lens shows the epoch's RAAN for 10:30 (to 1e-4 deg), inputmode \"decimal\", unit °",
+   "verify-planner-ui g2 check back to LTAN: 10:30",
+   "verify-planner-ui g2 check RAAN 123.4567 -> LTAN (<...>) -> RAAN comes back within 0.01 deg, in the model (<...>) and in the box (<...>)",
+   "verify-planner-ui g2 check 10:30, 10.5 and 10,5 are the same node",
+   "verify-planner-ui g2 check changing the epoch keeps the typed node: LTAN stays 10:30 and RAAN moves"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 14,
+  "behaviour": "epoch is UTC in every browser zone: note '#pl-epoch-note' reads 'UTC, as in a TLE — not the window bar’s UTC+7. The mean anomaly below is where the satellite is at this instant.'; label abbr has title; limits come from Planner.LIMITS (one second outside = err.epoch.range); 2026-03-08T02:30 (NY DST gap) stored as 02:30Z (l1 cols 18-32 '26067.10416667', store el.epoch equal)",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check the line under the epoch says UTC, as in a TLE, not the window bar's zone (UTC+7), and where the satellite is",
+   "verify-planner-ui g2 check the epoch limits come from Planner.LIMITS: one second outside either end is err.epoch.range, the ends themselv",
+   "verify-planner-ui g2 check Add under America/New_York: the entry, the stored record and the TLE all hold the typed UTC instant (2026-03-0",
+   "verify-planner-ui g2 check the same typed epoch is the same epoch under America/New_York, Asia/Bangkok and Pacific/Kiritimati (UTC+14), a"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 15,
+  "behaviour": "17 error cases (err.missing, notnum, inc.range, perigee.surface, apo.lt.peri, ecc.neg/parabola/hyper, a.range x2, am.range, bstar.range, ltan.range, epoch.range x2, sgp4.retro, notnum '35,786'): visible p#pl-err-<key> with glyph svg, data-kind=error, input aria-invalid=true + aria-describedby first token pl-err-<key>, wrapper .pl-f[data-invalid], item listed in __planner.items(); fixes: 'Swap them' (focus first changed field, status 'Set perigee to 700 km (was 800 km). Set apogee to 800 km (was 700 km).'), perigee underground -> 200 km",
+  "groups": [
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g3 check <...> from <...>: a visible paragraph with a glyph, the box aria-invalid with aria-describedby to it, the wrap",
+   "verify-planner-ui g3 check apogee below perigee offers \"Swap them\"",
+   "verify-planner-ui g3 check Swap them swaps, the focus goes to the first changed field, the status says what changed",
+   "verify-planner-ui g3 check a perigee underground offers 200 km, and the apogee follows only if it would be below it"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 16,
+  "behaviour": "typing never blocked/rewritten: 9,97,97.,97.4 and same after both passes (700 ms); trailing '.' survives 250 ms",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check typing is never blocked or rewritten: 9, 97, 97., 97.4, and the same after both passes have run",
+   "verify-planner-ui g2 check a trailing point survives the closed-form pass (160 ms)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 17,
+  "behaviour": "argp 370 -> note '370° is taken as 10.00°' (data-kind=note, not aria-invalid, model 10, Add stays enabled)",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check 370 gives the note \"370° is taken as 10.00°\", never an error: not aria-invalid, the model holds 10, Add stays "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 18,
+  "behaviour": "names: empty -> err.name.empty; catalogue name -> 'ISS (ZARYA) is already a name' with fix 'Rename it to ISS (ZARYA) (mine)' (<=24 code points); formula name '=HYPERLINK(\"x\") ok' -> note 'Will be saved as “HYPERLINK(\"x\") ok”', saved tidied on every surface (entry, masthead, store, picker row li.cu, saved list); 25 chars cut to 24; saved-name clash against another custom",
+  "groups": [
+   3,
+   4,
+   18,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g3 check an empty name: err.name.empty, Add aria-disabled",
+   "verify-planner-ui g3 check a catalogue name: err.name.taken, Add aria-disabled",
+   "verify-planner-ui g3 check ...whose fix label is the exact string the field receives",
+   "verify-planner-ui g3 check the NAME (mine) fix works, fits 24 code points, and Add is enabled again",
+   "verify-planner-ui g3 check a formula name: the Note err.name.cleaned says what will be saved, Add stays enabled",
+   "verify-planner-ui g3 check 25 characters: the Note says it is cut to 24",
+   "verify-planner-ui g4 check a saved name is refused: err.name.taken against the other custom orbit, with \"Rename it to My SSO (mine)\"",
+   "verify-planner-ui g18 check Add pressed with a real mouse in the drawer scrolls nothing: the form stays at <...> px (was <...> after), the",
+   "verify-planner-ui g18 check Update by Enter in a field scrolls nothing either (the form stays at 220 px) and leaves the focus in the field",
+   "verify-planner-ui g19 check a name with a formula in front is saved as the tidied text on every surface: the entry, the masthead, the stor"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The picker row is read with the popover open (harness openPicker/closePicker)."
+ },
+ {
+  "n": 19,
+  "behaviour": "primary button is never `disabled`; invalid => aria-disabled=true; pressing it focuses first invalid field and status 'Not added: Inclination runs from 0° to 180°. The field is marked.'",
+  "groups": [
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g3 check the primary button is never disabled: invalid, it is aria-disabled",
+   "verify-planner-ui g3 check pressing it focuses the first invalid field and the status names the problem"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 20,
+  "behaviour": "Add: status 'Added My SSO and loaded it: N passes from Bangkok in 24 h.'; D.entry.custom===true and === CUSTOM[0]; #satname; #idnorad 'none · custom' with parent display none, #idcospar '—', CAT still 2158, indexOf 2158; #customchip is a visible <button> 'Custom orbit · edit', #customnote and #tleactions shown, #briefnote not; host.add once, onLoad once, drawer stays open, #satcount '2,158 + 1 of yours'; saved row 'SSO 700 km · i 98.21° · LTAN 10:30' aria-current; '1 of 12, kept in this browser'; picker 'grp:Your orbits','cu:My SSOcustom'",
+  "groups": [
+   4,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g4 check Add: the status says \"Added My SSO and loaded it: N passes from Bangkok in 24 h.\"",
+   "verify-planner-ui g4 check Add: D.entry.custom is true and is the saved entry, #satname is the name, the number reads \"none · custom\" wit",
+   "verify-planner-ui g4 check Add: #customchip is a visible <button> with exactly \"Custom orbit · edit\", #customnote and the element-set but",
+   "verify-planner-ui g4 check Add loads the orbit once (host.add once, load once), the drawer stays open, and the count reads \"2,158 + 1 of ",
+   "verify-planner-ui g4 check the saved list gains the row, summarised \"SSO 700 km · i 98.21° · LTAN 10:30\", marked aria-current",
+   "verify-planner-ui g4 check the heading counts them: \"1 of 12, kept in this browser\"",
+   "verify-planner-ui g4 check the verdict line follows the globe: \"On the globe now: My SSO · N passes from Bangkok, M min in 24 h\"",
+   "verify-planner-ui g4 check the picker lists the orbit under \"Your orbits\" with the tag \"custom\"",
+   "verify-planner-ui g4 check after Add \"Start from\" reads the saved orbit (under Your orbits) and the sentence under it says \"The elements ",
+   "verify-planner-ui g20 check no page error and nothing on the console (a failure of the build is logged)",
+   "verify-planner-ui g20 check no page error and nothing on the console"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The count line is read by opening the picker (harness satCount); the first rows of the list are read from the open popover."
+ },
+ {
+  "n": 21,
+  "behaviour": "primary label states: 'Add to console' -> 'Shown on globe' (aria-disabled, Save as new shown) -> 'Update on globe' when edited (still aria-disabled when invalid); Enter on unchanged form 'Already on the globe.' and calls nothing; verdict 'On the globe: My SSO as added. The form has changed — press Update' with [data-stale]; Reset restores ('Back to the orbit on the globe.' / 'Back to the starting orbit.'); draft survives closing, Plan row keeps it under the typed name, reload loses it; two activations in one task add ONE orbit",
+  "groups": [
+   4,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g4 check a new valid form: the primary reads \"Add to console\", enabled, and Save as new is hidden",
+   "verify-planner-ui g4 check after Add: \"Shown on globe\", aria-disabled, Save as new visible",
+   "verify-planner-ui g4 check Enter on an unchanged form says \"Already on the globe.\" and calls nothing",
+   "verify-planner-ui g4 check edited: \"Update on globe\", enabled, Save as new visible",
+   "verify-planner-ui g4 check the verdict line says the form has changed and is marked stale",
+   "verify-planner-ui g4 check edited and invalid: still \"Update on globe\", now aria-disabled",
+   "verify-planner-ui g4 check Reset while editing: back to the orbit on the globe (\"Back to the orbit on the globe.\", the saved i and name)",
+   "verify-planner-ui g19 check the draft survives closing: reopened through the pill the form still holds \"Draft one\" and 612 km",
+   "verify-planner-ui g19 check the picker's Plan row opens the kept draft under the typed name: \"zzqq nothing\" with 612 km still in the form",
+   "verify-planner-ui g19 check Reset with nothing being edited returns to the starting orbit (My orbit, 700 x 700 km, i 98.213) and says \"Bac",
+   "verify-planner-ui g19 check a reload loses the draft: the form opens as \"My orbit\" again",
+   "verify-planner-ui g19 check activating Add twice in one task adds one orbit: the second press finds the form already on the globe (\"Alread"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 22,
+  "behaviour": "Update keeps cid/number/entry ('Updated My SSO.'); Save as new auto-numbers 'My SSO (2)'; 13th orbit refused: status 'Not added: The saved list is full.', #pl-err-form 'The saved list is full' data-kind=warn once inline + once in status, '12 of 12, kept in this browser', no text claims 'still works for this visit'; editing keeps form when another spacecraft is picked ('Update on globe', 'Not on the globe yet'); Update of off-screen orbit is trial-run first ('Not updated: SGP4 cannot fly this orbit (error 1: ...)'), nothing stored",
+  "groups": [
+   4,
+   18,
+   19
+  ],
+  "covering": [
+   "verify-planner-ui g4 check Update (Enter) keeps the id, the number and the entry itself: one orbit, i 98.5, \"Updated My SSO.\"",
+   "verify-planner-ui g4 check Save as new adds another, auto-numbered: \"Saved as My SSO (2).\" and the first orbit keeps its old elements",
+   "verify-planner-ui g4 check the 13th Add keeps nothing and says so (err.cap, \"The saved list is full\"), none is evicted, and the cap is Pl",
+   "verify-planner-ui g18 check a refused 13th Add: nothing was added (12 orbits, the spacecraft on screen unchanged), the title shows once in",
+   "verify-planner-ui g18 check ...and the message goes with the next edit",
+   "verify-planner-ui g19 check picking another spacecraft while editing leaves the form alone (it is a draft) and the primary becomes \"Update",
+   "verify-planner-ui g19 check an Update of an orbit that is not on screen is run through the page first: SGP4 refuses the decayed one inline",
+   "verify-planner-ui g19 check Reset goes back to the orbit being edited (\"Back to the orbit on the globe.\") and the primary still offers \"Up",
+   "verify-planner-ui g19 check Update on globe for an orbit that is not on screen puts it there: \"Updated Edit target.\", it is the entry on t"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 23,
+  "behaviour": "persistence: reload lists the orbit ('2,158 + 1 of yours') and still opens on KNACKSAT-2; Open from saved row restores TYPED i 97.123456 into form/record while TLE shows rounded 97.1235; key gt.custom {v:1,items} holds inputs only (no l1/satnum/bstar); with setItem throwing, orbit works and 'This browser will not remember orbits' shows once",
+  "groups": [
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g4 check reload in the same context: the orbit is listed (count \"2,158 + 1 of yours\") and the page still opens on the d",
+   "verify-planner-ui g4 check Open loads it on the globe and into the form from the stored elements: the typed i 97.123456 (the record and t",
+   "verify-planner-ui g4 check the key is gt.custom and the record holds inputs only (no TLE lines, no number)",
+   "verify-planner-ui g4 check with Storage.prototype.setItem throwing, the orbit still works and err.storage shows (\"This browser will not r",
+   "verify-planner-ui g4 check ...and only once (a second save does not repeat it)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The count after a reload is read by opening the picker."
+ },
+ {
+  "n": 24,
+  "behaviour": "Delete/Undo: 'Deleted My SSO.'+Undo, off-screen delete leaves D untouched, Undo restores same place+number without load, on-screen delete loads fallback first ('Deleted My SSO (2). Showing KNACKSAT-2 again.'), chip hides; Undo lasts 8 s; at the foot of a scrolled drawer/flow a second Undo is drawn under the list (#pl-undo, 1 button, 'Deleted Two.Undo') and goes with the real one; sheet draws none; a newer status takes the copy away",
+  "groups": [
+   4,
+   18
+  ],
+  "covering": [
+   "verify-planner-ui g4 check Delete an orbit that is off screen: \"Deleted My SSO.\" with Undo, one row left, the globe and its analysis unto",
+   "verify-planner-ui g4 check Undo of an off-screen row restores it at the same place with the same number, and does not take over the globe",
+   "verify-planner-ui g4 check Delete the orbit on screen: a fallback is loaded first (\"Deleted My SSO (2). Showing KNACKSAT-2 again.\"), the ",
+   "verify-planner-ui g4 check Undo of the on-screen row reloads it on the globe at the same place with the same number",
+   "verify-planner-ui g4 check the Undo button lasts 8 s and then goes (measured <...> s)",
+   "verify-planner-ui g18 check <...> sheet: the action bar (and its Undo) is on screen with the list, so no second Undo is drawn (<...> under",
+   "verify-planner-ui g18 check <...> <...>: a Delete pressed at the foot of the list leaves the action bar (and its Undo) out of sight, so th",
+   "verify-planner-ui g18 check ...and the focus is where SPEC 5.7 puts it (the next row's Open, c3), not on the new button",
+   "verify-planner-ui g18 check <...> <...>: pressing the Undo under the list brings the orbit back in its place (One,Two,Three), says \"Restor",
+   "verify-planner-ui g18 check drawer: a newer status (a preset) replaces the status line and takes the copy under the list away with it, so ",
+   "verify-planner-ui g18 check drawer: after the eight seconds (measured <...> s) both Undo buttons go together, and the focus that was on th"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 25,
+  "behaviour": "console refusals leave a clean page: (a) 50 km circular orbit: life.reentry shown, Add enabled, loads with D.reentry and 'Added Low one. SGP4 takes it below 120 km: these passes will not happen.'; (b) 5 km at i 0: 'Not added: SGP4 cannot fly this orbit (error N: ...)' + #pl-err-form, nothing saved/changed, #loadnote silent, edit clears message; (c) 200 km epoch -730 d: 'error 1: mean eccentricity or semi-major axis out of range'",
+  "groups": [
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g4 check (a) a circular 50 km orbit, A/m 0.0043: life.reentry is shown and Add is enabled (B* is held at its 120 km val",
+   "verify-planner-ui g4 check (a) ...it loads with D.reentry set, and the status says \"SGP4 takes it below 120 km: these passes will not hap",
+   "verify-planner-ui g4 check (b) a circular 5 km orbit at i 0: SGP4 is refused inline (\"SGP4 cannot fly this orbit (error N: ...)\"), nothin",
+   "verify-planner-ui g4 check ...and an edit clears the form-level message",
+   "verify-planner-ui g4 check (c) 200 km with the epoch 730 days before the window: SGP4 has decayed it (\"error 1: mean eccentricity or semi"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 26,
+  "behaviour": "observer moves: with a custom orbit loaded (flow layout) every {site} in the notes becomes Quito ('Ground track and Quito', verdict 'from Quito', no 'Bangkok'), epoch note follows window zone 'UTC−5'; same for the read-only section on a catalogue spacecraft",
+  "groups": [
+   7,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g7 check the planner is open in the flow presentation beside the rail",
+   "verify-planner-ui g7 check moving the observer with a custom orbit loaded: every {site} in the notes changes (\"Ground track and Quito\", t",
+   "verify-planner-ui g7 check ...and the line under the epoch follows the window bar's zone (UTC−5)",
+   "verify-planner-ui g20 check moving the observer with a catalogue spacecraft on screen rebuilds the section for the new site: the group is "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The observer form is the header chip's popover, filled through harness setSite (its fields exist only while it is open)."
+ },
+ {
+  "n": 27,
+  "behaviour": "Add makes no request to CelesTrak/mirror (including the visibilitychange re-check); Decay section has no #lifego, note says 'atmosphere model run forward', #lifespan 'forecast from your drag assumption, not from a history'",
+  "groups": [
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g4 check adding through the planner makes no request of CelesTrak or the TLE mirror (the synthesised number <...> is no",
+   "verify-planner-ui g4 check the Decay section has no \"Estimate remaining life\" button and carries the custom note"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The Decay section and its chart are lazy chunks: the suite waits for the words (lifePainted) before it reads them."
+ },
+ {
+  "n": 28,
+  "behaviour": "label constant: heading, #pl-say prefix and no other text say 'Professor’s notes' (region aria-labelledby=pf-title); with AdvisorCopy.ADVISOR_LABEL='Tutor' heading, spoken summary, basis tooltips, #rp-title ('Tutor on ISS (ZARYA)'), #rp-link and Elements-hint link follow and nothing says Professor",
+  "groups": [
+   8,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g8 check as shipped: the heading and the spoken summary read \"Professor’s notes\", the region is named by the heading, a",
+   "verify-planner-ui g8 check ADVISOR_LABEL stubbed to \"Tutor\": the heading, the spoken summary and the basis tooltips read Tutor, and nothi",
+   "verify-planner-ui g20 check as shipped, the section's heading and the link read \"Professor’s notes\" and no other text in it says Professor",
+   "verify-planner-ui g20 check ADVISOR_LABEL stubbed to \"Tutor\": the section is headed \"Tutor on ISS (ZARYA)\", the link in the Elements hint "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 29,
+  "behaviour": "11 presets: flagged ids exactly {iss:[],sso:[life.long],dd:[life.long],landsat:[life.long],thai:[life.long],cube:[],knack:[life.short],gps:[],geo:[],molniya:[rad.cross],tundra:[]}; Bangkok passes within 1 and minutes within 10 % of the table; every note shows word + glyph + left border >=3 px",
+  "groups": [
+   5
+  ],
+  "covering": [
+   "verify-planner-ui g5 check preset <...>: the Check/Problem ids are <...> and no other",
+   "verify-planner-ui g5 check preset <...>: Bangkok passes within 1 of <...> and minutes within 10 % of <...> (the page's own pass finder)",
+   "verify-planner-ui g5 check every note shows a word, a glyph and a left border of at least 3 px (<...> notes)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 30,
+  "behaviour": "AdvisorCopy.ITEMS.length===87; 300 seeded forms (LCG seed 12345, every 10th uses real host.trial): no { } NaN undefined Infinity null in titles/bodies/fix labels/DOM, titles <=48 chars, bodies <=70 words, >25 distinct items",
+  "groups": [
+   5
+  ],
+  "covering": [
+   "verify-planner-ui g5 check the catalogue has 87 items",
+   "verify-planner-ui g5 check no unresolved text across 300 seeded forms as rendered (<...> valid, <...> notes, <...> different items, <...>"
+  ],
+  "class": [
+   "product",
+   "structure"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 31,
+  "behaviour": "notes quote __gt.D after Add (n,total_min,best_el,alt_min/max,surf_swing,r_swing); trial before Add equals what the page holds; gt.count prints page minutes; sso_inc gives SGP4 node rate 0.98565°/d (6 heights); LTAN round trip; rgt_off within 5 km of an SGP4 node-to-node walk on 6 orbits",
+  "groups": [
+   7
+  ],
+  "covering": [
+   "verify-planner-ui g7 check after Add the notes quote __gt.D itself: n, total_min, best_el, alt_min, alt_max, surf_swing, r_swing",
+   "verify-planner-ui g7 check ...and the trial run before Add (the draft under another number) gave the same figures the page now holds: pas",
+   "verify-planner-ui g7 check the gt.count note prints the page's own minutes (<...> min)",
+   "verify-planner-ui g7 check sso_inc gives SGP4 a node rate within 0.001 deg/day of 0.98565 on a spot grid (400 to 2,000 km)",
+   "verify-planner-ui g7 check ltan round-trips: the dictionary's LTAN is the typed 10:30",
+   "verify-planner-ui g7 check rgt_off (the claimed miss of a repeating track) is within 5 km of SGP4 node to node on six orbits, and K/D are"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 32,
+  "behaviour": "keyed rendering: an edit leaves unchanged li.adv nodes identical (===), a group the reader closed stays closed",
+  "groups": [
+   5
+  ],
+  "covering": [
+   "verify-planner-ui g5 check notes are listed before the edit (<...>)",
+   "verify-planner-ui g5 check an edit that changes some notes leaves every unchanged li.adv node identical (===)",
+   "verify-planner-ui g5 check a group the reader closed stays closed after an edit that keeps its items"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 33,
+  "behaviour": "fixes: kind.sso.near (97.9°) fix writes #pl-inc '98.21', focus there with text selected, status 'Set i to 98.21 (was 97.9).'+Undo, box tinted (.changed), then kind.sso replaces it, Undo says 'Put back i (97.9).'; life.long 'Lower it to ...' fixes re-solve i so node rate stays 0.98565°/d; fixes work in Period and a/e lenses; every fix.set key is a form key",
+  "groups": [
+   5
+  ],
+  "covering": [
+   "verify-planner-ui g5 check kind.sso.near fires at 97.9 deg / 700 km (a Check)",
+   "verify-planner-ui g5 check the fix writes #pl-inc, moves the focus there with the text selected, says \"Set i to 98.21 (was 97.9).\" with U",
+   "verify-planner-ui g5 check kind.sso replaces kind.sso.near once the fix is in",
+   "verify-planner-ui g5 check Undo restores the old value and says what it put back",
+   "verify-planner-ui g5 check life.long offers the \"Lower it to ...\" fixes",
+   "verify-planner-ui g5 check a fix on a sun-synchronous orbit re-solves i: SGP4's node rate at the new height and i is still 0.98565 deg/da",
+   "verify-planner-ui g5 check a fix works in the Period lens (a lower orbit has a shorter period)",
+   "verify-planner-ui g5 check a fix works in the a-and-e lens",
+   "verify-planner-ui g5 check preset <...>: every fix.set key is a form key"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 34,
+  "behaviour": "live regions: no aria-live on .pf-list/groups/#prof; #pl-say, #pl-status, #pl-live polite; ten fast keystrokes write #pl-say exactly once, >=1150 ms after the last, text 'Professor’s notes: n to check. <titles>.'; unchanged set => no write for 2.6 s; #pl-status not written by typing/lenses/craft/Now/epoch edit/blur/timed passes (0 writes), written exactly once by preset, fix, its Undo, Reset, Add, Enter-unchanged, Copy, Delete",
+  "groups": [
+   5,
+   18
+  ],
+  "covering": [
+   "verify-planner-ui g5 check .pf-list, the groups and the notes section have no aria-live; #pl-say, #pl-status and #pl-live are polite",
+   "verify-planner-ui g5 check ten fast keystrokes change #pl-say exactly once, 1,200 ms after the last (measured <...> ms)",
+   "verify-planner-ui g5 check #pl-status is unchanged by typing",
+   "verify-planner-ui g5 check the spoken summary reads \"<label>: n to check. <titles>.\" and names only what is new",
+   "verify-planner-ui g5 check an edit that leaves the set of things to check as it was (<...>) says nothing at all: #pl-say is not written (",
+   "verify-planner-ui g18 check the status line is not written by typing, the lenses, the craft, Now, an epoch edit, a blur or the timed passe",
+   "verify-planner-ui g18 check ...and it is written exactly once by each of a preset, a fix, its Undo, Reset, Add, Enter on an unchanged form"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 35,
+  "behaviour": "invalid form shows no groups; cleared fields show 'Type an altitude and an inclination and the notes start. Or start from a preset above.' with no groups, verdict or error list",
+  "groups": [
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g3 check <...> from <...>: an invalid form shows no groups, so no stale notes",
+   "verify-planner-ui g3 check clearing the fields shows the empty-state sentence, no groups, no verdict and no list of missing figures"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 36,
+  "behaviour": "timers (D32): closed-form pass 160 ms after last input (150..<1000), ONE trial 500 ms after the burst (490..<1500), no load per keystroke, __gt.D unchanged, no trial while invalid",
+  "groups": [
+   5
+  ],
+  "covering": [
+   "verify-planner-ui g5 check the closed-form pass runs 160 ms after the last keystroke, not before (measured <...> ms), and has changed the",
+   "verify-planner-ui g5 check the trial pass runs 500 ms after the last keystroke, once for the whole burst (measured <...> ms, <...> trial)",
+   "verify-planner-ui g5 check nothing is loaded per keystroke: load() ran 0 times and __gt.D is the same object before and after typing",
+   "verify-planner-ui g5 check trial compute() does not run while the form is invalid"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 37,
+  "behaviour": "budgets: Advisor.advise p95 < 300 ms, __gt.compute(trial) p95 < 375 ms over 60 seeded forms (best of 2, #globe hidden)",
+  "groups": [
+   6
+  ],
+  "covering": [
+   "verify-planner-ui g6 check budgets: the advisor pass p95 is <...> ms (spec 120, cap <...>; median <...>) and a trial compute() p95 is <.."
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 38,
+  "behaviour": "element-set card for a custom orbit: #srcline 'Synthesized from your elements · not a real TLE', #tlemeta names placeholder and Alpha-5, #tle-edit/#tle-copy visible <button>s 'Edit in planner'/'Copy as TLE'; Copy puts exactly two 69-char lines (valid checksums) on the clipboard, status 'Copied the two lines. Some tools want a numeric catalogue number; replace O0001.' mirrored in #pl-live and #tle-said",
+  "groups": [
+   13
+  ],
+  "covering": [
+   "verify-planner-ui g13 check the element-set card says where the lines came from: \"Synthesized from your elements · not a real TLE\", and th",
+   "verify-planner-ui g13 check \"Edit in planner\" and \"Copy as TLE\" are two visible <button>s under the lines",
+   "verify-planner-ui g13 check Copy as TLE puts exactly two lines of 69 characters on the clipboard, equal to the ones on the card, each with",
+   "verify-planner-ui g13 check ...the status is written after the clipboard said yes and adds the sentence about the numeric number: \"Copied "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The card is the rail's Source tab; an open drawer takes the rail's place, so the suite shuts the planner (Close), presses the button, and opens it again where it needs it (pressCard). The old page showed the card in the report all the time."
+ },
+ {
+  "n": 39,
+  "behaviour": "age chip for a custom orbit: 'custom orbit · epoch 17 min ago' / 'epoch in 2.5 days' / 'epoch now', never stale, title text, rail provenance 'Custom orbit, your elements' + same age; nothing fetched, rail never says live/CelesTrak",
+  "groups": [
+   13
+  ],
+  "covering": [
+   "verify-planner-ui g13 check an epoch 17 minutes ago: the chip reads \"custom orbit · epoch 17 min ago\", is never stale, and its title says ",
+   "verify-planner-ui g13 check an epoch 2.5 days ahead: the chip reads \"custom orbit · epoch in 2.5 days\" (a future epoch has its own sign), ",
+   "verify-planner-ui g13 check an epoch now: \"custom orbit · epoch now\"",
+   "verify-planner-ui g13 check ...and nothing is ever refreshed or fetched for it: no request of CelesTrak or the mirror, and the rail never "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 40,
+  "behaviour": "exports of a custom orbit: CSV header row first, satellite 'Marks one (custom orbit)', norad placeholder, tle_source custom sentence, last 8 columns fixed, file name /^passes-custom-.+-.+-YYYY-MM-DD\\.csv$/; ICS SUMMARY '[custom orbit] Marks one', 'Hypothetical orbit planned on the Ground Track Console...', UID O0001-<n>@ground-track, lines <=75 octets",
+  "groups": [
+   13
+  ],
+  "covering": [
+   "verify-planner-ui g13 check the window holds passes from Bangkok (so the export checks below really run)",
+   "verify-planner-ui g13 check CSV: the first line is the header row (no comment line), \"satellite\" ends \" (custom orbit)\", \"norad\" is the pl",
+   "verify-planner-ui g13 check ICS: SUMMARY carries \"[custom orbit]\", DESCRIPTION says the orbit is hypothetical, the UID is the unique place"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The CSV and calendar buttons are under the rail's pass list (L9): the suite brings the Passes tab up."
+ },
+ {
+  "n": 41,
+  "behaviour": "every Terms link a note can carry resolves: 11 known terms, t-sso t-ltan t-beta t-geo t-crit t-belts t-saa exist, #t-bstar text contains 'Here you type the area-to-mass ratio A/m instead', no orphan a[href^=#t-]",
+  "groups": [
+   12,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g12 check every term an item can link (<...>) resolves, the seven new entries exist, t-bstar carries the A/m paragraph, ",
+   "verify-planner-ui g20 check every Terms link in the eight resolves to an entry of #sec-terms (<...>)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 42,
+  "behaviour": "a11y: no duplicate ids on the page; every visible input/select labelled; every control named (planner controls, #planopen, #customchip, #tle-edit, #tle-copy); '.pl-del' aria-label 'Delete Row one'; aria-describedby/controls/labelledby targets exist; abbr titles; .seg role=group+label, aria-pressed true|false, svgs aria-hidden; live regions role=status polite, aria-invalid only 'true', aria-modal absent outside sheet; tab order skip link -> header -> pill -> globe controls -> [pl-close,pl-name,pl-preset,shape x3,hp,ha,inc,node x2,raan,argp,ma,epoch,now,craft,am,add,reset] -> notes (summary/fix/terms) -> rows (open,del) -> transport, rail never in order, every stop shows a focus ring; landmarks (planner region labelled by pl-title 'Design a satellite', #prof section by pf-title, .pl-saved by pl-saved-h), h2/h3/h4 no skips, fieldsets have legend + described-by, only #pl-add (outside form, form=pl-form) submits, exactly three polite live regions",
+  "groups": [
+   12
+  ],
+  "covering": [
+   "verify-planner-ui g12 check no duplicate ids anywhere on the page",
+   "verify-planner-ui g12 check every visible input and select has a real label (<...> without)",
+   "verify-planner-ui g12 check every control has an accessible name (<...> controls: the planner's, the pill, the chip and the element-set bu",
+   "verify-planner-ui g12 check each Delete button names its orbit (\"Delete Row one\")",
+   "verify-planner-ui g12 check every aria-describedby, aria-controls and aria-labelledby target exists",
+   "verify-planner-ui g12 check every abbr has a title (<...>)",
+   "verify-planner-ui g12 check every seg is role=\"group\" with a name and aria-pressed true or false on its buttons; every drawing in the plan",
+   "verify-planner-ui g12 check the live regions: #pl-status and #pl-say and #pl-live are role=\"status\" aria-live=\"polite\"; aria-invalid is on",
+   "verify-planner-ui g12 check the tab order of 5.9 with the drawer open: skip link, header, the pill (expanded), the globe's controls, then ",
+   "verify-planner-ui g12 check ...then the notes (each summary, fix buttons, Terms links), then the saved rows (Open, Delete), then the trans",
+   "verify-planner-ui g12 check every control the Tab key reaches (<...> stops from the skip link to the transport) shows a focus indicator: a",
+   "verify-planner-ui g12 check landmarks: the planner is a region named by its heading (\"Design a satellite\"), and the notes and the saved li",
+   "verify-planner-ui g12 check headings inside the planner go h2, h3, h4 and never skip a level (<...>); every fieldset has a legend and a re",
+   "verify-planner-ui g12 check no button inside the form can submit it except the primary one, which sits outside it with form=\"pl-form\" (Ent",
+   "verify-planner-ui g12 check the buttons of each lens say which is on: exactly the model's shape and node are aria-pressed; the loaded save",
+   "verify-planner-ui g12 check the planner has no assertive region or alert: its three live regions are polite (<...>); only the page's own #"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 43,
+  "behaviour": "contrast from getComputedStyle in light and dark: 26+ pairs (text >=4.5; glyphs/borders >=3) for the planner, 19 pairs for #sec-prof",
+  "groups": [
+   12,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g12 check contrast in the <...> scheme: <...> pairs measured from getComputedStyle (text at least 4.5, glyphs and border",
+   "verify-planner-ui g20 check contrast in the <...> scheme: <...> pairs measured on the report's own background (text at least 4.5, glyphs a"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "retarget",
+  "note": "The rebuilt page's colour-mix() computes to color(srgb ...): the reading paints it on one pixel and reads it back (__T.rgba). Same pairs, same ratios."
+ },
+ {
+  "n": 44,
+  "behaviour": "reduced motion: no planner element has transition/animation duration >0 and none animates; without it the planner adds none either",
+  "groups": [
+   12
+  ],
+  "covering": [
+   "verify-planner-ui g12 check with prefers-reduced-motion: reduce no planner element has a transition or animation duration above zero, and ",
+   "verify-planner-ui g12 check ...and without it the planner still adds no transition or animation of its own (the page's own rule is transit"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "retarget",
+  "note": "The rebuilt page's reduced-motion rule sets every duration to .001ms (base.css) where the old one said transition:none: a duration counts as motion from 1 ms. Still: nothing animates, and without the preference the planner adds none."
+ },
+ {
+  "n": 45,
+  "behaviour": "(pointer:coarse): every planner button/input/select/summary/.pl-num/.pl-text/.pl-open >=44 px high, pill >=32, Inclination and Node boxes on one line",
+  "groups": [
+   12
+  ],
+  "covering": [
+   "verify-planner-ui g12 check under (pointer:coarse) every planner control and saved row is at least 44 px high, and the pill at least 32 (<",
+   "verify-planner-ui g12 check the Inclination and Node boxes sit on one line under touch"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 46,
+  "behaviour": "--bad resolves to #B3261E (light) / #F2776B (dark); no stylesheet rule whose selector matches /(^|[ ,.#])(planner|pl-|pf-|planpill|custom-chip|tle-actions|adv\\b)/ (or #sec-prof|#rp-) carries a colour literal",
+  "groups": [
+   12,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g12 check --bad resolves to <...> in the <...> scheme",
+   "verify-planner-ui g12 check no planner rule carries a colour literal in the <...> scheme (every colour is a token)",
+   "verify-planner-ui g20 check no rule of the section carries a colour literal in the <...> scheme (every colour is a token)"
+  ],
+  "class": [
+   "structure"
+  ],
+  "port": "retarget",
+  "note": "The build's minifier writes transparent as #0000 (rgba(0, 0, 0, 0) once parsed): a fully transparent colour is no colour of any theme and is not a literal (__T.lit). The scan walks 141 planner rules on the rebuilt page (131 on the old)."
+ },
+ {
+  "n": 47,
+  "behaviour": "no side effects: compute() keys and values identical with and without Planner in the page; empty storage on open (no keys written), CAT 2158, one Points object of exactly 2158 in the scene, count '2,158 spacecraft'; verification/baseline.json unchanged per git status",
+  "groups": [
+   13
+  ],
+  "covering": [
+   "verify-planner-ui g13 check the planner adds no field to compute()'s output: the same keys (<...> of the analysis, <...> of its elements) ",
+   "verify-planner-ui g13 check ...and the same passes (<...>) and minutes (<...> s), value for value",
+   "verify-planner-ui g13 check with empty storage: nothing is written by opening the page, CAT.length is 2,158, the cloud is one Points objec",
+   "verify-planner-ui g13 check verification/baseline.json is exactly as committed (git status says nothing about it) and is present"
+  ],
+  "class": [
+   "structure",
+   "fault-injection",
+   "product"
+  ],
+  "port": "replaced",
+  "note": "The old page was given no Planner global; the rebuilt page's planner chunk is not served (ABSENT_PLANNER). The git step of the check is kept: it asks the repository whether verification/baseline.json was touched."
+ },
+ {
+  "n": 48,
+  "behaviour": "window.Planner (maths) and window.PlannerUI are different objects; __planner exposes the 12 documented members; PlannerUI exposes init/open/close/isOpen/enabled/onLoad/refreshSaved",
+  "groups": [
+   13
+  ],
+  "covering": [
+   "verify-planner-ui g13 check window.Planner (the maths) and window.PlannerUI (the controller) are different objects, each with its own memb"
+  ],
+  "class": [
+   "structure"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 49,
+  "behaviour": "text under a field equals AdvisorCopy.renderInput(code,e).titleText for that code; every errors[] entry has field and code",
+  "groups": [
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g3 check <...> from <...>: the words under the field are the catalogue's copy for that code",
+   "verify-planner-ui g3 check every errors[] entry the planner returns has a field and a code"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 50,
+  "behaviour": "?tle=embedded: pill shown, focusable, aria-disabled=true (not disabled), title and #plannote hold 'The orbit planner is off in the assignment snapshot (?tle=embedded).' + link '?|Back to the live element sets'; planner off (no hook), count '2,158 spacecraft', seeded store untouched byte for byte; click/Enter/Space open nothing; picker offers no Plan row; __gt.addCustom answers code planner.off with the same sentence",
+  "groups": [
+   14
+  ],
+  "covering": [
+   "verify-planner-ui g14 check under ?tle=embedded the pill is shown and focusable with aria-disabled=\"true\" (not disabled), its title and th",
+   "verify-planner-ui g14 check ...the planner is off (not enabled, no hook), the count reads \"2,158 spacecraft\", and a seeded valid store is ",
+   "verify-planner-ui g14 check activating the pill (click, Enter, Space) opens nothing: #planner stays hidden, no drawer, aria-expanded false",
+   "verify-planner-ui g14 check the picker offers no Plan row (a query that matches nothing opens nothing), and __gt.addCustom answers planner"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 51,
+  "behaviour": "sgp4.retro (i 179.99, e 0.01, a 7000): a 'Fix this' error, retro_err 850..865 km, Add aria-disabled, fixes 'Set i to 180° exactly' | 'Set e to 0' each clear it; absent at i=180 or e=0",
+  "groups": [
+   15
+  ],
+  "covering": [
+   "verify-planner-ui g15 check i 179.99, e 0.01, a 7000: sgp4.retro is a Fix this (a blocking error), its figure is the flat-in-a 857 km (850",
+   "verify-planner-ui g15 check ...it offers the two fixes \"Set i to 180° exactly\" and \"Set e to 0\", and says \"about\" (a near-Earth orbit)",
+   "verify-planner-ui g15 check the first fix (i = 180) clears it and Add is enabled",
+   "verify-planner-ui g15 check the second fix (e = 0) clears it too",
+   "verify-planner-ui g15 check i = 180 exactly, or e = 0, shows no sgp4.retro at all"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 52,
+  "behaviour": "cav.frozen only for e>0 with argp near 90/270 ('A textbook frozen orbit is e = 0 here', fix 'Set e to 0'); after the fix cav.circ.angles appears; neither at e=0, argp 0",
+  "groups": [
+   15
+  ],
+  "covering": [
+   "verify-planner-ui g15 check 700 km, i 98.21, e 0.001046, omega 90: cav.frozen shows, with the fix \"Set e to 0\"",
+   "verify-planner-ui g15 check after the fix cav.frozen is gone, e is 0 in the model and the box, and cav.circ.angles shows (a circle has no ",
+   "verify-planner-ui g15 check e = 0 with omega 0 shows neither cav.frozen nor cav.circ.angles",
+   "verify-planner-ui g15 check ...and omega 0 with the same e is not the frozen case either (omega must be near 90 or 270)",
+   "verify-planner-ui g15 check ...omega 270 is (the body says \"90 or 270\")"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 53,
+  "behaviour": "cav.deep switches at a 225 min period (224.9 no, 225.1 yes) in the planner and in the read-only host",
+  "groups": [
+   15,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g15 check a period of 224.9 minutes has no cav.deep; 225.1 minutes has (SGP4 changes model at 225)",
+   "verify-planner-ui g20 check cav.deep in the read-only host: a catalogue entry at a period of <...> minutes has no cav.deep, one at <...> m"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 54,
+  "behaviour": "count with 12 orbits '2,158 + 12 of yours' on one line beside the pill; header <=100 px at 1440 and 1060 with 12 orbits",
+  "groups": [
+   10
+  ],
+  "covering": [
+   "verify-planner-ui g10 check the count with 12 orbits reads \"2,158 + 12 of yours\", on one line<...>",
+   "verify-planner-ui g10 check <...>: the closed header is within 3 px of the pre-planner header at 1440, 1280, 1100, 1080, 1060, 1040, 1024,",
+   "verify-planner-ui g10 check the header is at most 100 px at 1440x900 and at 1060x800 with 12 orbits"
+  ],
+  "class": [
+   "product",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The count with 12 orbits reads the same, on one line; it is in the picker's popover on the rebuilt page, so \"beside the pill\" is dropped for it (the header is what the pill sits in). The header figures are true by construction from 1100 px up on the rebuilt page (see 8); the box test is what can fail there."
+ },
+ {
+  "n": 55,
+  "behaviour": "gt-customs-changed repaints the saved list: removing through the page empties rows and shows #pl-saved-none",
+  "groups": [
+   4
+  ],
+  "covering": [
+   "verify-planner-ui g4 check gt-customs-changed repaints the saved list: removed through the page, the rows are gone and \"None yet\" shows"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 56,
+  "behaviour": "read-only Professor #sec-prof on a catalogue spacecraft: shown at boot after #sec-elements headed 'Professor’s notes on KNACKSAT-2'; exact id lists of SPEC 4.7 for 8 spacecraft (geostationary add cav.deep); verdict line with ' · '; page-measured figures; no buttons/.fixes; no draftOnly items; Terms links resolve; life.tracked links to #sec-life; Elements hint link '#sec-prof' in ADVISOR_LABEL words; keyed (same nodes on 3 d span); groups survive a new spacecraft and a Problem opens its group; planner panel and report section share classes but not nodes; observer move rebuilds; custom orbit hides it and its link (display:none), catalogue pick brings it back; load() alone hides it (onLoad dead); build booked off load() (aria-busy, one build for two loads); planner modules missing/embedded: hidden and empty, nothing computed; a throwing elementsFromTLE/advise hides it, logs, no page error, next spacecraft recovers; sweep of 11 awkward catalogue sets (from verification/catalog.txt via satellite.js); visual: no dead air, 44 px summaries at 390 px, muted verdict rail",
+  "groups": [
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g20 check the section is not left aria-busy: the build books itself with aria-busy and clears it when it has run (20 s a",
+   "verify-planner-ui g20 check at boot the Professor is already on the spacecraft on screen (the boot load ran before PlannerUI.init, so init",
+   "verify-planner-ui g20 check <...> (the page's own run from 2026-10-01T12:00Z, 24 h, Bangkok): the Professor says exactly the ids of SPEC 4",
+   "verify-planner-ui g20 check every one of the eight shows a verdict line (the kind of orbit, its height, its period) and not one has an unr",
+   "verify-planner-ui g20 check the notes the page measured are the page's own: KNACKSAT-2 and THEOS say their best pass climbs to the elevati",
+   "verify-planner-ui g20 check no fix buttons: not one <button> and not one .fixes block in the section for any of the eight (<...> buttons, ",
+   "verify-planner-ui g20 check no item flagged draftOnly (the ones that talk about what was typed): none of the eight shows one, every id on ",
+   "verify-planner-ui g20 check life.tracked points at the Decay section: its note carries a link \"Orbital decay\" to #sec-life, and following ",
+   "verify-planner-ui g20 check the Elements hint ends with a link to the section, in the words of ADVISOR_LABEL (\" · Professor’s notes\", href",
+   "verify-planner-ui g20 check ...and following it brings the section to the top of the screen",
+   "verify-planner-ui g20 check keyed: the same spacecraft over a 3-day span rebuilds the section and every note whose words did not change is",
+   "verify-planner-ui g20 check groups: the kind of orbit opens by itself and a group of notes stays shut (<...>); a group the reader closed s",
+   "verify-planner-ui g20 check groups: the Problem of the last spacecraft does not leave its group open on the next one (LANDSAT 9 after GOES",
+   "verify-planner-ui g20 check the two panels share classes and a renderer but not nodes: with the planner open on a draft, choosing another ",
+   "verify-planner-ui g20 check a custom orbit on screen: #sec-prof is display:none (the [hidden] rule beats section{display:flex}), the link ",
+   "verify-planner-ui g20 check ...and it stays hidden after the idle callbacks have had their time (a build booked for the spacecraft before ",
+   "verify-planner-ui g20 check choosing a catalogue spacecraft again brings the section back, headed with its name, with its link in the hint",
+   "verify-planner-ui g20 check off the critical path: load() only books the build (aria-busy on, no advice computed by the time load() return",
+   "verify-planner-ui g20 check ADVISOR_LABEL stubbed to \"Tutor\": the section is headed \"Tutor on ISS (ZARYA)\", the link in the Elements hint ",
+   "verify-planner-ui g20 check under ?tle=embedded the section stays hidden (the planner is off by design, D21), no advice is computed, and t",
+   "verify-planner-ui g20 check a build that throws (Planner.elementsFromTLE stubbed to throw) hides the section and its link, logs the error ",
+   "verify-planner-ui g20 check ...and the next spacecraft brings it back (a failure is not remembered): headed \"Professor’s notes on SENTINEL",
+   "verify-planner-ui g20 check the sweep finds its sets in verification/catalog.txt by parsing it with satellite.js: <...> awkward sets (<...",
+   "verify-planner-ui g20 check the sweep, <...> awkward sets one after another through the picker: each either loads or is refused by the con",
+   "verify-planner-ui g20 check ...with zero page errors and nothing on the console from the whole sweep (<...> page errors)",
+   "verify-planner-ui g20 check visual: the groups sit one under the next with no dead air (the page's section{gap:16px} must not spread them:",
+   "verify-planner-ui g20 check visual: at 1440 px no text is under <...> px and nothing runs past the right edge",
+   "verify-planner-ui g20 check visual: the verdict strip names the orbit and is not coloured by its worst note (GOES 18 is a healthy spacecra",
+   "verify-planner-ui g20 check visual: at 390 px (a phone) the section fits the screen (no sideways scroll: <...> of <...> px), no text under",
+   "verify-planner-ui g20 check contrast in the <...> scheme: <...> pairs measured on the report's own background (text at least 4.5, glyphs a",
+   "verify-planner-ui g20 check no rule of the section carries a colour literal in the <...> scheme (every colour is a token)"
+  ],
+  "class": [
+   "product",
+   "fault-injection",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The read-only section is built by the verbatim controller on both pages. Planner modules missing: the planner chunk is not served (the old page had a global hidden). On the rebuilt page the advice counter can never be installed (no Advisor exists on the window when its chunk is refused), so \"nothing is computed\" holds there by construction and the check no longer claims it: it claims the section hidden and empty (no aria-busy, no li), its link hidden, the console working, no page error; the counting half is measured on the old page, and on the rebuilt page by the ?tle=embedded check, whose advisor exists. The observer form is filled through harness setSite. The Elements hint is #sec-elements p.hint (a header on the rebuilt page). The section nav the Professor's link must not join is the old page's .bar-top .jump and the rebuilt page's sticky sub-nav nav.rnav (SEL.jump; the first port had read the union of the two), and it must hold at least six links for \"did not gain a link\" to mean something."
+ },
+ {
+  "n": 57,
+  "behaviour": "Decay section for a custom orbit: #lifebig and #lifesub equal Advisor.life's own range worded 'between X and Y after the epoch', no date; note, #lifespan, #lifelegend ('model, your drag') and #lifehist 'none — planned orbit'",
+  "groups": [
+   16
+  ],
+  "covering": [
+   "verify-planner-ui g16 check a 250 km circular orbit: the headline and the range are Advisor.life's own (mid <...>, \"<...>\"), worked out ag",
+   "verify-planner-ui g16 check ...the note says the model is run forward from your drag, a factor of 3 either way, scrolled years ahead; the "
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The Decay section for an orbit of the reader's is a lazy chunk: waited for."
+ },
+ {
+  "n": 58,
+  "behaviour": "hidden elements compute display:none on a catalogue spacecraft (#customchip #customnote #tleactions #planner #plannote #pf-verdict #pf-empty #pl-err-name #pl-err-hp #pl-savenew); probe elements built from legacy class names with [hidden] compute none; #sec-prof and #rp-nav exist and are none with a custom orbit; planner absent: pill display:none, init false, no hook, header == pristine; load() hides section itself",
+  "groups": [
+   8,
+   20
+  ],
+  "covering": [
+   "verify-planner-ui g8 check with Planner absent the pill has no box on screen (display:none on the old page; on the rebuilt page the wrapper it sits in is hidden), #planopen is not offered, the planner is not enabled and there is no hook",
+   "verify-planner-ui g8 check ...and the header height equals the pre-planner header (<...> against <...> with the pill gone; the hint row a",
+   "verify-planner-ui g8 check on a catalogue spacecraft every element the planner hides is display:none, the chip, the note and the element-",
+   "verify-planner-ui g8 check each of the four rules of D37 (.custom-chip, .planpill, #sec-prof, .tle-actions) and the planner's own three b",
+   "verify-planner-ui g8 check the WP9 section: #sec-prof and the link #rp-nav exist, and with a custom orbit on the globe both compute displ",
+   "verify-planner-ui g20 check load() itself hides the section for a custom entry: with PlannerUI.onLoad dead, adding a custom orbit still ta"
+  ],
+  "class": [
+   "structure",
+   "fault-injection",
+   "product"
+  ],
+  "port": "replaced",
+  "note": "The probe elements are copies of the real ones (same classes, so the same component scope), hidden, set beside them: a bare element with the old class names meets no scoped rule of the rebuilt page. Planner absent: the planner chunk is not served. Changed expectation: \"the pill is display:none\" became \"the pill has no box\" (__T.disp reads getClientRects), because the rebuilt page hides the pill by hiding the wrapper it sits in and the pill's own computed display stays what the author gave it; what is asked is that nothing of the pill is on screen (checks 58 and 62). The header-height check (a fixed height on the rebuilt page at 1440 px, so true by construction) also asserts that what the header still shows lies inside it unclipped."
+ },
+ {
+  "n": 59,
+  "behaviour": "sheet inerts exactly the 8 siblings on the path #planner -> body (a.skip, div.arview, div#report, aside.rail, div.viewport, header.bar-top, footer.bar-transport, div.bar-window), never div.app, main.stage, #planner and inside, the icon sprite svg, #pl-live (child of body); Tab/Shift+Tab cycle first<->last control; a node already inert stays inert through open/close",
+  "groups": [
+   11
+  ],
+  "covering": [
+   "verify-planner-ui g11 check the sheet makes inert exactly the siblings along the path from #planner to body (the old page's eight: a.skip,",
+   "verify-planner-ui g11 check the path itself (the old page's div.app and main.stage), #planner, everything inside #planner, the icon sprite",
+   "verify-planner-ui g11 check Tab from the last control goes to the first and Shift+Tab goes back: focus cycles inside #planner",
+   "verify-planner-ui g11 check Escape closes the sheet, releases every inert, restores role=\"region\" and the scroll, and returns the focus to",
+   "verify-planner-ui g11 check a node that was already inert (the AR view's own list) stays inert through open and close, and nothing else is"
+  ],
+  "class": [
+   "structure",
+   "layout"
+  ],
+  "port": "retarget",
+  "note": "The expectation is the walk of the siblings from #planner to body (see 9). #pl-live must be a direct child of <body> on the old page, and of the mount node #app (or <body>) on the rebuilt one, where the planner's host puts it (the first port had accepted any node on the path). The icon sprite must exist (#sv-good in the page): the first port read a missing sprite as \"not inert\"."
+ },
+ {
+  "n": 60,
+  "behaviour": "stale numbers: pressing 7 d with drawer open and unchanged form: the instant onLoad returns the notes quote the new window (n differs from 24 h, 1 measured note); after flush equal __gt.D; verdict line equals; unsaved edit equals a fresh trial run; pressing 24 h with an unsaved edit drops measured notes at once, back after trial",
+  "groups": [
+   7
+  ],
+  "covering": [
+   "verify-planner-ui g7 check pressing 7 d with the drawer open and the form unchanged: the instant the console has reloaded the notes quote",
+   "verify-planner-ui g7 check after flush the notes equal __gt.D for the 7 d window (n, total_min, best_el), not the 24 h figures (<...> pas",
+   "verify-planner-ui g7 check ...and the verdict line equals __gt.D too",
+   "verify-planner-ui g7 check an unsaved edit in the 7 d window: the notes equal a fresh run of the draft for that window",
+   "verify-planner-ui g7 check pressing 24 h with an unsaved edit in the form: at once the measured notes are dropped (the draft has no figur",
+   "verify-planner-ui g7 check ...and after the trial the notes equal a fresh run of the draft for the 24 h window"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The window span is a button in the window popover (harness clickWindow)."
+ },
+ {
+  "n": 61,
+  "behaviour": "deep-space guard: Molniya/GEO with epoch 1 and 5 y before window: trial returns null without computing (<100 ms), no measured items, closed-form items remain; 2 days still analysed; Add moves window start to the epoch with status ending ' The window now opens at the epoch: an orbit this high is slow to analyse far from it.' in <6 s; picking a saved Molniya 60 d off does the same",
+  "groups": [
+   8
+  ],
+  "covering": [
+   "verify-planner-ui g8 check <...> with the epoch <...> y before the window: with the drawer open the trial returns null without computing ",
+   "verify-planner-ui g8 check a Molniya whose epoch is 2 days from the window is still analysed (the guard starts beyond 3 days)",
+   "verify-planner-ui g8 check <...> (epoch <...> y before the window): Add moves the window start to the epoch, the status ends \"The window ",
+   "verify-planner-ui g8 check choosing a saved Molniya whose epoch is 60 days from the window moves the window to its epoch, in <...> s (cap"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The picker is a popover."
+ },
+ {
+  "n": 62,
+  "behaviour": "boot isolation: PlannerUI.onLoad before init is a no-op; seeded valid store with Lifetime script withheld => planner off, 0 customs, store untouched, pill none, console loaded, 0 page errors; stub Planner.toTLE throwing => same; decayed ODIN (26702) picked with planner present is refused by #loadnote",
+  "groups": [
+   8
+  ],
+  "covering": [
+   "verify-planner-ui g8 check PlannerUI.onLoad before init is a no-op",
+   "verify-planner-ui g8 check a stub Planner.toTLE that throws, with the seeded store: zero page errors, no orbit listed, the store untouche",
+   "verify-planner-ui g8 check a decayed catalogue object (ODIN, perigee below the ground) picked with the planner present: refused by the co"
+  ],
+  "class": [
+   "fault-injection"
+  ],
+  "port": "replaced",
+  "note": "The old page withheld lifetime.js and appended a throwing Planner.toTLE to planner.js. The rebuilt page cannot lose a module: its lifetime chunk is not served, and window.__GT_FAULT__ = { toTLE: true } (set before the page loads) makes the planner's TLE writer throw before anything is built with it. PlannerUI.onLoad before init is now also asked at the moment the controller is put on the window."
+ },
+ {
+  "n": 63,
+  "behaviour": "focus is never lost to <body>: picker Plan row + Escape -> pill; after Delete -> next row's .pl-open; after Undo -> restored row; after the sheet closes -> pill; deleting the only row in the sheet -> #pl-name",
+  "groups": [
+   1,
+   4,
+   11
+  ],
+  "covering": [
+   "verify-planner-ui g1 check the picker row then Escape: the focus is on the pill and the list is closed (never back in the search box)",
+   "verify-planner-ui g4 check after Delete the focus is on the next row's Open (c2), not <body>",
+   "verify-planner-ui g4 check after Undo the focus is on the restored row's Open (c1)",
+   "verify-planner-ui g4 check ...and the focus is on a row's Open (c1), not <body>",
+   "verify-planner-ui g4 check ...and the focus is on the restored row (c2)",
+   "verify-planner-ui g11 check after the sheet closes the focus is on the pill, not <body>",
+   "verify-planner-ui g11 check deleting the only saved row inside the sheet leaves the focus on the first field (the pill is inert behind it)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The focus checks are the old ones; the picker row is reached by opening the popover."
+ },
+ {
+  "n": 64,
+  "behaviour": "at 915x412 Add closes the sheet onto the globe; #pl-live (outside #planner, not inert) reads 'Added Sheet one and loaded it: ...'; chip shown",
+  "groups": [
+   11
+  ],
+  "covering": [
+   "verify-planner-ui g11 check at 915x412 Add closes the sheet onto the globe and #pl-live reads \"Added Sheet one and loaded it: ...\" outside"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 65,
+  "behaviour": "after the sheet closes #sky backing width == CSS width x devicePixelRatio (±2)",
+  "groups": [
+   11
+  ],
+  "covering": [
+   "verify-planner-ui g11 check after the sheet closes #sky's backing width equals its CSS width times devicePixelRatio, to 2 px (<...>)"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 66,
+  "behaviour": "Decay chart of a custom orbit: x labels 'epoch','+N d|h' (never a date; SSO preset '+N y' N>=100, 'More than a century', no 2136); axis ends at the longest run (tEnd = epoch + longest track, last label at plot right edge); hover tooltip '+N d after epoch<br>NNN.N km · model' at 6 positions, height from the run still flying (mid run, then the x1/3 run); at 390 px the tooltip never widens the page",
+  "groups": [
+   16
+  ],
+  "covering": [
+   "verify-planner-ui g16 check a 250 km custom orbit: the four labels of the x axis are \"epoch\" and three \"+N d\" or \"+N h\", none of them a da",
+   "verify-planner-ui g16 check ...the axis ends at the longest of the three runs (the x1/3 one, <...> after the epoch), so the band reaches t",
+   "verify-planner-ui g16 check hovering the 250 km chart: the tooltip is on at every position, reads \"+N d after epoch\" and a height, and car",
+   "verify-planner-ui g16 check ...and its height is the run that is still flying: the mid-case run up to its end (<...> d), the x1/3 run beyo",
+   "verify-planner-ui g16 check the sun-synchronous preset (700 km): the last x label is \"+N y\" with N at least 100, the first is \"epoch\", and",
+   "verify-planner-ui g16 check ...the headline reads \"More than a century\", the range \"between <...> and more than a century after the epoch\"",
+   "verify-planner-ui g16 check hovering the sun-synchronous chart: \"+N y after epoch\" and a height, no date, no 2136",
+   "verify-planner-ui g16 check at 390 px wide, with the tooltip at the far right of the chart (its right edge at <...> px), the page is no wi"
+  ],
+  "class": [
+   "product",
+   "structure"
+  ],
+  "port": "helper",
+  "note": "The chart keeps its geometry on the canvas (__geom) as the old one did (src change in DecaySection.svelte); the tooltip is text with a line break, read as the markup it stands for."
+ },
+ {
+  "n": 67,
+  "behaviour": "Copy as TLE with clipboard undefined/rejecting/throwing: status 'Select and copy the two lines above.', #pl-live same, the two lines selected, no page error; with a 500 ms clipboard status is empty at 150 ms and 'Copied the two lines.' only after it resolves",
+  "groups": [
+   17
+  ],
+  "covering": [
+   "verify-planner-ui g17 check <...>: Copy as TLE says \"Select and copy the two lines above.\", has selected exactly the two lines on the card",
+   "verify-planner-ui g17 check with a clipboard that takes 500 ms the status is still empty after 150 ms (nothing is claimed before it resolv"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The Copy as TLE button is on the rail's Source tab."
+ },
+ {
+  "n": 68,
+  "behaviour": "'On screen' preset: name 'KNACKSAT-2 (mine)' (<=24 code points: first 17 + ' (mine)'), B* worked back to fitted A/m (Custom, 'B* from its TLE, worked back to A/m: fitted, not measured'), its TLE epoch, console unchanged; the err.name.taken fix label equals the string the field receives",
+  "groups": [
+   2,
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g2 check the spacecraft on screen: \"KNACKSAT-2 (mine)\", its B* worked back to a fitted A/m (Custom), its own TLE epoch,",
+   "verify-planner-ui g2 check choosing it for \"<...>\" (an 21-character catalogue name): at most 24 code points, the first 17 of the name and",
+   "verify-planner-ui g2 check the err.name.taken fix label shows exactly the string the field receives, which fits the 24-code-point limit",
+   "verify-planner-ui g3 check a long catalogue name: the fix label is at most 24 code points and ends \" (mine)\""
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "helper",
+  "note": "The picker is a popover."
+ },
+ {
+  "n": 69,
+  "behaviour": "node box: inputmode text + hh:mm for LTAN (colon needed), decimal + ° for RAAN",
+  "groups": [
+   2
+  ],
+  "covering": [
+   "verify-planner-ui g2 check the LTAN lens: 10:30, inputmode \"text\" (a colon is needed), unit hh:mm",
+   "verify-planner-ui g2 check the RAAN lens shows the epoch's RAAN for 10:30 (to 1e-4 deg), inputmode \"decimal\", unit °"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ },
+ {
+  "n": 70,
+  "behaviour": "parsing: '35,786' is err.notnum; '10,5' decimal comma ok in LTAN; setModel({epoch:'2026-02-30T12:00:00'}) is err.epoch.range as typed",
+  "groups": [
+   2,
+   3
+  ],
+  "covering": [
+   "verify-planner-ui g2 check 10:30, 10.5 and 10,5 are the same node",
+   "verify-planner-ui g3 check 35,786 in the a box is err.notnum (a thousands separator, not a decimal comma)",
+   "verify-planner-ui g3 check setModel({epoch:\"2026-02-30T12:00:00\"}) is err.epoch.range, as typed"
+  ],
+  "class": [
+   "product"
+  ],
+  "port": "as-is"
+ }
+]

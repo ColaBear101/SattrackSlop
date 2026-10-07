@@ -2,6 +2,7 @@ import type { Globe } from '../../scene';
 import { sgp4Track } from '../../lib/core/propagator';
 import { iso } from '../../lib/text/fmt';
 import { tzAt } from '../../lib/places';
+import { isCustom } from '../../lib/planner/custom';
 import { app } from '../../state/app.svelte';
 import { clock } from '../../state/clock.svelte';
 import { BODY, MASK, getObs, satellite } from '../../state/engine';
@@ -146,7 +147,7 @@ class GlobeState {
     if (!g || !D) return;
     /* the catalogue's own entry, not the effective copy: the cloud lights the dot whose record IS the one on screen. A planned
        orbit is not in the catalogue and is passed as it is. */
-    const entry = app.embedded(D.entry.satnum) ?? D.entry;
+    const entry = isCustom(D.entry) ? D.entry : app.embedded(D.entry.satnum) ?? D.entry;   // the flag first: the test hook's orbit has a real number
     g.orbit3d.setSat(entry, D.E, { start: D.start.getTime(), hours: D.hours });
     this.applyTrail();                            // "1 orbit" is per spacecraft
     if (g.viz) g.viz.setOrbit({ satrec: D.satrec, elements: D.E });
@@ -163,6 +164,15 @@ class GlobeState {
    * second when only real time is passing (a low orbit covers 7.6 km a second, a pixel is about 20 km). */
   private activeUntil = 0;
   private interactUntil = 0;
+  /** Something is drawn over the whole page (the AR view): the scene draws nothing, however busy it would otherwise be. */
+  private covered = false;
+
+  /** The AR view opened or closed over the globe. Opening is synchronous, inside the tap, and works before the scene exists (the flag is
+   *  honoured when it does); closing wakes the scene, because with the clock stopped nothing else would. */
+  cover(on: boolean): void {
+    this.covered = on;
+    if (on) this.policy(); else this.wake();
+  }
 
   /** Something may have changed what the globe shows: draw for a while. */
   wake(ms = 2000): void {
@@ -182,7 +192,7 @@ class GlobeState {
     if (!g) return;
     const now = performance.now(), playing = clock.playing;
     const busy = playing || now < this.activeUntil;
-    g.raw.suspend(!this.showing || !busy);
+    g.raw.suspend(this.covered || !this.showing || !busy);
     const r = clock.rate;
     g.raw.setPace(now < this.interactUntil || (playing && r > 60) ? 0 : playing ? (r > 2 ? 33 : 100) : 0);
   }

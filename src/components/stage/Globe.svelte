@@ -193,7 +193,8 @@
   .o3-mini:not([hidden]) ~ .o3-key { display: none; }
   @media (max-width: 640px) { .o3-key { display: none; } }
 
-  .hint-drag { position: absolute; left: var(--space-4); bottom: var(--space-3); margin: 0; pointer-events: none; font-family: var(--font-mono); font-size: var(--fs-0); color: #8AA0AC; text-shadow: 0 0 6px #05090C; }
+  /* one line, cut short where the picture is narrow (the orbit planner's drawer leaves the globe 530 px): a second line would grow up into the key above it */
+  .hint-drag { position: absolute; left: var(--space-4); right: var(--space-4); bottom: var(--space-3); margin: 0; pointer-events: none; font-family: var(--font-mono); font-size: var(--fs-0); color: #8AA0AC; text-shadow: 0 0 6px #05090C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* a phone: above the controls' strip, and wrapping */
   @media (max-width: 719px) { .hint-drag { right: var(--space-3); bottom: 92px; white-space: normal; } }
 

@@ -1,7 +1,9 @@
 import { createHistorySource } from '../lib/net/history-source';
 import type { CatalogueEntry } from '../lib/catalogue/parse';
+import { isCustom, type CustomEntry } from '../lib/planner/custom';
 import { fetchingView, offerView, LIFE_NOTHING, type LifeChartState, type LifeFields, type LifeView } from '../lib/text/life-offer';
 import { historyCtx } from './net';
+import { loadPlannerMods, plannerMods } from './planner-mods';
 
 /* Orbital decay and the remaining-life estimate. The estimate itself is lib/planner/lifetime.ts; this keeps the panel's
  * state: what it says, the three figures beside the chart, and what the chart is drawn from.
@@ -17,6 +19,7 @@ import { historyCtx } from './net';
 
 const DASH: LifeFields = { alt: '—', rate: '—', hist: '—' };
 const engine = () => import('../lib/text/life');
+const customWords = () => import('../lib/text/life-custom');
 
 class LifeState {
   view = $state.raw<LifeView>(LIFE_NOTHING);
@@ -42,15 +45,60 @@ class LifeState {
     this.req++;
     this.target = entry;
     this.clear();
+    /* An orbit the reader designed first, before anything keyed on its number: no cache to probe, no button, no request. The flag, never
+       the number - the test hook's orbit carries a real catalogue number. */
+    if (isCustom(entry)) { this.view = LIFE_NOTHING; void this.offerCustom(entry, this.req); return; }
     const hit = createHistorySource(historyCtx(false)).cached(entry.satnum);
     if (hit) { this.view = LIFE_NOTHING; void this.paint(hit, this.req); return; }
     this.view = offerView();
   }
 
+  /** A planned orbit: nothing to ask anyone. The forecast is the page's own atmosphere model run forward from the area-to-mass ratio the
+   *  reader typed (the advisor's chunk), kept on the entry so a window move or a second look does not pay for it again. Everything that
+   *  can go wrong is the panel's own answer, never a throw out of the load that called this. */
+  private async offerCustom(entry: CustomEntry, my: number): Promise<void> {
+    let paint;
+    try {
+      const [W] = await Promise.all([customWords(), this.chartReady?.().catch(() => undefined)]);
+      const el = entry.el;
+      if (!el) paint = W.lifeCustomPaint(null, null);              // the test hook's entry: no elements, and nothing more to load
+      else {
+        const key = W.lifeCustomKey(el);
+        let L;
+        if (entry.__life && entry.__life.key === key) L = entry.__life.life;
+        else {
+          const mods = plannerMods() ?? await loadPlannerMods();
+          L = mods.Advisor.life(el);
+          entry.__life = { key, life: L };
+        }
+        paint = W.lifeCustomPaint(L, el);
+      }
+    } catch (err) {
+      console.error(err);
+      paint = null;
+    }
+    if (my !== this.req) return;                                    // the reader moved on while it was on its way
+    if (!paint) {
+      try { paint = (await customWords()).lifeCustomFailed(); } catch { return; }
+      if (my !== this.req) return;
+    }
+    this.view = paint.view;
+    this.fields = { ...DASH, ...paint.fields };
+    this.chart = paint.chart;
+  }
+
+  /** The request counter: a history answer is dropped when this has moved on since it was asked for. */
+  get seq(): number { return this.req; }
+
   /** The reader asked ("Estimate remaining life", "Try again"). */
   async start(): Promise<void> {
-    const entry = this.target, my = this.req;
-    if (!entry || (entry as { custom?: boolean }).custom) return;       // a planned orbit has no history to ask for
+    if (this.target) await this.run(this.target, this.req);
+  }
+
+  /** Fetch the history of `entry` and paint its forecast, if request number `my` is still the current one. The button that calls start() is
+   *  never made for a planned orbit, so this is the second layer: a direct call for one asks nobody and leaves the panel as it was. */
+  async run(entry: CatalogueEntry, my: number): Promise<void> {
+    if (isCustom(entry) || my !== this.req) return;
     const t0 = Date.now();
     const say = () => { this.view = fetchingView(Math.round((Date.now() - t0) / 1000)); };
     say();

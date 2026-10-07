@@ -14,6 +14,9 @@ import { Lifetime } from '../planner/lifetime';
 import { Planner } from '../planner/planner';
 import { Advisor } from '../planner/advisor';
 import { AdvisorCopy } from '../planner/advisor-copy';
+import { SkyAR } from '../ar/skyar';
+import { WMM } from '../ar/wmm';
+import { makeARView } from '../ar/arview';
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.Body = { Earth };
@@ -22,3 +25,7 @@ g.Lifetime = Lifetime;
 g.Planner = Planner;
 g.AdvisorCopy = AdvisorCopy;
 g.Advisor = Advisor;
+g.SkyAR = SkyAR;
+g.WMM = WMM;
+/* the AR controller reads SkyAR and WMM through the object it is given, and touches no document until init() and open() */
+g.ARView = makeARView(g);

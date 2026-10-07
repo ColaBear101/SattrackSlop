@@ -1,6 +1,7 @@
 <script lang="ts">
   import { report } from '../../state/report.svelte';
   import Rich from '../ui/Rich.svelte';
+  import ProfessorLink from './ProfessorLink.svelte';
 
   /* (a) The orbital elements at the epoch: the six that the TLE holds, each with what it is and where on the two lines it
      comes from; the same orbit as the state vector says it is at that instant (osculating); and the figures that follow from
@@ -12,7 +13,7 @@
 <section id="sec-elements" aria-labelledby="sec-elements-h">
   <header>
     <h2 id="sec-elements-h">Orbital elements at epoch</h2>
-    <p class="hint">SGP4 mean elements from the <abbr title="two-line element set">TLE</abbr> (Kozai n, Brouwer a), angles in the <abbr title="true equator, mean equinox: the inertial frame SGP4 works in">TEME</abbr> frame of epoch</p>
+    <p class="hint">SGP4 mean elements from the <abbr title="two-line element set">TLE</abbr> (Kozai n, Brouwer a), angles in the <abbr title="true equator, mean equinox: the inertial frame SGP4 works in">TEME</abbr> frame of epoch<ProfessorLink /></p>
   </header>
 
   <div class="elements" id="elgrid">

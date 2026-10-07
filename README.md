@@ -2243,14 +2243,17 @@ Every one of those blocks NASA's imagery service before loading the page, so the
 to its drawn coastlines. Two reasons: the timings some of them measure are wall-clock, and a
 megabyte of JPEG fetched ten times a run is rude to a service that is free.
 
-`npm run ar` has two checks that depend on which pass the clock lands on: *out of frame to the right*
-and its *above and to the right* twin aim the virtual phone 40° and 30° in azimuth away from the
-spacecraft at the highest pass in the window and expect it to be out of frame, with a pointer. On 4
-October 2026 that pass peaked at 79.3°, where 40° of azimuth is about 7° on the sky, so the spacecraft
-stayed in frame and both checks failed with *no pointer*. They fail the same way against the committed
-page and the committed `verify-ar.js`, without the planner. Since `npm test` stops at the first
-failure, on such a day it stops at `ar` and never reaches `layout` or `planner-ui`; run those two by
-name.
+`npm run ar` sets its own clock. The window opens at "now", and what some of its checks need of it is
+not true every day: *out of frame to the right* and its *above and to the right* twin aim the virtual
+phone 40° and 30° in azimuth away from the spacecraft and expect it to be out of frame, with a pointer,
+which fails when the spacecraft is near the zenith (on 4 October 2026 the highest pass peaked at 79.3°,
+where 40° of azimuth is about 7° on the sky), the Cape Town check has the same trap, and London keeps
+UTC+1 only until late October. So every page the suite opens starts at 2026-09-13T00:00Z on Playwright's
+clock, which runs on from there and moves `Date`, the timers, `requestAnimationFrame` and
+`performance.now` together; `GT_AR_AT=<an ISO instant in 2025-2029>` starts it somewhere else. Those
+checks also make the geometry they need, so they do not depend on the day: they move the clock along
+the pass to where the spacecraft is about 35° up, and the London check works out the phone's own offset
+for the day.
 
 A few checks measure wall-clock time, so on a machine busy with something else one can fail while
 nothing is wrong: the advisor suite's budget of 120 ms at the 95th percentile for a whole advisor

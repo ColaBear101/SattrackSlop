@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app, SPANS } from '../../state/app.svelte';
+  import { isCustom } from '../../lib/planner/custom';
   import { fromSiteInput, toSiteInput, tzLabelAt } from '../../lib/places';
   import Popover from '../ui/Popover.svelte';
   import Button from '../ui/Button.svelte';
@@ -31,9 +32,13 @@
   /* how far the window sits from the set's epoch: a TLE is only good for a few days either side of it */
   const off = $derived(a ? (a.start.getTime() - a.E.epoch.getTime()) / DAY : 0);
   const far = $derived(Math.abs(off) > 3);
+  /* "SGP4 drifts this far out" is about real element sets, which the true orbit leaves as perturbations the model lacks pile up. A designed
+     orbit has no truth behind it: the model IS the orbit, so far from the epoch it is not wrong, only far from the epoch, where the mean
+     anomaly M is defined. Said plainly, and never as a warning. */
+  const mine = $derived(!!a && isCustom(a.entry));
   const note = $derived(
     (Math.abs(off) < 0.05 ? 'window starts at the epoch' : (off > 0 ? '+' : '') + off.toFixed(1) + ' d from epoch') +
-    (far ? ' — SGP4 drifts this far out' : '')
+    (far ? (mine ? ' — M belongs to the epoch' : ' — SGP4 drifts this far out') : '')
   );
 </script>
 
@@ -64,7 +69,7 @@
     <p class="eyebrow">Span</p>
     <Segmented label="Window length" size="sm" dataAttr="h" value={a?.hours ?? 24} onchange={v => app.setSpan(+v)}
                options={SPANS.map(h => ({ value: h, label: spanLabel(h) }))} />
-    <p class="note mono" id="winnote" class:warn={far}>{note}</p>
+    <p class="note mono" id="winnote" class:warn={far && !mine}>{note}</p>
   </div>
 </Popover>
 

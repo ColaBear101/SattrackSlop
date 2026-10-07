@@ -42,11 +42,32 @@
  *   20-24 what SPEC 6.1 changed without a spec check of its own: the reload paths (C07), the
  *         deep-space window (D39), the host of 6.8, the picker with the planner off, onLoad (C08)
  *
- * Served over http from a fresh context (empty localStorage) like the other page checks.
+ * Served over http from a fresh context (empty localStorage) like the other page checks, through
+ * verification/lib/harness.js, so the same file runs against either build:
+ *   GT_TARGET=legacy node verification/verify-custom.js
+ *   GT_TARGET=new GT_DIST=<build folder> node verification/verify-custom.js
+ * The rebuilt page keeps some controls in popovers (the spacecraft picker, the window controls, the observer
+ * form); those are driven through the harness helpers, which open one if it is shut and do nothing extra on the
+ * old page. Where the rebuilt page paints a moment later than the old one (the Decay panel and its chart for an
+ * orbit of the reader's own are a lazy chunk), the check waits for the very text it then reads.
+ *
+ * EVERY GROUP RUNS ON THE TEST-SURFACE BOOT PATH. The harness sets window.__GT_TEST__ in each context, and with it the rebuilt page
+ * (src/testing/surface.ts) brings the orbit planner up EAGERLY, before it publishes window.__gt: saved orbits restored, the controller
+ * built, PlannerUI.init called once. That is not how a visitor meets the page: there the planner's chunks are fetched when the browser
+ * is idle after the first answer, or on the first press of the pill, and the console must be right in the meantime and in between.
+ * Nothing in this file looks at that path; verification/verify-visitor.js is its guard. (A check here that passes says the planner,
+ * once up, keeps its promises; it does not say the planner arrives the way a visitor's arrives.)
+ *
+ * The network claims count the page's OWN data-cache API as well as CelesTrak and its mirror: the page asks /api/tle/<n> and
+ * /api/history/<n> before it asks anyone else, so a request that went only there would be a request all the same. On the rebuilt page
+ * every context answers that API as itself with "the sources are down" (502, x-gt-api: 1): the page then goes on to the direct fetches
+ * (blocked and counted, as always) and, unlike a bare 503, does not trip the ten-minute circuit breaker, so the page really does ask the
+ * API again for each number, and the counter has something to see. The controls of group 11 prove it can.
+ *
  * Three environment variables exist for verify-custom-mutants.js and for working on one group;
  * a plain run sets none of them and runs everything:
  *   CUSTOM_INDEX_HTML=<file>  serves that file as index.html instead (a copy with one guard removed,
- *                             never the repo file);
+ *                             never the repo file; the mutants are text edits of the OLD page, so legacy only);
  *   CUSTOM_GROUPS=2,11,17     runs only those groups;
  *   CUSTOM_FAILFAST=1         stops at the first failing check and says which (a mutant that is caught
  *                             need not be run to the end).
@@ -58,31 +79,13 @@ const H = require('./lib/harness');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const http = require('http');
 const { chromium } = H.playwright();
 
-const ROOT = path.join(__dirname, '..');
-const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
+const NEW = H.targetName() === 'new';
 const INDEX = process.env.CUSTOM_INDEX_HTML || null;
 const GROUPS = process.env.CUSTOM_GROUPS ? new Set(process.env.CUSTOM_GROUPS.split(',').map(Number)) : null;
 const FAILFAST = !!process.env.CUSTOM_FAILFAST;
 const want = n => !GROUPS || GROUPS.has(n);
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
-                '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css' };
-function serve() {
-  return new Promise(resolve => {
-    const srv = http.createServer((req, res) => {
-      const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      let file = path.join(SITE, rel);
-      if (INDEX && rel === 'index.html') file = INDEX;
-      if (!file.startsWith(SITE) && !(INDEX && file === INDEX)) { res.writeHead(404); return res.end('no'); }
-      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end('no'); }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
-      fs.createReadStream(file).pipe(res);
-    });
-    srv.listen(0, '127.0.0.1', () => resolve(srv));
-  });
-}
 
 /* Thrown by chk under CUSTOM_FAILFAST: unwinds to the handler at the bottom, which closes the browser and the server
    (process.exit from inside a check would leave Chromium behind) and names the check. */
@@ -95,7 +98,13 @@ const chk = (name, ok, detail) => {
   if (!ok && FAILFAST) throw new FailFast(name);
 };
 const allErrs = [];
-const NET = /celestrak\.org|tle\.ivanstanojevic\.me/;
+/* Every request that carries an element set's or a decay history's number to anyone: CelesTrak, its mirror, and this page's own cache API
+   (/api/tle/<n>, /api/history/<n>), which the rebuilt page asks first. The old page has no such API and asks nobody here. */
+const NET = /celestrak\.org|tle\.ivanstanojevic\.me|\/api\/(tle|history)\b/;
+/* The page's own API as it answers when its sources are down: 502, upstream_unavailable, and the x-gt-api header that says it is the API
+   talking. The harness's own answer to /api/** (a bare 503) would be "not our API", which trips the page's ten-minute circuit breaker at
+   the first request of the boot, after which the page never asks the API again and a request to it could not be told from no request. */
+const API_DOWN = r => r.fulfill({ status: 502, contentType: 'application/json', headers: { 'x-gt-api': '1' }, body: JSON.stringify({ error: 'upstream_unavailable', tried: [] }) });
 let BASE = '';
 
 /* A fresh context. `init` runs before the page's own scripts on every load; `route` is a list of
@@ -111,6 +120,8 @@ async function open(browser, o) {
   page.on('request', r => { if (NET.test(r.url())) reqs.push(r.url()); });
   for (const u of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**', '**geocoding-api.open-meteo.com/**'])
     await page.route(u, r => r.abort());
+  if (INDEX) await page.route(u => new URL(u).pathname.endsWith('/index.html'), r => r.fulfill({ path: INDEX, contentType: 'text/html; charset=utf-8' }));
+  if (NEW) await page.route(u => /^\/api\/(tle|history)\//.test(new URL(u).pathname), API_DOWN);
   for (const [pat, fn] of (o.route || [])) await page.route(pat, fn);
   await page.goto(BASE + (o.search || ''), { waitUntil: 'load', timeout: 90000 });
   try { await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 40000 }); }
@@ -118,32 +129,43 @@ async function open(browser, o) {
   await page.waitForTimeout(o.settle === undefined ? 500 : o.settle);
   return { ctx, page, errs, reqs };
 }
-/* Mean elements as the planner takes them. The epoch is the start of the current hour, so the default
-   window (which opens now) holds passes and the orbit is a day old at most. */
-const HOUR = Math.floor(Date.now() / 3600000) * 3600000;
+/* Mean elements as the planner takes them. The epoch is the start of an hour that is at least six minutes past, so the default
+   window (which opens now) holds passes, the orbit is about an hour old and a day old at most, and the age text never reads
+   "epoch now" (the first 90 seconds of an hour used to: a time-of-day flake in this suite, the same on the old page). */
+const HOUR = Math.floor((Date.now() - 6 * 60000) / 3600000) * 3600000;
 const mkEl = o => Object.assign({ a: 6378.135 + 600, e: 0.001, i: 97.8, raan: 120.5, argp: 90, M: 0, epoch: HOUR, am: 0.0043 }, o || {});
 const add = (page, name, o, extra) => page.evaluate(([n, el, x]) => __gt.addCustom(Object.assign({ name: n, el }, x || {})), [name, mkEl(o), extra || null]);
 /* Type into the real picker and press Enter; resolves when `until` (run in the page) is true. */
 const pick = async (page, q, until) => {
-  await page.click('#satsearch'); await page.fill('#satsearch', q); await page.keyboard.press('Enter');
+  await H.pick(page, q);
   await page.waitForFunction(until || (() => true), q, { timeout: 15000 }).catch(() => {});
 };
 const onScreen = name => (n => __gt.D.entry.name === n);
-const state = page => page.evaluate(() => {
+/* What the picker names. On the old page that is the value of its search field, a surface of its own beside the masthead heading, and a check
+   that says "the picker names it" compares the two. On the rebuilt page there is no field to compare (CHANGES-FROM-LEGACY L10): the title
+   that opens the popover is the spacecraft's name and is the very element the masthead checks read. What is kept of the claim is the other
+   half of it: a picker that names the spacecraft is a SHUT one, so it is asked only while the popover holds no field, list or count line
+   (H.pickerShut); asked while it is open, it answers null, and every comparison with a name fails. */
+const pickerName = async page => (await H.pickerShut(page)) ? H.pickerName(page) : null;
+/* What the console says, in one look. The picker's text and its count are read the way a person does (pickerName, H.satCount: the
+   rebuilt page keeps them in a popover). */
+const state = async page => Object.assign(await page.evaluate(() => {
   const g = id => document.getElementById(id);
   return {
-    shown: __gt.D.entry.name, custom: !!__gt.D.entry.custom, picker: g('satsearch').value, masthead: g('satname').textContent,
+    shown: __gt.D.entry.name, custom: !!__gt.D.entry.custom, masthead: g('satname').textContent,
     hours: __gt.D.hours, norad: g('idnorad').textContent, cospar: g('idcospar').textContent, src: g('srcline').textContent,
     meta: g('tlemeta').textContent, rail: g('railprov').textContent, chip: g('agetext').textContent,
-    stale: g('agechip').classList.contains('stale'), count: g('satcount').textContent,
-    brief: getComputedStyle(g('briefnote')).display !== 'none',
+    stale: g('agechip').classList.contains('stale'),
+    brief: g('briefnote').getClientRects().length > 0,
     note: (n => n.hidden ? '' : n.textContent)(g('loadnote')),
     lifebig: g('lifebig').textContent, lifesub: g('lifesub').textContent, lifenote: g('lifenote').textContent,
     lifespan: g('lifespan').textContent, lifelegend: g('lifelegend').textContent, lifego: !!g('lifego'),
     dop: g('dopbar').textContent, store: localStorage.getItem('gt.custom')
   };
-});
-const shown = (page, id) => page.evaluate(i => { const e = document.getElementById(i); return !!e && !e.hidden && getComputedStyle(e).display !== 'none'; }, id);
+}), { picker: await pickerName(page), count: await H.satCount(page) });
+/* "On screen" is asked of the layout, not of the element's own style: on the rebuilt page a mark can sit in a part of the page that is shut (the
+   element-set buttons are in the rail's Source tab, the pill's wrapper can be hidden) and its own `display` still reads as shown. */
+const shown = (page, id) => page.evaluate(i => { const e = document.getElementById(i); return !!e && !e.hidden && e.getClientRects().length > 0; }, id);
 /* one download through the page's own export button */
 const grab = async (page, id) => {
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#' + id)]);
@@ -153,20 +175,42 @@ const grab = async (page, id) => {
   return { name: dl.suggestedFilename(), text };
 };
 const DATE = /\d{4}-\d{2}-\d{2}/;
-/* Runs before the page's scripts: when earth/plannerui.js assigns window.PlannerUI, its init is wrapped so the
-   test can keep the host object the page hands over, count the calls, and see whether the boot load had
-   already happened (window.__gt.D is null until it has). */
+/* The planner "withheld", so that the console must go on without it. The old page loads it as five classic scripts, any one of which can be
+   served as an empty comment (earth/<module>.js). The rebuilt page loads it as lazy chunks (assets/<name>-<hash>.js: the four modules, the
+   controller, and the panel's components) any one of which can be refused; they depend on one another, so withholding any one of them leaves
+   the planner unavailable, which is what is under test. What has to be true after each case is the same on both builds. */
+const WITHHELD = NEW
+  ? [['planner', /\/assets\/planner-[\w-]+\.js$/], ['advisor', /\/assets\/advisor-(?!copy-)[\w-]+\.js$/], ['advisor-copy', /\/assets\/advisor-copy-[\w-]+\.js$/],
+     ['lifetime', /\/assets\/lifetime-[\w-]+\.js$/], ['plannerui', /\/assets\/plannerui-[\w-]+\.js$/], ['parts', /\/assets\/parts-[\w-]+\.js$/]]
+  : ['lifetime', 'planner', 'advisor', 'advisor-copy', 'plannerui'].map(m => [m, '**/earth/' + m + '.js']);
+const withhold = ([mod, pat]) => [pat, NEW ? r => r.abort() : r => r.fulfill({ contentType: 'text/javascript', body: '/* ' + mod + ' withheld by the test */' })];
+const withheldName = ([mod]) => NEW ? 'assets/' + mod + '-*.js (refused)' : 'earth/' + mod + '.js';
+/* Runs before the page's scripts: when the page assigns window.PlannerUI (the old page's script, the rebuilt page's test surface), its
+   init is wrapped so the test can keep the host object the page hands over, count the calls, and see whether the boot load had
+   already happened. That is asked of the host itself (current() is the analysis on screen, null until the first load): on the old page
+   window.__gt.D says the same, but the rebuilt page publishes __gt only once the planner is up, which is after init. */
 const HOSTSPY = `(function(){ var p; Object.defineProperty(window, 'PlannerUI', { configurable: true, get: function(){ return p; }, set: function(v){
   p = v; if(v && typeof v.init === 'function'){ var o = v.init; v.init = function(h){ window.__host = h; window.__initCalls = (window.__initCalls || 0) + 1;
-    window.__initSawD = !!(window.__gt && window.__gt.D); return o.apply(this, arguments); }; } } }); })();`;
-const paintedPixels = page => page.evaluate(() => {
+    window.__initSawD = !!(h && typeof h.current === 'function' && h.current()); return o.apply(this, arguments); }; } } }); })();`;
+const countPixels = () => {
   const c = document.getElementById('lifecv'), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
   let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n;
-});
+};
+/* The Decay panel of an orbit of the reader's own is painted a moment after the call that put the orbit on screen on the rebuilt page (its words and
+   its chart are a chunk of their own, and the forecast is worked out when they are here); on the old page it was painted by the call itself. Between
+   the two the rebuilt panel reads "—": wait for it to say something. What it says is what the check then judges. */
+const decayReady = (page, timeout) => page.waitForFunction(() => { const b = document.getElementById('lifebig'); return !!b && b.textContent !== '—' && b.textContent !== ''; },
+  null, { timeout: timeout || 15000 }).catch(() => {});
+/* The rebuilt page draws the chart when its code (a chunk of its own) has arrived, a moment after the words: wait for the first ink
+   (a chart is drawn in one go), then count it. The count is what a check judges. */
+const paintedPixels = async page => {
+  await page.waitForFunction(countPixels, null, { timeout: 8000 }).catch(() => {});
+  return page.evaluate(countPixels);
+};
 
 (async () => {
-  const srv = await serve(); srvRef = srv;
-  BASE = 'http://127.0.0.1:' + srv.address().port + '/index.html';
+  const srv = await H.up(); srvRef = srv;
+  BASE = srv.page;
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }); browserRef = browser;
   let t0 = Date.now();
   const lap = what => { const s = ((Date.now() - t0) / 1000).toFixed(0); t0 = Date.now(); if (want(+what.replace(/\D/g, ''))) console.log('  (' + what + ': ' + s + ' s)'); };
@@ -177,18 +221,33 @@ const paintedPixels = page => page.evaluate(() => {
     const { ctx, page, errs } = await open(browser);
     const f = await page.evaluate(() => {
       const pts = []; Orbit3D.scene.traverse(o => { if (o.isPoints) pts.push(o.geometry.attributes.position.count); });
-      return { cat: __gt.CAT.length, custom: __gt.CUSTOM.length, pts, count: document.getElementById('satcount').textContent,
+      return { cat: __gt.CAT.length, custom: __gt.CUSTOM.length, pts,
                keys: Object.keys(localStorage), on: !!(window.PlannerUI && PlannerUI.enabled()),
-               pill: !document.getElementById('planopen').hidden, chip: getComputedStyle(document.getElementById('customchip')).display,
+               pill: document.getElementById('planopen').getClientRects().length > 0, drawer: (d => !!d && d.hidden)(document.getElementById('planner')),
+               chip: getComputedStyle(document.getElementById('customchip')).display,
                tle: getComputedStyle(document.getElementById('tleactions')).display, cnote: getComputedStyle(document.getElementById('customnote')).display,
                norad: getComputedStyle(document.getElementById('idnorad').parentNode).display, src: document.getElementById('srcline').textContent,
                name: __gt.D.entry.name };
     });
+    f.count = await H.satCount(page);      // after the keys were read: opening the rebuilt page's picker must not be what writes to storage
     chk('a fresh browser has no custom orbit, and the catalogue is 2,158', f.custom === 0 && f.cat === 2158, f.custom + ' / ' + f.cat);
     chk('...the count reads "2,158 spacecraft" (D15: no suffix, one line beside the pill)', f.count === '2,158 spacecraft', f.count);
+    if (NEW) {
+      /* The rebuilt picker holds its field, its list and its count line only while it is open. This is what "the picker names it" leans on in
+         the groups below (pickerName answers only while it is shut), and the control that shows pickerShut can tell the two states apart. */
+      const pop = { shut: await H.pickerShut(page) };
+      await H.openPicker(page);
+      pop.open = await page.evaluate(() => ['satsearch', 'satlist', 'satcount'].map(id => !!document.getElementById(id)));
+      await H.closePicker(page);
+      pop.after = await H.pickerShut(page);
+      chk('...(rebuilt page) the spacecraft picker is a popover: shut, the page holds no #satsearch, #satlist or #satcount; open, it holds all three; Escape takes them away again',
+          pop.shut && pop.open.every(Boolean) && pop.after, JSON.stringify(pop));
+    }
     chk('...nothing was written to storage by merely opening the page: Object.keys(localStorage) is []', f.keys.length === 0, JSON.stringify(f.keys));
     chk('...the catalogue cloud is one Points object of exactly CAT.length (verify-elements finds it by that)', f.pts.includes(2158), f.pts.join(','));
-    chk('...the planner is on (PlannerUI.enabled, the pill is shown) and opens the default spacecraft', f.on && f.pill && f.name === 'KNACKSAT-2', JSON.stringify([f.on, f.pill, f.name]));
+    /* The drawer is asked for as present and shut. Elsewhere (group 15) a planner that is NOT up is allowed to leave no drawer in the page at all;
+       a planner that is up must have one, and a missing drawer here must not read as "hidden". */
+    chk('...the planner is on (PlannerUI.enabled, the pill is shown) and opens the default spacecraft, with its drawer in the page and shut', f.on && f.pill && f.drawer && f.name === 'KNACKSAT-2', JSON.stringify([f.on, f.pill, f.drawer, f.name]));
     chk('...no mark of a custom orbit shows on a catalogue spacecraft (chip, note, element-set buttons: D37)',
         f.chip === 'none' && f.tle === 'none' && f.cnote === 'none' && f.norad !== 'none' && /SatNOGS/.test(f.src), [f.chip, f.tle, f.cnote, f.norad].join(' '));
     chk('...no page error', errs.length === 0, errs.join(' | ') || 'none');
@@ -207,24 +266,31 @@ const paintedPixels = page => page.evaluate(() => {
     await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(800);
+    await decayReady(page);      // the rebuilt page's Decay panel arrives after the call: wait for what is read below rather than count on the two sleeps above
     const s = await state(page);
     const f = await page.evaluate(() => {
       const e = __gt.D.entry, g = id => document.getElementById(id), sib = n => n.nextElementSibling;
-      return { prov: e.__prov, next: e.__next, cid: e.cid, satnum: e.satnum, idx: __gt.indexOf(e), at: __gt.entryAt(2158) === e, cat: __gt.CAT.length,
+      /* what the refresh keeps about an element set: on the old page on the entry (__prov, __next), on the rebuilt one by number in __gt.live */
+      return { noProv: __gt.live ? __gt.live.prov(e.satnum) === null : e.__prov === undefined,
+        noNext: __gt.live ? __gt.live.next(e.satnum) === undefined : e.__next === undefined, cid: e.cid, satnum: e.satnum, idx: __gt.indexOf(e), at: __gt.entryAt(2158) === e, cat: __gt.CAT.length,
         spans: [g('idnorad').parentNode, sib(g('idnorad').parentNode), g('idcospar').parentNode, sib(g('idcospar').parentNode)].map(n => getComputedStyle(n).display),
         sepOk: sib(g('idnorad').parentNode).classList.contains('sep') && sib(g('idcospar').parentNode).classList.contains('sep'),
-        rev: g('derived').textContent, tle: g('tleraw').textContent.split('\n'),
+        rev: g('derived').textContent, tle: g('tleraw').textContent.split('\n'), url: location.search,
         pts: (() => { const p = []; Orbit3D.scene.traverse(o => { if (o.isPoints) p.push(o.geometry.attributes.position.count); }); return p; })() };
     });
     chk('add returns ok, saved, the entry, and puts the orbit on screen',
         r.ok === true && r.saved === true && r.windowMoved === false && s.custom && s.shown === 'Polar 600' && s.masthead === 'Polar 600' && s.picker === 'Polar 600', JSON.stringify(r).slice(0, 90));
-    chk('no request went to CelesTrak or the TLE mirror, including from the re-check', reqs.length === 0, reqs.join(' ') || 'none');
-    chk('...and refreshTLE wrote no fetch state on the entry (__prov, __next): its own guard held, not only the second layer', f.prov === undefined && f.next === undefined, JSON.stringify([f.prov, f.next]));
+    chk('no request went to CelesTrak, the TLE mirror or this page\'s own cache API (/api/tle, /api/history), including from the re-check', reqs.length === 0, reqs.join(' ') || 'none');
+    chk('...and refreshTLE wrote no fetch state for the entry (__prov, __next; the rebuilt page keeps them in __gt.live): its own guard held, not only the second layer', f.noProv && f.noNext, JSON.stringify([f.noProv, f.noNext]));
     chk('the number fields do not claim a NORAD number: "none · custom" and "—", their spans and the two separators hidden (D16)',
         s.norad === 'none · custom' && s.cospar === '—' && f.spans.every(d => d === 'none') && f.sepOk, s.norad + ' / ' + s.cospar + ' ' + f.spans.join(','));
-    chk('the "Custom orbit · edit" chip is a visible button with exactly that text, the custom note shows and the Outside-the-brief note does not',
-        await page.evaluate(() => { const c = document.getElementById('customchip'); return c.tagName === 'BUTTON' && c.textContent === 'Custom orbit · edit' && getComputedStyle(c).display !== 'none'; })
-          && await shown(page, 'customnote') && await shown(page, 'tleactions') && !s.brief);
+    const chipOk = await page.evaluate(() => { const c = document.getElementById('customchip'); return c.tagName === 'BUTTON' && c.textContent === 'Custom orbit · edit' && c.getClientRects().length > 0; });
+    const noteOk = await shown(page, 'customnote');
+    await H.showRailTab(page, 'Source');      // the element-set buttons are in a tab of the rebuilt rail (the old page shows them in the report): look where a reader would
+    const btnsOk = await shown(page, 'tleactions');
+    await H.showRailTab(page, 'Passes');
+    chk('the "Custom orbit · edit" chip is a visible button with exactly that text, the custom note and the element-set buttons show and the Outside-the-brief note does not',
+        chipOk && noteOk && btnsOk && !s.brief, JSON.stringify([chipOk, noteOk, btnsOk, s.brief]));
     chk('the element-set heading no longer names SatNOGS, Space-Track or CelesTrak: Synthesized from your elements (D31)',
         s.src === 'Synthesized from your elements · not a real TLE', s.src);
     const lies = /embedded|snapshot|fetched live|Checking for a newer|No live source reachable|SatNOGS|README/i;
@@ -233,8 +299,10 @@ const paintedPixels = page => page.evaluate(() => {
     chk('the rail says the same', /Custom orbit, your elements/.test(s.rail) && /epoch \d+ (s|min) ago/.test(s.rail) && !lies.test(s.rail), s.rail);
     chk('the age chip does not go stale and does not say "old"', !s.stale && /^custom orbit · epoch .* ago$/.test(s.chip) && !/old/.test(s.chip), s.chip);
     chk('the picker count says how many are the reader\'s own', s.count === '2,158 + 1 of yours', s.count);
+    /* and the placeholder is nobody's number, so it is not a link either: the rebuilt page's permalink (?sat=<NORAD number>) is left out for it,
+       as a reload of ?sat=O0001 would find nothing (the old page wrote no address at all) */
     chk('...the orbit has the placeholder number O0001 and lives at picker index 2158 (past the catalogue, which is untouched, and so is the cloud)',
-        f.satnum === 'O0001' && f.cid === 'c1' && f.idx === 2158 && f.at && f.cat === 2158 && f.pts.includes(2158) && !f.pts.includes(2159), JSON.stringify([f.satnum, f.cid, f.idx, f.cat, f.pts]));
+        f.satnum === 'O0001' && f.cid === 'c1' && f.idx === 2158 && f.at && f.cat === 2158 && f.pts.includes(2158) && !f.pts.includes(2159) && !/[?&]sat=/.test(f.url), JSON.stringify([f.satnum, f.cid, f.idx, f.cat, f.pts, f.url]));
     chk('the derived values do not print a revolution count of 0 for an orbit that has not flown', /Rev\. no\. @ epoch\s*n\/a \(planned\)/.test(f.rev), (f.rev.match(/Rev\. no\. @ epoch.{0,24}/) || [''])[0]);
     chk('the element set is the synthetic one and is shown as text', f.tle[1].startsWith('1 O0001U') && f.tle[2].startsWith('2 O0001 '), f.tle[1]);
     chk('no page error', errs.length === 0, errs.join(' | ') || 'none');
@@ -311,7 +379,7 @@ const paintedPixels = page => page.evaluate(() => {
     console.log('4. the picker');
     const { ctx, page, errs } = await open(browser);
     await add(page, 'Alpha orbit'); await add(page, 'Bravo orbit', { i: 53 });
-    await page.click('#satsearch');
+    await H.openPicker(page); await page.click('#satsearch');     // the old page's field is always there: a click is what opens its list
     const rows = await page.evaluate(() => [...document.querySelectorAll('#satlist li')].slice(0, 6).map(li => ({ role: li.getAttribute('role'), cls: li.className, t: li.textContent })));
     chk('with nothing typed the picker opens on a "Your orbits" group, the reader\'s own orbits tagged "custom", then a "Catalogue" group',
         rows[0].t === 'Your orbits' && rows[0].role === 'presentation' && /^Alpha orbitcustom$/.test(rows[1].t) && /^Bravo orbitcustom$/.test(rows[2].t) &&
@@ -322,35 +390,43 @@ const paintedPixels = page => page.evaluate(() => {
     await pick(page, 'alpha', n => __gt.D.entry.name === 'Alpha orbit');
     let s = await state(page);
     chk('typing a custom orbit\'s name picks it, and the picker names it', s.shown === 'Alpha orbit' && s.custom && s.picker === 'Alpha orbit', s.shown);
-    await page.click('#satsearch'); await page.fill('#satsearch', 'custom');
+    await H.typeInPicker(page, 'custom');
     const cw = await page.evaluate(() => [...document.querySelectorAll('#satlist li[data-idx]')].slice(0, 3).map(li => li.querySelector('.nm').textContent));
     chk('the word "custom" finds the reader\'s own orbits first', cw[0] === 'Alpha orbit' && cw[1] === 'Bravo orbit', cw.join(' | '));
     await page.fill('#satsearch', 'O0001');
-    const byNum = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#satlist li[data-idx]')].map(li => li.querySelector('.nm').textContent), note: !!document.querySelector('#satlist li.note') }));
+    const byNum = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#satlist li[data-idx]')].map(li => li.querySelector('.nm').textContent) }));
+    byNum.note = (await H.pickerNotes(page)).length > 0;
     chk('a custom orbit is never found by its placeholder number (O0001 is not a search term)', byNum.rows.length === 0 && byNum.note, JSON.stringify(byNum));
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
 
     // the Plan row: the last option, reached by ArrowDown, opened by Enter or a click; Escape returns to the pill
-    await page.click('#satsearch'); await page.fill('#satsearch', 'zzqq nothing');
+    await H.typeInPicker(page, 'zzqq nothing');
     const plan = await page.evaluate(() => { const li = document.querySelector('#satlist li.plan');
-      return { have: !!li, last: li === document.querySelector('#satlist').lastElementChild, role: li && li.getAttribute('role'), note: document.querySelector('#satlist li.note').textContent }; });
+      return { have: !!li, last: li === document.querySelector('#satlist').lastElementChild, role: li && li.getAttribute('role') }; });
+    plan.note = (await H.pickerNotes(page))[0];
+    /* the old page's note is a row of the list with no full stop; the rebuilt one is a paragraph under it, a sentence (CHANGES-FROM-LEGACY L6) */
+    const NOMATCH = NEW ? 'Nothing in the catalogue matches that.' : 'Nothing in the catalogue matches that';
     chk('a query that matches nothing lists "Nothing in the catalogue matches that" and the Plan row as the last option',
-        plan.have && plan.last && plan.role === 'option' && plan.note === 'Nothing in the catalogue matches that', JSON.stringify(plan));
+        plan.have && plan.last && plan.role === 'option' && plan.note === NOMATCH, JSON.stringify(plan));
     await page.keyboard.press('ArrowDown');
     chk('...ArrowDown reaches it (aria-activedescendant names it)', await page.evaluate(() => document.getElementById('satsearch').getAttribute('aria-activedescendant') === 'soptplan'));
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => !document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
-    const o = await page.evaluate(() => ({ name: document.getElementById('pl-name').value, focus: document.activeElement.id, open: document.getElementById('planopen').getAttribute('aria-expanded'), list: document.getElementById('satlist').hidden, picker: document.getElementById('satsearch').value }));
+    /* "the list is closed" is the old page's own test where there is a list to hide (its #satlist stays in the page, hidden), and on the rebuilt
+       page the popover's absence: it holds the list only while it is open, so a list that is merely hidden would be a popover that did not close */
+    const o = await page.evaluate(isNew => ({ name: document.getElementById('pl-name').value, focus: document.activeElement.id, open: document.getElementById('planopen').getAttribute('aria-expanded'),
+      list: isNew ? document.getElementById('satlist') === null : document.getElementById('satlist').hidden }), NEW);
+    o.picker = await pickerName(page);
     chk('...Enter opens the planner with the query as the name, the focus in its name field, the list closed and the picker back on the spacecraft on screen',
         o.name === 'zzqq nothing' && o.focus === 'pl-name' && o.open === 'true' && o.list && o.picker === 'Alpha orbit', JSON.stringify(o));
     await page.keyboard.press('Escape');
     chk('...Escape from there closes it and returns the focus to the pill, never to the page', await page.evaluate(() => document.getElementById('planner').hidden && document.activeElement.id === 'planopen'));
     // a click on the Plan row opens it too, and the planner keeps the focus (the mousedown must not blur it)
-    await page.click('#satsearch'); await page.fill('#satsearch', 'qqzz');
+    await H.typeInPicker(page, 'qqzz');
     await page.click('#satlist li.plan');
     chk('a click on the Plan row opens the planner with the focus in its name field', await page.evaluate(() => !document.getElementById('planner').hidden && document.activeElement.id === 'pl-name'));
     await page.keyboard.press('Escape');
-    await page.click('#satsearch'); await page.fill('#satsearch', 'ISS'); await page.keyboard.press('Enter');
+    await H.pick(page, 'ISS');
     await page.waitForFunction(() => /^ISS/.test(__gt.D.entry.name), null, { timeout: 15000 }).catch(() => {});
     const issName = await page.evaluate(() => __gt.D.entry.name);
     chk('"ISS" and Enter still pick the first hit, a catalogue spacecraft (the Plan row is only ever the last option)', /^ISS/.test(issName) && await page.evaluate(() => !__gt.D.entry.custom), issName);
@@ -362,23 +438,23 @@ const paintedPixels = page => page.evaluate(() => {
     s = await state(page);
     chk('a refused catalogue pick leaves the custom orbit on screen and the picker naming it (M11)',
         s.shown === 'Alpha orbit' && s.picker === 'Alpha orbit' && /ODIN/.test(s.note) && /Still showing Alpha orbit/.test(s.note), s.note.slice(0, 100));
-    await page.click('.bar-window .span[data-h="72"]');
+    await H.clickWindow(page, '[data-h="72"]');
     await page.waitForFunction(() => __gt.D.hours === 72, null, { timeout: 15000 }).catch(() => {});
     s = await state(page);
     chk('...and the next span change reloads the custom orbit, not undefined', s.hours === 72 && s.shown === 'Alpha orbit' && errs.length === before,
         s.shown + ', ' + s.hours + ' h, errors ' + (errs.length - before) + ' ' + errs.slice(before).join('|'));
-    await page.click('.bar-window .span[data-h="24"]');
+    await H.clickWindow(page, '[data-h="24"]');
     await page.waitForFunction(() => __gt.D.hours === 24, null, { timeout: 15000 }).catch(() => {});
     // remove the OTHER one (it sits after the one on screen): the on-screen one must stay addressable
     await page.evaluate(() => __gt.removeCustom(__gt.CUSTOM.find(c => c.name === 'Bravo orbit')));
-    await page.click('.bar-window .span[data-h="6"]');
+    await H.clickWindow(page, '[data-h="6"]');
     await page.waitForFunction(() => __gt.D.hours === 6, null, { timeout: 15000 }).catch(() => {});
     s = await state(page);
     chk('removing another custom orbit leaves the one on screen loaded and reloadable (curIdx is recomputed after the splice)', s.shown === 'Alpha orbit' && s.hours === 6 && s.count === '2,158 + 1 of yours', s.count);
     // the first of two goes while the second is on screen: its virtual index shifts down by one
     await add(page, 'Charlie orbit');
     await page.evaluate(() => __gt.removeCustom(__gt.CUSTOM.find(c => c.name === 'Alpha orbit')));
-    await page.click('.bar-window .span[data-h="24"]');
+    await H.clickWindow(page, '[data-h="24"]');
     await page.waitForFunction(() => __gt.D.hours === 24, null, { timeout: 15000 }).catch(() => {});
     s = await state(page);
     chk('removing a custom orbit that precedes the one on screen shifts its index; the next reload still finds it', s.shown === 'Charlie orbit' && s.custom && errs.length === before, s.shown);
@@ -434,15 +510,38 @@ const paintedPixels = page => page.evaluate(() => {
     ['a __proto__ key and an id that is not cN', '{"v":1,"next":2,"items":[{"id":"__proto__","name":"x","el":' + JSON.stringify(GOOD.el) + '},{"id":"c1","__proto__":{"custom":false},"name":"Ok","el":' + JSON.stringify(GOOD.el) + '}]}'],
     ['thirty orbits (cap is 12)', JSON.stringify({ v: 1, next: 31, items: Array.from({ length: 30 }, (_, k) => Object.assign({}, GOOD, { id: 'c' + (k + 1), name: 'Orbit ' + (k + 1) })) })],
     ['a perigee 5 km above the ground (the form accepts it, SGP4 refuses it: refused by SGP4)', JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'Too low', made: 1, el: { a: 6378.135 + 5, e: 0, i: 0, raan: 0, argp: 0, M: 0, epoch: Date.UTC(2026, 9, 1), am: 0.0043 } }] })],
-    ['a name that is markup, a formula and a forged calendar line', JSON.stringify({ v: 1, next: 2, items: [Object.assign({}, GOOD, { name: '=1+1\r\nEND:VCALENDAR<img src=x onerror=window.__xss=1>' })] })]
+    /* The names are the point of the last case. The cleaner keeps at most 24 code points, so a long payload is cut to a partial tag
+       ("<img sr") that no renderer turns into an element: a page that wrote names as HTML would pass a check made of that alone. So the
+       store also holds names that are COMPLETE tags inside 24 code points (the last one exactly 24, with a handler that sets window._x), and
+       the check wants them to come through the cleaner as they are and then looks for an element of that tag anywhere a name is painted. */
+    ['a name that is markup, a formula and a forged calendar line', JSON.stringify({ v: 1, next: 5, items: [Object.assign({}, GOOD, { name: '=1+1\r\nEND:VCALENDAR<img src=x onerror=window.__xss=1>' }),
+      Object.assign({}, GOOD, { id: 'c2', name: '<b>x</b>' }), Object.assign({}, GOOD, { id: 'c3', name: '<img src=x>' }), Object.assign({}, GOOD, { id: 'c4', name: '<img src=x onerror=_x=1>' })] })]
   ];
+  /* an element a name made (the tags the markup case seeds: <img> and <b>), in the four places a name is painted: the picker's list, the title,
+     the raw element set, the count line. The raw element set's own heading is a <b> that holds the name as TEXT (so a <b> there is the page's
+     own, and what would be a name's is a tag inside it). */
+  const NAME_MADE = '#satlist img, #satlist b, #satname img, #satname b, #tleraw img, #tleraw b b, #satcount img, #satcount b';
   if (want(5)) for (const [label, raw] of POISON) {
     const { ctx, page, errs } = await open(browser, { init: `try{localStorage.setItem('gt.custom', ${JSON.stringify(raw)});}catch(e){}`, settle: 200 });
-    const r = await page.evaluate(() => ({ n: __gt.CUSTOM.length, names: __gt.CUSTOM.map(c => c.name), tle: __gt.CUSTOM.map(c => [c.l1.length, c.l2.length, c.custom, c.satnum]),
-      xss: window.__xss === 1, store: localStorage.getItem('gt.custom'), bak: localStorage.getItem('gt.custom.bak'), shown: __gt.D.entry.name,
+    await H.openPicker(page);     // the rebuilt page paints the list only while its popover is open
+    await page.focus('#satsearch');     // and the old page paints its list when the field takes the focus
+    const r = await page.evaluate(sel => ({ n: __gt.CUSTOM.length, names: __gt.CUSTOM.map(c => c.name), tle: __gt.CUSTOM.map(c => [c.l1.length, c.l2.length, c.custom, c.satnum]),
+      xss: window.__xss === 1 || window._x === 1, store: localStorage.getItem('gt.custom'), bak: localStorage.getItem('gt.custom.bak'), shown: __gt.D.entry.name,
+      up: !!(window.PlannerUI && PlannerUI.enabled && PlannerUI.enabled()),         // only for the detail line: a store that was not read because the planner was not up looks like a store that was refused
       polluted: ({}).custom === true || Object.prototype.hasOwnProperty.call(Object.prototype, 'custom'),
-      /* the name is markup: open the list so it is painted, then look for an element it made */
-      noImg: (() => { document.getElementById('satsearch').focus(); return !document.querySelector('#satlist img, #satname img, #tleraw img, #satcount img'); })() }));
+      /* the list is painted: look for an element a name made */
+      noImg: !document.querySelector(sel) }), NAME_MADE);
+    let again = null;
+    if (/markup/.test(label)) {
+      /* the orbit whose name is a complete <img> tag, put on screen: the title and the raw lines are painted from it, and the list is looked at again */
+      const at = await page.evaluate(() => __gt.indexOf(__gt.CUSTOM.find(c => c.name === '<img src=x>')));
+      await page.evaluate(i => { const li = document.querySelector('#satlist li[data-idx="' + i + '"]'); if (li) li.click(); }, at);
+      await page.waitForFunction(() => __gt.D.entry.name === '<img src=x>', null, { timeout: 15000 }).catch(() => {});
+      await H.openPicker(page);
+      await page.focus('#satsearch');
+      await page.waitForTimeout(400);       // an <img src=x> that was made has had time to fail to load, and to run its handler
+      again = await page.evaluate(sel => ({ noImg: !document.querySelector(sel), xss: window.__xss === 1 || window._x === 1, shown: __gt.D.entry.name, title: document.getElementById('satname').textContent }), NAME_MADE);
+    }
     const ok = !errs.length && !r.xss && !r.polluted && r.shown === 'KNACKSAT-2' && r.tle.every(t => t[0] === 69 && t[1] === 69 && t[2] === true && /^O\d{4}$/.test(t[3]));
     let expect;
     if (/not JSON|another version|array|70,000/.test(label)) expect = r.n === 0 && r.store === null;
@@ -452,9 +551,11 @@ const paintedPixels = page => page.evaluate(() => {
     else if (/__proto__/.test(label)) expect = r.n === 1 && r.names[0] === 'Ok';
     else if (/thirty/.test(label)) expect = r.n === 12;
     else if (/refused by SGP4/.test(label)) expect = r.n === 0;
-    else expect = r.n === 1 && !/[\r\n]/.test(r.names[0]) && !/^[=+\-@]/.test(r.names[0]) && Array.from(r.names[0]).length <= 24 && r.noImg;
+    else expect = r.n === 4 && r.names.every(n => !/[\r\n]/.test(n) && !/^[=+\-@]/.test(n) && Array.from(n).length <= 24) &&
+      ['<b>x</b>', '<img src=x>', '<img src=x onerror=_x=1>'].every(t => r.names.includes(t)) &&       // the complete tags are what the page was given: nothing to hide behind
+      r.noImg && again.noImg && !again.xss && again.shown === '<img src=x>' && again.title === '<img src=x>';
     chk('poisoned store, ' + label + ': dropped or cleaned, never trusted', ok && expect,
-        'kept ' + r.n + (r.names.length ? ' ' + JSON.stringify(r.names).slice(0, 60) : '') + (errs.length ? ' ERR ' + errs[0] : ''));
+        'kept ' + r.n + (r.names.length ? ' ' + JSON.stringify(r.names).slice(0, 90) : '') + (again ? ' ' + JSON.stringify(again) : '') + (r.up ? '' : ' [PLANNER NOT UP]') + (errs.length ? ' ERR ' + errs[0] : ''));
     if (/another version/.test(label)) chk('...a record of another version is moved aside, not destroyed', r.bak !== null && JSON.parse(r.bak).v === 2);
     await ctx.close();
   }
@@ -484,12 +585,13 @@ const paintedPixels = page => page.evaluate(() => {
       pill.focus();
       const focused = document.activeElement === pill;
       pill.click();
-      return { n: __gt.CUSTOM.length, count: document.getElementById('satcount').textContent, add: __gt.addCustom({ name: 'x', el }),
-        upd: __gt.updateCustom({}, { name: 'x', el }), store: localStorage.getItem('gt.custom'), pill: !pill.hidden && getComputedStyle(pill).display !== 'none',
+      return { n: __gt.CUSTOM.length, add: __gt.addCustom({ name: 'x', el }),
+        upd: __gt.updateCustom({}, { name: 'x', el }), store: localStorage.getItem('gt.custom'), pill: pill.getClientRects().length > 0,
         dis: pill.getAttribute('aria-disabled'), exp: pill.getAttribute('aria-expanded'), title: pill.title, focused, planner: document.getElementById('planner').hidden,
-        note: document.getElementById('plannote').textContent, noteShown: !document.getElementById('plannote').hidden,
+        note: document.getElementById('plannote').textContent, noteShown: document.getElementById('plannote').getClientRects().length > 0,
         back: (a => a && a.getAttribute('href'))(document.querySelector('#plannote a')) };
     });
+    r.count = await H.satCount(page);
     chk('?tle=embedded shows only the embedded catalogue and leaves a saved store untouched (neither listed nor rewritten)',
         r.n === 0 && r.count === '2,158 spacecraft' && r.store && JSON.parse(r.store).items.length === 1 && JSON.parse(r.store).items[0].name === 'Fine', r.count + ' ' + r.n);
     chk('...addCustom and updateCustom refuse with the planner.off code and the sentence',
@@ -499,14 +601,19 @@ const paintedPixels = page => page.evaluate(() => {
         r.noteShown && /^The orbit planner is off in the assignment snapshot \(\?tle=embedded\)\. Back to the live element sets\.$/.test(r.note) && r.back === '?', JSON.stringify([r.dis, r.focused, r.exp, r.planner, r.back]));
     // the storage listener exists (the planner is on) and must not take another tab's orbit into a snapshot
     const sev = await page.evaluate(seed => { window.dispatchEvent(new StorageEvent('storage', { key: 'gt.custom', newValue: seed, storageArea: localStorage }));
-      return { n: __gt.CUSTOM.length, count: document.getElementById('satcount').textContent }; },
+      return { n: __gt.CUSTOM.length }; },
       JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'From elsewhere', made: 1, el: { a: 6978.135, e: 0.001, i: 97.8, raan: 120.5, argp: 90, M: 0, epoch: Date.UTC(2026, 9, 1), am: 0.0043 } }] }));
+    sev.count = await H.satCount(page);
     chk('...and another tab\'s change (a storage event) is not merged into the snapshot either', sev.n === 0 && sev.count === '2,158 spacecraft', JSON.stringify(sev));
     chk('no page error', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();
     // init is called under PINNED too (it is what shows the pill as disabled), with a host that says so
     const P = await open(browser, { search: '?tle=embedded', init: HOSTSPY, settle: 200 });
-    const ph = await P.page.evaluate(() => ({ init: window.__initCalls, pinned: window.__host && window.__host.pinned, enabled: PlannerUI.enabled() }));
+    /* What is read here is the controller and the call it made. The old page publishes __gt (what open() waits for) from its inline script, which can
+       run before the classic script that holds the controller has been fetched (a loaded machine showed it: PlannerUI undefined at 200 ms), so wait for the thing itself;
+       a controller that never comes is still a failed check below, not a wait without end. */
+    await P.page.waitForFunction(() => !!window.PlannerUI && window.__initCalls >= 1, null, { timeout: 15000 }).catch(() => {});
+    const ph = await P.page.evaluate(() => ({ init: window.__initCalls, pinned: window.__host && window.__host.pinned, enabled: window.PlannerUI ? PlannerUI.enabled() : null }));
     chk('...PlannerUI.init is still called under ?tle=embedded, with host.pinned true, and leaves the planner disabled', ph.init === 1 && ph.pinned === true && ph.enabled === false && P.errs.length === 0, JSON.stringify(ph));
     await P.ctx.close();
   }
@@ -526,8 +633,10 @@ const paintedPixels = page => page.evaluate(() => {
         E: [D.E.a, D.E.ecc, D.E.inc, D.E.raan, D.E.argp, D.E.ma, D.E.n, D.E.period, D.E.perigeeAlt, D.E.apogeeAlt, D.E.bstar] });
       const A = JSON.stringify(strip(a)), C = JSON.stringify(strip(c));
       return { same: A === C, n: a.passes.length, pts: a.pts.length, len: A.length,
-        life: document.getElementById('lifebig').textContent, lifenote: document.getElementById('lifenote').textContent, custom: __gt.D.entry.custom, el: __gt.D.entry.el };
+        custom: __gt.D.entry.custom, el: __gt.D.entry.el };
     });
+    await decayReady(page);
+    Object.assign(d, await page.evaluate(() => ({ life: document.getElementById('lifebig').textContent, lifenote: document.getElementById('lifenote').textContent })));
     chk('a catalogue object run down the custom path computes bit-identical elements, passes and ground track (8,641 samples)',
         d.same && d.pts === 8641 && d.n > 0, d.n + ' passes, ' + d.pts + ' samples, ' + d.len + ' bytes compared');
     chk('...and a custom entry with no elements (the test hook) says so in the Decay section instead of forecasting from nothing',
@@ -545,11 +654,18 @@ const paintedPixels = page => page.evaluate(() => {
     const ft = () => page.evaluate(() => { window.__ft = []; const f = CanvasRenderingContext2D.prototype.fillText;
       if (!f.__spy) { CanvasRenderingContext2D.prototype.fillText = function (t) { window.__ft.push(String(t)); return f.apply(this, arguments); }; CanvasRenderingContext2D.prototype.fillText.__spy = true; } });
     await ft();
-    const run = (name, o, extra) => page.evaluate(([n, el, x]) => { const t = performance.now();
-      const r = __gt.addCustom(Object.assign({ name: n, el }, x || {})); const g = id => document.getElementById(id);
-      return { ms: performance.now() - t, ok: r.ok, errors: r.errors, big: g('lifebig').textContent, sub: g('lifesub').textContent, note: g('lifenote').textContent,
-        go: !!g('lifego'), reentry: !!__gt.D.reentry, passes: __gt.D.passes.length, legend: g('lifelegend').textContent, alt: g('lifealt').textContent, hist: g('lifehist').textContent,
-        labels: (window.__ft || []).slice(), win: __gt.D.start.getTime() }; }, [name, mkEl(o), extra || null]);
+    /* The time is the Add's AND the Decay panel's: on the old page the forecast was worked out inside the call, on the rebuilt one it arrives a
+       moment after (the unguarded forward-SGP4 loop would show in either). The labels are read once the chart has drawn the axis it starts with. */
+    const run = async (name, o, extra) => {
+      const r = await page.evaluate(([n, el, x]) => { window.__t0 = performance.now();
+        const r = __gt.addCustom(Object.assign({ name: n, el }, x || {}));
+        return { ok: r.ok, errors: r.errors, reentry: !!__gt.D.reentry, passes: __gt.D.passes.length, win: __gt.D.start.getTime() }; }, [name, mkEl(o), extra || null]);
+      await decayReady(page, 12000);
+      if (r.ok) await page.waitForFunction(() => (window.__ft || []).includes('epoch') || /^(Not forecast|No drag|Re-entering)/.test(document.getElementById('lifebig').textContent), null, { timeout: 8000 }).catch(() => {});
+      return Object.assign(r, await page.evaluate(() => { const g = id => document.getElementById(id);
+        return { ms: performance.now() - window.__t0, big: g('lifebig').textContent, sub: g('lifesub').textContent, note: g('lifenote').textContent,
+          go: !!g('lifego'), legend: g('lifelegend').textContent, alt: g('lifealt').textContent, hist: g('lifehist').textContent, labels: (window.__ft || []).slice() }; }));
+    };
     const geo = await run('GEO slot', { a: 42164.182, e: 0.0002, i: 0.05 });
     chk('a geostationary custom orbit loads in well under a few seconds and is given no decay figure (unguarded: 30.7 s)',
         geo.ok && geo.ms < 4000 && geo.big === 'Not forecast' && !geo.go && /^perigee 3\d,\d{3} km$/.test(geo.sub) && /Moon and the Sun/.test(geo.note) && !DATE.test(geo.note), geo.ms.toFixed(0) + ' ms, "' + geo.big + '" ' + geo.sub);
@@ -606,8 +722,9 @@ const paintedPixels = page => page.evaluate(() => {
     const r = await page.evaluate(([el]) => { const e = __gt.CUSTOM[0], d0 = __gt.D.entry;
       const x = __gt.updateCustom(e, { name: 'Edited', el });
       return { ok: x.ok, same: __gt.D.entry === e && e === d0 && x.entry === e, inc: __gt.D.E.inc, cid: e.cid, satnum: e.satnum, n: __gt.CUSTOM.length, moved: x.windowMoved,
-               name: document.getElementById('satname').textContent, picker: document.getElementById('satsearch').value, clock: document.getElementById('tpclock').textContent,
+               name: document.getElementById('satname').textContent, clock: document.getElementById('tpclock').textContent,
                stored: (JSON.parse(localStorage.getItem('gt.custom')) || { items: [{}] }).items[0] }; }, [mkEl({ i: 63.4, a: 6378.135 + 800 })]);
+    r.picker = await pickerName(page);
     chk('editing the orbit on screen re-analyses it in place: same object, same id and number, new inclination and name',
         r.ok && r.same && Math.abs(r.inc - 63.4) < 1e-4 && r.cid === 'c1' && r.satnum === 'O0001' && r.n === 1 && r.name === 'Edited' && r.picker === 'Edited' && r.moved === false, 'i ' + r.inc + ', ' + r.name);
     chk('...(n) the reader\'s instant on the clock is kept across the edit (updateCustom does that, not the host)', r.clock === clock0, clock0 + ' -> ' + r.clock);
@@ -644,7 +761,13 @@ const paintedPixels = page => page.evaluate(() => {
     reqs.length = 0;
     const ctl = await page.evaluate(() => __gt.fetchTLE('25544'));
     chk('control: fetchTLE of a real number does ask CelesTrak and the mirror (so the counter below can see a request); with both blocked it answers null',
-        ctl === null && reqs.length >= 1, reqs.length + ' requests');
+        ctl === null && reqs.some(u => /celestrak\.org|tle\.ivanstanojevic\.me/.test(u)), reqs.length + ' requests');      // the two sources themselves: the counter also counts the page's API now, which alone would not make this claim true
+    /* ...and, on the rebuilt page, the same control for the page's own API, which is asked first: without it, the zero-request claims below could not
+       be told from "the counter does not see /api requests", and a number sent to the API only would go unseen (the API answers as itself here, so the
+       page's circuit breaker is not open and it really does ask) */
+    const apiFirst = (list, re) => { const a = list.findIndex(u => re.test(u)), d = list.findIndex(u => /celestrak\.org|tle\.ivanstanojevic\.me/.test(u)); return a >= 0 && (d < 0 || a < d); };
+    if (NEW) chk('control: fetchTLE of a real number asks this page\'s own API first (/api/tle/25544), and the counter sees that request as well',
+        reqs.includes(new URL(BASE).origin + '/api/tle/25544') && apiFirst(reqs, /\/api\/tle\//), reqs.join(' '));
     reqs.length = 0;
     const odd = await page.evaluate(async () => { const out = [];
       for (const n of ['O0001', 'O1', '25544x', '123456', ' 25544', '', null, undefined, '25544\n', '2554 4']) out.push(await __gt.fetchTLE(n));
@@ -655,7 +778,10 @@ const paintedPixels = page => page.evaluate(() => {
     reqs.length = 0;
     await page.evaluate(async () => { await __gt.runLife(__gt.D.entry, __gt.lifeReq); });
     chk('control: runLife for a catalogue spacecraft does ask for its decay history', reqs.length >= 1, reqs.length + ' requests');
+    if (NEW) chk('control: ...and it asks this page\'s own API first (/api/history/<n>), which the counter sees',
+        reqs.some(u => u.startsWith(new URL(BASE).origin + '/api/history/')) && apiFirst(reqs, /\/api\/history\//), reqs.join(' '));
     await add(page, 'No history');
+    await decayReady(page);
     const before = await page.evaluate(() => document.getElementById('lifebig').textContent + '|' + document.getElementById('lifenote').textContent);
     reqs.length = 0;
     await page.evaluate(async () => { await __gt.runLife(__gt.D.entry, __gt.lifeReq); });
@@ -699,8 +825,9 @@ const paintedPixels = page => page.evaluate(() => {
     const ev = p => p.evaluate(() => window.__ev);
     await add(A.page, 'From A');
     await B.page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 15000 }).catch(() => {});
-    const b1 = await B.page.evaluate(() => ({ name: __gt.CUSTOM[0].name, cid: __gt.CUSTOM[0].cid, shown: __gt.D.entry.name, count: document.getElementById('satcount').textContent,
+    const b1 = await B.page.evaluate(() => ({ name: __gt.CUSTOM[0].name, cid: __gt.CUSTOM[0].cid, shown: __gt.D.entry.name,
       l1: __gt.CUSTOM[0].l1, saved: document.querySelectorAll('#pl-saved-list li').length }));
+    b1.count = await H.satCount(B.page);
     const a1 = await A.page.evaluate(() => ({ l1: __gt.CUSTOM[0].l1, ev: window.__ev }));
     chk('(b) a second tab picks up an orbit the first one added: the same two lines, the count, the saved list; its own screen is untouched',
         b1.name === 'From A' && b1.cid === 'c1' && b1.l1 === a1.l1 && b1.shown === 'KNACKSAT-2' && b1.count === '2,158 + 1 of yours' && b1.saved === 1, JSON.stringify(b1).slice(0, 120));
@@ -720,6 +847,25 @@ const paintedPixels = page => page.evaluate(() => {
         b3.n === 2 && b3.shown === 'From A' && b3.still, JSON.stringify(b3));
     chk('no page error in either tab', A.errs.length === 0 && B.errs.length === 0, A.errs.concat(B.errs).join(' | ') || 'none');
     await A.ctx.close();
+    {
+      /* The merge stops at the cap. A record another tab wrote can hold up to twelve orbits, with numbers this tab has not got, and taking them all
+         would leave this tab with more than twelve. The old page has the same guard (index.html, the storage listener) and the old suite never
+         looked at it: this check is an addition to it, made on both pages (204 on the old one, where it passes). The record reaches the listener
+         as a storage event, as in group 7. */
+      const { ctx: c3, page: p3, errs: e3 } = await open(browser);
+      for (let k = 1; k <= 10; k++) await add(p3, 'Own ' + k, { i: 20 + k }, { show: false });
+      const theirs = JSON.stringify({ v: 1, next: 40, items: Array.from({ length: 12 }, (_, k) => ({ id: 'c' + (20 + k), name: 'Theirs ' + (k + 1), made: 1, el: mkEl({ i: 60 + k }) })) });
+      await p3.evaluate(seed => window.dispatchEvent(new StorageEvent('storage', { key: 'gt.custom', newValue: seed, storageArea: localStorage })), theirs);
+      await p3.waitForFunction(() => __gt.CUSTOM.length >= 12, null, { timeout: 5000 }).catch(() => {});
+      await p3.waitForTimeout(300);       // a list that was going to overshoot has done it by now
+      const cap = await p3.evaluate(() => ({ n: __gt.CUSTOM.length, names: __gt.CUSTOM.map(c => c.name).join(',') }));
+      cap.count = await H.satCount(p3);
+      const over = await add(p3, 'One too many', {}, { show: false });
+      chk('(b) a record another tab wrote does not take this tab past the cap: ten of its own and twelve arriving make twelve (the first two arrivals), the count says so, and a further Add is refused with err.cap',
+          cap.n === 12 && cap.names === 'Own 1,Own 2,Own 3,Own 4,Own 5,Own 6,Own 7,Own 8,Own 9,Own 10,Theirs 1,Theirs 2' && cap.count === '2,158 + 12 of yours' &&
+          over.ok === false && over.errors[0].code === 'err.cap' && e3.length === 0, JSON.stringify(cap) + (e3[0] ? ' ERR ' + e3[0] : ''));
+      await c3.close();
+    }
   }
   lap('group 13');
 
@@ -747,7 +893,8 @@ const paintedPixels = page => page.evaluate(() => {
     const GOODEL = { a: 6978.135, e: 0.001, i: 97.8, raan: 120.5, argp: 90, M: 0, epoch: Date.UTC(2026, 9, 1), am: 0.0043 };
     const seed = `try{localStorage.setItem('gt.custom', ${JSON.stringify(JSON.stringify({ v: 1, next: 3, items: [{ id: 'c1', name: 'Kept', made: 1, el: GOODEL }, { id: 'c2', name: 'Kept 2', made: 1, el: GOODEL }] }))});}catch(e){}`;
     const R = await open(browser, { init: init + seed });
-    const rr = await R.page.evaluate(() => ({ ev: window.__ev, n: __gt.CUSTOM.length, names: __gt.CUSTOM.map(c => c.name), saved: document.querySelectorAll('#pl-saved-list li').length, count: document.getElementById('satcount').textContent }));
+    const rr = await R.page.evaluate(() => ({ ev: window.__ev, n: __gt.CUSTOM.length, names: __gt.CUSTOM.map(c => c.name), saved: document.querySelectorAll('#pl-saved-list li').length }));
+    rr.count = await H.satCount(R.page);
     chk('(g) restoring the saved orbits at boot fires it once for the whole list, and the saved list (built by init, after) shows both',
         rr.ev === 1 && rr.n === 2 && rr.saved === 2 && rr.count === '2,158 + 2 of yours', JSON.stringify(rr));
     chk('no page error', R.errs.length === 0, R.errs.join(' | ') || 'none');
@@ -761,30 +908,41 @@ const paintedPixels = page => page.evaluate(() => {
   const seedInit = `try{localStorage.setItem('gt.custom', ${JSON.stringify(SEED)});}catch(e){}`;
   if (want(15)) {
     console.log('15. isolation at boot');
-    // (h) each of the five modules in turn: the planner is off, the stored record is neither listed nor touched, nothing throws
-    for (const mod of ['lifetime', 'planner', 'advisor', 'advisor-copy', 'plannerui']) {
-      const { ctx, page, errs } = await open(browser, { init: seedInit, settle: 200,
-        route: [['**/earth/' + mod + '.js', r => r.fulfill({ contentType: 'text/javascript', body: '/* ' + mod + ' withheld by the test */' })]] });
-      const f = await page.evaluate(seed => {
+    // (h) each of the modules in turn: the planner is off, the stored record is neither listed nor touched, nothing throws
+    for (const w of WITHHELD) {
+      const { ctx, page, errs } = await open(browser, { init: seedInit, settle: 200, route: [withhold(w)] });
+      const f = await page.evaluate(([seed, isNew]) => {
         window.dispatchEvent(new StorageEvent('storage', { key: 'gt.custom', newValue: seed, storageArea: localStorage }));
-        const pill = document.getElementById('planopen');
-        return { n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), pill: getComputedStyle(pill).display, planner: document.getElementById('planner').hidden,
-          on: !!(window.PlannerUI && PlannerUI.enabled && PlannerUI.enabled()), name: __gt.D.entry.name, count: document.getElementById('satcount').textContent,
+        const pill = document.getElementById('planopen'), drawer = document.getElementById('planner');
+        /* "not displayed". The old page hides the pill itself (its own display is the test, as it always was). The rebuilt page hides the pill's
+           wrapper (.t-plan), and a hidden ancestor leaves the pill's own display alone, so the pill is asked of the layout (getClientRects) and,
+           as the thing that is actually hidden, so is the wrapper. The rebuilt page's drawer is hidden, or not in the page at all when the chunk
+           that holds it (parts) is the one withheld: where the planner is UP the drawer is asked for as present and shut (group 1). */
+        const wrap = isNew ? pill.closest('.t-plan') : null;
+        return { n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), pill: pill.getClientRects().length > 0 ? 'shown' : 'none', planner: !drawer || drawer.hidden,
+          wrap: isNew ? !!wrap && (wrap.hidden || getComputedStyle(wrap).display === 'none') : true,
+          on: !!(window.PlannerUI && PlannerUI.enabled && PlannerUI.enabled()), name: __gt.D.entry.name,
           add: __gt.addCustom({ name: 'x', el: { a: 6978, e: 0.001, i: 98, raan: 0, argp: 0, M: 0, epoch: Date.now(), am: 0.0043 } }),
           chip: getComputedStyle(document.getElementById('customchip')).display };
-      }, SEED);
-      chk('(h) with earth/' + mod + '.js missing the planner is off: no saved orbit listed, the record untouched, the pill and drawer hidden, the console open, no page error',
-          f.n === 0 && f.store === SEED && f.pill === 'none' && f.planner && !f.on && f.name === 'KNACKSAT-2' && f.count === '2,158 spacecraft' && f.add.ok === false && f.chip === 'none' && errs.length === 0,
-          JSON.stringify([f.n, f.store === SEED, f.pill, f.on, f.add.ok, f.add.errors && f.add.errors[0].code]) + (errs.length ? ' ERR ' + errs[0] : ''));
+      }, [SEED, NEW]);
+      f.count = await H.satCount(page);
+      chk('(h) with ' + withheldName(w) + ' missing the planner is off: no saved orbit listed, the record untouched, the pill and drawer hidden, the console open, no page error',
+          f.n === 0 && f.store === SEED && f.pill === 'none' && f.wrap && f.planner && !f.on && f.name === 'KNACKSAT-2' && f.count === '2,158 spacecraft' && f.add.ok === false && f.chip === 'none' && errs.length === 0,
+          JSON.stringify([f.n, f.store === SEED, f.pill, f.wrap, f.on, f.add.ok, f.add.errors && f.add.errors[0].code]) + (errs.length ? ' ERR ' + errs[0] : ''));
       await ctx.close();
     }
-    // (i) a planner that throws while rebuilding a stored orbit
-    const planSrc = fs.readFileSync(path.join(SITE, 'earth', 'planner.js'), 'utf8');
-    const boom = planSrc + '\n;(function(){ var P = window.Planner; window.Planner = Object.assign({}, P, { toTLE: function(){ throw new Error("planner fault (test)"); } }); })();\n';
-    const { ctx, page, errs } = await open(browser, { init: seedInit,
-      route: [['**/earth/planner.js', r => r.fulfill({ contentType: 'text/javascript', body: boom })]] });
-    const g = await page.evaluate(() => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, count: document.getElementById('satcount').textContent,
+    // (i) a planner that throws while rebuilding a stored orbit. The old page's planner.js is served with a Planner.toTLE that throws appended;
+    //     the rebuilt page has a switch for it (window.__GT_FAULT__, read by the test surface when the modules arrive, before anything is built with them)
+    let boomOpen = { init: seedInit + 'window.__GT_FAULT__ = { toTLE: true };' };
+    if (!NEW) {
+      const planSrc = fs.readFileSync(path.join(H.targetRoot(), 'earth', 'planner.js'), 'utf8');
+      const boom = planSrc + '\n;(function(){ var P = window.Planner; window.Planner = Object.assign({}, P, { toTLE: function(){ throw new Error("planner fault (test)"); } }); })();\n';
+      boomOpen = { init: seedInit, route: [['**/earth/planner.js', r => r.fulfill({ contentType: 'text/javascript', body: boom })]] };
+    }
+    const { ctx, page, errs } = await open(browser, boomOpen);
+    const g = await page.evaluate(() => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name,
       pill: !document.getElementById('planopen').hidden, add: (() => { try { return __gt.addCustom({ name: 'x', el: { a: 6978, e: 0.001, i: 98, raan: 0, argp: 0, M: 0, epoch: Date.now(), am: 0.0043 } }); } catch (e) { return { threw: String(e) }; } })() }));
+    g.count = await H.satCount(page);
     chk('(i) a Planner.toTLE that throws, with a saved orbit: zero page errors, no custom orbit, the console loaded, and the saved record not rewritten without the orbit it could not rebuild',
         g.n === 0 && g.store === SEED && g.name === 'KNACKSAT-2' && g.count === '2,158 spacecraft' && errs.length === 0, JSON.stringify([g.n, g.store === SEED, g.name, g.count]) + (errs[0] ? ' ERR ' + errs[0] : ''));
     chk('...and an Add then is refused as an answer (err.sgp4), never thrown into the page', g.add && g.add.ok === false && g.add.errors[0].code === 'err.sgp4' && !g.add.threw, JSON.stringify(g.add).slice(0, 100));
@@ -809,8 +967,8 @@ const paintedPixels = page => page.evaluate(() => {
   if (want(16)) {
     console.log('16. refusals');
     const { ctx, page, errs } = await open(browser);
-    const snap = () => page.evaluate(() => ({ shown: __gt.D.entry.name, start: __gt.D.start.getTime(), hours: __gt.D.hours, n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'),
-      note: document.getElementById('loadnote').hidden ? '' : document.getElementById('loadnote').textContent, picker: document.getElementById('satsearch').value }));
+    const snap = async () => Object.assign(await page.evaluate(() => ({ shown: __gt.D.entry.name, start: __gt.D.start.getTime(), hours: __gt.D.hours, n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'),
+      note: document.getElementById('loadnote').hidden ? '' : document.getElementById('loadnote').textContent })), { picker: await pickerName(page) });
     const s0 = await snap();
     // (j) a 200 km orbit whose epoch is two years before the window: SGP4 has decayed it by then
     const j = await page.evaluate(([ws, el]) => __gt.addCustom({ name: 'Decayed', el: Object.assign({}, el, { epoch: ws - 730 * 86400000 }) }), [s0.start, mkEl({ a: 6378.135 + 200, e: 0.0001, i: 51.6, raan: 10, argp: 0 })]);
@@ -840,7 +998,7 @@ const paintedPixels = page => page.evaluate(() => {
     const sc = await snap();
     chk('(e) the 13th addCustom returns {ok:false, errors:[{code:\'err.cap\', cap:12}]} and keeps nothing: twelve orbits, the twelfth still on screen',
         cap.ok === false && cap.errors.length === 1 && cap.errors[0].code === 'err.cap' && cap.errors[0].cap === 12 && cap.errors[0].field === '' && sc.n === 12 && sc.shown === 'Cap 12' && JSON.parse(sc.store).items.length === 12, JSON.stringify(cap.errors));
-    chk('...the count reads "2,158 + 12 of yours"', await page.evaluate(() => document.getElementById('satcount').textContent === '2,158 + 12 of yours'));
+    chk('...the count reads "2,158 + 12 of yours"', (await H.satCount(page)) === '2,158 + 12 of yours');
     chk('no page error', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();
   }
@@ -863,8 +1021,9 @@ const paintedPixels = page => page.evaluate(() => {
     const back = await page.evaluate(([el, at]) => { const D0 = __gt.D, E0 = __gt.D.entry;
       const r = __gt.addCustom({ name: 'Bb', el, cid: 'c2', at, show: false });
       return { ok: r.ok, cid: r.entry && r.entry.cid, satnum: r.entry && r.entry.satnum, tle: r.entry && r.entry.l1.substring(2, 7), at: __gt.CUSTOM.indexOf(r.entry), idx: __gt.indexOf(r.entry),
-        sameD: __gt.D === D0, sameEntry: __gt.D.entry === E0, onIdx: __gt.indexOf(__gt.D.entry), picker: document.getElementById('satsearch').value, names: __gt.CUSTOM.map(c => c.name),
-        count: document.getElementById('satcount').textContent, saved: (JSON.parse(localStorage.getItem('gt.custom')) || { items: [] }).items.map(i => i.id + ':' + i.name) }; }, [Bel, 1]);
+        sameD: __gt.D === D0, sameEntry: __gt.D.entry === E0, onIdx: __gt.indexOf(__gt.D.entry), names: __gt.CUSTOM.map(c => c.name),
+        saved: (JSON.parse(localStorage.getItem('gt.custom')) || { items: [] }).items.map(i => i.id + ':' + i.name) }; }, [Bel, 1]);
+    back.picker = await pickerName(page); back.count = await H.satCount(page);
     chk('(d) removing an orbit and adding it back with its cid and its place hands back the same number (O0002), the same list index and the same picker index',
         gone === true && was.B === 2159 && was.satnum === 'O0002' && back.ok && back.cid === 'c2' && back.satnum === 'O0002' && back.tle === 'O0002' && back.at === 1 && back.idx === 2159 &&
         back.names.join() === 'Aa,Bb,Cc' && back.saved.join() === 'c1:Aa,c2:Bb,c3:Cc', JSON.stringify([was, back.cid, back.satnum, back.at, back.idx, back.saved]));
@@ -872,7 +1031,7 @@ const paintedPixels = page => page.evaluate(() => {
         mid.onIdx === 2159 && back.sameD && back.sameEntry && back.onIdx === 2160 && back.picker === 'Cc' && back.count === '2,158 + 3 of yours', JSON.stringify([mid.onIdx, back.sameD, back.sameEntry, back.onIdx, back.picker, back.count]));
     chk('(k) ...and the reader\'s instant on the clock is kept (a hidden Add never takes the clock)', (await clockText()) === clock0, clock0 + ' -> ' + await clockText());
     // curIdx is private: the next reload of the console (a span change) shows whether it still points at the orbit on screen
-    await page.click('.bar-window .span[data-h="72"]');
+    await H.clickWindow(page, '[data-h="72"]');
     await page.waitForFunction(() => __gt.D.hours === 72, null, { timeout: 15000 }).catch(() => {});
     const after = await page.evaluate(() => ({ on: __gt.D.entry.name, idx: __gt.indexOf(__gt.D.entry) }));
     chk('(k) ...and curIdx was recomputed after the splice: the next reload is still the orbit on screen, not whatever sits at the old index', after.on === 'Cc' && after.idx === 2160, JSON.stringify(after));
@@ -886,14 +1045,18 @@ const paintedPixels = page => page.evaluate(() => {
     const und = await page.evaluate(([el]) => { const C = __gt.CUSTOM[2], at = __gt.CUSTOM.indexOf(C), name = C.name, cid = C.cid;
       const rm = __gt.removeCustom(C), shownAfter = __gt.D.entry.name;
       const r = __gt.addCustom({ name, el, cid, at });
-      return { rm, shownAfter, ok: r.ok, cid: r.entry.cid, satnum: r.entry.satnum, at: __gt.CUSTOM.indexOf(r.entry), onScreen: __gt.D.entry === r.entry, picker: document.getElementById('satsearch').value }; }, [mkEl({ i: 28.5 })]);
+      return { rm, shownAfter, ok: r.ok, cid: r.entry.cid, satnum: r.entry.satnum, at: __gt.CUSTOM.indexOf(r.entry), onScreen: __gt.D.entry === r.entry }; }, [mkEl({ i: 28.5 })]);
+    und.picker = await pickerName(page);
     chk('(d) Undo of the orbit that was on screen: it left for a catalogue spacecraft, and comes back loaded with its own number and place',
         und.rm === true && !/^Cc$/.test(und.shownAfter) && und.ok && und.cid === 'c3' && und.satnum === 'O0003' && und.at === 2 && und.onScreen && und.picker === 'Cc', JSON.stringify(und));
     // a successful Add clears a console note that was there before (a trial load does not clear one by itself)
     await pick(page, '26702', () => !document.getElementById('loadnote').hidden);
-    const note0 = await page.evaluate(() => ({ hidden: document.getElementById('loadnote').hidden, text: document.getElementById('loadnote').textContent.slice(0, 40) }));
+    /* The rebuilt note's markup is an icon, a space and a span (the old page's was a bare paragraph), so an emptied note there still holds that one
+       space: it is trimmed on the rebuilt page only. On the old page the text of a cleared note must be exactly empty, as it always was. */
+    const noteOf = trim => page.evaluate(t => { const n = document.getElementById('loadnote'); return { hidden: n.hidden, text: t ? n.textContent.trim() : n.textContent }; }, trim);
+    const note0 = await noteOf(NEW); note0.text = note0.text.slice(0, 40);
     await add(page, 'Clears the note');
-    const note1 = await page.evaluate(() => ({ hidden: document.getElementById('loadnote').hidden, text: document.getElementById('loadnote').textContent }));
+    const note1 = await noteOf(NEW);
     chk('a successful Add clears the console\'s note from an earlier refused pick (control: the note was there)', note0.hidden === false && /ODIN/.test(note0.text) && note1.hidden === true && note1.text === '', JSON.stringify([note0, note1]));
     // D23: a programmatic Add takes a catalogue name and numbers a duplicate among the reader's own (24 code points kept)
     const nm = await page.evaluate(([el]) => { const long24 = 'ABCDEFGHIJKLMNOPQRSTUVWX';
@@ -922,8 +1085,8 @@ const paintedPixels = page => page.evaluate(() => {
         out.rm = __gt.removeCustom(__gt.CUSTOM[0]);
         out.emptied = JSON.parse(localStorage.getItem('gt.custom'));
         out.again = __gt.addCustom({ name: 'Never wraps', el });
-        out.count = document.getElementById('satcount').textContent;
         return out; }, [mkEl(), GE]);
+      r.count = await H.satCount(page);
       chk('(l) a stored c9999 (next ' + next + ') is restored as c9999 / O9999, the next Add is refused with planner.full and the sentence, and nothing is duplicated or kept',
           r.n === 1 && r.cid === 'c9999' && r.satnum === 'O9999' && r.add.ok === false && r.add.errors.length === 1 && r.add.errors[0].code === 'planner.full' && r.add.errors[0].field === '' &&
           /used every orbit number/.test(r.add.errors[0].msg) && r.afterAdd.n === 1 && !!r.afterAdd.store && r.afterAdd.store.items.length === 1, JSON.stringify(r.add.errors) + ' n=' + r.afterAdd.n);
@@ -941,7 +1104,8 @@ const paintedPixels = page => page.evaluate(() => {
       const stored = await page.evaluate(() => localStorage.getItem('gt.custom'));
       await page.reload({ waitUntil: 'load' });
       await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 40000 }); await page.waitForTimeout(500);
-      const n0 = await page.evaluate(() => ({ n: __gt.CUSTOM.length, count: document.getElementById('satcount').textContent, keys: Object.keys(localStorage) }));
+      const n0 = await page.evaluate(() => ({ n: __gt.CUSTOM.length, keys: Object.keys(localStorage) }));
+      n0.count = await H.satCount(page);
       const r3 = await add(page, 'Third');
       chk('(m) two orbits added and both deleted: the saved record is {"v":1,"next":3,"items":[]}, a reload lists nothing and writes nothing new, and the next orbit is c3 / O0003',
           stored === '{"v":1,"next":3,"items":[]}' && n0.n === 0 && n0.count === '2,158 spacecraft' && r3.ok && r3.entry.cid === 'c3' && r3.entry.satnum === 'O0003' && r3.entry.l1.substring(2, 7) === 'O0003', stored + ' / ' + n0.count + ' / ' + (r3.entry && r3.entry.cid));
@@ -991,16 +1155,16 @@ const paintedPixels = page => page.evaluate(() => {
   if (want(20)) {
     console.log('20. reload paths and the window note');
     const { ctx, page, errs } = await open(browser);
-    const nav = async (sel, what) => { const s0 = await page.evaluate(() => __gt.D.start.getTime()); await page.click(sel);
+    const nav = async (sel, what) => { const s0 = await page.evaluate(() => __gt.D.start.getTime()); await H.clickWindow(page, sel);
       await page.waitForFunction(s => __gt.D.start.getTime() !== s, s0, { timeout: 15000 }).catch(() => {}); return what; };
     const note = () => page.evaluate(() => { const n = document.getElementById('winnote'); return { text: n.textContent, warn: n.classList.contains('warn'), who: __gt.D.entry.name }; });
     // control: for a catalogue spacecraft four days from its epoch the note is the warning about real element sets
-    await page.click('#tpepoch'); await page.waitForTimeout(400);
+    await H.clickWindow(page, '#tpepoch'); await page.waitForTimeout(400);
     for (let k = 0; k < 4; k++) await nav('#winPrevD');
     const cat = await note();
     chk('control: four days from the epoch a catalogue spacecraft is told "SGP4 drifts this far out", as a warning', /^-4\.0 d from epoch — SGP4 drifts this far out$/.test(cat.text) && cat.warn, cat.who + ': ' + cat.text + ' warn=' + cat.warn);
     await add(page, 'Stays', {}, { show: true });
-    await page.click('#tpepoch'); await page.waitForTimeout(400);
+    await H.clickWindow(page, '#tpepoch'); await page.waitForTimeout(400);
     const at0 = await note();
     for (let k = 0; k < 4; k++) await nav('#winPrevD');
     const cus = await note();
@@ -1008,17 +1172,17 @@ const paintedPixels = page => page.evaluate(() => {
         /^window starts at the epoch$/.test(at0.text) && /^-4\.0 d from epoch — M belongs to the epoch$/.test(cus.text) && !cus.warn && cus.who === 'Stays', at0.text + ' | ' + cus.text + ' warn=' + cus.warn);
     // setWindow: the buttons that move the window all reload through entryAt(curIdx)
     await nav('#winNextD');
-    await page.click('#tpnow'); await page.waitForTimeout(600);
-    await page.click('#tpepoch'); await page.waitForTimeout(600);
-    const w = await page.evaluate(() => ({ name: __gt.D.entry.name, custom: !!__gt.D.entry.custom, picker: document.getElementById('satsearch').value, atEpoch: __gt.D.start.getTime() === __gt.D.E.epoch.getTime() }));
+    await H.clickWindow(page, '#tpnow'); await page.waitForTimeout(600);
+    await H.clickWindow(page, '#tpepoch'); await page.waitForTimeout(600);
+    const w = await page.evaluate(() => ({ name: __gt.D.entry.name, custom: !!__gt.D.entry.custom, atEpoch: __gt.D.start.getTime() === __gt.D.E.epoch.getTime() }));
+    w.picker = await pickerName(page);
     chk('the window buttons (a day on, Now, Epoch) reload the custom orbit, not undefined, and the picker still names it', w.name === 'Stays' && w.custom && w.picker === 'Stays' && w.atEpoch && errs.length === 0, JSON.stringify(w) + ' ' + (errs[0] || ''));
     // siteChanged: the whole analysis is site-dependent
-    await page.click('#siteopen'); await page.click('#s-manual > summary');
-    await page.fill('#s-name', 'Quito'); await page.fill('#s-lat', '-0.18'); await page.fill('#s-lon', '-78.47'); await page.fill('#s-alt', '2.85'); await page.fill('#s-tz', '-5');
-    await page.click('#siteapply');
+    await H.setSite(page, { name: 'Quito', lat: '-0.18', lon: '-78.47', alt: '2.85', tz: '-5' });
     await page.waitForFunction(() => __gt.OBS.name === 'Quito', null, { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(1200);
-    const sc = await page.evaluate(() => ({ name: __gt.D.entry.name, custom: !!__gt.D.entry.custom, site: __gt.OBS.name, picker: document.getElementById('satsearch').value, cust: __gt.CUSTOM.length }));
+    const sc = await page.evaluate(() => ({ name: __gt.D.entry.name, custom: !!__gt.D.entry.custom, site: __gt.OBS.name, cust: __gt.CUSTOM.length }));
+    sc.picker = await pickerName(page);
     chk('moving the observer reloads the custom orbit for the new site (siteChanged), and nothing throws', sc.name === 'Stays' && sc.custom && sc.site === 'Quito' && sc.picker === 'Stays' && errs.length === 0, JSON.stringify(sc) + ' ' + (errs[0] || ''));
     // rollWindow: play past the end of the window
     const roll = await page.evaluate(async () => {
@@ -1049,7 +1213,7 @@ const paintedPixels = page => page.evaluate(() => {
       chk('(D39) Add of a ' + label + ' with its epoch a year before the window: the window moves to the epoch (windowMoved), and the Add is fast (' + Math.round(r.ms) + ' ms; unguarded it is seconds)',
           r.ok && r.moved === true && r.start === r.epoch && r.ms < 4000 && /window starts at the epoch/.test(r.note), JSON.stringify({ ok: r.ok, moved: r.moved, same: r.start === r.epoch, ms: Math.round(r.ms), note: r.note, e: r.errors && r.errors[0] && r.errors[0].code }));
       await page.evaluate(([w]) => { __gt.removeCustom(__gt.CUSTOM[__gt.CUSTOM.length - 1]); }, [ws]);
-      await page.click('#tpnow'); await page.waitForTimeout(500);
+      await H.clickWindow(page, '#tpnow'); await page.waitForTimeout(500);
     }
     // within 10 days of the window the window stays; a near-Earth orbit never moves it, however old its epoch
     const near = await page.evaluate(([el, ws]) => { const x = __gt.addCustom({ name: 'Molniya near', el: Object.assign({}, el, { epoch: ws - 5 * 864e5 }) }); return { ok: x.ok, moved: x.windowMoved, same: __gt.D.start.getTime() === ws }; }, [MOL, await page.evaluate(() => __gt.D.start.getTime())]);
@@ -1059,7 +1223,7 @@ const paintedPixels = page => page.evaluate(() => {
       return { ok: x.ok, moved: x.windowMoved, same: __gt.D.start.getTime() === ws, code: x.errors && x.errors[0].code }; }, [MOL, await page.evaluate(() => __gt.D.start.getTime())]);
     chk('(D39) a near-Earth orbit never moves the window, however old its epoch', leo.ok && leo.moved === false && leo.same, JSON.stringify(leo));
     await page.evaluate(() => { while (__gt.CUSTOM.length) __gt.removeCustom(__gt.CUSTOM[0]); });
-    await page.click('#tpnow'); await page.waitForTimeout(500);
+    await H.clickWindow(page, '#tpnow'); await page.waitForTimeout(500);
     // choosing a saved deep-space orbit from the picker: load() moves the window on a change of spacecraft
     const ws2 = await page.evaluate(() => __gt.D.start.getTime());
     await page.evaluate(([el, ws]) => __gt.addCustom({ name: 'Saved far', el: Object.assign({}, el, { epoch: ws - 60 * 864e5 }), show: false }), [MOL, ws2]);
@@ -1069,7 +1233,7 @@ const paintedPixels = page => page.evaluate(() => {
     chk('(D39) choosing a saved deep-space orbit whose epoch is 60 days off from the picker moves the window to its epoch', ch.moved && ch.atEpoch && Date.now() - t0 < 12000, JSON.stringify(ch) + ' ' + (Date.now() - t0) + ' ms');
     // an edit of the orbit on screen into a far deep-space one: the window goes to the new epoch, and says so
     await page.evaluate(() => { while (__gt.CUSTOM.length) __gt.removeCustom(__gt.CUSTOM[0]); });
-    await page.click('#tpnow'); await page.waitForTimeout(500);
+    await H.clickWindow(page, '#tpnow'); await page.waitForTimeout(500);
     const up = await page.evaluate(([el, ws]) => { const x = __gt.addCustom({ name: 'To edit', el: { a: 6978.135, e: 0.001, i: 97.8, raan: 0, argp: 0, M: 0, am: 0.0043, epoch: ws } });
       const E = x.entry, far = Object.assign({}, el, { epoch: ws - 365 * 864e5 }), t = performance.now(), y = __gt.updateCustom(E, { name: 'To edit', el: far });
       return { ok: y.ok, moved: y.windowMoved, atEpoch: __gt.D.start.getTime() === far.epoch, ms: performance.now() - t, same: __gt.D.entry === E }; }, [MOL, await page.evaluate(() => __gt.D.start.getTime())]);
@@ -1126,15 +1290,13 @@ const paintedPixels = page => page.evaluate(() => {
     chk('the Professor\'s measured numbers for the orbit on screen (passes, time in view, best elevation, altitudes, swings) are the console\'s own to display precision', agree(r1), JSON.stringify(r1.m) + ' vs ' + r1.n + ' passes');
     await page.evaluate(() => __planner.close());
     // the window and span the host reports follow the page's: after a span change the trial pass is over the new window
-    await page.click('.bar-window .span[data-h="72"]');
+    await H.clickWindow(page, '[data-h="72"]');
     await page.waitForFunction(() => __gt.D.hours === 72, null, { timeout: 15000 }).catch(() => {});
     const r2 = await meas();
     chk('...and after the span button (3 d) the host window is the new one: the numbers again equal the console\'s', agree(r2) && r2.n >= r1.n && r2.totalS > r1.totalS, r2.n + ' passes in 72 h against ' + r1.n + ' in 24 h');
     await page.evaluate(() => __planner.close());
     // the observer: the same trial from another place agrees with the console at that place
-    await page.click('#siteopen'); await page.click('#s-manual > summary');
-    await page.fill('#s-name', 'Hobart'); await page.fill('#s-lat', '-42.88'); await page.fill('#s-lon', '147.33'); await page.fill('#s-alt', '0.05'); await page.fill('#s-tz', '10');
-    await page.click('#siteapply');
+    await H.setSite(page, { name: 'Hobart', lat: '-42.88', lon: '147.33', alt: '0.05', tz: '10' });
     await page.waitForFunction(() => __gt.OBS.name === 'Hobart', null, { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(1200);
     const r3 = await meas();
@@ -1148,13 +1310,12 @@ const paintedPixels = page => page.evaluate(() => {
   // ---- 23. the picker offers the planner only when there is one ---------------------------------------------------------------------------------
   if (want(23)) {
     console.log('23. the picker with the planner off, and group rows only on an empty query');
-    const rows = async page => { await page.click('#satsearch'); const r = await page.evaluate(() => ({ plan: document.querySelectorAll('#satlist li.plan').length, cu: document.querySelectorAll('#satlist li.cu').length, grp: document.querySelectorAll('#satlist li.grp').length,
+    const rows = async page => { await H.openPicker(page); await page.click('#satsearch'); const r = await page.evaluate(() => ({ plan: document.querySelectorAll('#satlist li.plan').length, cu: document.querySelectorAll('#satlist li.cu').length, grp: document.querySelectorAll('#satlist li.grp').length,
         n: document.querySelectorAll('#satlist li[data-idx]').length, planId: !!document.getElementById('soptplan') })); await page.keyboard.press('Escape'); return r; };
-    for (const mod of ['lifetime', 'planner', 'advisor', 'advisor-copy', 'plannerui']) {
-      const { ctx, page, errs } = await open(browser, { init: seedInit, settle: 200,
-        route: [['**/earth/' + mod + '.js', r => r.fulfill({ contentType: 'text/javascript', body: '/* ' + mod + ' withheld by the test */' })]] });
+    for (const w of WITHHELD) {
+      const { ctx, page, errs } = await open(browser, { init: seedInit, settle: 200, route: [withhold(w)] });
       const r = await rows(page);
-      chk('(h) with earth/' + mod + '.js missing the picker is the catalogue it was: no Plan row, no custom row, no group rows', r.plan === 0 && r.cu === 0 && r.grp === 0 && !r.planId && r.n > 50 && errs.length === 0, JSON.stringify(r) + (errs[0] ? ' ERR ' + errs[0] : ''));
+      chk('(h) with ' + withheldName(w) + ' missing the picker is the catalogue it was: no Plan row, no custom row, no group rows', r.plan === 0 && r.cu === 0 && r.grp === 0 && !r.planId && r.n > 50 && errs.length === 0, JSON.stringify(r) + (errs[0] ? ' ERR ' + errs[0] : ''));
       await ctx.close();
     }
     {
@@ -1166,7 +1327,7 @@ const paintedPixels = page => page.evaluate(() => {
     {
       const { ctx, page, errs } = await open(browser);
       await add(page, 'Zqx alpha'); await add(page, 'Zqx bravo');
-      await page.click('#satsearch');
+      await H.openPicker(page); await page.click('#satsearch');
       const empty = await page.evaluate(() => ({ grp: document.querySelectorAll('#satlist li.grp').length, plan: document.querySelectorAll('#satlist li.plan').length, last: document.querySelector('#satlist').lastElementChild.className }));
       await page.fill('#satsearch', 'zqx');
       const typed = await page.evaluate(() => ({ grp: document.querySelectorAll('#satlist li.grp').length, cu: document.querySelectorAll('#satlist li.cu').length, plan: document.querySelectorAll('#satlist li.plan').length,
@@ -1188,14 +1349,14 @@ const paintedPixels = page => page.evaluate(() => {
     page.on('console', m => { if (m.type() === 'error') logged.push(m.text()); });
     await page.evaluate(() => { window.__calls = []; const o = PlannerUI.onLoad;
       PlannerUI.onLoad = function (d) { window.__calls.push({ same: d === __gt.D, name: d && d.entry && d.entry.name, hours: d && d.hours, masthead: document.getElementById('satname').textContent }); return o.apply(this, arguments); }; });
-    await page.click('.bar-window .span[data-h="6"]');
+    await H.clickWindow(page, '[data-h="6"]');
     await page.waitForFunction(() => __gt.D.hours === 6, null, { timeout: 15000 }).catch(() => {});
     await add(page, 'Seen by the planner');
     const calls = await page.evaluate(() => window.__calls.slice());
     chk('load() calls PlannerUI.onLoad with the analysis it just made: once for the span change (6 h) and once for the Add, each time the same object as __gt.D, with the masthead already painted',
         calls.length === 2 && calls[0].same && calls[0].hours === 6 && calls[1].same && calls[1].name === 'Seen by the planner' && calls[1].masthead === 'Seen by the planner', JSON.stringify(calls));
     await page.evaluate(() => { PlannerUI.onLoad = function () { throw new Error('planner fault (test)'); }; });
-    await page.click('.bar-window .span[data-h="72"]');
+    await H.clickWindow(page, '[data-h="72"]');
     await page.waitForFunction(() => __gt.D.hours === 72, null, { timeout: 15000 }).catch(() => {});
     const f = await page.evaluate(() => ({ hours: __gt.D.hours, name: __gt.D.entry.name, note: document.getElementById('loadnote').hidden }));
     chk('a PlannerUI.onLoad that throws never fails the load: the 72 h analysis of the custom orbit is on screen, no page error, the fault is logged',
@@ -1208,12 +1369,12 @@ const paintedPixels = page => page.evaluate(() => {
   /*__NEXT__*/
 
   await browser.close();
-  srv.close();
+  await srv.close();
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS') + (allErrs.length ? '   PAGE ERRORS: ' + allErrs.length + ' ' + allErrs.slice(0, 3).join(' | ') : '   no page errors'));
   process.exit(fails || allErrs.length ? 1 : 0);
 })().catch(async e => {
   console.log(e instanceof FailFast ? '\nFIRST FAILURE (CUSTOM_FAILFAST): ' + e.message : '\nSUITE CRASHED: ' + (e && e.stack || e));
   try { if (browserRef) await browserRef.close(); } catch (_) { /* already gone */ }
-  try { if (srvRef) srvRef.close(); } catch (_) { /* already closed */ }
+  try { if (srvRef) await srvRef.close(); } catch (_) { /* already closed */ }
   process.exit(1);
 });

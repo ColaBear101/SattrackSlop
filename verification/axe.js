@@ -51,7 +51,14 @@ const VIEWS = [
         ['layers', async () => { await page.evaluate(() => document.getElementById('layerstoggle').click()); await page.waitForTimeout(250); }],
         ['map', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim() === 'Map').click()); await page.waitForTimeout(400); }],
         ['window', async () => { await page.evaluate(() => document.getElementById('winOpen').click()); await page.waitForTimeout(250); }],
-        ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }]
+        ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }],
+        /* the orbit planner: the pill brings its chunk in and opens it (the three presentations - flow, drawer, sheet - are what the viewports are for) */
+        ['planner', async () => {
+          await page.keyboard.press('Escape');
+          await page.evaluate(() => document.getElementById('planopen').click());
+          await page.waitForFunction(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; }, null, { timeout: 20000 });
+          await page.waitForTimeout(400);
+        }]
       ];
       if (v.id === 'phone') states.splice(1, 0, ['answer', async () => { await page.evaluate(() => document.querySelector('.peek').click()); await page.waitForTimeout(250); }]);
 

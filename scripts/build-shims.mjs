@@ -37,6 +37,8 @@ await build({
   minify: false,
   sourcemap: false,
   legalComments: 'none',
+  /* the NOAA coefficient file is imported as text (data/WMM.COF?raw), as the app's own build does */
+  loader: { '.COF': 'text' },
   logLevel: 'warning'
 });
 for (const name of Object.keys(entries)) {

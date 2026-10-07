@@ -29,3 +29,4 @@ verification/.logs/
 verification/screens/
 .logs/
 verification/.ab3d-out/
+dist-*/

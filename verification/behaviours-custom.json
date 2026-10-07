@@ -1,0 +1,1009 @@
+{
+  "about": "Where every guard that verify-custom-mutants.js took away from the OLD page (79 mutants m01-m79, and the 3 equivalents e1-e3 that must survive) is now guarded, and what each of the 24 groups of verification/verify-custom.js covers. The mutants are exact-text edits of legacy/index.html, so they cannot be pointed at a bundle; verify-custom-mutants.js stays, for the old page. The rebuilt page's own mutants (exact-text edits of src/, each built in a scratch copy and run against verify-custom.js on the groups meant to catch it) are verification/mutants-new.json, run by verification/mutate-new.js; most of them carry the m-number of the old mutant they restate. A covering entry is \"verify-custom g<N> check <text>\" (a check of the suite, found by its text in group N; a text that ends where a name continues with a variable part, such as the module withheld, is the fixed part), \"tests/<file> <test name>\" (a Vitest test, named by its it() title), or \"not applicable: <why>\" (the mutant cannot exist in the rebuilt page; the entries beside it are what guards the behaviour). node verification/check-behaviours-custom.js checks that every reference resolves.",
+  "entries": [
+    {
+      "id": "m01",
+      "intent": "The refresh's own guard for an orbit of the reader's is removed (the digit guard of fetchTLE still holds): the 30 s beat and every load would record a check (prov, next) for a number that belongs to nobody. Rebuilt: state/live.svelte.ts check() returns first for a custom entry, before the pinned branch.",
+      "covering": [
+        "verify-custom g2 check and refreshTLE wrote no fetch state for the entry",
+        "verify-custom g2 check no request went to CelesTrak, the TLE mirror or this page's own cache API (/api/tle, /api/history), including from the re-check",
+        "tests/net/tle-source.test.ts 2. a custom orbit is never fetched: no cache read, no API probe, no direct request, no key written",
+        "tests/net/tle-source.test.ts reads the context in the order digits -> custom -> pinned -> cache -> API -> direct"
+      ]
+    },
+    {
+      "id": "m02",
+      "intent": "The one-to-five-digit guard of the element-set fetch is removed (the refresh's guard still holds): fetchTLE('O0001') would ask CelesTrak for CATNR=O0001.",
+      "covering": [
+        "verify-custom g11 check control: fetchTLE of a real number does ask CelesTrak",
+        "verify-custom g11 check (a) fetchTLE('O0001') called directly returns null and requests nothing",
+        "tests/net/tle-source.test.ts 1. digits: anything that is not one to five digits is null, with nothing asked and nothing touched",
+        "tests/shared/tle.test.ts refuses everything verify-custom group 11 throws at fetchTLE, and a little more"
+      ]
+    },
+    {
+      "id": "m03",
+      "intent": "Both network guards removed together (the refresh's and the fetch's digit guard): a request goes out for an orbit that is nobody's.",
+      "covering": [
+        "verify-custom g2 check no request went to CelesTrak, the TLE mirror or this page's own cache API (/api/tle, /api/history), including from the re-check",
+        "verify-custom g2 check and refreshTLE wrote no fetch state for the entry",
+        "verify-custom g11 check (a) fetchTLE('O0001') called directly returns null and requests nothing",
+        "verify-custom g19 check adding an orbit, and the re-check that follows, make ZERO requests of any kind"
+      ]
+    },
+    {
+      "id": "m04",
+      "intent": "runLife's custom return removed: the decay history of a planned orbit could be requested by a direct call.",
+      "covering": [
+        "verify-custom g11 check (a2) runLife called directly for a custom orbit requests nothing",
+        "verify-custom g11 check control: runLife for a catalogue spacecraft does ask for its decay history",
+        "tests/net/history-source.test.ts only a NORAD number is asked about, a custom orbit never is, and nothing is touched either way"
+      ]
+    },
+    {
+      "id": "m05",
+      "intent": "The Decay panel's custom branch removed (life.offer): a planned orbit would be offered the history button and the cache probed by its number. Rebuilt: state/life.svelte.ts offer() tests the flag first and offerCustom paints the forecast.",
+      "covering": [
+        "verify-custom g2 check decay offers no \"Estimate\" button and requests nothing",
+        "verify-custom g8 check ...and a custom entry with no elements (the test hook) says so in the Decay section",
+        "verify-custom g9 check a geostationary custom orbit loads in well under a few seconds"
+      ]
+    },
+    {
+      "id": "m06",
+      "intent": "stdMagOf's custom guard removed: an orbit with the ISS's lines read \"docked to ISS (ZARYA)\", std mag -1.8.",
+      "covering": [
+        "verify-custom g3 check an orbit equal to the ISS's set is not \"docked to\" it",
+        "tests/lib/custom-guards.test.ts a custom orbit is told apart by its flag, never by its name or its number > an orbit with the ISS's own lines (and its real number) is not \"docked to\" it"
+      ]
+    },
+    {
+      "id": "m07",
+      "intent": "txFor's custom guard removed: a planned orbit that carries a real catalogue number gets that satellite's SatNOGS downlinks.",
+      "covering": [
+        "verify-custom g3 check a custom entry carrying a REAL catalogue number (25544) still finds no downlink",
+        "verify-custom g3 check a downlink frequency given with the orbit is the only one offered",
+        "tests/lib/places-and-transmitters.test.ts a planned orbit is never looked up: its own downlink or none"
+      ]
+    },
+    {
+      "id": "m08",
+      "intent": "The \"Outside the brief\" note's custom guard removed: a custom orbit NAMED like the default raises it.",
+      "covering": [
+        "verify-custom g3 check control: the catalogue default KNACKSAT-2 does raise \"Outside the brief\"",
+        "verify-custom g3 check a custom orbit named like the default does not raise \"Outside the brief\"",
+        "tests/lib/custom-guards.test.ts a custom orbit is told apart by its flag, never by its name or its number > a custom orbit named like the default does not raise \"Outside the brief\"; the catalogue's own does"
+      ]
+    },
+    {
+      "id": "m09",
+      "intent": "The failure path of load() restores the picker index with CAT.indexOf, which is -1 for a custom orbit: a refused catalogue pick over a custom orbit left the next span click throwing load(undefined).",
+      "covering": [
+        "not applicable: there is no curIdx: the entry on screen is app.entry, committed only after its analysis has been computed (state/app.svelte.ts load), so a refused load leaves nothing to restore, and every reload re-runs app.entry",
+        "verify-custom g4 check a refused catalogue pick leaves the custom orbit on screen and the picker naming it (M11)",
+        "verify-custom g4 check ...and the next span change reloads the custom orbit, not undefined"
+      ]
+    },
+    {
+      "id": "m10",
+      "intent": "The Rev. no. cell prints the revolution count of a planned orbit (0) instead of \"n/a (planned)\".",
+      "covering": [
+        "verify-custom g2 check the derived values do not print a revolution count of 0 for an orbit that has not flown",
+        "tests/lib/report.test.ts a planned orbit has no revolution count to print"
+      ]
+    },
+    {
+      "id": "m11",
+      "intent": "The window note's \"SGP4 drifts this far out\" is a warning (orange) for a custom orbit too.",
+      "covering": [
+        "verify-custom g20 check the same four days from a designed orbit's epoch are not a warning",
+        "verify-custom g20 check control: four days from the epoch a catalogue spacecraft is told \"SGP4 drifts this far out\", as a warning"
+      ]
+    },
+    {
+      "id": "m12",
+      "intent": "A custom orbit is told \"SGP4 drifts this far out\" instead of \"M belongs to the epoch\".",
+      "covering": [
+        "verify-custom g20 check the same four days from a designed orbit's epoch are not a warning"
+      ]
+    },
+    {
+      "id": "m13",
+      "intent": "The CSV's tle_source loses its custom branch (it says \"embedded\" or \"fetched live\" for an orbit that is neither).",
+      "covering": [
+        "verify-custom g2 check the CSV says where the element set came from",
+        "tests/lib/words.test.ts a custom orbit is never embedded and never fetched",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the CSV names the orbit as custom, keeps the placeholder number, and says where the lines came from"
+      ]
+    },
+    {
+      "id": "m14",
+      "intent": "The lines under the element set (liveLine) lose their custom branch: they would say \"fetched live earlier\" or \"checking for a newer set\".",
+      "covering": [
+        "verify-custom g2 check the lines under the element set say what it is",
+        "tests/lib/words.test.ts a custom orbit is never checked and says so first, whatever else is on record"
+      ]
+    },
+    {
+      "id": "m15",
+      "intent": "The age text loses its custom branch: a planned orbit is aged like a measured set.",
+      "covering": [
+        "verify-custom g2 check the age chip does not go stale and does not say \"old\"",
+        "verify-custom g2 check the rail says the same",
+        "tests/lib/words.test.ts a planned orbit has no measured set to age, so nothing about it goes stale"
+      ]
+    },
+    {
+      "id": "m16",
+      "intent": "The age chip of a planned orbit may go stale (the stale class is not cleared).",
+      "covering": [
+        "verify-custom g2 check the age chip does not go stale and does not say \"old\"",
+        "tests/lib/words.test.ts a planned orbit has no measured set to age, so nothing about it goes stale"
+      ]
+    },
+    {
+      "id": "m17",
+      "intent": "The element-set heading keeps the catalogue wording (\"SatNOGS DB · Space-Track · CelesTrak\") for a custom orbit (D31).",
+      "covering": [
+        "verify-custom g2 check the element-set heading no longer names SatNOGS, Space-Track or CelesTrak",
+        "verify-custom g4 check ...and every mark of a custom orbit goes with it",
+        "verify-custom g1 check ...no mark of a custom orbit shows on a catalogue spacecraft"
+      ]
+    },
+    {
+      "id": "m18",
+      "intent": "The NORAD and COSPAR spans (and their separators) are not hidden for a custom orbit (D16): a made-up number beside a real label.",
+      "covering": [
+        "verify-custom g2 check the number fields do not claim a NORAD number"
+      ]
+    },
+    {
+      "id": "m19",
+      "intent": "The \"Custom orbit · edit\" chip is never shown.",
+      "covering": [
+        "verify-custom g2 check the \"Custom orbit · edit\" chip is a visible button with exactly that text"
+      ]
+    },
+    {
+      "id": "m20",
+      "intent": "The chip is never hidden again for a catalogue spacecraft.",
+      "covering": [
+        "verify-custom g1 check ...no mark of a custom orbit shows on a catalogue spacecraft",
+        "verify-custom g4 check ...and every mark of a custom orbit goes with it"
+      ]
+    },
+    {
+      "id": "m21",
+      "intent": "The element-set buttons (Edit in planner, Copy as TLE) stay for a catalogue spacecraft once a custom orbit has been shown.",
+      "covering": [
+        "verify-custom g4 check ...and every mark of a custom orbit goes with it"
+      ]
+    },
+    {
+      "id": "m22",
+      "intent": "The custom note (\"Your orbit. Designed here ...\") stays for a catalogue spacecraft once a custom orbit has been shown.",
+      "covering": [
+        "verify-custom g4 check ...and every mark of a custom orbit goes with it"
+      ]
+    },
+    {
+      "id": "m23",
+      "intent": "The CSV's satellite column loses \" (custom orbit)\".",
+      "covering": [
+        "verify-custom g2 check ...the satellite column ends \" (custom orbit)\" and norad is the placeholder O0001",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the CSV names the orbit as custom, keeps the placeholder number, and says where the lines came from"
+      ]
+    },
+    {
+      "id": "m24",
+      "intent": "The calendar SUMMARY loses its \"[custom orbit] \" prefix.",
+      "covering": [
+        "verify-custom g2 check the calendar event is marked as a hypothetical orbit in its title and its description",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the calendar entry is marked hypothetical in its title and its description, and its UID is the placeholder"
+      ]
+    },
+    {
+      "id": "m25",
+      "intent": "The calendar DESCRIPTION loses its \"Hypothetical orbit planned on the Ground Track Console\" line.",
+      "covering": [
+        "verify-custom g2 check the calendar event is marked as a hypothetical orbit in its title and its description",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the calendar entry is marked hypothetical in its title and its description, and its UID is the placeholder"
+      ]
+    },
+    {
+      "id": "m26",
+      "intent": "The export file name has no \"custom-\" stem.",
+      "covering": [
+        "verify-custom g2 check ...with the provenance columns still last, as verify-export requires, and a \"passes-custom-\" file name",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the file names say \"custom\", and a name with no Latin letter or digit falls back to \"orbit\""
+      ]
+    },
+    {
+      "id": "m27",
+      "intent": "The export file name of an all-non-Latin name has no fallback (passes-custom--bangkok).",
+      "covering": [
+        "verify-custom g19 check ...its exports still get a valid file name: the stem falls back to \"orbit\"",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the file names say \"custom\", and a name with no Latin letter or digit falls back to \"orbit\""
+      ]
+    },
+    {
+      "id": "m28",
+      "intent": "The stored record is trusted (no sanitizeStore): poisoned stores are listed.",
+      "covering": [
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with not JSON]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with another version]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with NaN and strings where numbers go]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with a stored TLE and a stored custom flag]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with a __proto__ key and an id that is not cN]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with thirty orbits (cap is 12)]",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with a name that is markup, a formula and a forged calendar line]",
+        "tests/lib/custom.test.ts refuses a record of another version or one that is not ours, and says why",
+        "tests/lib/custom.test.ts counts a stored record that no longer passes as refused, and keeps the rest"
+      ]
+    },
+    {
+      "id": "m29",
+      "intent": "The saved orbits are restored under ?tle=embedded.",
+      "covering": [
+        "verify-custom g7 check ?tle=embedded shows only the embedded catalogue and leaves a saved store untouched",
+        "verify-custom g23 check ?tle=embedded: the picker has no Plan row"
+      ]
+    },
+    {
+      "id": "m30",
+      "intent": "A bare restore at boot, gated on the planner module alone and with no catch (the first draft): a missing module or a throw took the whole page down.",
+      "covering": [
+        "not applicable: restore cannot run without the planner: state/custom.svelte.ts restore() needs attach() with the planner's modules, which arrive together or not at all, and its whole body is in a try",
+        "verify-custom g15 check missing the planner is off: no saved orbit listed, the record untouched",
+        "verify-custom g23 check missing the picker is the catalogue it was"
+      ]
+    },
+    {
+      "id": "m31",
+      "intent": "mkCustom lets a planner fault out and restore does not catch it: the page dies on every load while the record stays in storage.",
+      "covering": [
+        "verify-custom g15 check (i) a Planner.toTLE that throws, with a saved orbit",
+        "verify-custom g15 check ...and an Add then is refused as an answer (err.sgp4), never thrown into the page",
+        "tests/lib/custom.test.ts is refused when SGP4 cannot start from the lines; and a planner that throws is a fault, not a refusal",
+        "tests/lib/custom-guards.test.ts a planner that faults while a stored record is rebuilt > is reported as a fault, not counted as a bad record"
+      ]
+    },
+    {
+      "id": "m32",
+      "intent": "A planner fault is taken for a bad record: the saved list is rewritten without the orbits it could not rebuild.",
+      "covering": [
+        "verify-custom g15 check (i) a Planner.toTLE that throws, with a saved orbit",
+        "tests/lib/custom-guards.test.ts a planner that faults while a stored record is rebuilt > is reported as a fault, not counted as a bad record"
+      ]
+    },
+    {
+      "id": "m33",
+      "intent": "The storage listener is registered without the planner-on gate.",
+      "covering": [
+        "not applicable: the listener is added by custom.attach(), which runs only once the planner's modules are here",
+        "verify-custom g15 check missing the planner is off: no saved orbit listed, the record untouched"
+      ]
+    },
+    {
+      "id": "m34",
+      "intent": "The storage listener merges under ?tle=embedded.",
+      "covering": [
+        "verify-custom g7 check ...and another tab's change (a storage event) is not merged into the snapshot either"
+      ]
+    },
+    {
+      "id": "m35",
+      "intent": "An emptied list removes the key and with it the counter: the next orbit after a reload is c1 / O0001 again.",
+      "covering": [
+        "verify-custom g4 check ...the saved list is empty but the counter is kept",
+        "verify-custom g18 check (m) two orbits added and both deleted",
+        "verify-custom g18 check (l) ...the counter the page holds is 10000",
+        "tests/lib/custom.test.ts keeps the counter for an empty list once an orbit has been made, and removes the key before that"
+      ]
+    },
+    {
+      "id": "m36",
+      "intent": "mkCustom ignores verifyTLE: a record SGP4 cannot start from is listed.",
+      "covering": [
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted [with a perigee 5 km above the ground]",
+        "tests/lib/custom.test.ts is refused when SGP4 cannot start from the lines; and a planner that throws is a fault, not a refusal"
+      ]
+    },
+    {
+      "id": "m37",
+      "intent": "A custom orbit is pushed onto the catalogue array as well (the cloud grows, the count and the number-keyed code see it).",
+      "covering": [
+        "verify-custom g2 check ...the orbit has the placeholder number O0001 and lives at picker index 2158",
+        "verify-custom g1 check ...the catalogue cloud is one Points object of exactly CAT.length",
+        "verify-custom g4 check ...the group rows are not options"
+      ]
+    },
+    {
+      "id": "m38",
+      "intent": "gt-customs-changed is never dispatched.",
+      "covering": [
+        "verify-custom g14 check (g) <...>: <...> event<...> [with add with show:false]",
+        "verify-custom g14 check (g) restoring the saved orbits at boot fires it once for the whole list",
+        "verify-custom g13 check (g) ...and the merge fires gt-customs-changed once in the tab that took it"
+      ]
+    },
+    {
+      "id": "m39",
+      "intent": "The cap is off by one: a 13th orbit is kept.",
+      "covering": [
+        "verify-custom g16 check (e) the 13th addCustom returns {ok:false, errors:[{code:'err.cap', cap:12}]}"
+      ]
+    },
+    {
+      "id": "m40",
+      "intent": "The counter is not stopped at 9999.",
+      "covering": [
+        "verify-custom g18 check (l) a stored c9999 (next",
+        "tests/lib/custom.test.ts hands out the id asked for when it is well formed and free, else the first free from the counter"
+      ]
+    },
+    {
+      "id": "m41",
+      "intent": "A cid already in use is trusted: two orbits share a number.",
+      "covering": [
+        "verify-custom g17 check (d) ...a cid that is in use or malformed, and a place out of range, are not trusted",
+        "tests/lib/custom.test.ts hands out the id asked for when it is well formed and free, else the first free from the counter"
+      ]
+    },
+    {
+      "id": "m42",
+      "intent": "A duplicate name among the reader's own is not numbered.",
+      "covering": [
+        "verify-custom g17 check (D23) names: a duplicate among the reader's own is numbered",
+        "tests/lib/custom.test.ts keeps names unique among the reader's own, case-insensitively, within the length limit"
+      ]
+    },
+    {
+      "id": "m43",
+      "intent": "A refused Add keeps the counter it took.",
+      "covering": [
+        "verify-custom g16 check ...and the counter was given back: the next orbit is still c1 / O0001"
+      ]
+    },
+    {
+      "id": "m44",
+      "intent": "An Add loads as a real load, not a trial: a refusal writes the console's #loadnote.",
+      "covering": [
+        "verify-custom g16 check ...#loadnote stays empty (a failed Add is the planner's message)",
+        "verify-custom g10 check ...and the console's own #loadnote stays empty"
+      ]
+    },
+    {
+      "id": "m45",
+      "intent": "A successful Add leaves an older console note on screen.",
+      "covering": [
+        "verify-custom g17 check a successful Add clears the console's note from an earlier refused pick"
+      ]
+    },
+    {
+      "id": "m46",
+      "intent": "show:false does not recompute the picker index of the orbit on screen after the splice.",
+      "covering": [
+        "not applicable: there is no curIdx: the picker's row for the orbit on screen is derived from app.entry and the list (Picker.svelte `here`), and every reload re-runs app.entry",
+        "verify-custom g17 check (k) ...with show:false the orbit on screen, the analysis object, the picker and the count are untouched",
+        "verify-custom g17 check (k) ...and curIdx was recomputed after the splice"
+      ]
+    },
+    {
+      "id": "m47",
+      "intent": "Removing an orbit off screen leaves a stale picker index for the one on screen.",
+      "covering": [
+        "not applicable: there is no curIdx (see m46)",
+        "verify-custom g4 check removing another custom orbit leaves the one on screen loaded and reloadable",
+        "verify-custom g4 check removing a custom orbit that precedes the one on screen shifts its index"
+      ]
+    },
+    {
+      "id": "m48",
+      "intent": "An edit of the orbit on screen drops the reader's instant on the clock.",
+      "covering": [
+        "verify-custom g10 check ...(n) the reader's instant on the clock is kept across the edit"
+      ]
+    },
+    {
+      "id": "m49",
+      "intent": "An edit of an orbit off screen is not tried before it is stored.",
+      "covering": [
+        "verify-custom g10 check (n) editing an orbit that is NOT on screen refuses an element set SGP4 cannot load before anything is stored"
+      ]
+    },
+    {
+      "id": "m50",
+      "intent": "A refused edit does not put the old elements back.",
+      "covering": [
+        "verify-custom g10 check an edit whose elements SGP4 cannot run is refused with the page's own reason"
+      ]
+    },
+    {
+      "id": "m51",
+      "intent": "The last catalogue spacecraft is not remembered: removing the orbit on screen goes to the default instead.",
+      "covering": [
+        "verify-custom g4 check removing the orbit on screen goes back to the last catalogue spacecraft viewed first",
+        "verify-custom g14 check (g) <...>: <...> event<...> [with remove (on screen, falls back first)]"
+      ]
+    },
+    {
+      "id": "m52",
+      "intent": "deepGuard does nothing: the window never moves to a deep-space orbit's epoch (a Molniya a year off took seconds).",
+      "covering": [
+        "verify-custom g21 check (D39) Add of a <...> with its epoch a year before the window [with Molniya]",
+        "verify-custom g21 check (D39) Add of a <...> with its epoch a year before the window [with GEO]",
+        "tests/lib/custom.test.ts moves the window to the epoch of a deep-space orbit that is far from it, and only that"
+      ]
+    },
+    {
+      "id": "m53",
+      "intent": "Choosing a custom orbit from the picker does not move the window to a far deep-space orbit's epoch.",
+      "covering": [
+        "verify-custom g21 check (D39) choosing a saved deep-space orbit whose epoch is 60 days off from the picker moves the window to its epoch"
+      ]
+    },
+    {
+      "id": "m54",
+      "intent": "Updating the orbit on screen does not move the window to a far deep-space epoch.",
+      "covering": [
+        "verify-custom g21 check (D39) Update of the orbit on screen into a deep-space one a year from the window moves the window to the epoch"
+      ]
+    },
+    {
+      "id": "m55",
+      "intent": "The Professor's trial pass does not skip a deep-space draft far from the window (seconds of SDP4).",
+      "covering": [
+        "verify-custom g21 check (D39) the Professor's trial pass for a deep-space draft a year from the window is skipped without computing"
+      ]
+    },
+    {
+      "id": "m56",
+      "intent": "The picker finds a custom orbit by its placeholder number.",
+      "covering": [
+        "verify-custom g4 check a custom orbit is never found by its placeholder number",
+        "tests/lib/rank.test.ts matches a catalogue number as a start, never a custom one by its placeholder number"
+      ]
+    },
+    {
+      "id": "m57",
+      "intent": "The picker writes its group rows for a typed query too.",
+      "covering": [
+        "verify-custom g23 check the group rows (\"Your orbits\", \"Catalogue\") are for the empty query only"
+      ]
+    },
+    {
+      "id": "m58",
+      "intent": "The picker always offers the Plan row, even with the planner off.",
+      "covering": [
+        "verify-custom g23 check missing the picker is the catalogue it was: no Plan row, no custom row, no group rows",
+        "verify-custom g23 check ?tle=embedded: the picker has no Plan row"
+      ]
+    },
+    {
+      "id": "m59",
+      "intent": "Closing the picker puts back the name of CAT[curIdx], which is undefined for a custom orbit.",
+      "covering": [
+        "not applicable: the rebuilt picker has no field to put a name back in (CHANGES-FROM-LEGACY L10): the title names app.entry",
+        "verify-custom g4 check a refused catalogue pick leaves the custom orbit on screen and the picker naming it (M11)"
+      ]
+    },
+    {
+      "id": "m60",
+      "intent": "choose() loads CAT[idx]: a custom row of the picker loads nothing (or the wrong thing).",
+      "covering": [
+        "verify-custom g4 check typing a custom orbit's name picks it, and the picker names it",
+        "verify-custom g21 check (D39) choosing a saved deep-space orbit whose epoch is 60 days off from the picker moves the window to its epoch"
+      ]
+    },
+    {
+      "id": "m61",
+      "intent": "indexOf is blind to the custom list: a custom orbit has no place in the picker's index space.",
+      "covering": [
+        "verify-custom g2 check ...the orbit has the placeholder number O0001 and lives at picker index 2158",
+        "verify-custom g4 check ...the group rows are not options: the first options are the two customs",
+        "verify-custom g17 check (d) removing an orbit and adding it back with its cid and its place"
+      ]
+    },
+    {
+      "id": "m62",
+      "intent": "The observer change reloads CAT[curIdx], not the orbit on screen.",
+      "covering": [
+        "not applicable: a new observer is app.applySite, which re-runs app.entry: no index is involved",
+        "verify-custom g20 check moving the observer reloads the custom orbit for the new site (siteChanged), and nothing throws"
+      ]
+    },
+    {
+      "id": "m63",
+      "intent": "The window buttons (a day on, Now, Epoch) reload CAT[curIdx].",
+      "covering": [
+        "not applicable: the window buttons are app.setWindowStart, which re-runs app.entry: no index is involved",
+        "verify-custom g20 check the window buttons (a day on, Now, Epoch) reload the custom orbit, not undefined, and the picker still names it"
+      ]
+    },
+    {
+      "id": "m64",
+      "intent": "Rolling the window reloads CAT[curIdx].",
+      "covering": [
+        "not applicable: rolling is app.rollWindow, which re-runs app.entry: no index is involved",
+        "verify-custom g20 check playing past the end of the window rolls it on (rollWindow) and the custom orbit is still the one on screen"
+      ]
+    },
+    {
+      "id": "m65",
+      "intent": "The span buttons reload CAT[curIdx].",
+      "covering": [
+        "not applicable: a span is app.setSpan, which re-runs app.entry: no index is involved",
+        "verify-custom g4 check ...and the next span change reloads the custom orbit, not undefined"
+      ]
+    },
+    {
+      "id": "m66",
+      "intent": "The count keeps the old \" — type to search\" suffix (the pill wraps, D15).",
+      "covering": [
+        "verify-custom g1 check ...the count reads \"2,158 spacecraft\" (D15: no suffix, one line beside the pill)"
+      ]
+    },
+    {
+      "id": "m67",
+      "intent": "The custom Decay chart labels its x axis with calendar months.",
+      "covering": [
+        "verify-custom g9 check the Decay chart's x axis is days after the epoch: \"epoch\", then three \"+N\" labels, and no calendar date anywhere (D42)",
+        "tests/lib/report.test.ts lifeAxis: hours, days, then years with one decimal under ten"
+      ]
+    },
+    {
+      "id": "m68",
+      "intent": "The custom Decay axis ends with the mid-case run (the x1/3 run is clipped).",
+      "covering": [
+        "verify-custom g9 check ...and the axis runs to the end of the LONGEST of the three runs"
+      ]
+    },
+    {
+      "id": "m69",
+      "intent": "The custom Decay tooltip prints a date.",
+      "covering": [
+        "verify-custom g9 check ...and the chart's hover readout is \"+N after epoch\" with a height and \"model\", never a date or \"observed\""
+      ]
+    },
+    {
+      "id": "m70",
+      "intent": "The custom Decay legend says \"observed (N element sets)\".",
+      "covering": [
+        "verify-custom g2 check ...the span line says it is an assumption, and the legend says \"model, your drag\" and never \"observed (\"",
+        "verify-custom g9 check an eccentric orbit gets the orbit-averaged forecast"
+      ]
+    },
+    {
+      "id": "m71",
+      "intent": "load() never calls the planner's onLoad.",
+      "covering": [
+        "verify-custom g24 check load() calls PlannerUI.onLoad with the analysis it just made"
+      ]
+    },
+    {
+      "id": "m72",
+      "intent": "load() calls the planner's onLoad without a try: a planner fault fails the load.",
+      "covering": [
+        "verify-custom g24 check a PlannerUI.onLoad that throws never fails the load"
+      ]
+    },
+    {
+      "id": "m73",
+      "intent": "PlannerUI.init is not called under ?tle=embedded: the pill never says why.",
+      "covering": [
+        "verify-custom g7 check ...PlannerUI.init is still called under ?tle=embedded, with host.pinned true, and leaves the planner disabled"
+      ]
+    },
+    {
+      "id": "m74",
+      "intent": "host.window() reports the clock, not the window on screen.",
+      "covering": [
+        "verify-custom g22 check ...and every member is the page's own",
+        "verify-custom g22 check ...and after the span button (3 d) the host window is the new one"
+      ]
+    },
+    {
+      "id": "m75",
+      "intent": "host.obs() hands out a copy of the observer, not the live one.",
+      "covering": [
+        "verify-custom g22 check ...and every member is the page's own",
+        "verify-custom g22 check ...and after the observer moves the host observer is the new one"
+      ]
+    },
+    {
+      "id": "m76",
+      "intent": "host.show() shows nothing.",
+      "covering": [
+        "verify-custom g22 check ...and every member is the page's own"
+      ]
+    },
+    {
+      "id": "m77",
+      "intent": "host.storageOk() is always true.",
+      "covering": [
+        "verify-custom g22 check ...storageOk() is the result of the last save"
+      ]
+    },
+    {
+      "id": "m78",
+      "intent": "host.tracked() says a custom orbit is tracked.",
+      "covering": [
+        "verify-custom g22 check ...and every member is the page's own"
+      ]
+    },
+    {
+      "id": "m79",
+      "intent": "host.mask is a string: the controller refuses a host it cannot use and the planner never comes up.",
+      "covering": [
+        "verify-custom g22 check ...and every member is the page's own",
+        "verify-custom g1 check ...the planner is on (PlannerUI.enabled, the pill is shown)"
+      ]
+    },
+    {
+      "id": "e1",
+      "intent": "EQUIVALENT in the old page: the 30 s beat reads CAT[curIdx] (a custom orbit is then never handed to the refresh by the beat; load() already did, and the guard returns first).",
+      "covering": [
+        "not applicable: equivalent, and it stays so: the beat reads app.entry and reaches live.check, whose custom return (m01) is the guard that matters",
+        "verify-custom g2 check no request went to CelesTrak, the TLE mirror or this page's own cache API (/api/tle, /api/history), including from the re-check"
+      ]
+    },
+    {
+      "id": "e2",
+      "intent": "EQUIVALENT in the old page: saveCustoms has no PINNED guard (add, update and remove refuse first under ?tle=embedded, restore and the storage listener return first: nothing calls it).",
+      "covering": [
+        "not applicable: equivalent, and it stays so: custom.save() starts with `if (PINNED) return true` behind the same refusals; nothing reaches it, so no check can see it",
+        "verify-custom g7 check ?tle=embedded shows only the embedded catalogue and leaves a saved store untouched"
+      ]
+    },
+    {
+      "id": "e3",
+      "intent": "EQUIVALENT in the old page: updateCustom does not clear the forecast memo (it is keyed on a, e, i and am, every input the forecast reads: the key is the second layer).",
+      "covering": [
+        "not applicable: equivalent, and it stays so: update() sets entry.__life = null, and the memo's key [a, e, i, am] is a second layer",
+        "tests/lib/life-custom.test.ts changes with each of the four"
+      ]
+    },
+    {
+      "id": "g1",
+      "intent": "A fresh browser is exactly what it was: no custom orbit, 2,158 in the catalogue, the count line without a suffix, nothing written to storage by opening the page, the catalogue cloud one Points object of exactly CAT.length, the planner on, and no mark of a custom orbit on a catalogue spacecraft.",
+      "covering": [
+        "verify-custom g1 check a fresh browser has no custom orbit, and the catalogue is 2,158",
+        "verify-custom g1 check ...the count reads \"2,158 spacecraft\" (D15: no suffix, one line beside the pill)",
+        "verify-custom g1 check ...nothing was written to storage by merely opening the page: Object.keys(localStorage) is []",
+        "verify-custom g1 check ...the catalogue cloud is one Points object of exactly CAT.length (verify-elements finds it by that)",
+        "verify-custom g1 check ...(rebuilt page) the spacecraft picker is a popover: shut, the page holds no #satsearch, #satlist or #satcount; open, it holds all three; Escape takes them away again",
+        "verify-custom g1 check ...the planner is on (PlannerUI.enabled, the pill is shown) and opens the default spacecraft, with its drawer in the page and shut",
+        "verify-custom g1 check ...no mark of a custom orbit shows on a catalogue spacecraft (chip, note, element-set buttons: D37)",
+        "verify-custom g1 check ...no page error"
+      ]
+    },
+    {
+      "id": "g2",
+      "intent": "Adding one end to end: it is on screen, nothing is asked of CelesTrak or the mirror (including by the 30 s re-check), no fetch record is kept for it, the number fields, the chip, the notes, the provenance lines, the age chip, the count, its placeholder number and place in the picker, the Rev. no. cell, its element set, the Decay panel (a forecast from the drag typed, no button, no date) and its chart, and the CSV and calendar it exports.",
+      "covering": [
+        "verify-custom g2 check add returns ok, saved, the entry, and puts the orbit on screen",
+        "verify-custom g2 check no request went to CelesTrak, the TLE mirror or this page's own cache API (/api/tle, /api/history), including from the re-check",
+        "verify-custom g2 check ...and refreshTLE wrote no fetch state for the entry (__prov, __next; the rebuilt page keeps them in __gt.live): its own guard held, not only the second layer",
+        "verify-custom g2 check the number fields do not claim a NORAD number: \"none · custom\" and \"—\", their spans and the two separators hidden (D16)",
+        "verify-custom g2 check the \"Custom orbit · edit\" chip is a visible button with exactly that text, the custom note and the element-set buttons show and the Outside-the-brief note does not",
+        "verify-custom g2 check the element-set heading no longer names SatNOGS, Space-Track or CelesTrak: Synthesized from your elements (D31)",
+        "verify-custom g2 check the lines under the element set say what it is: built here, a placeholder O0001, nothing fetched, and nothing about a snapshot or the README",
+        "verify-custom g2 check the rail says the same",
+        "verify-custom g2 check the age chip does not go stale and does not say \"old\"",
+        "verify-custom g2 check the picker count says how many are the reader's own",
+        "verify-custom g2 check ...the orbit has the placeholder number O0001 and lives at picker index 2158 (past the catalogue, which is untouched, and so is the cloud)",
+        "verify-custom g2 check the derived values do not print a revolution count of 0 for an orbit that has not flown",
+        "verify-custom g2 check the element set is the synthetic one and is shown as text",
+        "verify-custom g2 check no page error",
+        "verify-custom g2 check decay offers no \"Estimate\" button and requests nothing",
+        "verify-custom g2 check ...the headline is the page's own atmosphere model run forward (Lifetime.integrate, drag as typed) and carries no date",
+        "verify-custom g2 check ...the note says what it is: atmosphere model run forward, a factor of 3 either way, and (circular) scrolled years ahead",
+        "verify-custom g2 check ...the span line says it is an assumption, and the legend says \"model, your drag\" and never \"observed (\"",
+        "verify-custom g2 check ...and the chart is drawn, not blank",
+        "verify-custom g2 check the default window holds passes from Bangkok (so the export checks below really run)",
+        "verify-custom g2 check the CSV says where the element set came from: a custom orbit planned here, never embedded or fetched (tle_source is exact)",
+        "verify-custom g2 check ...the satellite column ends \" (custom orbit)\" and norad is the placeholder O0001",
+        "verify-custom g2 check ...with the provenance columns still last, as verify-export requires, and a \"passes-custom-\" file name",
+        "verify-custom g2 check the calendar event is marked as a hypothetical orbit in its title and its description, and its UID is the unique placeholder",
+        "verify-custom g2 check ...every calendar line is folded to 75 octets",
+        "tests/lib/words.test.ts a planned orbit has no measured set to age, so nothing about it goes stale",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the CSV names the orbit as custom, keeps the placeholder number, and says where the lines came from",
+        "tests/lib/report.test.ts a planned orbit has no revolution count to print"
+      ]
+    },
+    {
+      "id": "g3",
+      "intent": "What matches on names and numbers: an orbit with the ISS's own lines is not \"docked to\" it, a custom entry that carries a real catalogue number finds no downlink and asks nobody, one NAMED like the default does not raise \"Outside the brief\", and the reader's own downlink is the only one offered.",
+      "covering": [
+        "verify-custom g3 check control: the catalogue default KNACKSAT-2 does raise \"Outside the brief\" (so the guard below can be seen to act)",
+        "verify-custom g3 check an orbit equal to the ISS's set is not \"docked to\" it, and its brightness is assumed, not looked up",
+        "verify-custom g3 check a custom entry carrying a REAL catalogue number (25544) still finds no downlink in the SatNOGS table, and asks nobody about it",
+        "verify-custom g3 check a custom orbit named like the default does not raise \"Outside the brief\"",
+        "verify-custom g3 check a downlink frequency given with the orbit is the only one offered, as the reader's own",
+        "verify-custom g3 check ...and a frequency outside 1 MHz to 100 GHz is dropped, never an error",
+        "verify-custom g3 check no page error",
+        "tests/lib/custom-guards.test.ts a custom orbit is told apart by its flag, never by its name or its number > a custom orbit named like the default does not raise \"Outside the brief\"",
+        "tests/lib/places-and-transmitters.test.ts a planned orbit is never looked up: its own downlink or none"
+      ]
+    },
+    {
+      "id": "g4",
+      "intent": "The picker with customs: group rows, tags, the virtual index space, finding one by name or by the word \"custom\" and never by its number, the Plan row (reached by key, Enter and click), a refused catalogue pick over a custom orbit, removing another / an earlier / the on-screen one, and every mark of a custom orbit going with it.",
+      "covering": [
+        "verify-custom g4 check with nothing typed the picker opens on a \"Your orbits\" group, the reader's own orbits tagged \"custom\", then a \"Catalogue\" group",
+        "verify-custom g4 check ...the group rows are not options: the first options are the two customs (picker indices 2158, 2159) then catalogue 0",
+        "verify-custom g4 check typing a custom orbit's name picks it, and the picker names it",
+        "verify-custom g4 check the word \"custom\" finds the reader's own orbits first",
+        "verify-custom g4 check a custom orbit is never found by its placeholder number (O0001 is not a search term)",
+        "verify-custom g4 check a query that matches nothing lists \"Nothing in the catalogue matches that\" and the Plan row as the last option",
+        "verify-custom g4 check ...ArrowDown reaches it (aria-activedescendant names it)",
+        "verify-custom g4 check ...Enter opens the planner with the query as the name, the focus in its name field, the list closed and the picker back on the spacecraft on screen",
+        "verify-custom g4 check ...Escape from there closes it and returns the focus to the pill, never to the page",
+        "verify-custom g4 check a click on the Plan row opens the planner with the focus in its name field",
+        "verify-custom g4 check \"ISS\" and Enter still pick the first hit, a catalogue spacecraft (the Plan row is only ever the last option)",
+        "verify-custom g4 check a refused catalogue pick leaves the custom orbit on screen and the picker naming it (M11)",
+        "verify-custom g4 check ...and the next span change reloads the custom orbit, not undefined",
+        "verify-custom g4 check removing another custom orbit leaves the one on screen loaded and reloadable (curIdx is recomputed after the splice)",
+        "verify-custom g4 check removing a custom orbit that precedes the one on screen shifts its index; the next reload still finds it",
+        "verify-custom g4 check removing the orbit on screen goes back to the last catalogue spacecraft viewed first, then lets it go",
+        "verify-custom g4 check ...the saved list is empty but the counter is kept: {\"v\":1,\"next\":4,\"items\":[]}",
+        "verify-custom g4 check ...and every mark of a custom orbit goes with it: chip, note and element-set buttons hidden again, the number fields back (with their separators), the source line the catalogue's",
+        "verify-custom g4 check ...with the analysis of the catalogue object loaded, no error",
+        "verify-custom g4 check no page error",
+        "tests/lib/rank.test.ts matches every custom orbit on the word they are tagged with",
+        "tests/lib/rank.test.ts matches a catalogue number as a start, never a custom one by its placeholder number"
+      ]
+    },
+    {
+      "id": "g5",
+      "intent": "Persistence: what is stored is inputs only, rebuilt on read to the same two lines, typed values kept; and eleven poisoned stores (not JSON, another version, an array, too large, NaN, out of range, a stored TLE or flag, __proto__, thirty orbits, SGP4 refuses, a name that is markup) dropped or cleaned, never trusted.",
+      "covering": [
+        "verify-custom g5 check what is stored is the inputs and nothing derived: no TLE lines, no number, no flag, no B*, a version and a counter",
+        "verify-custom g5 check after a reload both are back, rebuilt from the stored elements (no bstar in the record) to exactly the same two lines, and the page still opens on the default",
+        "verify-custom g5 check ...and the picker says so",
+        "verify-custom g5 check ...the typed values are kept, not the TLE-rounded ones (the stored record still holds a = 6978.135 exactly)",
+        "verify-custom g5 check no page error",
+        "verify-custom g5 check poisoned store, <...>: dropped or cleaned, never trusted",
+        "verify-custom g5 check ...a record of another version is moved aside, not destroyed",
+        "tests/lib/custom.test.ts is the planner's inputs and nothing derived: no lines, no flag, no number",
+        "tests/lib/custom.test.ts refuses a record of another version or one that is not ours, and says why",
+        "tests/lib/custom.test.ts counts a stored record that no longer passes as refused, and keeps the rest"
+      ]
+    },
+    {
+      "id": "g6",
+      "intent": "Blocked storage: the page opens, an orbit works for the session and says it was not saved.",
+      "covering": [
+        "verify-custom g6 check with storage blocked the page still opens and a custom orbit still works for the session, saying it was not saved"
+      ]
+    },
+    {
+      "id": "g7",
+      "intent": "?tle=embedded: the saved store neither listed nor rewritten, addCustom/updateCustom answer planner.off, the pill shown aria-disabled with the sentence and a way back, a storage event not merged, and PlannerUI.init still called once with host.pinned.",
+      "covering": [
+        "verify-custom g7 check ?tle=embedded shows only the embedded catalogue and leaves a saved store untouched (neither listed nor rewritten)",
+        "verify-custom g7 check ...addCustom and updateCustom refuse with the planner.off code and the sentence",
+        "verify-custom g7 check ...the pill is shown as aria-disabled, still focusable, with the sentence as its title and a way back; activating it opens nothing",
+        "verify-custom g7 check ...and another tab's change (a storage event) is not merged into the snapshot either",
+        "verify-custom g7 check no page error",
+        "verify-custom g7 check ...PlannerUI.init is still called under ?tle=embedded, with host.pinned true, and leaves the planner disabled"
+      ]
+    },
+    {
+      "id": "g8",
+      "intent": "The same pipeline bit for bit: a catalogue object run down the custom path gives identical elements, passes and track (8,641 samples), and an entry with no elements says so in the Decay panel.",
+      "covering": [
+        "verify-custom g8 check a catalogue object run down the custom path computes bit-identical elements, passes and ground track (8,641 samples)",
+        "verify-custom g8 check ...and a custom entry with no elements (the test hook) says so in the Decay section instead of forecasting from nothing",
+        "verify-custom g8 check no page error"
+      ]
+    },
+    {
+      "id": "g9",
+      "intent": "The decay guards: GEO, high perigee, re-entering, no drag, eccentric and low circular orbits each say the right thing quickly (unguarded GEO took 30.7 s), as durations and never dates; the chart's x axis is days after the epoch, ends at the longest run, and the tooltip is \"+N after epoch\".",
+      "covering": [
+        "verify-custom g9 check a geostationary custom orbit loads in well under a few seconds and is given no decay figure (unguarded: 30.7 s)",
+        "verify-custom g9 check an orbit with its perigee above the atmosphere table is told drag does not decide it",
+        "verify-custom g9 check a low orbit that SGP4 takes under 120 km inside the window is flagged as re-entering, and its Decay section is a duration in hours, never a date",
+        "verify-custom g9 check an area-to-mass ratio of 0 never decays, and says so",
+        "verify-custom g9 check a perigee under the 120 km line is \"Re-entering\" (Add stays enabled; the orbit loads)",
+        "verify-custom g9 check an eccentric orbit gets the orbit-averaged forecast: the note says \"sooner or later\", names the perigee, and the chart says perigee height",
+        "verify-custom g9 check the Decay chart's x axis is days after the epoch: \"epoch\", then three \"+N\" labels, and no calendar date anywhere (D42)",
+        "verify-custom g9 check ...and the axis runs to the end of the LONGEST of the three runs (the x1/3 run), so the band is not clipped at the edge: the last label is that run's length, longer than the mid-case run's",
+        "verify-custom g9 check ...for a 700 km orbit that outlasts the century the last label is in years (>= 100) and no year like 2136 appears",
+        "verify-custom g9 check ...and the chart's hover readout is \"+N after epoch\" with a height and \"model\", never a date or \"observed\"",
+        "verify-custom g9 check no page error",
+        "tests/lib/life-custom.test.ts a geostationary orbit is not integrated at all (unguarded it took 30.7 s) and is given no figure",
+        "tests/lib/life-custom.test.ts an eccentric orbit: \"sooner or later\", the perigee, and the chart says perigee height"
+      ]
+    },
+    {
+      "id": "g10",
+      "intent": "Editing in place: the same object, id, number, a new analysis, the reader's instant kept; a refused edit puts the old orbit back and writes no console note; an off-screen edit is tried before it is stored; no request.",
+      "covering": [
+        "verify-custom g10 check editing the orbit on screen re-analyses it in place: same object, same id and number, new inclination and name",
+        "verify-custom g10 check ...(n) the reader's instant on the clock is kept across the edit (updateCustom does that, not the host)",
+        "verify-custom g10 check ...and the saved copy follows",
+        "verify-custom g10 check an edit whose elements SGP4 cannot run is refused with the page's own reason (err.sgp4, the code SGP4 gave), and the old orbit is put back",
+        "verify-custom g10 check ...and the console's own #loadnote stays empty (a failed Add or Edit is the planner's message, not the console's)",
+        "verify-custom g10 check (n) editing an orbit that is NOT on screen refuses an element set SGP4 cannot load before anything is stored (the old one, the store and the screen stay)",
+        "verify-custom g10 check ...and a good edit of it is stored without taking over the globe",
+        "verify-custom g10 check no request to any source, and no page error"
+      ]
+    },
+    {
+      "id": "g11",
+      "intent": "The second layers of the network guard called directly: fetchTLE of anything that is not one to five digits, and runLife of a custom orbit, ask nobody and write nothing (each with a control that proves the counter sees a request).",
+      "covering": [
+        "verify-custom g11 check control: fetchTLE of a real number does ask CelesTrak and the mirror (so the counter below can see a request); with both blocked it answers null",
+        "verify-custom g11 check control: fetchTLE of a real number asks this page's own API first (/api/tle/25544), and the counter sees that request as well",
+        "verify-custom g11 check (a) fetchTLE('O0001') called directly returns null and requests nothing; so does anything else that is not one to five digits",
+        "verify-custom g11 check control: runLife for a catalogue spacecraft does ask for its decay history",
+        "verify-custom g11 check control: ...and it asks this page's own API first (/api/history/<n>), which the counter sees",
+        "verify-custom g11 check (a2) runLife called directly for a custom orbit requests nothing and leaves the Decay section as it was",
+        "verify-custom g11 check ...and no tle:/hist: key was ever written for the placeholder number",
+        "verify-custom g11 check no page error",
+        "tests/net/tle-source.test.ts 1. digits: anything that is not one to five digits is null, with nothing asked and nothing touched",
+        "tests/net/history-source.test.ts only a NORAD number is asked about, a custom orbit never is, and nothing is touched either way"
+      ]
+    },
+    {
+      "id": "g12",
+      "intent": "Advisor.sunEci equals the page's sunEci exactly on 500 random dates.",
+      "covering": [
+        "verify-custom g12 check (c) Advisor.sunEci equals the page's sunEci exactly (every field, Date and number argument) on 500 random dates from 2000 to 2056",
+        "verify-custom g12 check no page error"
+      ]
+    },
+    {
+      "id": "g13",
+      "intent": "Two tabs: the storage event brings another tab's orbit in (adds, never removes), fires gt-customs-changed once, takes a fresh number, and never touches the orbit on screen.",
+      "covering": [
+        "verify-custom g13 check (b) a second tab picks up an orbit the first one added: the same two lines, the count, the saved list; its own screen is untouched",
+        "verify-custom g13 check (g) ...and the merge fires gt-customs-changed once in the tab that took it, as the add did in the tab that made it",
+        "verify-custom g13 check ...and back: the first tab takes the second one's orbit with a fresh number (c2, the counter was raised by the merge) and never touches the orbit on its screen",
+        "verify-custom g13 check the merge adds and never removes: an orbit deleted in one tab stays in the other, above all the one on its screen (last writer wins, as the README says)",
+        "verify-custom g13 check (b) a record another tab wrote does not take this tab past the cap: ten of its own and twelve arriving make twelve (the first two arrivals), the count says so, and a further Add is refused with err.cap",
+        "verify-custom g13 check no page error in either tab",
+        "tests/lib/custom.test.ts merges what another tab added, never removing, never over the cap, never twice"
+      ]
+    },
+    {
+      "id": "g14",
+      "intent": "gt-customs-changed exactly once per mutation and per non-empty boot restore, and not for a refusal.",
+      "covering": [
+        "verify-custom g14 check (g) <...>: <...> event<...>",
+        "verify-custom g14 check no page error",
+        "verify-custom g14 check (g) restoring the saved orbits at boot fires it once for the whole list, and the saved list (built by init, after) shows both"
+      ]
+    },
+    {
+      "id": "g15",
+      "intent": "Isolation at boot: with the planner withheld (each module of the old page; each lazy chunk of the rebuilt one) the planner is off and the saved record untouched; a planner whose toTLE throws leaves the console open and the record unrewritten; a decayed catalogue object with the planner open throws nothing.",
+      "covering": [
+        "verify-custom g15 check (h) with <...> missing the planner is off: no saved orbit listed, the record untouched, the pill and drawer hidden, the console open, no page error",
+        "verify-custom g15 check (i) a Planner.toTLE that throws, with a saved orbit: zero page errors, no custom orbit, the console loaded, and the saved record not rewritten without the orbit it could not rebuild",
+        "verify-custom g15 check ...and an Add then is refused as an answer (err.sgp4), never thrown into the page",
+        "verify-custom g15 check (o) the catalogue holds an object whose mean perigee is under the ground (the case Advisor.context was written to survive)",
+        "verify-custom g15 check (o) loading it (or being told it cannot be loaded), with the planner open and a saved orbit listed, gives zero page errors and a loaded console",
+        "tests/lib/custom-guards.test.ts a planner that faults while a stored record is rebuilt > is reported as a fault, not counted as a bad record"
+      ]
+    },
+    {
+      "id": "g16",
+      "intent": "Refusals leave nothing: err.sgp4 for a decayed epoch with no console note and the counter given back; twelve different invalid inputs each in {field, code, msg} form; the 13th orbit is err.cap.",
+      "covering": [
+        "verify-custom g16 check (j) an Add of a 200 km circular orbit with an epoch 730 days before the window is refused with err.sgp4, sgp4 === 1, and a sentence from the page",
+        "verify-custom g16 check ...#loadnote stays empty (a failed Add is the planner's message), D.entry, the window, the span, the picker and the store are unchanged, and nothing was kept",
+        "verify-custom g16 check ...and the counter was given back: the next orbit is still c1 / O0001",
+        "verify-custom g16 check (e) every refusal through addCustom carries {field, code, msg} in errors[] and none throws",
+        "verify-custom g16 check ...nothing was kept by any of them",
+        "verify-custom g16 check (e) the 13th addCustom returns {ok:false, errors:[{code:'err.cap', cap:12}]} and keeps nothing: twelve orbits, the twelfth still on screen",
+        "verify-custom g16 check ...the count reads \"2,158 + 12 of yours\"",
+        "verify-custom g16 check no page error",
+        "tests/lib/custom.test.ts has one shape of refusal",
+        "tests/lib/custom.test.ts carries the number SGP4 gave"
+      ]
+    },
+    {
+      "id": "g17",
+      "intent": "Numbers, places and the clock: cid and place handed back by Undo, show:false touching neither screen nor clock, malformed cid and place not trusted, a successful Add clearing an older console note, names numbered and kept within 24 code points.",
+      "covering": [
+        "verify-custom g17 check (d) removing an orbit and adding it back with its cid and its place hands back the same number (O0002), the same list index and the same picker index",
+        "verify-custom g17 check (k) ...with show:false the orbit on screen, the analysis object, the picker and the count are untouched, and the on-screen orbit's picker index follows the splice (2159 with Bb gone, 2160 with it back at its place)",
+        "verify-custom g17 check (k) ...and the reader's instant on the clock is kept (a hidden Add never takes the clock)",
+        "verify-custom g17 check (k) ...and curIdx was recomputed after the splice: the next reload is still the orbit on screen, not whatever sits at the old index",
+        "verify-custom g17 check (d) ...a cid that is in use or malformed, and a place out of range, are not trusted: a fresh number from the counter (c4, c5, ...), at the end of the list",
+        "verify-custom g17 check (d) Undo of the orbit that was on screen: it left for a catalogue spacecraft, and comes back loaded with its own number and place",
+        "verify-custom g17 check a successful Add clears the console's note from an earlier refused pick (control: the note was there)",
+        "verify-custom g17 check (D23) names: a duplicate among the reader's own is numbered (case-insensitive), a catalogue name is accepted programmatically, and the number never pushes a name past 24 code points",
+        "verify-custom g17 check no page error",
+        "tests/lib/custom.test.ts hands out the id asked for when it is well formed and free, else the first free from the counter",
+        "tests/lib/custom.test.ts keeps names unique among the reader's own, case-insensitively, within the length limit"
+      ]
+    },
+    {
+      "id": "g18",
+      "intent": "The counter: a stored c9999 is restored and the next Add is planner.full, never reused; two orbits added and both deleted keep the counter, and the next is c3.",
+      "covering": [
+        "verify-custom g18 check (l) a stored c9999 (next <...>) is restored as c9999 / O9999, the next Add is refused with planner.full and the sentence, and nothing is duplicated or kept",
+        "verify-custom g18 check (l) ...the counter the page holds is 10000 (an edit writes it), deleting c9999 keeps it (the list is empty, next 10000) and the number is never handed out again",
+        "verify-custom g18 check no page error",
+        "verify-custom g18 check (m) two orbits added and both deleted: the saved record is {\"v\":1,\"next\":3,\"items\":[]}, a reload lists nothing and writes nothing new, and the next orbit is c3 / O0003",
+        "tests/lib/custom.test.ts keeps the counter for an empty list once an orbit has been made, and removes the key before that"
+      ]
+    },
+    {
+      "id": "g19",
+      "intent": "A non-Latin name: kept, exports named passes-custom-orbit-..., the name in the files; and ZERO requests of any host or method while an orbit is added and the re-check runs.",
+      "covering": [
+        "verify-custom g19 check a name made of non-Latin letters is kept (the cleaner keeps letters of every script)",
+        "verify-custom g19 check ...its exports still get a valid file name: the stem falls back to \"orbit\" (passes-custom-orbit-bangkok-DATE.csv / .ics), not passes--bangkok",
+        "verify-custom g19 check ...and the name itself is in the file, with the mark",
+        "verify-custom g19 check control: a fetch the page makes on purpose is counted by this listener (so \"zero\" below can be told from \"not listening\")",
+        "verify-custom g19 check adding an orbit, and the re-check that follows, make ZERO requests of any kind (any host, any method)",
+        "verify-custom g19 check no page error",
+        "tests/lib/custom-guards.test.ts what a custom orbit writes into an export > the file names say \"custom\", and a name with no Latin letter or digit falls back to \"orbit\""
+      ]
+    },
+    {
+      "id": "g20",
+      "intent": "Every reload path keeps a custom orbit on screen (the window buttons, the observer, rolling the window, the span), and the window note says M belongs to the epoch, never \"SGP4 drifts\", never as a warning.",
+      "covering": [
+        "verify-custom g20 check control: four days from the epoch a catalogue spacecraft is told \"SGP4 drifts this far out\", as a warning",
+        "verify-custom g20 check the same four days from a designed orbit's epoch are not a warning: it says M belongs to the epoch, and the \"SGP4 drifts\" sentence is not used",
+        "verify-custom g20 check the window buttons (a day on, Now, Epoch) reload the custom orbit, not undefined, and the picker still names it",
+        "verify-custom g20 check moving the observer reloads the custom orbit for the new site (siteChanged), and nothing throws",
+        "verify-custom g20 check playing past the end of the window rolls it on (rollWindow) and the custom orbit is still the one on screen",
+        "verify-custom g20 check no page error"
+      ]
+    },
+    {
+      "id": "g21",
+      "intent": "Deep-space orbits and the window (D39): Add, pick from the list and Update move the window to the epoch of a far deep-space orbit quickly, a near or LEO orbit never moves it, and the Professor's trial pass skips a far deep-space draft.",
+      "covering": [
+        "verify-custom g21 check (D39) Add of a <...> with its epoch a year before the window: the window moves to the epoch (windowMoved), and the Add is fast (<...> ms; unguarded it is seconds)",
+        "verify-custom g21 check (D39) a deep-space orbit whose epoch is only 5 days from the window leaves the window alone",
+        "verify-custom g21 check (D39) a near-Earth orbit never moves the window, however old its epoch",
+        "verify-custom g21 check (D39) choosing a saved deep-space orbit whose epoch is 60 days off from the picker moves the window to its epoch",
+        "verify-custom g21 check (D39) Update of the orbit on screen into a deep-space one a year from the window moves the window to the epoch, in place, quickly",
+        "verify-custom g21 check (D39) the Professor's trial pass for a deep-space draft a year from the window is skipped without computing (measured null, quick), and runs when the epoch is a day away",
+        "verify-custom g21 check no page error",
+        "tests/lib/custom.test.ts moves the window to the epoch of a deep-space orbit that is far from it, and only that"
+      ]
+    },
+    {
+      "id": "g22",
+      "intent": "The host the planner is given: init once after the boot load, exactly the seventeen members, each the page's own (live OBS, MASK, arrays, window, add/update/remove, show, tracked, entryTle, storageOk), and the Professor's measured numbers equal the console's.",
+      "covering": [
+        "verify-custom g22 check PlannerUI.init is called exactly once, AFTER the boot load (the analysis exists), with a host of exactly the members of SPEC 6.8",
+        "verify-custom g22 check ...and every member is the page's own: obs() is the live OBS, mask the MASK, catalogue()/customs()/current() the arrays and analysis, window() the window on screen, add/update/remove the page functions, show() loads, tracked() is false for a custom orbit, entryTle() its two lines",
+        "verify-custom g22 check ...storageOk() is the result of the last save: false while storage refuses, true once it works again (the planner shows err.storage from it)",
+        "verify-custom g22 check the Professor's measured numbers for the orbit on screen (passes, time in view, best elevation, altitudes, swings) are the console's own to display precision",
+        "verify-custom g22 check ...and after the span button (3 d) the host window is the new one: the numbers again equal the console's",
+        "verify-custom g22 check ...and after the observer moves the host observer is the new one: the numbers equal the console's at Hobart, and differ from Bangkok's",
+        "verify-custom g22 check no page error"
+      ]
+    },
+    {
+      "id": "g23",
+      "intent": "The picker offers the planner only when there is one: no Plan row, custom row or group row with the planner withheld or under ?tle=embedded; group rows only for the empty query; customs first when typed.",
+      "covering": [
+        "verify-custom g23 check (h) with <...> missing the picker is the catalogue it was: no Plan row, no custom row, no group rows",
+        "verify-custom g23 check ?tle=embedded: the picker has no Plan row (the pill says why), and no custom row for the saved orbit it does not list",
+        "verify-custom g23 check the group rows (\"Your orbits\", \"Catalogue\") are for the empty query only; a typed query lists its hits with the customs first, tagged, and the Plan row last",
+        "verify-custom g23 check no page error"
+      ]
+    },
+    {
+      "id": "g24",
+      "intent": "PlannerUI.onLoad is called last by every load with the analysis just made, after the masthead is painted, and a throw from it never fails the load.",
+      "covering": [
+        "verify-custom g24 check load() calls PlannerUI.onLoad with the analysis it just made: once for the span change (6 h) and once for the Add, each time the same object as __gt.D, with the masthead already painted",
+        "verify-custom g24 check a PlannerUI.onLoad that throws never fails the load: the 72 h analysis of the custom orbit is on screen, no page error, the fault is logged",
+        "verify-custom g24 check no page error"
+      ]
+    }
+  ]
+}

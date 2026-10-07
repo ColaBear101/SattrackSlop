@@ -18,6 +18,7 @@ const STEP_MS = 60_000;
 
 export function onKey(e: KeyboardEvent): void {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.documentElement.classList.contains('ar-open')) return;        // the sky through the phone has the screen: the clock is not for keys now
   switch (e.key) {
     case ' ':
       if (takenByFocus(e)) return;

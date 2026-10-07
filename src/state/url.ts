@@ -40,5 +40,5 @@ export function writeUrl(s: UrlState, defaults: { span: number; atHome: boolean 
   set('tab', s.tab ?? null);
   const q = p.toString();
   const url = location.pathname + (q ? '?' + q : '') + location.hash;
-  if (url !== location.pathname + location.search + location.hash) history.replaceState(null, '', url);
+  if (url !== location.pathname + location.search + location.hash) history.replaceState(history.state, '', url);   // the state is kept: the AR view's own entry lives in it
 }

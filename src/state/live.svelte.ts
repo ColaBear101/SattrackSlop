@@ -1,6 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import type { CatalogueEntry } from '../lib/catalogue/parse';
 import { isNewerSet } from '../../shared/tle';
+import { isCustom } from '../lib/planner/custom';
 import { fetchLiveTle } from '../lib/net/tle-source';
 import type { Prov } from '../lib/text/provenance';
 import { tleCtx } from './net';
@@ -52,6 +53,7 @@ class Live {
 
   /** The entry as it is to be analysed: the embedded record, with the live set's lines if one was taken. */
   effective(e: CatalogueEntry): CatalogueEntry {
+    if (isCustom(e)) return e;                  // an orbit of the reader's own is never swapped for a set taken from the network
     const s = this.sets.get(e.satnum);
     return s ? { ...e, l1: s.l1, l2: s.l2 } : e;
   }
@@ -67,7 +69,7 @@ class Live {
     const host = this.host;
     if (!host) return;
     const key = entry.satnum;
-    const custom = !!(entry as { custom?: boolean }).custom;
+    const custom = isCustom(entry);
     /* No request of any kind for a planned orbit, pinned or not: CelesTrak would be asked for a number that belongs
        to nobody, and were it ever a real one the reply would be adopted as "newer" and the reader's orbit silently
        replaced by another object's. First, before the pinned branch, so no record is written for it either. */

@@ -707,7 +707,7 @@ const PRISTINE_HEADER = () => {
     await page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 30000 });
     const a1 = await ev(page, () => { const g = id => document.getElementById(id), vis = id => !g(id).hidden && getComputedStyle(g(id)).display !== 'none';
       return { custom: __gt.D.entry.custom === true, same: __gt.D.entry === __gt.CUSTOM[0], name: g('satname').textContent, chip: vis('customchip'), chipTag: g('customchip').tagName, chipText: g('customchip').textContent,
-        norad: g('idnorad').textContent, noradPar: getComputedStyle(g('idnorad').parentNode).display, cospar: g('idcospar').textContent, note: vis('customnote'), brief: vis('briefnote'), tle: vis('tleactions'),
+        norad: g('idnorad').textContent, noradPar: getComputedStyle(g('idnorad').parentNode).display, cospar: g('idcospar').textContent, note: vis('customnote'), brief: !!g('briefnote') && vis('briefnote'), tle: vis('tleactions'),
         n: Object.assign({}, __n), header: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, boxed: __T.boxed(), planning: document.querySelector('.app').hasAttribute('data-planning'),
         sub: g('pf-sub').textContent, cat: __gt.CAT.length, idx: __gt.indexOf(__gt.D.entry) }; });
     a1.count = await H.satCount(page);        // under the field on the old page; in the rebuilt page's picker, which this opens, reads and shuts
@@ -1186,7 +1186,14 @@ const PRISTINE_HEADER = () => {
     chk('26 the planner is open in the flow presentation beside the rail', await ev(page, () => __planner.mode() === 'flow' && PlannerUI.isOpen() && __T.railShown()));
     /* the observer form (the old page's is the rail's, the rebuilt page's the header's popover): applySite alone only changes OBS, and the console reloads from the form's Apply (siteChanged) */
     await H.setSite(page, { name: 'Quito', lat: -0.18, lon: -78.47, alt: 2.8, tz: -5 });
-    await page.waitForFunction(() => __gt.OBS.name === 'Quito' && /from Quito/.test(document.getElementById('pf-sub').textContent), null, { timeout: 30000 });
+    /* a wait that times out says what the page was in, so that a rare failure is a finding and not a rerun */
+    await page.waitForFunction(() => __gt.OBS.name === 'Quito' && /from Quito/.test(document.getElementById('pf-sub').textContent), null, { timeout: 30000 }).catch(async e => {
+      const st = await page.evaluate(() => {
+        const d = document.querySelector('[role=dialog][aria-label="Observer"]'), f = id => { const x = document.getElementById(id); return x ? x.value : null; };
+        return { obs: __gt.OBS.name, chip: document.getElementById('siteopen').textContent.trim(), dialogOpen: !!d && !d.hidden, fields: [f('s-name'), f('s-lat'), f('s-lon')], sub: document.getElementById('pf-sub').textContent };
+      }).catch(x => String(x));
+      throw new Error(String(e.message).split('\n')[0] + ' | page: ' + JSON.stringify(st));
+    });
     const quito = await ev(page, () => { __planner.flush();
       const texts = __planner.items().map(i => i.titleText + ' ' + i.bodyText).join(' | '), grp = [...document.querySelectorAll('#prof details.pf-grp summary .gt')].map(e => e.textContent);
       return { bkk: /Bangkok/.test(texts) || grp.some(x => /Bangkok/.test(x)) || /Bangkok/.test(document.getElementById('pf-sub').textContent), quito: /Quito/.test(texts), grp: grp, sub: document.getElementById('pf-sub').textContent, note: document.getElementById('pl-epoch-note').textContent, dsite: __planner.advise().c.site }; });

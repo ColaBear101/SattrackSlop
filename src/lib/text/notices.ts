@@ -1,7 +1,8 @@
 /* The two sentences that qualify the answer before it is read, and the headline's sub-line.
  *
- * Moved from legacy/index.html (main@4eadd7a): `paintReentry()` (lines 10822-10832), the markup of #briefnote (line
- * 1393) and `renderAccess()` (lines 9842-9860), with their comments and every word of their text. As everywhere in
+ * Moved from legacy/index.html (main@4eadd7a): `paintReentry()` (lines 10822-10832) and `renderAccess()` (lines 9842-9860), with
+ * their comments and every word of their text. (The old page's third notice, #briefnote, "Outside the brief", is gone:
+ * CHANGES-FROM-LEGACY.md, L42.) As everywhere in
  * this layer, the HTML they built is data (rich.ts). */
 import { iso, pad, spanLabel, ymd } from './fmt';
 import { b, link, type Inline } from './rich';
@@ -20,15 +21,6 @@ export function reentryNote(D: Analysis, reentryKm: number): Inline | null {
     '. It has re-entered or is about to' +
     (D.passes.length ? ', so the passes listed will not happen and are not exported.' : '.')];
 }
-
-/* The brief asks for a spacecraft from CelesTrak's Earth Resources group, and the default is not in it: KNACKSAT-2
-   came into this catalogue from SatNOGS, and verification/resource.txt, a copy of that group, has no entry for it. It
-   stays the default, so while it is the one on screen the answer block says so, rather than presenting its figures as
-   the assignment's answer without qualification. */
-export const OUT_OF_BRIEF = /^KNACKSAT[- ]?2\b/i;
-export const outOfBrief = (name: string, custom: boolean): boolean => !custom && OUT_OF_BRIEF.test(name);   // a custom orbit may be NAMED like the default
-export const briefNote: Inline = [b('Outside the brief.'), ' KNACKSAT-2, the default, is not in CelesTrak’s ',
-  link('#t-brief', 'Earth Resources group'), ', which the assignment asks for.'];
 
 /** "15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 — 1.04% of the window. Element set epoch 2026-09-12 07:29Z."
  *  Which window, and which element set. "In view over 24 h" read the same for every window, so two readers loading the

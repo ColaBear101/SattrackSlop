@@ -156,7 +156,7 @@ const state = async page => Object.assign(await page.evaluate(() => {
     hours: __gt.D.hours, norad: g('idnorad').textContent, cospar: g('idcospar').textContent, src: g('srcline').textContent,
     meta: g('tlemeta').textContent, rail: g('railprov').textContent, chip: g('agetext').textContent,
     stale: g('agechip').classList.contains('stale'),
-    brief: g('briefnote').getClientRects().length > 0,
+    brief: (n => !!n && n.getClientRects().length > 0)(g('briefnote')), briefNode: !!g('briefnote'),
     note: (n => n.hidden ? '' : n.textContent)(g('loadnote')),
     lifebig: g('lifebig').textContent, lifesub: g('lifesub').textContent, lifenote: g('lifenote').textContent,
     lifespan: g('lifespan').textContent, lifelegend: g('lifelegend').textContent, lifego: !!g('lifego'),
@@ -346,7 +346,8 @@ const paintedPixels = async page => {
     console.log('3. names and numbers');
     const { ctx, page, errs, reqs } = await open(browser);
     const s0 = await state(page);
-    chk('control: the catalogue default KNACKSAT-2 does raise "Outside the brief" (so the guard below can be seen to act)', s0.brief === true);
+    // the old page raised a note over the default ("Outside the brief"); the rebuilt page does not (CHANGES-FROM-LEGACY.md, L42)
+    chk('the catalogue default KNACKSAT-2 carries no "Outside the brief" note (retired, L42)', NEW ? !s0.briefNode : true, 'note in the page: ' + s0.briefNode);
     reqs.length = 0;
     // the ISS's own element set, as a custom orbit that even carries the ISS's real number
     const r = await page.evaluate(() => { const iss = __gt.CAT.find(c => c.name === 'ISS (ZARYA)');
@@ -360,7 +361,6 @@ const paintedPixels = async page => {
     // a custom orbit NAMED like the default
     await add(page, 'KNACKSAT-2 what-if');
     const s = await state(page);
-    chk('a custom orbit named like the default does not raise "Outside the brief"', s.custom && !s.brief, 'brief shown: ' + s.brief);
     // the reader's own downlink frequency is the one thing a planned orbit can have
     const d = await add(page, 'Beacon', {}, { dlHz: 437.8e6 });
     const dop = await page.evaluate(() => ({ opt: [...document.querySelectorAll('#dopsel option')].map(o => o.textContent), freq: (document.getElementById('dopfreq') || {}).value }));

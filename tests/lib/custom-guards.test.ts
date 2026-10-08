@@ -4,7 +4,6 @@ import { buildExports } from '../../src/lib/export';
 import { CUSTOM_SOURCE } from '../../src/lib/export/source';
 import { Planner } from '../../src/lib/planner/planner';
 import { makeCustom, readStore, storedRecord, type CustomEntry, type PlannerCore } from '../../src/lib/planner/custom';
-import { outOfBrief } from '../../src/lib/text/notices';
 import { BANGKOK, byName, MASK, world } from './helpers';
 
 /* What the old page's verify-custom-mutants.js took away one guard at a time, for the parts of it that are pure functions: a custom
@@ -27,13 +26,6 @@ function made(id: string, name: string, over: Record<string, unknown> = {}): Cus
 }
 
 describe('a custom orbit is told apart by its flag, never by its name or its number', () => {
-  it('a custom orbit named like the default does not raise "Outside the brief"; the catalogue\'s own does', () => {
-    expect(outOfBrief('KNACKSAT-2', false)).toBe(true);
-    expect(outOfBrief('KNACKSAT-2 what-if', true)).toBe(false);
-    expect(outOfBrief('KNACKSAT 2', true)).toBe(false);
-    expect(outOfBrief('Polar 600', false)).toBe(false);
-  });
-
   it('an orbit with the ISS\'s own lines (and its real number) is not "docked to" it: an assumed brightness, or the one the reader typed', () => {
     const { optics } = world();
     const iss = byName('ISS (ZARYA)');

@@ -4,7 +4,7 @@
   import { clock } from '../../state/clock.svelte';
   import { getEngine, MASK } from '../../state/engine';
   import { countdown } from '../../lib/text/countdown';
-  import { briefNote, outOfBrief, reentryNote, totalSub } from '../../lib/text/notices';
+  import { reentryNote, totalSub } from '../../lib/text/notices';
   import { siteClock } from '../../lib/text/passfacts';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -27,7 +27,6 @@
   const cd = $derived(a ? countdown(a, ms, Date.now(), MASK, c, () => app.passAfterWindow()) : null);
 
   const mine = $derived(!!app.current && isCustom(app.current));
-  const outside = $derived(!!app.current && outOfBrief(app.current.name, mine));
   const reentry = $derived(a ? reentryNote(a, getEngine().REENTRY_KM) : null);
 
   let tab = $state('passes');
@@ -36,9 +35,8 @@
 <div class="rail">
   {#if a}
     <p class="notice bad" id="reentry" role="status" hidden={!reentry}><Icon name="alert" size={16} /> <span>{#if reentry}<Rich value={reentry} />{/if}</span></p>
-    <p class="notice" id="briefnote" hidden={!outside}><Icon name="info" size={16} /> <span><Rich value={briefNote} /></span></p>
     <!-- Said beside the answer it qualifies, for an orbit the reader designed: the minutes below are the first thing read, and they are a
-         prediction for an orbit that may not exist. Shown in place of the note above. -->
+         prediction for an orbit that may not exist. -->
     <p class="notice" id="customnote" hidden={!mine}><Icon name="info" size={16} /> <span><b>Your orbit.</b> Designed here from elements you typed, not tracked by anyone. These passes are a prediction for an orbit that may not exist.</span></p>
 
     <section class="answer" aria-labelledby="lbl-vis">

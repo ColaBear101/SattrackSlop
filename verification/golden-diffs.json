@@ -1,5 +1,6 @@
 {
   "chrome.sec-source[0]": "The element set's own report section is the rail's Source tab; its words are compared under prov.* (CHANGES-FROM-LEGACY.md, L14)",
   "chrome.sec-elements[1]": "The link to the Professor's notes appears with the Professor's section, which arrives with the planner (M7; CHANGES-FROM-LEGACY.md, L14)",
-  "foot[]": "The Moon pages are linked from the footer as well as from the report's sub-navigation (the old page had them in the masthead's line of jump links; CHANGES-FROM-LEGACY.md, L35)"
+  "foot[]": "The Moon pages are linked from the footer as well as from the report's sub-navigation (the old page had them in the masthead's line of jump links; CHANGES-FROM-LEGACY.md, L35)",
+  "head.brief": "The \"Outside the brief\" notice over the answer is gone, on the owner's instruction; the fact stays in the README and the glossary (CHANGES-FROM-LEGACY.md, L42)"
 }

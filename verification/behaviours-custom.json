@@ -70,9 +70,8 @@
       "id": "m08",
       "intent": "The \"Outside the brief\" note's custom guard removed: a custom orbit NAMED like the default raises it.",
       "covering": [
-        "verify-custom g3 check control: the catalogue default KNACKSAT-2 does raise \"Outside the brief\"",
-        "verify-custom g3 check a custom orbit named like the default does not raise \"Outside the brief\"",
-        "tests/lib/custom-guards.test.ts a custom orbit is told apart by its flag, never by its name or its number > a custom orbit named like the default does not raise \"Outside the brief\"; the catalogue's own does"
+        "not applicable: the note is retired (CHANGES-FROM-LEGACY.md L42), so there is nothing for an orbit named like the default to raise",
+        "verify-custom g3 check the catalogue default KNACKSAT-2 carries no \"Outside the brief\" note (retired, L42)"
       ]
     },
     {
@@ -714,16 +713,14 @@
     },
     {
       "id": "g3",
-      "intent": "What matches on names and numbers: an orbit with the ISS's own lines is not \"docked to\" it, a custom entry that carries a real catalogue number finds no downlink and asks nobody, one NAMED like the default does not raise \"Outside the brief\", and the reader's own downlink is the only one offered.",
+      "intent": "What matches on names and numbers: an orbit with the ISS's own lines is not \"docked to\" it, a custom entry that carries a real catalogue number finds no downlink and asks nobody, the default carries no \"Outside the brief\" note (retired, L42), and the reader's own downlink is the only one offered.",
       "covering": [
-        "verify-custom g3 check control: the catalogue default KNACKSAT-2 does raise \"Outside the brief\" (so the guard below can be seen to act)",
+        "verify-custom g3 check the catalogue default KNACKSAT-2 carries no \"Outside the brief\" note (retired, L42)",
         "verify-custom g3 check an orbit equal to the ISS's set is not \"docked to\" it, and its brightness is assumed, not looked up",
         "verify-custom g3 check a custom entry carrying a REAL catalogue number (25544) still finds no downlink in the SatNOGS table, and asks nobody about it",
-        "verify-custom g3 check a custom orbit named like the default does not raise \"Outside the brief\"",
         "verify-custom g3 check a downlink frequency given with the orbit is the only one offered, as the reader's own",
         "verify-custom g3 check ...and a frequency outside 1 MHz to 100 GHz is dropped, never an error",
         "verify-custom g3 check no page error",
-        "tests/lib/custom-guards.test.ts a custom orbit is told apart by its flag, never by its name or its number > a custom orbit named like the default does not raise \"Outside the brief\"",
         "tests/lib/places-and-transmitters.test.ts a planned orbit is never looked up: its own downlink or none"
       ]
     },

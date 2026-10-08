@@ -117,8 +117,9 @@ and shares its 51.63° orbit at roughly 360 km, not a sun-synchronous one.
 `verification/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
 came into this catalogue from SatNOGS rather than from a CelesTrak group (see **Data
 provenance**). The figures in (a) to (c) are correct for KNACKSAT-2, but they are not an answer
-from the group the brief names. KNACKSAT-2 stays the page's default; while it is on screen the
-answer block says it is outside the brief.
+from the group the brief names. KNACKSAT-2 stays the page's default. The page no longer says so
+over the answer (the old one did, in a note headed "Outside the brief"); this is where it is said,
+and the glossary's entry "Earth Resources group, the brief" says it again.
 
 ```
 KNACKSAT-2
@@ -1012,7 +1013,7 @@ from 98247 to 99416, each with a SatNOGS downlink.
 
 The number is never looked up; identity is the flag `custom`, not the number. A custom entry
 carrying the real number 25544 still finds no downlink; one whose lines equal the ISS's is not
-"docked to" it for brightness; one named KNACKSAT-2 does not raise *Outside the brief*. Adding an
+"docked to" it for brightness. Adding an
 orbit, and the re-check after it, make **zero requests to any host** (`verify-custom.js` counts
 them), and `fetchTLE` also refuses anything that is not one to five digits, so a second layer holds
 with the first removed. The counter only grows (clearing site data restarts it at `O0001`), and

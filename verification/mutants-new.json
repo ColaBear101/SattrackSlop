@@ -244,16 +244,6 @@
       ]
     },
     {
-      "id": "m08",
-      "intent": "The \"Outside the brief\" note's custom guard is removed: a custom orbit NAMED like the default raises it.",
-      "file": "lib/text/notices.ts",
-      "find": "!custom && OUT_OF_BRIEF.test(name)",
-      "replace": "OUT_OF_BRIEF.test(name)",
-      "groups": [
-        3
-      ]
-    },
-    {
       "id": "m51",
       "intent": "The last catalogue spacecraft viewed is not remembered: removing the orbit on screen goes to the default instead.",
       "file": "state/app.svelte.ts",

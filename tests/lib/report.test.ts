@@ -232,7 +232,7 @@ describe('the glossary: a note that names a term must find it', () => {
     for (const f of walk(path.join(ROOT, 'src'))) {
       for (const m of fs.readFileSync(f, 'utf8').matchAll(/#(t-[a-z0-9]+)/g)) refs.set(m[1]!, path.relative(ROOT, f));
     }
-    expect([...refs.keys()].sort()).toEqual(expect.arrayContaining(['t-brief', 't-ltan', 't-reentry', 't-sso']));
+    expect([...refs.keys()].sort()).toEqual(expect.arrayContaining(['t-ltan', 't-reentry', 't-sso']));
     for (const [id, file] of refs) expect(ids.has(id), id + ' (' + file + ')').toBe(true);
   });
 });

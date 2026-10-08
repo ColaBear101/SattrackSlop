@@ -327,7 +327,7 @@ const chk = (name, ok, detail) => {
     name: __gt.D.entry.name, l1: __gt.D.entry.l1,
     start: __gt.D.start.getTime(), epoch: __gt.D.E.epoch.getTime(),
     totalS: __gt.D.totalS, passes: __gt.D.passes.length,
-    brief: !document.getElementById('briefnote').hidden,
+    brief: !!document.getElementById('briefnote') && !document.getElementById('briefnote').hidden, briefNode: !!document.getElementById('briefnote'),
     sub: document.getElementById('totalsub').textContent,
     meta: document.getElementById('tlemeta').textContent.replace(/\s+/g, ' ').trim() }));
   let ps = await pinState();
@@ -347,7 +347,7 @@ const chk = (name, ok, detail) => {
   });
   await pin.waitForTimeout(800);
   chk('...and a due re-check still asks nothing', pinHits === 0, 'requests ' + pinHits);
-  chk('the default is flagged in the answer block as outside the brief', ps.brief, ps.name);
+  chk('the default carries no "Outside the brief" note in the answer block (the old page raised one; retired, CHANGES-FROM-LEGACY.md L42)', H.targetName() === 'new' ? !ps.briefNode : ps.brief, ps.name);
   await pin.context().close();
 
   if (API_UP) chk('through the API, the page does not ask CelesTrak itself - bar the one check made while the API had nothing',

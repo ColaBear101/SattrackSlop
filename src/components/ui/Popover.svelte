@@ -39,8 +39,12 @@
     const below = innerHeight - r.bottom, above = r.top;
     up = below < need && above > below;
     edge = align === 'end' ? (r.right - panel.offsetWidth >= 0 ? 'end' : 'start') : (r.left + panel.offsetWidth <= innerWidth ? 'start' : 'end');
-    panel.querySelector<HTMLElement>('input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])')
-      ?.focus({ preventScroll: true });
+    /* in the next frame, once the flip above is on the screen: focused while the panel is still where it was first placed - below the fold, for a
+       popover on the transport - a date field makes the browser scroll to it whatever is asked, and the page jumped by hundreds of pixels */
+    const p = panel;
+    const raf = requestAnimationFrame(() => p.querySelector<HTMLElement>('input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])')
+      ?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(raf);
   });
 </script>
 

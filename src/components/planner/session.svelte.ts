@@ -2,6 +2,7 @@ import { flushSync } from 'svelte';
 import { isCustom, type CustomEntry } from '../../lib/planner/custom';
 import { app, PINNED } from '../../state/app.svelte';
 import { custom, customApi } from '../../state/custom.svelte';
+import { report } from '../../state/report.svelte';
 import { getEngine, getObs, MASK, satellite } from '../../state/engine';
 import { loadPlannerMods, type PlannerMods } from '../../state/planner-mods';
 import type { Analysis } from '../../lib/types';
@@ -125,7 +126,10 @@ class PlannerSession {
     try {
       planner.request();                           // mounts the panel and the body-level pieces
       /* the controller is the largest piece of it, and the console's first screen needs none of it: fetched with the rest, here */
-      const [mods, { makePlannerUI }] = await Promise.all([loadPlannerMods(), import('./plannerui'), ready, app.ready]);
+      /* the report's sections are in the page before the controller looks for #sec-prof and #rp-nav (the Professor's notes on the spacecraft
+         on screen are one of them); a report that cannot be had is not a planner that cannot be had */
+      report.request();
+      const [mods, { makePlannerUI }] = await Promise.all([loadPlannerMods(), import('./plannerui'), ready, app.ready, report.ready.catch(() => undefined)]);
       this.mods = mods;
       this.onMods?.(mods);
       custom.attach(mods.Planner);

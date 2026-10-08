@@ -2,8 +2,9 @@
   import type { Snippet } from 'svelte';
   import { app } from '../../state/app.svelte';
   import { clock } from '../../state/clock.svelte';
-  import { nextPass } from '../../lib/analysis/next-pass';
-  import { hhmmss } from '../../lib/text/fmt';
+  import { MASK } from '../../state/engine';
+  import { countdown } from '../../lib/text/countdown';
+  import { siteClock } from '../../lib/text/passfacts';
   import Icon from '../ui/Icon.svelte';
 
   /* The answer rail changes shape with the screen, and nothing inside it knows:
@@ -29,7 +30,9 @@
   });
 
   const a = $derived(app.analysis);
-  const next = $derived(nextPass(a, clock.tick.ms));
+  /* the peek says what the countdown below it says, in the countdown's own words: past the window's last pass, in a pass that is still up when the
+     window closes, with the clock scrubbed outside the window */
+  const cd = $derived(a ? countdown(a, clock.tick.ms, Date.now(), MASK, siteClock(app.site), () => app.passAfterWindow()) : null);
 </script>
 
 <svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open) open = false; }} />
@@ -42,7 +45,7 @@
         {#if a}
           <span class="big">{(a.totalS / 60).toFixed(1)}<small>{' min visible'}</small></span>
           <span class="nx mono">
-            {#if next && next.kind !== 'none'}{next.kind === 'now' ? 'sets in' : 'next pass in'} {hhmmss(next.ms)}{:else}no pass in this window{/if}
+            {#if cd}{cd.label} {cd.value}{/if}
           </span>
         {:else}<span class="nx">Loading…</span>{/if}
       </span>
@@ -79,7 +82,7 @@
   .line { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-4); min-width: 0; }
   .big { font-family: var(--font-head); font-variant-numeric: tabular-nums; font-size: var(--fs-4); font-weight: 700; letter-spacing: -0.02em; color: var(--contact); }
   .big small { font-family: var(--font-sans); font-size: var(--fs-1); font-weight: 400; letter-spacing: 0; color: var(--muted); }
-  .nx { font-size: var(--fs-1); color: var(--ink2); }
+  .nx { font-size: var(--fs-1); color: var(--ink2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chev { display: grid; transition: transform var(--dur) var(--ease); color: var(--muted); }
   .open .chev { transform: rotate(180deg); }
 </style>

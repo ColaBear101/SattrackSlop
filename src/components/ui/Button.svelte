@@ -30,5 +30,5 @@
   .ghost:hover:not(:disabled) { background: var(--hover); }
   .primary { background: var(--track); border-color: var(--track); color: #fff; }
   .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--track) 85%, #000); }
-  @media (pointer: coarse) { .btn { min-height: var(--tap); } }
+  @media (pointer: coarse) { .btn, .btn.sm { min-height: var(--tap); } }
 </style>

@@ -10,7 +10,9 @@ const OWN_KEYS = /^(INPUT|TEXTAREA|SELECT|BUTTON|A|SUMMARY)$/;
 function takenByFocus(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
   if (!t) return false;
-  return OWN_KEYS.test(t.tagName) || t.isContentEditable || t.getAttribute('role') === 'tab' || !!t.closest('[role="dialog"]');
+  /* ...and a region the page made focusable on purpose (a table that scrolls sideways: its arrow keys are its own) */
+  const region = t.getAttribute('tabindex') !== null && t.tabIndex >= 0;
+  return OWN_KEYS.test(t.tagName) || t.isContentEditable || t.getAttribute('role') === 'tab' || region || !!t.closest('[role="dialog"]');
 }
 
 /** One minute a step, an hour with Shift. */
@@ -22,6 +24,7 @@ export function onKey(e: KeyboardEvent): void {
   switch (e.key) {
     case ' ':
       if (takenByFocus(e)) return;
+      if (e.repeat) { e.preventDefault(); return; }                          // held down it is one press, not a flicker of play and pause
       e.preventDefault(); clock.toggle(); return;
     case 'ArrowLeft': case 'ArrowRight':
       if (takenByFocus(e)) return;

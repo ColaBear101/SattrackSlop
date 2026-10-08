@@ -40,6 +40,7 @@ const VIEWS = [
       const page = await ctx.newPage();
       await page.goto(srv.page, { waitUntil: 'load' });
       await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });
+      await page.waitForSelector('#sec-terms', { state: 'attached', timeout: 30000 });    // the report is a chunk of its own, fetched when the browser is idle: scan it too
       await page.evaluate(() => document.fonts.ready);
       await page.evaluate(() => document.getElementById('tpplay').click());
       /* the scene is a chunk of its own and the globe draws a moment after the page: wait for its first label */

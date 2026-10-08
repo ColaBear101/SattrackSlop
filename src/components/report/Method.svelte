@@ -61,7 +61,7 @@
 <style>
   section { padding: var(--space-6) 0; border-top: 1px solid var(--rule); scroll-margin-top: 56px; }
   header { margin-bottom: var(--space-4); }
-  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-5) var(--space-6); }
+  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: var(--space-5) var(--space-6); }
   h3 { font-size: var(--fs-3); margin-bottom: var(--space-2); }
   p { color: var(--ink2); font-size: var(--fs-2); line-height: var(--lh-prose); max-width: 68ch; }
   code { font-size: .92em; padding: 0 3px; border-radius: var(--r-1); background: var(--sunk); }

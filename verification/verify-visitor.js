@@ -75,7 +75,7 @@ const HOLD = 3000;                 // group 8: how long the catalogue is kept ba
 /* The planner's own chunks. `lifetime` is also the Decay panel's (the drag integrator is shared), so on a desktop it is fetched at boot, with
    the Decay panel, and not by the planner: it is counted once for the whole visit and not ordered. */
 const FAMILY = ['planner', 'plannerui', 'advisor', 'advisor-copy', 'parts'];
-const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface']);
+const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client']);
 /* ...and the six files whose refusal takes the planner away (group 5). */
 const REFUSED = FAMILY.concat(['lifetime']);
 /* The two element-set sources the page asks directly when no cache API answers as itself (CHANGES-FROM-LEGACY 7). Nothing else. */
@@ -239,15 +239,20 @@ async function gzBytes(srv, url) {
 const isApi = (srv, u) => u.startsWith(srv.origin + '/') && /^\/api\//.test(new URL(u).pathname);
 
 /* ---- the ceilings of group 7 ------------------------------------------------------------------------------------------------------ */
-/* Measured on the build these were written against (gzip level 9, bytes), then 5 % added: the weight must not grow. The lead will bring the
-   entry chunk down to its 90 KB budget; a lower number passes, and the ceilings are lowered when it does. */
+/* Measured on the build these were written against (gzip level 9, bytes), then 5 % added: the weight must not grow. The entry is what the
+   page cannot start without: the entry chunk, the Svelte runtime it shares with the lazy chunks (index-client) and the tiny shared chunk of
+   the rich-text renderer; the 90 KB budget is for that sum (the report below the first screen, the element-set client and the planner are
+   chunks of their own). */
 /* total: index, scene, sky-data, transmitters, lifetime, and the Decay panel's own life and draw-life (counted whether or not the visit fetched
    them: see DECAY_OWN). */
-const DECAY_OWN = ['life', 'draw-life'];
+const ENTRY_GRAPH = ['index', 'index-client', 'rich'];
+/* fetched when the section is near, or at idle, or on the first ask of the API: which comes first depends on the layout and the machine, so
+   each is counted whether or not the visit fetched it */
+const DECAY_OWN = ['life', 'draw-life', 'Report', 'reporter', 'treaty2', ...ENTRY_GRAPH];
 /* all: every file of this origin the visit fetches, of any kind (the JavaScript above; the stylesheet; the catalogue and the world map; the six
    fonts; the globe's 2048 px texture, the one image, which is most of the weight), the planner's own five chunks and its stylesheet apart. Images
    and woff2 do not shrink under gzip, so the figure is what the browser pays for them too. */
-const MEASURED = { entry: 97493, total: 97493 + 150464 + 27939 + 20130 + 2627 + 3884 + 1931, all: 1194100 };
+const MEASURED = { entry: 83274, total: 309367, all: 1194100 };   // entry: index 64538 + index-client 18483 + rich 253
 const CEIL = { entry: Math.ceil(MEASURED.entry * 1.05), total: Math.ceil(MEASURED.total * 1.05), all: Math.ceil(MEASURED.all * 1.05), entryMeasured: MEASURED.entry, totalMeasured: MEASURED.total, allMeasured: MEASURED.all };
 const kB = n => (n / 1000).toFixed(1) + ' kB';
 const kindOf = p => /\.js$/.test(p) ? 'JavaScript' : /\.css$/.test(p) ? 'stylesheet' : /\.(woff2?|ttf)$/.test(p) ? 'fonts' : /\.(jpe?g|png|webp|svg|ico|gif)$/.test(p) ? 'images' : /\.html?$/.test(p) ? 'page' : 'data';
@@ -339,10 +344,10 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
         if (f && !sizes.some(x => x.name === n)) sizes.push({ name: n, gz: await gzBytes(srv, '/assets/' + f), unfetched: true });
       }
       const total = sizes.reduce((s, x) => s + x.gz, 0);
-      const entry = sizes.find(x => x.name === 'index');
+      const entry = { gz: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).reduce((s, x) => s + x.gz, 0), n: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).length };
       note(sizes.sort((a, b) => b.gz - a.gz).map(x => x.name + ' ' + (x.gz / 1000).toFixed(1) + ' kB' + (x.unfetched ? ' (not fetched by this visit)' : '')).join(', '));
-      chk('the entry chunk (index) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %)', !!entry && entry.gz <= CEIL.entry,
-        'now ' + (entry ? (entry.gz / 1000).toFixed(2) : '?') + ' kB gzipped; the 90 kB budget is ' + (entry && entry.gz <= 90000 ? 'met' : 'not met yet (not asserted)'));
+      chk('the entry (the entry chunk, the Svelte runtime it shares and the rich-text chunk) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %), and is within the 90 kB budget', entry.n === ENTRY_GRAPH.length && entry.gz <= CEIL.entry && entry.gz <= 90000,
+        'now ' + (entry.gz / 1000).toFixed(2) + ' kB gzipped in ' + entry.n + ' files; the 90 kB budget is ' + (entry.gz <= 90000 ? 'met' : 'NOT met'));
       chk('all the first screen\'s JavaScript (what the visitor fetched, and the Decay panel\'s own chunks whether or not this visit was near enough to fetch them) but the planner\'s five chunks is no heavier than ' + (CEIL.total / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.totalMeasured / 1000).toFixed(1) + ' kB, +5 %)', total <= CEIL.total,
         'now ' + (total / 1000).toFixed(2) + ' kB in ' + sizes.length + ' files');
       /* The weight of everything else the first screen fetches. The JavaScript is not the heaviest part of it: the globe's texture alone is more

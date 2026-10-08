@@ -93,4 +93,6 @@
     .seglabel { display: none; }
   }
   @media (max-height: 520px) { .seglabel { display: none; } }
+  /* a long place name must not push the POV button off the row on a narrow screen */
+  @media (max-width: 719px) { :global(#lbl-camsite) { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 </style>

@@ -150,7 +150,8 @@
     </ul>
 
     <div class="recents" id="s-recent" hidden={!recents.length}>
-      {#each recents as r (siteKey(r))}
+      <!-- not keyed: two places that round to the same key (a hand-edited or foreign record) must not stop the form opening -->
+      {#each recents as r}
         <button type="button" class="recent" title={latStr(r.lat) + ' ' + lonStr(r.lon) + (r.where ? ' · ' + r.where : '')}
                 onclick={() => recent(r)}>{r.name}</button>
       {/each}

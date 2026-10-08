@@ -20,7 +20,8 @@
      first number is the point of the page; everything under it is there to be checked. */
   const a = $derived(app.analysis);
   const ms = $derived(clock.tick.ms);
-  const cur = $derived(app.sampleAt(ms));
+  /* "Elevation now" is the elevation at the clock's instant, not at the nearest stored sample: the old page read it off the globe's own label, propagated there */
+  const cur = $derived(app.exactAt(ms));
   const c = $derived(siteClock(app.site));
   const cd = $derived(a ? countdown(a, ms, Date.now(), MASK, c, () => app.passAfterWindow()) : null);
 

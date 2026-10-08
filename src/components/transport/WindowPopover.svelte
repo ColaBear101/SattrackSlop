@@ -46,6 +46,11 @@
   {#snippet trigger(props)}
     <Button {...props} id="winOpen" size="sm" title="Where the analysis window opens, and how long it runs">
       <Icon name="clock" size={14} /> Window · {a ? spanLabel(a.hours) : ''}
+      <!-- the old page's window bar said, all the time, when the window was far from the element set's epoch ("+23.2 d from epoch - SGP4 drifts this far out");
+           the sentence is in the popover now, so the button carries the warning where it can be seen without opening it -->
+      {#if far && !mine}
+        <span class="drift" title="The window is {off.toFixed(1)} d from the element set's epoch: SGP4 drifts this far out, so these pass times are extrapolated"><Icon name="alert" size={14} /><span class="driftw">{(off > 0 ? '+' : '') + off.toFixed(0)} d from epoch</span></span>
+      {/if}
     </Button>
   {/snippet}
 
@@ -74,6 +79,8 @@
 </Popover>
 
 <style>
+  .drift { display: inline-flex; align-items: center; gap: 4px; color: var(--warn); }
+  @media (max-width: 719px) { .driftw { display: none; } }
   .win { display: grid; gap: var(--space-3); }
   .start { display: flex; gap: var(--space-2); align-items: center; }
   .row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }

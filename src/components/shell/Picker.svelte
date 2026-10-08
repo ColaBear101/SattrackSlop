@@ -84,7 +84,7 @@
     <input id="satsearch" type="search" role="combobox" aria-expanded="true" aria-controls={shown.length || planOn ? 'satlist' : undefined}
            aria-autocomplete="list" aria-haspopup="listbox"
            aria-activedescendant={activeId} autocomplete="off" spellcheck="false"
-           placeholder="Search {app.catalogue.length.toLocaleString('en-US')} spacecraft by name or NORAD id"
+           placeholder="Search {app.catalogue.length.toLocaleString('en-US')} spacecraft or NORAD ID"
            bind:value={query} onkeydown={key}>
   </div>
   <!-- The options are not themselves focusable: the search field keeps focus and names the highlighted one through

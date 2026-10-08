@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { makeElementsReporter } from '../../src/lib/analysis';
+import { makeElementsReporter } from '../../src/lib/analysis/reporter';
 import { markup } from '../../src/lib/text/markup';
 import { b, br, plain, type Inline } from '../../src/lib/text/rich';
 import { fetchingView, lifeAccuracy, lifeAxis, lifeFmtDays, lifePaint, lifeSpan, lifeWhyNot, offerView } from '../../src/lib/text/life';

@@ -24,6 +24,7 @@ button:disabled { cursor: default; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* the small caps-ish label used over every figure */
+abbr[title] { cursor: help; }
 .eyebrow {
   font-family: var(--font-mono); font-size: var(--fs-0); font-weight: 500;
   letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0;

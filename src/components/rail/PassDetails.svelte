@@ -32,6 +32,16 @@
   const mhz = $derived(doppler.hz === null ? '' : (doppler.hz / 1e6).toFixed(3));
   const inList = $derived(list.some(t => t.hz === doppler.hz));
 
+  /* The dropdown follows the box, whatever was chosen last: an option's `selected` is set only when its own expression changes, so after
+     "Custom…" and then a listed downlink, or a typed frequency, the control would say one thing and the numbers another. Where two options
+     carry the tuned frequency the last is the one shown, as it always was. */
+  let sel: HTMLSelectElement | undefined = $state();
+  $effect(() => {
+    if (!sel) return;
+    const i = list.map(t => t.hz).lastIndexOf(doppler.hz as number);
+    sel.selectedIndex = i >= 0 ? i : list.length;
+  });
+
   function pick(e: Event) {
     const v = (e.currentTarget as HTMLSelectElement).value;
     if (v === 'c') return;
@@ -54,7 +64,7 @@
     <!-- Not keyed, and each option says for itself whether it is the one on show: the table lists a frequency once per mode
          (TEN-KOH has two on 437.390 MHz), so the frequency is not an identity, and where two options carry the tuned one the
          last is the one selected, as it always was. -->
-    <select id="dopsel" aria-label="Downlink" onchangecapture={pick}>
+    <select id="dopsel" aria-label="Downlink" bind:this={sel} onchangecapture={pick}>
       {#each list as t}
         <option value={String(t.hz)} selected={t.hz === doppler.hz}>{(t.hz / 1e6).toFixed(3)} MHz{t.mode ? '  ' + t.mode : ''}{t.baud ? '  ' + t.baud + 'bd' : ''}</option>
       {/each}

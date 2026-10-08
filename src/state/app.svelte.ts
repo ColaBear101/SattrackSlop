@@ -91,7 +91,13 @@ class AppState {
     const url = readUrl();
     if (url.span) this.hours = url.span;
     if (url.tab) prefs.setTab(url.tab);
-    const wanted = this.siteFrom(url.site ? { ...url.site, name: 'Linked site' } : loadSavedSite(localStorage) ?? {});
+    prefs.onTab = () => this.syncUrl();               // the address says which tab is showing, as it says everything else
+    /* The address carries a position and nothing else about the site. A reload of this very page has its own observer's position in it, and
+       the saved record (name, ground height, zone) is that observer: take the record when the address is where it says; a position that is
+       not the saved one is somebody's link, and is taken as it is. */
+    const saved = loadSavedSite(localStorage);
+    const same = !!saved && !!url.site && saved.lat.toFixed(4) === url.site.lat.toFixed(4) && saved.lon.toFixed(4) === url.site.lon.toFixed(4);
+    const wanted = this.siteFrom(url.site && !same ? { ...url.site, name: 'Linked site' } : saved ?? {});
     if (wanted) this.site = setObserver(wanted);
     this.recents = loadRecents(localStorage);
 
@@ -328,6 +334,13 @@ class AppState {
 
   /* ---- reading the analysis at an instant ----------------------------------------------------------------- */
 
+  /** Where the spacecraft is, and its look from the observer, at THIS instant: propagated, not read off the stored samples (10 s apart in a
+   *  day's window, 30 s in a long one, which at the top of a pass is several degrees of elevation). The "Elevation now" figure is this. */
+  exactAt(ms: number): Sample | null {
+    const D = this.analysis;
+    return D ? getEngine().sampleMs(D.track, ms) ?? null : null;
+  }
+
   /** The sample at a sample index (the scrubber's unit). */
   idxAt(ms: number): number {
     const D = this.analysis;
@@ -344,7 +357,7 @@ class AppState {
     return (inside ? D.pts[this.idxAt(ms)] : getEngine().sampleMs(D.track, ms)) ?? D.pts[this.idxAt(ms)] ?? null;
   }
 
-  private syncUrl(): void {
+  syncUrl(): void {
     const atHome = Math.abs(this.site.lat - HOME.lat) < 1e-9 && Math.abs(this.site.lon - HOME.lon) < 1e-9;
     writeUrl({
       sat: this.entry && !isCustom(this.entry) ? this.entry.satnum : undefined,   // an orbit of the reader's own is nobody's number: not a link

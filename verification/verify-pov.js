@@ -179,10 +179,16 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + i*10, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
-  await page.waitForTimeout(500);
-  const down = await cam();
-  const dn = down.pos.map(v => -v/Math.hypot(...down.pos));
-  const offNadir = Math.acos(Math.max(-1, Math.min(1, dot3(down.dir, dn))))*180/Math.PI;
+  /* The camera is read once the page has drawn the frame that takes the drag in: a fixed half second was enough when the scene drew sixty frames a
+     second whatever the machine was doing, and is not when it draws only what is worth drawing and the machine is busy. Waited on the state
+     this check asserts (polled up to four seconds); the assertion below is the same. */
+  let down, offNadir = 90;
+  for (let k = 0; k < 40 && !(offNadir < 1.5); k++) {
+    await page.waitForTimeout(100);
+    down = await cam();
+    const dn = down.pos.map(v => -v/Math.hypot(...down.pos));
+    offNadir = Math.acos(Math.max(-1, Math.min(1, dot3(down.dir, dn))))*180/Math.PI;
+  }
   chk('pitching down still reaches nadir, to within the one-degree clamp',
       offNadir < 1.5, offNadir.toFixed(2) + ' deg off nadir');
   c = await cam();

@@ -5,7 +5,7 @@
   import RailShell from './components/rail/RailShell.svelte';
   import AnswerRail from './components/rail/AnswerRail.svelte';
   import Transport from './components/transport/Transport.svelte';
-  import Report from './components/report/Report.svelte';
+  import ReportHost from './components/report/ReportHost.svelte';
   import PlannerHost from './components/planner/PlannerHost.svelte';
   import { onKey } from './state/shortcuts';
 </script>
@@ -13,6 +13,7 @@
 <svelte:window onkeydown={onKey} />
 
 <a class="skip" href="#main">Skip to the page</a>
+<a class="skip" href="#report">Skip to the written analysis</a>
 <AppBar />
 <LoadNote />
 
@@ -24,7 +25,7 @@
     <div class="rail-zone"><RailShell><AnswerRail /></RailShell></div>
     <div class="transport-zone"><Transport /></div>
   </div>
-  <Report />
+  <ReportHost />
 </main>
 <!-- the planner's body-level pieces (#pl-live, the glyph sprite): direct children of the mount node, outside <main> -->
 <PlannerHost place="root" />

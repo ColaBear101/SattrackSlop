@@ -7,6 +7,7 @@ import { fetchLiveTle } from '../lib/net/tle-source';
 import { isCustom } from '../lib/planner/custom';
 import { session } from '../components/planner/session.svelte';
 import { ar } from '../components/ar/session.svelte';
+import { report } from '../state/report.svelte';
 import { getEngine, getObs, getOptics, MASK, satellite, sun } from '../state/engine';
 import { live } from '../state/live.svelte';
 import { buildExports } from '../lib/export';
@@ -116,6 +117,9 @@ export async function install(): Promise<void> {
      on the controller's `init`, so both are put on the window BEFORE init is called (session.onBuilt), and the four modules are the same
      objects the page itself runs: a suite that patches one is patching the page's own. The planner is brought up in the snapshot too, where
      init says no and the pill says why. A planner that cannot be had (its chunk is gone) leaves the console as it was. */
+  /* the report's sections are part of the page the suites read: they are in it before __gt says it is ready */
+  report.request();
+  try { await report.ready; } catch (err) { console.error(err); }
   /* A fault the suites can arm before the page loads (window.__GT_FAULT__): the planner's TLE writer throws, as a planner that is broken would,
      so that what the console does about it is observable. Put in before anything is built with the modules. */
   session.onMods = mods => {

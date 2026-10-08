@@ -1559,7 +1559,7 @@ const PRISTINE_HEADER = () => {
       : ['a.skip', 'div.arview', 'div#report', 'aside.rail', 'div.viewport', 'header.bar-top', 'footer.bar-transport', 'div.bar-window'];
     const got = await ev(page, sels => sels.map(q => [q, [...document.querySelectorAll('[inert]')].filter(e => e.matches(q)).length]), EXPECT);
     chk('59 the sheet makes inert exactly the siblings along the path from #planner to body (the old page\'s eight: a.skip, div.arview, div#report, aside.rail, .viewport, header.bar-top, footer.bar-transport, .bar-window; the rebuilt page\'s: ' + EXPECT.join(', ') + ' and what else sits beside the path), ' + s.walk + ' in all (' + s.inert.length + ' found)',
-        s.inert.length === s.walk && (NEW || s.inert.length === 8) && got.every(x => x[1] === 1), s.inert.join(' '));
+        s.inert.length === s.walk && (NEW || s.inert.length === 8) && got.every(x => x[1] === (NEW && x[0] === 'a.skip' ? 2 : 1)), s.inert.join(' '));   // the rebuilt page has two skip links (L35)
     /* the sprite must be there to be left alone (a missing one is not "not inert"), and #pl-live must be exactly where the page keeps it: a direct child of <body> on the old page, of the mount node (or <body>) on the rebuilt one */
     chk('59 the path itself (the old page\'s div.app and main.stage), #planner, everything inside #planner, the icon sprite (#sv-good is in the page) and #pl-live (a direct child of ' + (NEW ? 'the mount node #app or <body>' : '<body>') + ') are not inert, and nothing outside the planner can still take focus',
         !s.pathInert && !s.planInert && !s.liveInert && !s.anyInPlanner && s.sprite && !s.svgInert && s.live && s.outside.length === 0, JSON.stringify([s.outside, s.sprite, s.liveParent]));

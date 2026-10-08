@@ -33,6 +33,8 @@
   <!-- The sky through the phone's camera: offered where the primary pointer is a finger, once the view is up (it is brought in before it is
        offered, never on the tap, so the tap can ask for the camera and the motion sensors itself). It sits in the row of the stage's tabs,
        so it is there on the map as well, and where there is no WebGL. The node is always in the page, hidden where it is not offered. -->
+  <!-- the old page's first screen said that the written analysis is below ("Below ↓ Elements ... Terms"): a link to it here, in the stage's own row -->
+  <a class="below" href="#report">Report ↓</a>
   <div class="ar-slot">
     <Button id="arbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="AR: the sky through the camera"
             onclick={() => ar.open()}><abbr title="augmented reality: the sky drawn over this phone's camera, where it points">AR</abbr></Button>
@@ -63,6 +65,9 @@
 <style>
   .stage { position: relative; padding: var(--space-4); min-width: 0; }
   .ar-slot { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 3; }
+  .below { position: absolute; top: var(--space-4); right: calc(var(--space-4) + 56px); z-index: 3; display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--space-3); border-radius: var(--r-2); color: var(--ink2); font-size: var(--fs-1); font-weight: 500; text-decoration: none; }
+  .below:hover { background: var(--hover); color: var(--ink); }
+  @media (pointer: coarse) { .below { min-height: var(--tap); } }
   .ar-slot :global(abbr) { text-decoration: none; cursor: inherit; }
   .ar-slot :global(.btn[hidden]) { display: none; }
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
@@ -84,6 +89,7 @@
   @media (max-width: 719px) {
     .stage { padding: var(--space-3); }
     .ar-slot { top: var(--space-3); right: var(--space-3); }
+    .below { top: var(--space-3); right: calc(var(--space-3) + 52px); }
     .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: var(--space-3); gap: var(--space-3) var(--space-2); }
     .readouts .eyebrow { letter-spacing: .06em; }
   }

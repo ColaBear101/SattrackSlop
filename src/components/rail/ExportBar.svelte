@@ -39,7 +39,11 @@
       say('Not exported — SGP4 takes ' + entry.name + ' below the ' + getEngine().REENTRY_KM + ' km entry interface, so these passes will not happen.');
       return;
     }
-    const { buildExports } = await import('../../lib/export');
+    /* the writers are a chunk of their own, fetched on the first press: a connection that has dropped, or a tab left open across a deploy, must
+       not leave a press that does nothing */
+    let buildExports: typeof import('../../lib/export')['buildExports'];
+    try { ({ buildExports } = await import('../../lib/export')); }
+    catch { say('Not exported — the code that writes the file could not be loaded. Check the connection and press again.'); return; }
     const x = buildExports({
       D, OBS: app.site, MASK, dopHz: doppler.hz, eng: getEngine(), optics: getOptics(),
       sourceText: tleSourceText({

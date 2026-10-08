@@ -38,8 +38,8 @@
              numbers and their separators are hidden for it and the chip, which opens it in the planner, is shown in their place. The nodes
              stay, and say what they are, so nothing reads a number that is not there. -->
         <button type="button" class="chip custom-chip" id="customchip" hidden={!entry.custom}><span class="dot"></span>Custom orbit · edit</button>
-        <span hidden={entry.custom}>NORAD <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
-        <span class="wide-only" hidden={entry.custom}>COSPAR <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
+        <span hidden={entry.custom}><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
+        <span class="wide-only" hidden={entry.custom}><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
         <span class="wide-only">Epoch <b id="idepoch">{iso(E.epoch)}</b></span>
         {#if PINNED}
           <span class="chip snapshot" title="The embedded element sets, each window opening at its set's epoch: the figures in the README">assignment snapshot</span>

@@ -51,7 +51,7 @@
   header { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
   .hint { color: var(--muted); font-size: var(--fs-1); max-width: 70ch; }
   abbr { text-decoration: underline dotted; text-underline-offset: 2px; }
-  .elements { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4); }   /* six cards: 3 + 3 at full width, 2 + 2 + 2, then one */
+  .elements { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: var(--space-4); }   /* six cards: 3 + 3 at full width, 2 + 2 + 2, then one */
   .el { padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--r-3); background: var(--panel); display: grid; align-content: start; gap: var(--space-1); }
   .sym { font-size: var(--fs-1); color: var(--muted); }
   .sym i { font-family: var(--font-head); font-size: var(--fs-4); font-style: italic; color: var(--ink); margin-right: var(--space-2); }

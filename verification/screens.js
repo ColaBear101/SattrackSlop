@@ -47,6 +47,7 @@ const THEMES = ['light', 'dark'];
 
       await page.goto(srv.page, { waitUntil: 'load' });
       await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });   // folded away in the phone's sheet
+      await page.waitForSelector('#sec-terms', { state: 'attached', timeout: 30000 });  // the report is a chunk of its own, fetched when the browser is idle
       await page.evaluate(() => document.fonts.ready);
       /* pause (a picture of one instant) without Playwright scrolling the button into view, which would move the page */
       await page.evaluate(() => document.getElementById('tpplay').click());

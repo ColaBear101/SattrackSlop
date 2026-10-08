@@ -50,7 +50,9 @@ class Prefs {
   setTheme(t: Theme): void { this.theme = t; this.apply(); this.save(); }
   /** light -> dark -> auto -> light: three states, one button. */
   cycleTheme(): void { this.setTheme(this.theme === 'light' ? 'dark' : this.theme === 'dark' ? 'auto' : 'light'); }
-  setTab(t: StageTab): void { this.tab = t; this.tabChosen = true; this.save(); }
+  /** Told when the tab changes (the address bar follows it). */
+  onTab: (() => void) | null = null;
+  setTab(t: StageTab): void { this.tab = t; this.tabChosen = true; this.save(); this.onTab?.(); }
   /** Show this tab because the other cannot be drawn, without remembering it as a choice. */
   fallback(t: StageTab): void { if (!this.tabChosen && this.tab !== t) this.tab = t; }
 }

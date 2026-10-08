@@ -9,6 +9,14 @@
   ] as const;
 
   let current = $state('');
+  let nav: HTMLElement | undefined = $state();
+
+  /* the link of the section in view is brought into view in the row, where the row scrolls (a phone) */
+  $effect(() => {
+    if (!nav || !current) return;
+    const a = nav.querySelector<HTMLElement>('a[aria-current]');
+    if (a && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: Math.max(0, a.offsetLeft - (nav.clientWidth - a.offsetWidth) / 2), behavior: 'smooth' });
+  });
 
   onMount(() => {
     const io = new IntersectionObserver(entries => {
@@ -19,10 +27,15 @@
   });
 </script>
 
-<nav class="rnav" aria-label="Report sections">
+<nav class="rnav" aria-label="Sections below, and the Moon pages" bind:this={nav}>
   {#each links as [id, label] (id)}
-    <a href="#{id}" aria-current={current === id ? 'location' : undefined}>{label}</a>
+    <!-- a section too short to cross the line the observer watches is marked by the press itself -->
+    <a href="#{id}" aria-current={current === id ? 'location' : undefined} onclick={() => (current = id)}>{label}</a>
   {/each}
+  <!-- the Moon pages, as the old page linked them: two other consoles, in testing -->
+  <span class="moon"><span class="jk">Moon, in testing:</span>
+    <a href="moon-track.html" title="Lunar track console: orbiters and landers">Lunar track →</a>
+    <a href="moon.html" title="Earth–Moon system and the Lagrange points">Earth–Moon →</a></span>
 </nav>
 
 <style>
@@ -37,6 +50,8 @@
     border-radius: var(--r-2); color: var(--ink2); font-size: var(--fs-1); font-weight: 500; text-decoration: none;
   }
   a:hover { background: var(--hover); color: var(--ink); }
+  .moon { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; padding-left: var(--space-4); }
+  .jk { color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-0); letter-spacing: .06em; white-space: nowrap; }
   a[aria-current] { background: var(--sel-bg); color: var(--sel-ink); }
   @media (pointer: coarse) { a { min-height: var(--tap); } }
 </style>

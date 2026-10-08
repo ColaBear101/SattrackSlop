@@ -7,7 +7,6 @@
  * the JSON the schema promises, counts. Everything else is "the API is not here", reported as a reason, never
  * thrown: the callers fall back to the direct fetches the page always made.
  */
-import { treaty } from '@elysia/eden';
 import type { Api } from '../../../server/app';
 import {
   API_HEADER, type HistoryAnswer, type HistoryRow, type Outcome, type TleAnswer, type Tried
@@ -113,6 +112,11 @@ function classify<T>(r: EdenLike, guard: (x: unknown) => x is T): ApiReply<T> {
   return guard(r.data) ? { kind: 'ok', data: r.data } : { kind: 'down', why: 'shape', status: res.status };
 }
 
+/* Eden's client is a chunk of its own, fetched the first time the page asks its API (a visit with no API never needs it). A failed fetch is
+   not remembered. Its time is inside the call's deadline. */
+let eden: Promise<typeof import('@elysia/eden/treaty2')['treaty']> | null = null;
+const loadTreaty = () => (eden ??= import('@elysia/eden/treaty2').then(m => m.treaty, e => { eden = null; throw e; }));
+
 export function createApiClient(opts: ApiClientOptions): ApiClient {
   const send: FetchLike = opts.fetch ?? ((url, init) => globalThis.fetch(url, init));
   const tleMs = opts.timeoutMs?.tle ?? API_TIMEOUT_TLE_MS;
@@ -121,7 +125,7 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
   /* One treaty per call: it is only a proxy, and it lets the call's own AbortSignal ride in the fetcher. Handing the signal
      to Eden as an option instead makes it add "content-type: application/json" to the GET, which turns a simple
      cross-origin request into one that needs a preflight. The fetcher also drops any content-type, for the same reason. */
-  const treatyFor = (signal: AbortSignal) => treaty<Api>(opts.base, {
+  const treatyFor = async (signal: AbortSignal) => (await loadTreaty())<Api>(opts.base, {
     fetcher: ((url: string, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
       headers.delete('content-type');
@@ -138,7 +142,7 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
   };
 
   return {
-    tle: norad => timed(tleMs, async signal => classify(await treatyFor(signal).api.tle({ norad }).get(), isTleAnswer)),
-    history: norad => timed(historyMs, async signal => classify(await treatyFor(signal).api.history({ norad }).get(), isHistoryAnswer))
+    tle: norad => timed(tleMs, async signal => classify(await (await treatyFor(signal)).api.tle({ norad }).get(), isTleAnswer)),
+    history: norad => timed(historyMs, async signal => classify(await (await treatyFor(signal)).api.history({ norad }).get(), isHistoryAnswer))
   };
 }

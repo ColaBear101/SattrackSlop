@@ -8,7 +8,15 @@
   const needle = $derived(q.trim().toLowerCase());
   const shown = (t: { term: string; text: string }) => !needle || (t.term + ' ' + t.text).toLowerCase().includes(needle);
   const count = $derived(GLOSSARY.filter(shown).length);
+
+  /* a link to a term the filter has hidden clears the filter: the term is there to be landed on */
+  function arrive() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (needle && GLOSSARY.some(t => t.id === id && !shown(t))) { q = ''; requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView()); }
+  }
 </script>
+
+<svelte:window onhashchange={arrive} />
 
 <section id="sec-terms" aria-labelledby="sec-terms-h">
   <header>
@@ -38,7 +46,7 @@
   }
   input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   .n { color: var(--muted); font-size: var(--fs-0); }
-  .terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-4) var(--space-6); margin: 0; }
+  .terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: var(--space-4) var(--space-6); margin: 0; }
   .terms > div { scroll-margin-top: 64px; }
   dt { font-weight: 600; font-size: var(--fs-2); }
   dd { margin: var(--space-1) 0 0; color: var(--ink2); font-size: var(--fs-1); line-height: var(--lh-body); max-width: 62ch; }

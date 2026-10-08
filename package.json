@@ -54,6 +54,7 @@
     "lifetime": "node verification/verify-lifetime.js",
     "ar": "node verification/verify-ar.js",
     "layout": "node verification/verify-layout.js",
+    "axe": "node verification/axe.js",
     "build:shims": "node scripts/build-shims.mjs",
     "gate:lib": "node scripts/build-shims.mjs && node verification/regress.js --mode lib",
     "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",

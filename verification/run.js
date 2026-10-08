@@ -58,7 +58,9 @@ const STAGES = [
   { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true },
   /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits
      (the test surface brings both up eagerly). Rebuilt page only: the old page had no chunks to arrive. */
-  { name: 'visitor',     script: 'verify-visitor.js',    alone: true, target: 'new' }
+  { name: 'visitor',     script: 'verify-visitor.js',    alone: true, target: 'new' },
+  /* the accessibility rules, at five viewports in both colour schemes, in the states that change what is on screen (the planner among them) */
+  { name: 'axe',         script: 'axe.js',               alone: true, target: 'new', args: ['--strict'] }
 ];
 
 const argv = process.argv.slice(2);

@@ -39,7 +39,7 @@
     background: var(--panel); font-family: var(--font-mono); font-size: var(--fs-0);
   }
   .passrow[aria-current='true'] { background: color-mix(in srgb, var(--contact) 9%, transparent); box-shadow: inset 3px 0 0 var(--contact); padding-left: var(--space-2); }
-  .passrow[aria-current='true'] .n { background: var(--contact); border-color: var(--contact); color: #fff; }
+  .passrow[aria-current='true'] .n { background: var(--contact); border-color: var(--contact); color: var(--sel-ink); }   /* white on the light theme's orange, the panel's own dark on the dark theme's: 4.5:1 on both */
   .none { color: var(--muted); font-size: var(--fs-1); }
   @media (pointer: coarse) { .n { width: var(--tap); height: var(--tap); } .passrow { grid-template-columns: var(--tap) minmax(0, 1fr) auto; } }
 </style>

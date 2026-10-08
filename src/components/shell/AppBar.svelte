@@ -38,13 +38,13 @@
              numbers and their separators are hidden for it and the chip, which opens it in the planner, is shown in their place. The nodes
              stay, and say what they are, so nothing reads a number that is not there. -->
         <button type="button" class="chip custom-chip" id="customchip" hidden={!entry.custom}><span class="dot"></span>Custom orbit · edit</button>
-        <span hidden={entry.custom}><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
-        <span class="wide-only" hidden={entry.custom}><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
+        <span hidden={entry.custom}><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep" hidden={entry.custom}>·</span>
+        <span hidden={entry.custom}><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
         <span class="wide-only">Epoch <b id="idepoch">{iso(E.epoch)}</b></span>
+        <span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
         {#if PINNED}
           <span class="chip snapshot" title="The embedded element sets, each window opening at its set's epoch: the figures in the README">assignment snapshot</span>
         {/if}
-        <span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
       </p>
     {/if}
   </div>
@@ -86,6 +86,8 @@
   .plannote[hidden] { display: none; }
   .chip.stale { border-color: var(--warn); color: var(--warn); }
   .chip.snapshot { border-color: var(--link); color: var(--link); }
+  /* after the age chip, so that where the row is tight the snapshot label goes first: the age chip is the stale flag, and the note under the bar says the same */
+  @media (min-width: 1100px) and (max-width: 1239px) { .chip.snapshot { display: none; } }
   .tools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
   /* The pill says "Plan" alone where the header is tight (its name for a screen reader is "Plan an orbit" either way): it is the one cell
      that grows with its words, and the header must be as tall with it as without it. The old page's rule, at the old page's width. */

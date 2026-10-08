@@ -12,6 +12,7 @@ import { getEngine, getObs, HOME, setCatalogueSource, setObserver } from './engi
 import { life } from './life.svelte';
 import { live } from './live.svelte';
 import { prefs } from './prefs.svelte';
+import { localStore } from './storage';
 import { readUrl, writeUrl, SPANS } from './url';
 import { wall } from './wall.svelte';
 
@@ -60,6 +61,8 @@ class AppState {
   note = $state('');
   /** A fatal problem: the catalogue could not be read at all. */
   error = $state<string | null>(null);
+  /** The reader pressed Try again and the catalogue is on its way: the notice stays where it is until they have come. */
+  retrying = $state(false);
   loading = $state(true);
   /** Counts the analyses committed. An orbit the reader designed is edited IN PLACE (the entry object keeps its identity, so everything
    *  that holds it - the window, the clock, a typed Doppler frequency - survives), and a reactive read of a field of an object that
@@ -95,11 +98,11 @@ class AppState {
     /* The address carries a position and nothing else about the site. A reload of this very page has its own observer's position in it, and
        the saved record (name, ground height, zone) is that observer: take the record when the address is where it says; a position that is
        not the saved one is somebody's link, and is taken as it is. */
-    const saved = loadSavedSite(localStorage);
+    const saved = loadSavedSite(localStore());
     const same = !!saved && !!url.site && saved.lat.toFixed(4) === url.site.lat.toFixed(4) && saved.lon.toFixed(4) === url.site.lon.toFixed(4);
     const wanted = this.siteFrom(url.site && !same ? { ...url.site, name: 'Linked site' } : saved ?? {});
     if (wanted) this.site = setObserver(wanted);
-    this.recents = loadRecents(localStorage);
+    this.recents = loadRecents(localStore());
 
     live.attach({
       onScreen: () => this.entry,
@@ -109,21 +112,58 @@ class AppState {
       pinned: PINNED
     });
 
-    fetch(worldUrl).then(r => r.json()).then(w => { this.world = w; }).catch(() => { /* the map falls back to a blank ocean */ });
+    this.wantSat = url.sat;
+    this.fetchWorld();
+    /* One promise for the page's life: it settles when the catalogue has come, the first time or after Try again. What waits on it (the
+       planner, the AR view, the test surface) is bound once, so it must not be a promise that a failed first try can reject for good. */
+    this.ready = new Promise<CatalogueEntry[]>(res => { this.opened = res; });
+    void this.fetchCatalogue();
+  }
 
-    this.ready = fetch(catalogueUrl)
-      .then(r => { if (!r.ok) throw new Error('catalogue: HTTP ' + r.status); return r.text(); })
-      .then(text => {
-        this.catalogue = parseCatalog(text);
-        this.catalogue.forEach((c, i) => { this.byKey.set(c.satnum, c); this.byIndex.set(c.satnum, i); });
-        setCatalogueSource({ embedded: this.catalogue, current: n => { const e = this.byKey.get(n); return e ? live.effective(e) : undefined; } });
-        this.loading = false;
-        this.boot(url.sat);
-        clock.start();
-        this.startTimers();
-        return this.catalogue;
-      })
-      .catch(e => { this.loading = false; this.error = String(e && e.message || e); throw e; });
+  private wantSat: string | undefined;
+  private opened!: (c: CatalogueEntry[]) => void;
+
+  private fetchWorld(): void {
+    fetch(worldUrl).then(r => r.json()).then(w => { this.world = w; }).catch(() => { /* the map falls back to a blank ocean */ });
+  }
+
+  /** Fetch the catalogue and open the page on it. The element sets are a file of the page's own, not inline in it, so the fetch can fail: the
+   *  rail then says so, with a button that asks again (and the notice stays up while it does). */
+  private async fetchCatalogue(): Promise<void> {
+    let list: CatalogueEntry[];
+    try {
+      const r = await fetch(catalogueUrl);
+      if (!r.ok) throw new Error('the server answered HTTP ' + r.status);
+      const text = await r.text();
+      try { list = parseCatalog(text); } catch { list = []; }                 // not a catalogue: said below, and not as a failed connection
+      if (!list.length) throw new Error('what came back was not a list of element sets');
+    } catch (e) {
+      /* a TypeError is what fetch() throws for a connection that failed, in every browser, each with its own words */
+      const net = e instanceof TypeError;
+      this.loading = false;
+      this.retrying = false;
+      this.error = 'The element sets could not be loaded: ' + (net ? 'the connection failed' : String((e as Error)?.message ?? e)) + '. ' +
+        (net ? 'Check the connection and try again.' : 'Try again in a moment.');
+      return;
+    }
+    this.catalogue = list;
+    this.catalogue.forEach((c, i) => { this.byKey.set(c.satnum, c); this.byIndex.set(c.satnum, i); });
+    setCatalogueSource({ embedded: this.catalogue, current: n => { const e = this.byKey.get(n); return e ? live.effective(e) : undefined; } });
+    this.loading = false;
+    this.retrying = false;
+    this.error = null;
+    this.boot(this.wantSat);
+    clock.start();
+    this.startTimers();
+    this.opened(this.catalogue);
+  }
+
+  /** The button the failure notice carries: the same fetch, and the same file of the world's coastlines if that did not come either. */
+  retryCatalogue(): void {
+    if (!this.error || this.retrying) return;
+    this.retrying = true;
+    if (!this.world) this.fetchWorld();
+    void this.fetchCatalogue();
   }
 
   /** The first analysis. The default is a moving target too: KNACKSAT-2 will re-enter one day, and a page that
@@ -320,15 +360,15 @@ class AppState {
     const site = this.siteFrom(raw);
     if (!site) return false;
     this.site = setObserver(site);
-    if (persist) saveSite(localStorage, this.site, o.where ?? raw.where ?? '');
-    if (o.remember) this.recents = remember(localStorage, this.site, o.where ?? raw.where ?? '');
+    if (persist) saveSite(localStore(), this.site, o.where ?? raw.where ?? '');
+    if (o.remember) this.recents = remember(localStore(), this.site, o.where ?? raw.where ?? '');
     if (o.reanalyze ?? true) this.reanalyze();          // the whole analysis is site-dependent
     return true;
   }
 
   resetSite(): void {
     this.site = setObserver({ ...HOME });
-    try { localStorage.removeItem(SITE_KEY); } catch { /* nothing to remove */ }
+    try { localStore().removeItem(SITE_KEY); } catch { /* nothing to remove */ }
     this.reanalyze();
   }
 

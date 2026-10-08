@@ -4,6 +4,8 @@
   import { clock } from '../../state/clock.svelte';
   import { MASK } from '../../state/engine';
   import { countdown } from '../../lib/text/countdown';
+  import { getEngine } from '../../state/engine';
+  import { reentryNote } from '../../lib/text/notices';
   import { siteClock } from '../../lib/text/passfacts';
   import Icon from '../ui/Icon.svelte';
 
@@ -29,9 +31,18 @@
     return () => { for (const l of lists) l.removeEventListener('change', apply); };
   });
 
+  /* The element sets could not be loaded: the sheet opens by itself, because what it holds is the way to ask again; it folds once they have come. */
+  let opened = false;
+  $effect(() => {
+    if (app.error) { open = true; opened = true; }
+    else if (opened) { opened = false; open = mode !== 'sheet'; }
+  });
+
   const a = $derived(app.analysis);
   /* the peek says what the countdown below it says, in the countdown's own words: past the window's last pass, in a pass that is still up when the
      window closes, with the clock scrubbed outside the window */
+  /* a spacecraft that has come down: the passes are a prediction that will not happen, and the sheet is folded, so the peek says so itself */
+  const down = $derived(!!a && !!reentryNote(a, getEngine().REENTRY_KM));
   const cd = $derived(a ? countdown(a, clock.tick.ms, Date.now(), MASK, siteClock(app.site), () => app.passAfterWindow()) : null);
 </script>
 
@@ -44,13 +55,15 @@
       <span class="line" aria-hidden="true">
         {#if a}
           <span class="big">{(a.totalS / 60).toFixed(1)}<small>{' min visible'}</small></span>
+          {#if down}<span class="down">Re-entry: these passes will not happen</span>{/if}
           <span class="nx mono">
             {#if cd}{cd.label} {cd.value}{/if}
           </span>
+        {:else if app.error}<span class="nx down">The element sets could not be loaded</span>
         {:else}<span class="nx">Loading…</span>{/if}
       </span>
       <span class="chev" aria-hidden="true"><Icon name="chevron-down" size={18} /></span>
-      <span class="sr-only">{open ? 'Hide the answer' : 'Show the answer'}</span>
+      <span class="sr-only">{open ? 'Hide the answer' : 'Show the answer'}{down ? '. Warning: this spacecraft has re-entered, so these passes will not happen' : ''}{app.error ? '. The element sets could not be loaded' : ''}</span>
     </button>
   {/if}
   <div id="answer-body" class="body" hidden={mode !== 'side' && !open}>
@@ -82,6 +95,7 @@
   .line { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-4); min-width: 0; }
   .big { font-family: var(--font-head); font-variant-numeric: tabular-nums; font-size: var(--fs-4); font-weight: 700; letter-spacing: -0.02em; color: var(--contact); }
   .big small { font-family: var(--font-sans); font-size: var(--fs-1); font-weight: 400; letter-spacing: 0; color: var(--muted); }
+  .down { font-size: var(--fs-1); font-weight: 500; color: var(--bad); }
   .nx { font-size: var(--fs-1); color: var(--ink2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chev { display: grid; transition: transform var(--dur) var(--ease); color: var(--muted); }
   .open .chev { transform: rotate(180deg); }

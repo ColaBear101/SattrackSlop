@@ -34,4 +34,12 @@ export const fetchingView = (seconds: number): LifeView => ({
     'to 75 seconds.')
 });
 
+/** The part of the page that reads a history and paints the forecast could not be fetched (the connection went before it came): said in place of
+ *  the wait, with the way to ask again. Nothing was sent to CelesTrak that could not be read. */
+export const chunkFailedView = (): LifeView => ({
+  big: 'Not estimated', sub: '', span: '', action: 'retry',
+  note: markup('The part of this page that reads an element-set history could not be loaded, which usually means the connection went. ' +
+    'Try again once it is back; if it still fails, reload the page.')
+});
+
 export const LIFE_NOTHING: LifeView = { big: '—', sub: '', note: '', span: '' };

@@ -632,6 +632,118 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
     }
   });
 
+  /* ---- 9. what the page cannot have --------------------------------------------------------------------------------------------------------- */
+  if (want(9)) await group(9, async () => {
+    console.log('\n9. A page that is refused what it asks for: site data, the element sets, the code of the Decay panel');
+    /* Blocked site data: in some browsers (every cookie blocked, a sandboxed frame) merely naming window.localStorage throws. The old page started. */
+    {
+      const w = await visit(browser, {});
+      await w.ctx.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); } }); });
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      const up = await until(w.page, () => !!document.getElementById('totalbig') && /\d/.test(document.getElementById('totalbig').textContent));
+      const said = await w.page.evaluate(() => ({ name: (document.getElementById('satname') || {}).textContent, text: document.body.innerText.length }));
+      chk('[site data blocked: localStorage throws when it is named] the page opens on its default spacecraft with its answer', up && said.name === 'KNACKSAT-2' && said.text > 5000, 'name ' + said.name + ', ' + said.text + ' characters');
+      noErrors('group 9 [site data blocked]', w);
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* The element sets are a file of the page's own: when it does not come, the rail says so in words, with a button, and the button asks again. */
+    for (const [label, device] of [['desktop', DESKTOP], ['phone', PHONE]]) {
+      const w = await visit(browser, { device });
+      let refuse = true;
+      await w.page.route(CATALOGUE, r => (refuse ? r.abort() : r.fallback()));
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      const shown = await until(w.page, () => !!document.getElementById('catretry'));
+      const a = await w.page.evaluate(() => ({ note: (document.querySelector('.notice.bad') || {}).textContent || '', peek: (document.querySelector('.peek') || {}).textContent || '' }));
+      chk('[' + label + ', element sets refused] the rail says they could not be loaded, in words, with a Try again button' + (device === PHONE ? ', and the sheet\'s peek says it too' : ''),
+        shown && /could not be loaded/.test(a.note) && /Try again/.test(a.note) && !/Failed to fetch|Cannot read/.test(a.note) && (device !== PHONE || /could not be loaded/.test(a.peek)), JSON.stringify(a).slice(0, 220));
+      refuse = false;
+      await w.page.click('#catretry');
+      const back = await until(w.page, () => !!document.getElementById('totalbig') && /\d/.test(document.getElementById('totalbig').textContent));
+      const after = await w.page.evaluate(() => ({ name: (document.getElementById('satname') || {}).textContent, button: !!document.getElementById('catretry') }));
+      chk('[' + label + ', element sets refused] Try again, once they can come, opens the page on the default spacecraft and the notice is gone', back && after.name === 'KNACKSAT-2' && !after.button, JSON.stringify(after));
+      /* What waited for the first answer was bound before it failed: after a retry that works, it must come all the same. */
+      const famBack = await until(w.page, f => f.every(n => window.__v.res.some(r => new RegExp('/assets/' + n + '-[A-Za-z0-9_-]{8}\\.js$').test(r.url))), FAMILY);
+      const arBack = device !== PHONE || await until(w.page, () => window.__v.res.some(r => /\/assets\/chunk-[A-Za-z0-9_-]{8}\.js$/.test(r.url)));
+      chk('[' + label + ', element sets refused] ...and the planner' + (device === PHONE ? ' and the AR view come' : ' comes') + ' as on a page that never failed (they were waiting on the first try)', famBack && arBack, 'planner chunks ' + famBack + (device === PHONE ? ', AR chunk ' + arBack : ''));
+      if (device === PHONE) {
+        const folded = await w.page.evaluate(() => document.querySelector('.peek').getAttribute('aria-expanded'));
+        chk('[phone, element sets refused] the sheet that opened by itself is folded again once the page has come', folded === 'false', 'aria-expanded=' + folded);
+      }
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* A link to a spacecraft survives a failed first try: pressing a tab while the notice is up rewrites the address, and the retry opens what was linked. */
+    {
+      const w = await visit(browser, {});
+      let refuse = true;
+      await w.page.route(CATALOGUE, r => (refuse ? r.abort() : r.fallback()));
+      await w.page.goto(srv.page + '?sat=60543', { waitUntil: 'load' });
+      await until(w.page, () => !!document.getElementById('catretry'));
+      await w.page.click('[role=tab]:has-text("Map")');
+      refuse = false;
+      await w.page.click('#catretry');
+      await until(w.page, () => !!document.getElementById('totalbig') && /d/.test(document.getElementById('totalbig').textContent));
+      const name = await w.page.evaluate(() => (document.getElementById('satname') || {}).textContent);
+      chk('[element sets refused, a link to ?sat=60543] Try again opens the linked spacecraft, whatever was pressed in between', name === 'ARCTIC WEATHER SATELLITE', 'opened ' + name);
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    for (const [label, body] of [['empty', ''], ['not element sets', '<html>not found</html>'], ['an HTTP error', null]]) {
+      const w = await visit(browser, {});
+      await w.page.route(CATALOGUE, r => (body === null ? r.fulfill({ status: 404, body: 'no' }) : r.fulfill({ status: 200, contentType: 'text/plain', body })));
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      const shown = await until(w.page, () => !!document.getElementById('catretry'));
+      const note = await w.page.evaluate(() => (document.querySelector('.notice.bad') || {}).textContent || '');
+      chk('[element sets: ' + label + '] said in words, not in the browser\'s own', shown && /could not be loaded/.test(note) && !/Cannot read|undefined|SyntaxError/.test(note), note.replace(/\s+/g, ' ').slice(0, 200));
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* The Decay panel's code is fetched when the section is near: the connection can go before it comes, and "Estimate remaining life" then
+       said it was waiting for CelesTrak for 75 seconds, with no button. */
+    {
+      const w = await visit(browser, {});
+      await w.page.route(/\/assets\/life-[A-Za-z0-9_-]{8}\.js$/, r => r.abort());
+      await w.page.route(/(celestrak\.org|ivanstanojevic\.me)/, r => r.abort());
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      const btn = await until(w.page, () => !!document.getElementById('lifego'));
+      let said = '';
+      if (btn) {
+        await w.page.evaluate(() => document.getElementById('lifego').scrollIntoView());
+        await w.page.click('#lifego');
+        await until(w.page, () => /could not be loaded/.test((document.getElementById('sec-life') || {}).innerText || ''), undefined, 6000);
+        said = await w.page.evaluate(() => (document.getElementById('sec-life') || {}).innerText.replace(/\s+/g, ' '));
+      }
+      chk('[Decay code refused] "Estimate remaining life" says within seconds that the part that reads a history could not be loaded, and offers Try again', btn && /could not be loaded/.test(said) && /Try again/.test(said) && !/up to 75 seconds/.test(said), said.slice(0, 260));
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* A press in the picker's list (its scrollbar, a heading) must leave the focus in the field: the keys are the field's. */
+    {
+      const w = await visit(browser, {});
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      await until(w.page, () => !!document.getElementById('totalbig'));
+      await w.page.click('#satname');
+      await w.page.waitForSelector('#satlist');
+      /* the press itself: a mousedown that reaches the list (its scrollbar, a heading, the gap between two rows) and is not cancelled would give the list the focus */
+      const r = await w.page.evaluate(() => { const ul = document.getElementById('satlist'); const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true }); ul.dispatchEvent(ev); return { prevented: ev.defaultPrevented, focus: (document.activeElement || {}).id || '' }; });
+      chk('[picker] a press on the list itself (its scrollbar, a heading) is not left to move the focus out of the search field', r.prevented && r.focus === 'satsearch', JSON.stringify(r));
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* The Source tab holds two 69-character lines: they scroll inside their own box and do not widen the rail or the page. A long name on a phone
+       wraps in its own column. */
+    for (const [label, device, sat] of [['desktop 1100', { viewport: { width: 1100, height: 800 } }, null], ['phone', PHONE, null], ['phone, a long name', PHONE, '60543']]) {
+      const w = await visit(browser, { device });
+      await w.page.goto(srv.page + (sat ? '?sat=' + sat : ''), { waitUntil: 'load' });
+      await until(w.page, () => !!document.getElementById('totalbig'));
+      if (device === PHONE) await w.page.click('.peek');
+      await w.page.click('[role=tab]:has-text("Source")');
+      await w.page.waitForTimeout(200);
+      const m = await w.page.evaluate(() => {
+        const aside = document.querySelector('aside.rail'), pre = document.getElementById('tleraw'), t = document.querySelector('.title').getBoundingClientRect(), th = document.querySelector('.t-theme').getBoundingClientRect();
+        return { aside: aside.scrollWidth - aside.clientWidth, page: document.documentElement.scrollWidth - innerWidth, preScrolls: pre.scrollWidth > pre.clientWidth, titleRight: Math.round(t.right), themeLeft: Math.round(th.left) };
+      });
+      chk('[' + label + '] the Source tab does not widen the rail or the page (the raw lines scroll in their own box)' + (sat ? ', and the name stays clear of the theme toggle' : ''),
+        m.aside <= 0 && m.page <= 0 && m.preScrolls && (!sat || m.titleRight <= m.themeLeft), JSON.stringify(m));
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+  });
+
   await browser.close();
   console.log('\n' + (ONLY ? '(groups ' + [...ONLY].join(',') + ' only, plus the build check: ' + (passes + fails) + ' checks, ' + passes + ' passed)' : (passes + fails) + ' checks, ' + passes + ' passed') + '   in ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
   const ok = fails === 0 && allErrs.length === 0;

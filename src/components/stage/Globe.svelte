@@ -99,6 +99,8 @@
   {#if globe.status !== 'unavailable'}<GlobeControls />{/if}
   <canvas id="o3mini" class="o3-mini" width="480" height="240" hidden bind:this={mini}
           aria-label="Minimap: the spacecraft's position, its access circle and where the camera is pointed"></canvas>
+  <!-- where there is no globe, there is no key to it and nothing to drag: the sentence below is all the panel says -->
+  {#if globe.status !== 'unavailable'}
   <ul class="o3-key" id="o3key" class:kel-on={globe.layers.elements} aria-label="Globe key">
     <li><i class="k-orbit"></i>Orbit, one revolution</li>
     <li><i class="k-track"></i>Spacecraft and ground track</li>
@@ -113,6 +115,7 @@
     <li class="kel" hidden={!globe.layers.elements}><b class="s-h">h</b>angular momentum · <b class="s-v">v</b>velocity (vt, vn)</li>
   </ul>
   <p class="hint-drag">Drag to orbit · scroll or pinch to zoom · click or tap a point to load that spacecraft</p>
+  {/if}
   <!-- always in the page, hidden until a point is clicked: a script asks whether it is there -->
   <div class="pickconfirm" id="pickconfirm" role="dialog" aria-labelledby="pcname" hidden={!globe.pick} bind:this={card} style="left:{cardPos.x}px; top:{cardPos.y}px">
     <p class="pcn" id="pcname">{globe.pick?.name ?? '—'}</p>
@@ -207,7 +210,9 @@
   .pcn { margin: 0; font-family: var(--font-mono); font-size: var(--fs-1); color: #EAF2F6; }
   .pcd { margin: 2px 0 0; font-family: var(--font-mono); font-size: var(--fs-0); color: #8AA0AC; }
   .pcb { display: flex; gap: 6px; margin-top: 9px; }
-  .pcbtn { flex: 1; min-height: 32px; border-radius: 3px; border: 1px solid rgba(180, 200, 212, .35); background: transparent; color: #DCE8EE; font-size: var(--fs-1); }
+  .pcbtn { flex: 1; min-height: 32px; border-radius: 3px; border: 1px solid rgba(180, 200, 212, .35); background: transparent; color: #DCE8EE; font-family: var(--font-mono); font-size: var(--fs-1); }
+  /* the card puts the focus on Load itself, after a press, where :focus-visible does not draw: the ring is asked for */
+  .pcbtn.load:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
   .pcbtn.load { background: var(--contact); border-color: var(--contact); color: #fff; }
   @media (pointer: coarse) { .pcbtn { min-height: var(--tap); } }
 

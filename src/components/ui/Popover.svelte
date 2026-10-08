@@ -61,7 +61,7 @@
 </div>
 
 <style>
-  .pop { position: relative; display: inline-block; }
+  .pop { position: relative; display: inline-block; max-width: 100%; }
   .panel {
     position: absolute; top: calc(100% + 6px); z-index: var(--z-popover);
     width: min(var(--w), calc(100vw - 2 * var(--space-4)));

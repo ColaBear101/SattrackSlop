@@ -47,8 +47,11 @@
   }
 
   function key(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, last); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); }
+    /* the list wraps, as the old one did: one ArrowUp from the top is the way to the Plan row */
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (last >= 0) active = active >= last ? 0 : active + 1; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (last >= 0) active = active <= 0 ? last : active - 1; }
+    /* Tab leaves the field and the list with it: a list left open behind the next stop is a list nobody is using */
+    else if (e.key === 'Tab') open = false;
     else if (e.key === 'Enter') {
       if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
       else if (planOn && active === shown.length) { e.preventDefault(); plan(); }
@@ -83,14 +86,16 @@
     <Icon name="search" size={16} />
     <input id="satsearch" type="search" role="combobox" aria-expanded="true" aria-controls={shown.length || planOn ? 'satlist' : undefined}
            aria-autocomplete="list" aria-haspopup="listbox"
-           aria-activedescendant={activeId} autocomplete="off" spellcheck="false"
+           aria-activedescendant={activeId} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
            placeholder="Search {app.catalogue.length.toLocaleString('en-US')} spacecraft or NORAD ID"
            bind:value={query} onkeydown={key}>
   </div>
   <!-- The options are not themselves focusable: the search field keeps focus and names the highlighted one through
        aria-activedescendant, the combobox pattern. So the keyboard is handled on the input, above. -->
   {#if shown.length || planOn}
-    <ul id="satlist" role="listbox" aria-label="Spacecraft">
+    <!-- a press anywhere in the list (a group heading, the scrollbar) must not take the focus out of the field: the keys are the field's -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <ul id="satlist" role="listbox" aria-label="Spacecraft" tabindex="-1" onmousedown={e => e.preventDefault()}>
       {#each shown as idx, k (idx)}
         {@const c = custom.entryAt(idx)!}
         {@const mine = isCustom(c)}
@@ -128,7 +133,9 @@
     transition: background var(--dur) var(--ease);
   }
   .title:hover { background: var(--hover); }
-  .title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* a phone: a long name wraps in its own column, as the old masthead did, and never runs under the theme toggle or widens the page */
+  @media (max-width: 719px) { .title span { white-space: normal; overflow-wrap: anywhere; } }
   .search {
     display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3);
     border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--sunk); color: var(--muted);
@@ -136,6 +143,8 @@
   .search input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; outline: none; color: var(--ink); font-size: var(--fs-2); }
   .search:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: min(52vh, 380px); overflow: auto; }
+  /* a phone on its side: the panel, and its foot, stay on the screen */
+  @media (max-height: 520px) { ul { max-height: 30vh; } }
   li {
     display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
     padding: var(--space-2) var(--space-3); border-radius: var(--r-2); cursor: pointer; color: var(--ink);

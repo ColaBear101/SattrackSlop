@@ -6,6 +6,7 @@
   import { countdown } from '../../lib/text/countdown';
   import { briefNote, outOfBrief, reentryNote, totalSub } from '../../lib/text/notices';
   import { siteClock } from '../../lib/text/passfacts';
+  import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
   import Rich from '../ui/Rich.svelte';
   import Tabs from '../ui/Tabs.svelte';
@@ -75,14 +76,15 @@
       {/snippet}
     </Tabs>
   {:else if app.error}
-    <p class="notice bad" role="alert"><Icon name="alert" size={16} /> {app.error}</p>
+    <div class="notice bad" role="alert"><Icon name="alert" size={16} /> <span>{app.error}<br /><Button size="sm" id="catretry" aria-disabled={app.retrying ? 'true' : undefined} onclick={() => app.retryCatalogue()}>{app.retrying ? 'Trying…' : 'Try again'}</Button></span></div>
   {:else}
     <p class="notice" role="status">Loading the catalogue…</p>
   {/if}
 </div>
 
 <style>
-  .rail { display: grid; gap: var(--space-5); align-content: start; }
+  /* one column that may be narrower than what is in it: the two raw lines of the element set scroll inside their own box, they do not widen the rail */
+  .rail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-content: start; }
   .notice {
     display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border-radius: var(--r-2);
     border: 1px solid var(--rule); border-left: 3px solid var(--warn); background: var(--sunk); font-size: var(--fs-1); color: var(--ink2);

@@ -1,7 +1,7 @@
 import { createHistorySource } from '../lib/net/history-source';
 import type { CatalogueEntry } from '../lib/catalogue/parse';
 import { isCustom, type CustomEntry } from '../lib/planner/custom';
-import { fetchingView, offerView, LIFE_NOTHING, type LifeChartState, type LifeFields, type LifeView } from '../lib/text/life-offer';
+import { chunkFailedView, fetchingView, offerView, LIFE_NOTHING, type LifeChartState, type LifeFields, type LifeView } from '../lib/text/life-offer';
 import { historyCtx } from './net';
 import { loadPlannerMods, plannerMods } from './planner-mods';
 
@@ -31,6 +31,8 @@ class LifeState {
   chartReady: (() => Promise<unknown>) | null = null;
 
   private req = 0;
+  /** the asks of one spacecraft, in order: an answer for an earlier press of the button is not the answer to this one */
+  private runId = 0;
   private target: CatalogueEntry | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
 
@@ -99,23 +101,32 @@ class LifeState {
    *  never made for a planned orbit, so this is the second layer: a direct call for one asks nobody and leaves the panel as it was. */
   async run(entry: CatalogueEntry, my: number): Promise<void> {
     if (isCustom(entry) || my !== this.req) return;
+    const id = ++this.runId;
+    const current = () => my === this.req && id === this.runId;
     const t0 = Date.now();
     const say = () => { this.view = fetchingView(Math.round((Date.now() - t0) / 1000)); };
+    clearInterval(this.timer);
     say();
     this.timer = setInterval(say, 1000);
     const words = engine();                                             // fetched while the request is out
+    /* The words are a chunk of their own and the connection can go before they come (or the page be older than the files on the server): that is
+       said when it is known, not after the history has answered or its 75 seconds are up. */
+    words.catch(() => { if (current()) { clearInterval(this.timer); this.view = chunkFailedView(); } });
     let got = null;
     try { got = await createHistorySource(historyCtx(false)).history(entry.satnum); } catch { got = null; }
+    if (!current()) return;                                             // the reader moved on, or asked again
     clearInterval(this.timer);
-    if (my !== this.req) return;                                        // user moved on
-    const L = await words;
+    let L;
+    try { L = await words; } catch { return; }                          // said above
     const P = got && got.P;
     if (!P) { this.view = L.lifeWhyNot(entry, got); return; }
     await this.paint(P, my);
   }
 
   private async paint(P: LifeChartState['P'], my: number): Promise<void> {
-    const [L] = await Promise.all([engine(), this.chartReady?.().catch(() => undefined)]);
+    let L;
+    try { [L] = await Promise.all([engine(), this.chartReady?.().catch(() => undefined)]); }
+    catch { if (my === this.req) this.view = chunkFailedView(); return; }    // the connection went before the code came
     if (my !== this.req) return;
     const r = L.Lifetime.predict(P);
     const { view, fields } = L.lifePaint(r, P, Date.now());

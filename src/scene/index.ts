@@ -5,6 +5,9 @@ import { makeOrbitViz } from './orbitviz';
 import day2048 from '../assets/globe/bluemarble-2048.jpg?url';
 import day4096 from '../assets/globe/bluemarble-4096.jpg?url';
 import day8192 from '../assets/globe/bluemarble-8192.jpg?url';
+/* The VIIRS 2012 night-lights mosaic, the 2048 x 1024 JPEG the old page asked GIBS for on every start (the same GetMap, saved once: it has no date
+   and one size). Shipped with the page like the Blue Marble, so the default globe asks nobody for anything. */
+import night2048 from '../assets/globe/citylights-2048.jpg?url';
 
 /* The 3D globe: the scene (orbit3d), the sky layers it carries (orbitviz) and the photographic surfaces (globetex), wired
  * together the way the old page's boot3D() wired them. The three modules are the old files, moved with a wrapper and nothing
@@ -75,7 +78,7 @@ export function createGlobe(init: GlobeInit): Globe | null {
     THREE, satellite: init.satellite, navigator, performance,
     get devicePixelRatio() { return window.devicePixelRatio; }
   };
-  const globeTex = makeGlobeTex({ localDay: (w: number) => LOCAL_DAY[w] });
+  const globeTex = makeGlobeTex({ localDay: (w: number) => LOCAL_DAY[w], localNight: () => night2048 });
   g.GlobeTex = globeTex;
   const orbit3d = makeOrbit3D(g);
   const wake = init.onActivity ?? (() => {});

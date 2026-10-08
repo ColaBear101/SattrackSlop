@@ -250,9 +250,9 @@ const ENTRY_GRAPH = ['index', 'index-client', 'rich'];
    each is counted whether or not the visit fetched it */
 const DECAY_OWN = ['life', 'draw-life', 'Report', 'reporter', 'treaty2', ...ENTRY_GRAPH];
 /* all: every file of this origin the visit fetches, of any kind (the JavaScript above; the stylesheet; the catalogue and the world map; the six
-   fonts; the globe's 2048 px texture, the one image, which is most of the weight), the planner's own five chunks and its stylesheet apart. Images
+   fonts; the globe's two 2048 px textures, the Blue Marble and the city lights, the images that are most of the weight), the planner's own five chunks and its stylesheet apart. Images
    and woff2 do not shrink under gzip, so the figure is what the browser pays for them too. */
-const MEASURED = { entry: 83274, total: 309367, all: 1194100 };   // entry: index 64538 + index-client 18483 + rich 253
+const MEASURED = { entry: 83274, total: 309367, all: 1324275 };   // all was 1194100 before the city lights (132570 bytes) became a file of the page's own   // entry: index 64538 + index-client 18483 + rich 253
 const CEIL = { entry: Math.ceil(MEASURED.entry * 1.05), total: Math.ceil(MEASURED.total * 1.05), all: Math.ceil(MEASURED.all * 1.05), entryMeasured: MEASURED.entry, totalMeasured: MEASURED.total, allMeasured: MEASURED.all };
 const kB = n => (n / 1000).toFixed(1) + ' kB';
 const kindOf = p => /\.js$/.test(p) ? 'JavaScript' : /\.css$/.test(p) ? 'stylesheet' : /\.(woff2?|ttf)$/.test(p) ? 'fonts' : /\.(jpe?g|png|webp|svg|ico|gif)$/.test(p) ? 'images' : /\.html?$/.test(p) ? 'page' : 'data';
@@ -327,6 +327,9 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       const hosts = [...new Set(w.reqs.map(u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) && x.origin !== srv.origin ? x.hostname : null; } catch (e) { return null; } }).filter(Boolean))];
       chk('no host is contacted but the two element-set sources the page asks when no cache API answers (CelesTrak and its mirror)', hosts.every(h => ELEMENT_SET_HOSTS.includes(h)),
         hosts.join(', ') || 'none');
+      /* the globe opens on the old page's own default, "Blue Marble & city lights", from files of the page's own: the lights were a GIBS mosaic fetched at every start */
+      const lights = w.reqs.filter(u => /\/assets\/citylights-2048-[A-Za-z0-9_-]{8}\.jpg$/.test(u)), marble = w.reqs.filter(u => /\/assets\/bluemarble-2048-[A-Za-z0-9_-]{8}\.jpg$/.test(u));
+      chk('the globe opens on Blue Marble & city lights from files of its own: the lights once, the 2048 Blue Marble once, and nothing from NASA', lights.length === 1 && marble.length === 1 && !w.reqs.some(u => /gibs|nasa/i.test(u)), 'lights ' + lights.length + ', marble ' + marble.length);
       const st = await storeNow(w.page);
       chk('localStorage is empty after the page has settled', Array.isArray(st.keys) && st.keys.length === 0, JSON.stringify(st.keys));
       chk('...and nothing was written to or removed from any storage, by the page or by the planner', v.writes.length === 0, v.writes.join(' ') || 'none');

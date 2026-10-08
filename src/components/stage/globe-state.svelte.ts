@@ -25,11 +25,10 @@ export interface SurfaceNote { text: string; warn: boolean }
 export interface Pick { index: number; name: string; satnum: string; x: number; y: number }
 
 const SURFACE_KEY = 'gt.surface';
-/* The Blue Marble that ships with the page. The old page opened on "Blue Marble & city lights" (key 'night'), whose lights are a
-   NASA GIBS mosaic fetched at every start: a third-party request on load, and a page that is not offline under ?tle=embedded.
-   Until the lights are baked into the shipped imagery (CHANGES-FROM-LEGACY.md, item 3) the default is the part that is local;
-   the lights are still one choice away in the Layers panel, and a saved choice wins. */
-const DEFAULT_SURFACE = 'marble';
+/* What the page opens on: the old page's own default, "Blue Marble & city lights" (key 'night'). Its lights used to be a NASA GIBS mosaic
+   fetched at every start (a third-party request on load, and a page that was not offline under ?tle=embedded); they are the file that
+   ships with the page now (CHANGES-FROM-LEGACY.md, L43), so the default asks nobody for anything. A saved choice wins. */
+const DEFAULT_SURFACE = 'night';
 
 /** The nodes the scene writes words into, by the names it knows them by. */
 export interface GlobeNodes {

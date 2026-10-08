@@ -38,7 +38,8 @@
  */
 /* ---- Moved from legacy/earth/globetex.js (main@4eadd7a), lines 39-276: the photographic surfaces: the shipped Blue Marble and the GIBS layers.
  * The wrapper is the only change: the old file was an IIFE over `global` that attached `GlobeTex`; this is a factory over the
- * same object (`global.THREE` and the few other globals it reaches for are handed in) that returns it. The shipped rungs' URLs come from `global.localDay(width)` instead of a relative path.
+ * same object (`global.THREE` and the few other globals it reaches for are handed in) that returns it. The shipped rungs' URLs come from `global.localDay(width)` instead of a relative path;
+ * the night-lights mosaic is a shipped file too (`global.localNight()`, CHANGES-FROM-LEGACY.md L43), and is what nightImage() hands out where the old file fetched it from GIBS.
  */
 export function makeGlobeTex(global) {
 
@@ -176,7 +177,9 @@ function overPixels(base, top, w, h){
    second time. A failed fetch is forgotten, so the next attempt really tries. */
 var nightMemo = {};
 function nightImage(layer){
-  var u = url(layer, 2048, 1024, null);
+  /* CHANGED: the lights are the file that ships with the page (the same GetMap, saved), where the old page asked GIBS for it at every start and
+     showed nothing, not even the Blue Marble, until it came. */
+  var u = (layer === LIGHTS && global.localNight) ? global.localNight() : url(layer, 2048, 1024, null);
   if(!nightMemo[u]) nightMemo[u] = image(u).catch(function(e){ delete nightMemo[u]; throw e; });
   return nightMemo[u];
 }

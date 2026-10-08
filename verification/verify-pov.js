@@ -178,6 +178,9 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 40; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + i*10, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   });
   /* The camera is read once the page has drawn the frame that takes the drag in: a fixed half second was enough when the scene drew sixty frames a
      second whatever the machine was doing, and is not when it draws only what is worth drawing and the machine is busy. Waited on the state
@@ -251,6 +254,9 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 10; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x + i*8, clientY: y, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   });
   await page.waitForTimeout(500);
   c = await cam();
@@ -300,6 +306,9 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 20; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + d*i/20, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   }, deg/0.30);                                  // the drag rate, 0.30 deg per pixel
 
   for (const [what, extra] of [['a steep oblique', 30], ['near nadir', 59]]) {

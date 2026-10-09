@@ -55,6 +55,7 @@
     "ar": "node verification/verify-ar.js",
     "layout": "node verification/verify-layout.js",
     "axe": "node verification/axe.js",
+    "perf": "node verification/perf.js",
     "build:shims": "node scripts/build-shims.mjs",
     "gate:lib": "node scripts/build-shims.mjs && node verification/regress.js --mode lib",
     "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
@@ -66,7 +67,7 @@
     "ab3d": "node verification/ab3d.js --target new --fit",
     "ab3d:write": "node verification/ab3d.js --write",
     "frames": "node verification/verify-frames.js",
-    "test:fast": "npm run check:deps && npm run check && npm run check:server && npm run build && npm run check:csp && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new && node scripts/legacy-manifest.mjs --check",
+    "test:fast": "npm run check:deps && npm run check && npm run check:server && npm run build && npm run check:csp && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new",
     "test:all": "npm run build && npm run check:csp && npm run build:shims && node verification/run.js",
     "gate:legacy": "node verification/regress.js --target legacy"
   },

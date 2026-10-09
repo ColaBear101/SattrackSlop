@@ -161,10 +161,16 @@ group('A0 the Sun: advisor.js carries index.html\'s sunEci, and a second Sun agr
   const s0 = A.sunEci(new Date(EP));
   chk('A0 sunEci returns {ra, dec, distKm, x, y, z}, a unit vector, from a Date or from milliseconds alike',
     JSON.stringify(Object.keys(s0)) === '["ra","dec","distKm","x","y","z"]' && Math.abs(Math.hypot(s0.x, s0.y, s0.z) - 1) < 1e-12 && JSON.stringify(A.sunEci(EP)) === JSON.stringify(s0) && JSON.stringify(K.sunEci(EP)) === JSON.stringify(s0));
-  /* byte for byte: the function is read out of index.html and run beside ours */
-  const html = fs.readFileSync(path.join(H.TARGETS.legacy, 'index.html'), 'utf8');
-  const m = /function sunEci\(date\)\{[\s\S]*?\n\}/.exec(html);
-  chk('A0 index.html still has a function sunEci(date) to compare with', !!m);
+  /* byte for byte, in two ways. The old page's function was run once over these 500 dates and the outputs hashed (SUN_GOLDEN: made from
+     `git show legacy-earth-console:index.html`, never from this code), so no checkout of the old page is needed to hold the Sun to it... */
+  const SUN_GOLDEN = '63358177a8f22ae5f581295a144d87350eb60b60a3d8189a9dc92ed8ad704c42';
+  const here = dates.map(ms => JSON.stringify(A.sunEci(new Date(ms)))).join('\n');
+  chk('A0 Advisor.sunEci equals the old index.html\'s sunEci, to the last bit, on all 500 dates (the outputs hash to what the old function made)', require('crypto').createHash('sha256').update(here).digest('hex') === SUN_GOLDEN);
+  /* ...and, where the old page is checked out as legacy/, its function is also read out of index.html and run beside ours */
+  const oldHtml = path.join(H.TARGETS.legacy, 'index.html');
+  const html = fs.existsSync(oldHtml) ? fs.readFileSync(oldHtml, 'utf8') : '';
+  const m = html ? /function sunEci\(date\)\{[\s\S]*?\n\}/.exec(html) : null;
+  if (html) chk('A0 index.html still has a function sunEci(date) to compare with', !!m);
   if (m) {
     const ref = new Function('RAD', 'DEG', m[0] + '\nreturn sunEci;')(Math.PI / 180, 180 / Math.PI);
     let diff = 0;

@@ -54,7 +54,7 @@ const STAGES = [
   { name: 'elements',    script: 'verify-elements.js' },
   { name: 'lifetime',    script: 'verify-lifetime.js' },
   { name: 'ar',          script: 'verify-ar.js',         alone: true },
-  { name: 'layout',      script: 'verify-layout.js',     alone: true },
+  { name: 'layout',      script: 'verify-layout.js',     alone: true, target: 'new' },
   { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true },
   /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits
      (the test surface brings both up eagerly). Rebuilt page only: the old page had no chunks to arrive. */
@@ -69,7 +69,7 @@ const list = n => { const i = argv.indexOf(n); return i >= 0 ? (argv[i + 1] || '
 const argTarget = argv.indexOf('--target');
 if (argTarget >= 0) process.env.GT_TARGET = argv[argTarget + 1];
 const only = list('--only'), skip = list('--skip') || [];
-const TARGET = process.env.GT_TARGET || 'legacy';
+const TARGET = process.env.GT_TARGET || 'new';
 let stages = STAGES.filter(s => (!only || only.includes(s.name)) && !skip.includes(s.name) && (!s.target || s.target === TARGET));
 if (argv.includes('--fast')) stages = stages.filter(s => s.fast);
 for (const n of (only || [])) if (!STAGES.some(s => s.name === n)) { console.error('unknown stage: ' + n); process.exit(2); }
@@ -107,14 +107,14 @@ function report(results, stopped) {
   try { head = cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
         dirty = cp.execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim().length > 0; } catch (e) { /* no git */ }
   fs.writeFileSync(path.join(DIR, 'last-run.json'), JSON.stringify({
-    when: new Date().toISOString(), head, dirty, target: process.env.GT_TARGET || 'legacy', stopped: stopped || null,
+    when: new Date().toISOString(), head, dirty, target: process.env.GT_TARGET || 'new', stopped: stopped || null,
     stages: results.map(r => ({ name: r.name, ok: r.ok, seconds: +r.seconds.toFixed(1), last: r.last }))
   }, null, 2));
   return failed.length === 0 && !stopped;
 }
 
 (async () => {
-  console.log('target: ' + (process.env.GT_TARGET || 'legacy') + '   stages: ' + stages.map(s => s.name).join(', '));
+  console.log('target: ' + (process.env.GT_TARGET || 'new') + '   stages: ' + stages.map(s => s.name).join(', '));
   const results = [];
   /* 1. the numbers, in order, fail fast */
   for (const s of stages.filter(s => s.kind === 'numbers')) {

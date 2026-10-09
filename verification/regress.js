@@ -7,7 +7,7 @@
  *   node verification/regress.js            compare the chosen target against baseline.json
  *   node verification/regress.js --tol 1e-9 allow a relative tolerance
  *
- *   GT_TARGET=legacy|new   which build is judged (default legacy while the rewrite is in progress)
+ *   GT_TARGET=legacy|new   which build is judged (default new; legacy needs the old page checked out, see lib/harness.js)
  *
  * The tolerance flag exists for one legitimate case: if a later phase deliberately replaces
  * satellite.js's geodetic maths with a generalised version, the result will differ in the last bits.

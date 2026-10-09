@@ -8,8 +8,10 @@ verification/.regress-snap.js
 
 # Build output and tool scratch
 dist/
+/legacy/
 verification/.build/
 verification/last-run.json
+verification/perf-last.json
 test-results/
 playwright-report/
 coverage/

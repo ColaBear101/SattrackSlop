@@ -5,9 +5,10 @@
  * opened from disk (ES modules and workers need an origin), and "which build am I
  * testing" has to be a switch rather than an edit, so both now live here.
  *
- *   GT_TARGET=legacy   the pre-rewrite Earth console, served from legacy/   (default for now)
  *   GT_TARGET=new      the production build, served from dist/ (or from GT_DIST, a build made somewhere else:
- *                      `vite build --outDir <dir>`, so two runs never share a folder)
+ *                      `vite build --outDir <dir>`, so two runs never share a folder)   (the default)
+ *   GT_TARGET=legacy   the pre-rewrite Earth console, served from legacy/: it is not in the tree, it is in git at the tag
+ *                      legacy-earth-console, and is checked out there with `git worktree add legacy legacy-earth-console`
  *   GT_URL=<url>       test something already running (a preview, a deployment)
  *   PW_PATH=<path>     where to find playwright, when it is not in node_modules
  *
@@ -26,11 +27,17 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const TARGETS = { legacy: path.join(ROOT, 'legacy'), new: process.env.GT_DIST ? path.resolve(process.env.GT_DIST) : path.join(ROOT, 'dist') };
 
 function targetName() {
-  const t = process.env.GT_TARGET || 'legacy';
+  const t = process.env.GT_TARGET || 'new';
   if (!TARGETS[t]) throw new Error('GT_TARGET must be "legacy" or "new", not "' + t + '"');
   return t;
 }
-const targetRoot = () => TARGETS[targetName()];
+const targetRoot = () => {
+  const t = targetName(), root = TARGETS[t];
+  if (t === 'legacy' && !process.env.GT_URL && !fs.existsSync(path.join(root, 'index.html'))) {
+    throw new Error('GT_TARGET=legacy needs the old page checked out as legacy/ (it is in git at the tag legacy-earth-console): git worktree add legacy legacy-earth-console');
+  }
+  return root;
+};
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',

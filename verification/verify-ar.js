@@ -30,19 +30,42 @@
  * mocked - synthetic events prove the maths and the wiring, not a phone's
  * hardware, and the README's device checklist is the rest - and once more in a
  * browser with no WebGL. Part C loads the page the way snapshot.js does, on a
- * desktop over file://.
+ * desktop over http.
+ *
+ * The page's clock is set here and not read from the day the suite runs on. A
+ * window opens at "now", and what the checks need of it is not true every day:
+ * the pointer checks want the spacecraft clear of the zenith (over it an azimuth
+ * offset shrinks by cos(elevation), and "40° to the left" is still on screen),
+ * Cape Town's best pass must not be overhead for the same reason, London is on
+ * UTC+1 only until late October, and the model's life ends in 2030. Every page
+ * therefore starts at one instant, 2026-09-13T00:00Z, and its clock runs on from
+ * there; GT_AR_AT=<an ISO instant> starts it somewhere else. The clock is
+ * Playwright's, which moves Date, the timers, requestAnimationFrame and
+ * performance.now together: the view reads both Date.now and performance.now
+ * (the declination's day and year, the elsewhere check, the re-sync, the
+ * iPhone compass's timing), and Go live needs Date.now to keep advancing.
+ * Where a check also needs a geometry that only some days have (a spacecraft
+ * well up the sky but not overhead, a second pass in the window), it makes it
+ * itself rather than hope for it.
  *
  *   node verification/verify-ar.js        (needs playwright)
+ *   GT_TARGET=new GT_AR_AT=2026-10-05T00:00Z node verification/verify-ar.js
  */
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
 const ROOT = path.join(__dirname, '..');
-require(path.join(ROOT, 'earth', 'wmm.js'));
-require(path.join(ROOT, 'earth', 'skyar.js'));
-require(path.join(ROOT, 'earth', 'arview.js'));
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
+const NEW = H.targetName() === 'new';   // the rebuilt page keeps some controls elsewhere than the old one did
+/* The camera group's rounded end, as the computed style of the element that carries it: the old page's last button (3px), the rebuilt page's
+   group (Segmented's own token, --r-2, 6px). Exact: any rounding at all is also what another token, or a pill, would give. */
+const END_R = NEW ? '6px' : '3px';
+require(H.earthFile('wmm'));
+require(H.earthFile('skyar'));
+require(H.earthFile('arview'));
 const WMM = globalThis.WMM, S = globalThis.SkyAR;
 const RAD = Math.PI/180, DEG = 180/Math.PI;
 
@@ -402,8 +425,8 @@ function serve(){
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      const file = path.join(ROOT, rel);
-      if(!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+      const file = path.join(SITE, rel);
+      if(!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
         res.writeHead(404); return res.end('no');
       }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
@@ -412,6 +435,19 @@ function serve(){
     srv.listen(0, '127.0.0.1', () => resolve(srv));
   });
 }
+/* The instant every page starts at (the head of this file says why): the numeric baseline's own. Inside the model's life, or the
+   declination checks would be about an expired model. */
+const AT = process.env.GT_AR_AT ? Date.parse(process.env.GT_AR_AT) : Date.UTC(2026, 8, 13, 0, 0, 0);
+if(!isFinite(AT) || AT < Date.UTC(2025, 0, 1) || AT >= Date.UTC(2030, 0, 1))
+  throw new Error("GT_AR_AT must be an ISO instant inside the World Magnetic Model's life, 2025 to 2029: " + process.env.GT_AR_AT);
+/* A clock that starts at AT and runs from there. Installed on the context, so it is in place before the page's own scripts and the mocks. */
+const startClock = async ctx => { await ctx.clock.install({ time: AT }); return ctx; };
+/* A zone's offset from UTC at an instant, in hours, worked out here with Intl and not by the page. */
+const zoneHours = (zone, ms) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(ms)).map(x => [x.type, +x.value]));
+  return (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms/1000)*1000)/3600000;
+};
 const BLOCK = [/celestrak\.org/, /ivanstanojevic/, /gibs\.earthdata/, /open-meteo/];
 
 /* Everything the phone would supply, switchable from window.__ar so one page
@@ -493,6 +529,61 @@ function MOCKS(){
     if(beta >= 180) beta -= 360;
     return { a: (((alpha + (D || 0)) % 360) + 360) % 360, b: beta, g: gamma };
   };
+  /* What the view must never do with the camera's picture: draw it, read it back, capture or record it. Noted when it is the video that is handed
+     over, or the view's own canvas that is read, since that canvas has nothing on it but the sky. */
+  A.pictures = [];
+  const C2D = CanvasRenderingContext2D.prototype, CV = HTMLCanvasElement.prototype;
+  const draw = C2D.drawImage, pixels = C2D.getImageData, dataURL = CV.toDataURL, blob = CV.toBlob, bitmap = window.createImageBitmap;
+  C2D.drawImage = function(src){ if(src instanceof HTMLVideoElement) A.pictures.push('drawImage(video)'); return draw.apply(this, arguments); };
+  C2D.getImageData = function(){ if(this.canvas.id === 'ar-sky') A.pictures.push('getImageData(ar-sky)'); return pixels.apply(this, arguments); };
+  CV.toDataURL = function(){ if(this.id === 'ar-sky') A.pictures.push('toDataURL(ar-sky)'); return dataURL.apply(this, arguments); };
+  CV.toBlob = function(){ if(this.id === 'ar-sky') A.pictures.push('toBlob(ar-sky)'); return blob.apply(this, arguments); };
+  window.createImageBitmap = function(src){
+    if(src instanceof HTMLVideoElement || (src && src.id === 'ar-sky')) A.pictures.push('createImageBitmap');
+    return bitmap.apply(this, arguments);
+  };
+  if(window.ImageCapture){ const IC = window.ImageCapture; window.ImageCapture = class extends IC { constructor(t){ A.pictures.push('ImageCapture'); super(t); } }; }
+  if(window.MediaRecorder){ const MR = window.MediaRecorder; window.MediaRecorder = class extends MR { constructor(s, o){ A.pictures.push('MediaRecorder'); super(s, o); } }; }
+  /* The other usual ways, each only where this browser has it: the video as a WebGL texture, drawn or read through an OffscreenCanvas, made a
+     VideoFrame, a callback for every frame it decodes, its track's frames as a stream. The view needs none of them (it lays the sky over the
+     video and leaves the picture to the compositor), so any use of them here is a use of the picture. */
+  for(const GL of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) if(GL) for(const k of ['texImage2D', 'texSubImage2D', 'texImage3D', 'texSubImage3D']){
+    const f = GL.prototype[k];
+    if(f) GL.prototype[k] = function(){ for(const a of arguments) if(a instanceof HTMLVideoElement){ A.pictures.push(k + '(video)'); break; } return f.apply(this, arguments); };
+  }
+  if(window.OffscreenCanvasRenderingContext2D){
+    const O2D = OffscreenCanvasRenderingContext2D.prototype, offDraw = O2D.drawImage, offPixels = O2D.getImageData;
+    O2D.drawImage = function(src){ if(src instanceof HTMLVideoElement) A.pictures.push('drawImage(video) on an OffscreenCanvas'); return offDraw.apply(this, arguments); };
+    O2D.getImageData = function(){ A.pictures.push('getImageData on an OffscreenCanvas'); return offPixels.apply(this, arguments); };
+  }
+  if(window.OffscreenCanvas){
+    const OC = OffscreenCanvas.prototype, offBlob = OC.convertToBlob, offBitmap = OC.transferToImageBitmap;
+    OC.convertToBlob = function(){ A.pictures.push('convertToBlob on an OffscreenCanvas'); return offBlob.apply(this, arguments); };
+    OC.transferToImageBitmap = function(){ A.pictures.push('transferToImageBitmap on an OffscreenCanvas'); return offBitmap.apply(this, arguments); };
+  }
+  const handOver = CV.transferControlToOffscreen;
+  if(handOver) CV.transferControlToOffscreen = function(){ if(this.id === 'ar-sky') A.pictures.push('transferControlToOffscreen(ar-sky)'); return handOver.apply(this, arguments); };
+  if(window.VideoFrame){ const VF = window.VideoFrame;
+    window.VideoFrame = class extends VF { constructor(src, o){ if(src instanceof HTMLVideoElement || (src && src.id === 'ar-sky')) A.pictures.push('VideoFrame'); super(src, o); } }; }
+  const frameCb = HTMLVideoElement.prototype.requestVideoFrameCallback;
+  if(frameCb) HTMLVideoElement.prototype.requestVideoFrameCallback = function(){ A.pictures.push('requestVideoFrameCallback'); return frameCb.apply(this, arguments); };
+  if(window.MediaStreamTrackProcessor){ const MP = window.MediaStreamTrackProcessor;
+    window.MediaStreamTrackProcessor = class extends MP { constructor(o){ A.pictures.push('MediaStreamTrackProcessor'); super(o); } }; }
+  /* The visible controls whose boxes cross an element's (its own children and parents do not count). */
+  window.__over = el => {
+    const r = el.getBoundingClientRect();
+    return [...document.querySelectorAll('button, a[href], input, select, textarea, [role=tab], [role=button]')]
+      .filter(e => e !== el && !el.contains(e) && !e.contains(el)).filter(e => {
+        const q = e.getBoundingClientRect();
+        return q.width && q.height && getComputedStyle(e).visibility !== 'hidden'
+          && q.left < r.right - 0.5 && q.right > r.left + 0.5 && q.top < r.bottom - 0.5 && q.bottom > r.top + 0.5;
+      }).map(e => e.id || String(e.className).split(' ')[0] || e.tagName);
+  };
+  /* A touch of the globe, to wake the scene. The rebuilt page lets a scene with nothing moving go quiet after two seconds, and a scene that is
+     quiet looks just as it does with the view over it, so "it is not drawing" says something about a cover only of a scene that was woken a
+     moment before. A pointer over the globe is one of the things that wakes it (the old page's scene never idles, and ignores this). It bubbles,
+     since the page listens for it above the canvas. The wake lasts 2.5 s. */
+  window.__wake = () => { const g = document.getElementById('globe'); if(g) g.dispatchEvent(new PointerEvent('pointermove', { bubbles: true })); };
   window.__feed = spec => {
     clearInterval(A.feedIv);
     if(!spec) return;
@@ -511,8 +602,8 @@ function MOCKS(){
 }
 
 async function phone(browser, port, extra){
-  const ctx = await browser.newContext(Object.assign({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
-    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' }, extra || {}));
+  const ctx = await startClock(await browser.newContext(Object.assign({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
+    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' }, extra || {})));
   await ctx.addInitScript(MOCKS);
   const page = await ctx.newPage();
   const errs = [];
@@ -521,6 +612,7 @@ async function phone(browser, port, extra){
   await page.goto('http://127.0.0.1:' + port + '/index.html');
   await page.waitForFunction(() => window.__gt && window.__gt.D && window.ARView && window.Orbit3D && Orbit3D.ok(),
                              null, { timeout: 60000 });
+  await H.showGlobe(page);                       // the rebuilt page keeps the globe on a tab beside the map; the old page shows it
   return { ctx, page, errs };
 }
 /* Pause the clock at the culmination of the window's highest pass: the
@@ -541,60 +633,115 @@ const settle = async page => { await frames2(page);
                               null, { timeout: 10000 }).catch(() => null); };
 async function tapAR(page){ await page.tap('#arbtn'); }
 async function closeAR(page){ await page.evaluate(() => ARView.close()); await page.waitForTimeout(100); }
+/* Waits on the state a check asserts rather than on a fixed time: a busy
+   machine gives the page a frame or a timer late, and a check read after a
+   fixed pause then reads the state before it has come about. Polled on a
+   timer, not on frames, since frames are what a busy page is short of. It
+   resolves with what the condition returned, or null once the time is up -
+   the check then reads the state as it is and fails on it. */
+const until = (page, fn, arg, ms) => page.waitForFunction(fn, arg === undefined ? null : arg, { timeout: ms || 15000, polling: 50 })
+  .then(h => h.jsonValue()).catch(() => null);
+/* The camera's picture sets the lens, so a check that reads the lens needs it
+   live; a loaded machine has taken more than 10 s to start the fake one. */
+const camLive = page => until(page, () => ARView.probe.camera === 'live', null, 30000);
 const aimSat = (page, theta, withD) => page.evaluate(([th, wd]) => {
   const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms);
   const a = __aimAt(st.az, st.el, th, wd ? (q.decl || 0) : 0);
   __feed(Object.assign({ type: 'deviceorientationabsolute' }, a));
   return st;
 }, [theta || 0, withD !== false]);
+/* The clock moved along pass k to where the spacecraft is nearest `el` degrees up (to the culmination, when it never gets so high), by the
+   page's own slider. Over the zenith an azimuth offset shrinks by cos(elevation) and "40° to the left" is still on screen, so what a check asks
+   of the pointer, or of the declination's sign, is asked on the way up the sky, where it can be told: on any day, whatever the highest pass
+   of the window happens to be. Resolves once the view, if it is open, has had two frames to see the new time. */
+const downTo = async (page, k, el) => {
+  const at = await page.evaluate(([k, want]) => {
+    const D = __gt.D, p = D.passes[k];
+    let best = null;
+    for(let t = p.t0ms; t <= p.t1ms; t += 5000){
+      const d = Math.abs(__gt.stateAt(D.track, t).el - Math.min(want, p.maxEl));
+      if(!best || d < best.d) best = { t, d };
+    }
+    const r = document.getElementById('time'); r.value = Math.round((best.t - D.start.getTime())/1000/D.step);
+    r.dispatchEvent(new Event('input', { bubbles: true }));
+    return { ms: best.t, el: __gt.stateAt(D.track, best.t).el };
+  }, [k, el]);
+  await frames2(page);
+  return at;
+};
 
 async function partB(browser, port){
   console.log('\nPart B — the page, on a phone\n');
   const { ctx, page, errs } = await phone(browser, port);
 
-  /* B1: offered, beside the camera group, not in it. */
-  const offer = await page.evaluate(() => {
-    const b = document.getElementById('arbtn'), r = b.getBoundingClientRect(), seg = document.querySelector('.camseg').getBoundingClientRect();
+  /* B1: offered, and not a camera mode. The old page put the button in the camera row, beside the group; the rebuilt page puts it in the
+     row of the stage's tabs, top right of the stage, which is also there on the map and where there is no WebGL. */
+  const offer = await page.evaluate(isNew => {
+    const b = document.getElementById('arbtn'), r = b.getBoundingClientRect();
+    const home = document.querySelector(isNew ? '.stage [role=tablist]' : '.camseg').getBoundingClientRect(), seg = document.querySelector('.camseg .seg');
     const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+    const cams = [...document.querySelectorAll('.camseg .cam')], pov = cams[cams.length - 1];
     return { coarse: matchMedia('(pointer: coarse)').matches, shown: !b.hidden && getComputedStyle(b).display !== 'none',
-             inside: r.left >= seg.left - 0.5 && r.right <= seg.right + 0.5 && r.top >= seg.top - 0.5 && r.bottom <= seg.bottom + 0.5,
-             reach: !!hit && (hit === b || b.contains(hit)),
-             cams: [...document.querySelectorAll('.camseg .cam')].map(c => c.dataset.mode + '=' + c.getAttribute('aria-pressed')),
-             povLast: document.querySelector('.seg .btn:last-child').dataset.mode,
-             povR: getComputedStyle(document.querySelector('.camseg .seg .btn:last-child')).borderTopRightRadius };
-  });
+             inside: r.left >= home.left - 0.5 && r.right <= home.right + 0.5 && r.top >= home.top - 0.5 && r.bottom <= home.bottom + 0.5,
+             reach: !!hit && (hit === b || b.contains(hit)), over: __over(b),
+             cams: cams.map(c => c.dataset.mode + '=' + c.getAttribute('aria-pressed')),
+             povLast: pov.dataset.mode, povEnd: !pov.nextElementSibling, apart: !seg.contains(b),
+             // the group's rounded end: the old page's last button carries it, the rebuilt page's group does
+             endR: getComputedStyle(isNew ? seg : pov).borderTopRightRadius };
+  }, NEW);
   chk('precondition: a touch-screen context matches (pointer: coarse)', offer.coarse);
-  chk('the AR button is offered on a touch screen, inside the camera row, and a tap at its centre reaches it',
-      offer.shown && offer.inside && offer.reach);
-  chk('...beside the camera group rather than in it: still four camera modes, one pressed, POV\'s end rounded',
-      offer.cams.length === 4 && offer.cams.filter(s => /=true$/.test(s)).length === 1 && offer.povLast === 'pov'
-      && offer.povR === '3px', offer.cams.join(' ') + ', POV radius ' + offer.povR);
+  chk('the AR button is offered on a touch screen, inside ' + (NEW ? "the row of the stage's tabs" : 'the camera row') + ', clear of every other control, and a tap at its centre reaches it',
+      offer.shown && offer.inside && offer.reach && !offer.over.length, offer.over.length ? 'under or over: ' + offer.over.join(', ') : '');
+  chk("...beside the camera group rather than in it: still four camera modes, one pressed, POV the last of them and the group's end rounded",
+      offer.cams.length === 4 && offer.cams.filter(s => /=true$/.test(s)).length === 1 && offer.povLast === 'pov' && offer.povEnd && offer.apart
+      && offer.endR === END_R, offer.cams.join(' ') + ", the group's end radius " + offer.endR + ' (want ' + END_R + ')');
+  /* The rebuilt page has the map on a tab beside the globe, and the button is in the row of the tabs, so it must be there with either showing
+     (the old page shows both, and there is nothing to switch). */
+  await H.showMap(page);
+  const onMap = await page.evaluate(() => { const b = document.getElementById('arbtn'), r = b.getBoundingClientRect(),
+    h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+    return { shown: !b.hidden && r.width > 0, reach: !!h && (h === b || b.contains(h)) }; });
+  await H.showGlobe(page);
+  chk('...and it is still there, and in reach, with the map showing', onMap.shown && onMap.reach);
 
-  /* B2: the narrowest phones, with a long site name. */
+  /* B2: the narrowest phones, with a long site name. The old camera row had AR in it, 44 px more, and a long name pushed it off the globe; the
+     rebuilt camera row spans the globe and the button is up in the tab row, so what is asked is that nothing is pushed off the screen, onto the
+     trail row or under the button, and that nothing scrolls sideways. The name is written into the label's own text node, which the page
+     keeps a reference to. The width is the one the screen was set to, not innerWidth: a phone's browser shrinks a page that is too wide to
+     fit it, and innerWidth then grows to match, so a page 26 px too wide still has scrollWidth <= innerWidth. */
   await page.setViewportSize({ width: 360, height: 740 });
-  const narrow = await page.evaluate(() => {
-    const n = document.getElementById('lbl-camsite'), was = n.textContent;
-    n.textContent = 'Wat Phra That Doi Suthep';                       // 24 characters
+  const narrow = await page.evaluate(w => {
+    const t0 = document.getElementById('lbl-camsite').firstChild, was = t0.nodeValue;
+    t0.nodeValue = 'Wat Phra That Doi Suthep';                       // 24 characters
     const c = document.querySelector('.camseg').getBoundingClientRect(), t = document.querySelector('.trailseg').getBoundingClientRect();
-    const out = { left: c.left, overlap: !(c.right <= t.left || c.left >= t.right || c.bottom <= t.top || c.top >= t.bottom),
-                  sw: document.documentElement.scrollWidth, w: innerWidth };
-    n.textContent = was;
+    const b = document.getElementById('arbtn'), r = b.getBoundingClientRect();
+    const out = { left: c.left, right: c.right, overlap: !(c.right <= t.left || c.left >= t.right || c.bottom <= t.top || c.top >= t.bottom),
+                  arbOn: r.left >= 0 && r.right <= w && r.top >= 0 && r.bottom <= innerHeight, over: __over(b),
+                  sw: document.documentElement.scrollWidth, w };
+    t0.nodeValue = was;
     return out;
-  });
+  }, 360);
   await page.setViewportSize({ width: 390, height: 844 });
-  chk('...at 360 px with a 24-character site name the row stays on the globe, clear of the trail row',
-      narrow.left >= 0 && !narrow.overlap && narrow.sw <= narrow.w, 'left edge ' + narrow.left.toFixed(1) + ' px, page ' + narrow.sw + ' px wide');
+  chk('...at 360 px with a 24-character site name the row stays on the globe, clear of the trail row and of the AR button, and nothing scrolls sideways',
+      narrow.left >= 0 && narrow.right <= narrow.w && !narrow.overlap && narrow.arbOn && !narrow.over.length && narrow.sw <= narrow.w,
+      'camera row ' + narrow.left.toFixed(1) + ' to ' + narrow.right.toFixed(1) + ' px, page ' + narrow.sw + ' px wide' + (narrow.over.length ? ', button crossed by ' + narrow.over.join(', ') : ''));
 
   /* B3: the tap, and what it asks for in what order. */
   const best = await atBestPass(page);
   chk('precondition: the window has a pass to aim at', !!best, best ? best.name + ', pass ' + best.k + ' at ' + best.maxEl.toFixed(1) + '°' : 'none');
   await page.evaluate(() => { window.__D0 = __gt.D; window.__pressed0 = [...document.querySelectorAll('.camseg .cam')].map(c => c.getAttribute('aria-pressed')).join(); window.__census0 = __ar.census(); });
   await tapAR(page);
-  const asked = await page.evaluate(() => ({ calls: __ar.calls.slice(), open: !document.getElementById('arview').hidden,
+  /* The phone is sending readings from the moment the view opens, as a real one does, and not once the camera is live (below): a slow camera -
+     on a loaded machine more than the view's 3 s from the camera's answer to its first picture - had the view give up with "no reading" and stop
+     the camera, and everything after it read a view that was not there (the pointer's projection came back null and the run died). The reading
+     is the exact one, with the declination, so the view's first pose is the spacecraft's and nothing has to converge on it afterwards. */
+  await aimSat(page, 0, true);
+  const asked = await page.evaluate(() => { __wake();            // woken first, so that "not drawing" is the view's doing and not the scene's own quiet
+    return { calls: __ar.calls.slice(), open: !document.getElementById('arview').hidden,
     arOpen: document.documentElement.classList.contains('ar-open'),
     inert: [...document.body.children].filter(e => e.id !== 'arview' && e.tagName !== 'SCRIPT').every(e => e.inert),
     focus: document.activeElement && document.activeElement.id, suspended: Orbit3D.suspended, state: ARView.state,
-    msg: ARView.probe.message }));
+    msg: ARView.probe.message }; });
   chk('one tap asks for motion first and the camera second, both while the click is the current event',
       asked.calls.length === 2 && asked.calls[0].what === 'motion' && asked.calls[0].evt === 'click' && asked.calls[0].arg === true
       && asked.calls[1].what === 'camera' && asked.calls[1].evt === 'click',
@@ -606,7 +753,7 @@ async function partB(browser, port){
     desc: document.getElementById('arview').getAttribute('aria-describedby') }));
   chk('...its status line is a live region that stays in the page, and the dialog is described by it',
       live.disp !== 'none' && live.desc === 'ar-status', 'display ' + live.disp);
-  await page.waitForFunction(() => ARView.probe.camera === 'live', null, { timeout: 10000 }).catch(() => null);
+  await camLive(page);
 
   /* B4: aimed at the spacecraft. */
   const st = await aimSat(page, 0, true);
@@ -662,21 +809,29 @@ async function partB(browser, port){
     await page.evaluate(([da, de]) => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms);
       __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(st.az + da, st.el + de, 0, q.decl || 0))); }, [da, de]);
     await settle(page);
+    /* The readout is written four times a second and the pointer is drawn every frame, so a read straight after the view has settled can be of the
+       readout from before it did. It is read once it ends with what is drawn; if it never does, within the wait, it is read as it is and the check
+       fails on it. */
+    await until(page, () => { const p = ARView.probe.pointer; return !p || document.getElementById('ar-target').textContent.endsWith(p.text); }, null, 3000);
     return page.evaluate(() => ({ q: (() => { const q = ARView.probe; delete q.stream; return q; })(),
       target: document.getElementById('ar-target').textContent }));
   };
+  const up = await downTo(page, best.k, 35);               // not the zenith: see downTo
   const o1 = await off(-40, 0), o2 = await off(-30, -12);
   chk('out of frame to the right: an arrow on the right edge and "turn right 40°"',
       o1.q.pointer && o1.q.pointer.text === 'turn right 40°' && o1.q.pointer.x > o1.q.cx && !o1.q.marker.on,
-      o1.q.pointer ? '"' + o1.q.pointer.text + '" at x ' + o1.q.pointer.x.toFixed(0) : 'no pointer');
+      (o1.q.pointer ? '"' + o1.q.pointer.text + '" at x ' + o1.q.pointer.x.toFixed(0) : 'no pointer') + ', spacecraft ' + up.el.toFixed(0) + '° up');
   chk('...and above and to the right: "turn right 30° · up 12°", in the readout as well',
       o2.q.pointer && o2.q.pointer.text === 'turn right 30° · up 12°' && o2.q.pointer.x > o2.q.cx && o2.q.pointer.y < o2.q.cy
       && o2.target.endsWith('turn right 30° · up 12°'), o2.q.pointer ? '"' + o2.q.pointer.text + '"' : 'no pointer');
-  // five minutes before a later pass: the spacecraft is down, so the pointer aims at where it will rise
+  /* Five minutes before another pass: the spacecraft is down, so the pointer aims at where it will rise. The next one if the window has it,
+     else one that came before; a window with no other pass cannot show this, and that is said and fails rather than passes unseen. */
   const pre = await page.evaluate(() => {
-    const P = __gt.D.passes, q = ARView.probe, k = P.findIndex(p => p.t0ms > q.ms + 10*60000);
+    const D = __gt.D, P = D.passes, q = ARView.probe;
+    let k = P.findIndex(p => p.t0ms > q.ms + 10*60000);
+    if(k < 0) k = P.findIndex(p => p.t1ms < q.ms - 10*60000 && p.t0ms - 5*60000 >= D.start.getTime());
     if(k < 0) return null;
-    const t = P[k].t0ms - 5*60000, idx = Math.round((t - __gt.D.start.getTime())/1000/__gt.D.step);
+    const t = P[k].t0ms - 5*60000, idx = Math.round((t - D.start.getTime())/1000/D.step);
     const r = document.getElementById('time'); r.value = idx; r.dispatchEvent(new Event('input', { bubbles: true }));
     return { k, t0: P[k].t0ms };
   });
@@ -689,45 +844,94 @@ async function partB(browser, port){
     chk('before a pass, the pointer aims at where the spacecraft will rise, and says when',
         pq.aim === 'aos' && pq.pointer && / rises here at \d\d:\d\d, in \d\d:\d\d:\d\d$/.test(pq.pointer.title),
         pq.pointer ? '"' + pq.pointer.title + (pq.pointer.text ? ' · ' + pq.pointer.text : '') + '"' : 'aim ' + pq.aim);
-  } else chk('before a pass, the pointer aims at where the spacecraft will rise (no later pass in this window)', true, 'skipped: no second pass');
+  } else chk('before a pass, the pointer aims at where the spacecraft will rise (the window has another pass to aim at)', false, 'no second pass in this window');
 
   /* B7: Go live, and staying live. */
   await page.click('#ar-live');
-  await page.waitForTimeout(400);
-  const lv = await page.evaluate(() => ({ clock: document.getElementById('ar-clock').textContent,
+  /* The clock line is the readout's, written four times a second; the rest is
+     read at the moment it says live, not after a pause in which a starved
+     transport lets the clock slip behind again. */
+  await page.evaluate(() => { window.__liveNow = () => ({ clock: document.getElementById('ar-clock').textContent,
     play: document.getElementById('tpplay').getAttribute('aria-label'), rate: document.getElementById('tpratev').textContent,
-    d: Math.abs(ARView.probe.ms - Date.now()), follow: ARView.probe.follow, live: !document.getElementById('ar-live').hidden }));
+    d: Math.abs(ARView.probe.ms - Date.now()), follow: ARView.probe.follow, live: !document.getElementById('ar-live').hidden }); });
+  const lv = await until(page, () => { const s = __liveNow(); return /^live · /.test(s.clock) && !s.live ? s : false; }, null, 5000)
+          || await page.evaluate(() => __liveNow());
   chk('Go live: real time, playing, the clock on the present, and the button gone',
       /^live · /.test(lv.clock) && lv.play === 'Pause' && lv.rate === '1.0×' && lv.d < 1000 && lv.follow && !lv.live,
       lv.clock + ' | off by ' + lv.d.toFixed(0) + ' ms');
   await page.evaluate(() => { document.getElementById('tpplay').click(); });
   await page.waitForTimeout(1500);
-  await page.evaluate(() => { document.getElementById('tpplay').click(); });
+  const stalled = await page.evaluate(() => { document.getElementById('tpplay').click(); return Math.abs(ARView.probe.ms - Date.now()); });
   /* The view resyncs once the clock is more than a second out, which the
      stall has made it; how close it then stays depends on how often a busy
      browser gives the page a frame and a timer, since the transport caps a
      frame at 0.25 s, so what is asked is that it comes back inside the resync's
-     own second, and within 3 s. */
-  await page.waitForFunction(() => Math.abs(ARView.probe.ms - Date.now()) < 1000, null, { timeout: 3000 }).catch(() => null);
-  const re = await page.evaluate(() => Math.abs(ARView.probe.ms - Date.now()));
+     own second, and within 3 s. Between two resyncs a starved page can fall
+     most of a second behind again, and a second read after the wait could land
+     there: the offset is the one seen when the condition held. */
+  const back = await until(page, () => { const d = Math.abs(ARView.probe.ms - Date.now()); return d < 1000 ? { d } : false; }, null, 3000);
+  const re = back ? back.d : await page.evaluate(() => Math.abs(ARView.probe.ms - Date.now()));
   const reS = await page.evaluate(() => ({ play: document.getElementById('tpplay').getAttribute('aria-label'),
     rate: document.getElementById('tpratev').textContent, follow: ARView.probe.follow }));
-  chk('...and after a 1.5 s stall of the page\'s clock, back within the second it is allowed', re < 1000,
-      'off by ' + re.toFixed(0) + ' ms ' + JSON.stringify(reS));
+  chk('...and after a 1.5 s stall of the page\'s clock, back within the second it is allowed', stalled >= 1000 && re < 1000,
+      'stalled ' + stalled.toFixed(0) + ' ms behind, then off by ' + re.toFixed(0) + ' ms ' + JSON.stringify(reS));
 
   /* B8: the globe stops drawing while covered. */
+  /* Counted in the page's frames, not in milliseconds: a busy page can go
+     600 ms without one, which proved nothing while open and failed the resume
+     once closed. Open, 20 frames must pass with nothing drawn; closed, both
+     must come back, and within 20 frames. */
   const draws = await page.evaluate(async () => {
     const r = Orbit3D.renderer, render = r.render.bind(r), set = OrbitViz.setTime;
     let n = 0, m = 0; r.render = (...a) => { n++; return render(...a); }; OrbitViz.setTime = d => { m++; return set(d); };
-    await new Promise(res => setTimeout(res, 600));
+    const frames = (k, stop) => new Promise(res => { let f = 0; const t0 = performance.now();
+      const step = () => { f++; if(f >= k || (stop && stop()) || performance.now() - t0 > 20000) res(f); else requestAnimationFrame(step); };
+      requestAnimationFrame(step); });
+    const fOpen = await frames(20);
     const open = [n, m]; ARView.close();
-    n = m = 0; await new Promise(res => setTimeout(res, 600));
+    n = m = 0;
+    const fAfter = await frames(20, () => n > 0 && m > 0);
     const after = [n, m]; r.render = render; OrbitViz.setTime = set;
-    return { open, after };
+    return { open, after, fOpen, fAfter };
   });
   chk('under the view the globe draws nothing and its labels are not laid out; closed, both resume',
-      draws.open[0] === 0 && draws.open[1] === 0 && draws.after[0] > 0 && draws.after[1] > 0,
-      'open ' + draws.open.join('/') + ', after ' + draws.after.join('/') + ' render/setTime calls in 600 ms');
+      draws.fOpen >= 20 && draws.open[0] === 0 && draws.open[1] === 0 && draws.after[0] > 0 && draws.after[1] > 0,
+      'open ' + draws.open.join('/') + ' render/setTime calls in ' + draws.fOpen + ' frames, after ' + draws.after.join('/') +
+      ' in the first ' + draws.fAfter);
+  /* The same with the clock stopped. The rebuilt page lets a scene with nothing moving go quiet after two seconds, and the view going away
+     has to bring it back whatever the clock is doing, or the globe is left as the view found it. Open longer than that quiet, so the page's
+     own policy would have the scene off by then, and the view's closing is what has to turn it on. What this reads is therefore the same off
+     whether the view has covered the globe or not, until the scene is woken: so it is woken once, right after the tap, and must stay off (the
+     cover), and then left alone for longer than a wake lasts (2.5 s), so that closing is the only thing there is to bring it back. */
+  await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click(); });
+  await tapAR(page);
+  const woken = await page.evaluate(() => { __wake(); return Orbit3D.suspended; });
+  await page.waitForTimeout(3000);
+  /* The rebuilt page has keys for the clock (Space plays, the arrows step it, [ and ] change its rate), which the old page did not: with the
+     view over everything, on a tablet with a keyboard, none of them may reach it. Focus is taken off Close first, since a key a focused button
+     has a meaning for is left to it anyway. */
+  const k0 = await page.evaluate(() => { document.activeElement && document.activeElement.blur();
+    return { ms: ARView.probe.ms, play: document.getElementById('tpplay').getAttribute('aria-label'), rate: document.getElementById('tpratev').textContent }; });
+  for(const key of ['Space', 'ArrowRight', 'ArrowLeft', 'BracketRight']) await page.keyboard.press(key);
+  await frames2(page);
+  const k1 = await page.evaluate(() => ({ ms: ARView.probe.ms, play: document.getElementById('tpplay').getAttribute('aria-label'), rate: document.getElementById('tpratev').textContent }));
+  chk('...and while it is open the page\'s keys do nothing to the clock: Space, the arrows and ] leave it stopped, where it was, at the rate it had',
+      k1.play === k0.play && k1.rate === k0.rate && k1.ms === k0.ms, 'before ' + k0.play + ' ' + k0.rate + ', after ' + k1.play + ' ' + k1.rate + ', moved ' + (k1.ms - k0.ms) + ' ms');
+  const still = await page.evaluate(async () => {
+    const r = Orbit3D.renderer, render = r.render.bind(r);
+    let n = 0; r.render = (...a) => { n++; return render(...a); };
+    const held = Orbit3D.suspended, paused = document.getElementById('tpplay').getAttribute('aria-label') === 'Play';
+    ARView.close();
+    let f = 0;
+    await new Promise(res => { const t0 = performance.now(), step = () => { f++; if(n > 0 || f >= 20 || performance.now() - t0 > 20000) res(); else requestAnimationFrame(step); }; requestAnimationFrame(step); });
+    const out = { held, paused, n, f, suspended: Orbit3D.suspended };
+    r.render = render;
+    return out;
+  });
+  chk('...and with the clock stopped, closing it still brings the globe back: it draws again at once',
+      still.paused && woken && still.held && still.n > 0 && !still.suspended,
+      'clock ' + (still.paused ? 'stopped' : 'running') + ', scene ' + (woken ? 'off' : 'on') + ' under the view when woken, ' + (still.held ? 'off' : 'on') + ' after the quiet, ' + still.n + ' render calls in the first ' + still.f + ' frames after');
+  await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Play') b.click(); });
 
   /* B9: a device with no compass, and the hand turn. */
   await page.evaluate(() => { __ar.calls.length = 0; __feed(null); });
@@ -738,7 +942,8 @@ async function partB(browser, port){
     __feed(Object.assign({ type: 'deviceorientation' }, __aimAt(st.az, 0, 0, 0))); return st.az; });
   await page.waitForFunction(() => ARView.probe.source === 'rel', null, { timeout: 5000 }).catch(() => null);
   await settle(page);
-  await page.waitForTimeout(300);                       // the readout writes the status four times a second
+  // the readout writes the status four times a second
+  await until(page, () => /not tied to north/.test(ARView.probe.message), null, 5000);
   const r0 = await probe(page);
   const x0 = (await page.evaluate(az => ARView.project(az, 0), relAz)).x;
   const box = await page.locator('#ar-sky').boundingBox();
@@ -784,10 +989,16 @@ async function partB(browser, port){
   for(const th of [90, 270]){
     await page.setViewportSize({ width: 844, height: 390 });
     await page.evaluate(t => { __ar.orient = t === 270 ? -90 : 90; __ar.camera = 'canvas'; __ar.camW = 1440; __ar.camH = 1080; }, th);
+    const aimLand = t => page.evaluate(t => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms);
+      __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(st.az, 0, t, q.decl || 0))); return st; }, t);
+    /* Fed before the tap, for this way of holding it, and not left from the last one. The reading left running from before (the other way up's)
+       is a half turn out from this one, and the view, which settles its picture's roll by a smoothing that has nothing to turn a half turn by,
+       showed east on the left for a third of a second after the right reading came, and "east to the right" failed now and then (one run in
+       three, measured). A phone sends the reading for the way it is held, from the moment the view opens (see B3), so it is the first one the
+       view gets, and the one it is checked against. */
+    const sLand = await aimLand(th);
     await tapAR(page);
-    await page.waitForFunction(() => ARView.probe.camera === 'live', null, { timeout: 10000 }).catch(() => null);
-    const sLand = await page.evaluate(t => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms);
-      __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(st.az, 0, t, q.decl || 0))); return st; }, th);
+    await camLive(page);
     await settle(page);
     const lq = await probe(page);
     const lev = await page.evaluate(az => [ARView.project(az - 10, 0), ARView.project(az + 10, 0)], sLand.az);
@@ -824,16 +1035,23 @@ async function partB(browser, port){
   await page.evaluate(() => { __ar.orient = 0; __ar.camera = 'real'; });
 
   /* B12: every way of closing leaves nothing behind. */
+  const homes = [];
   for(const how of ['Close', 'Escape', 'Back']){
     await page.evaluate(() => { __ar.streams.length = 0; });
+    const entry0 = await page.evaluate(() => navigation.currentEntry.index);
     await tapAR(page);
-    await page.waitForFunction(() => ARView.probe.camera === 'live', null, { timeout: 10000 }).catch(() => null);
+    await camLive(page);
     await aimSat(page, 0, true);
     await page.waitForTimeout(200);
     if(how === 'Close') await page.click('#ar-close');
     else if(how === 'Escape') await page.keyboard.press('Escape');
     else await page.evaluate(() => history.back());
     await page.waitForTimeout(300);
+    // Back closes the view from popstate, and the history entry goes with Close and Escape a task later
+    await until(page, () => ARView.state === 'closed' && !(history.state && history.state.ar), null, 5000);
+    // the page is on the history entry it opened from (history.length would not say: the entry the view pushed stays ahead of it after a Back)
+    homes.push({ how, past: ((await until(page, e => navigation.currentEntry.index === e ? { here: true } : false, entry0, 5000))
+      ? 0 : (await page.evaluate(e => navigation.currentEntry.index - e, entry0))) });
     const c = await page.evaluate(() => ({ state: ARView.state, hidden: document.getElementById('arview').hidden,
       ended: __ar.streams.length > 0 && __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')),
       src: document.getElementById('ar-video').srcObject, census: JSON.stringify(__ar.census()), census0: JSON.stringify(__census0),
@@ -848,6 +1066,8 @@ async function partB(browser, port){
         && c.focus === 'arbtn' && !c.suspended && c.pressed && !c.arState && frames2 === c.frames,
         'listeners ' + c.census);
   }
+  chk('...and the view leaves no history entry of its own behind: after Close, Escape and Back the page is on the entry it opened from',
+      homes.length === 3 && homes.every(h => h.past === 0), homes.map(h => h.how + ' ' + (h.past ? '+' + h.past + ' entries' : 'back where it began')).join(', '));
   await page.evaluate(() => __feed(null));
 
   /* B13: a camera that answers after Close. */
@@ -856,24 +1076,32 @@ async function partB(browser, port){
   await page.waitForTimeout(100);
   await page.click('#ar-close');
   await page.waitForTimeout(1200);
-  const late = await page.evaluate(() => ({ n: __ar.streams.length, ended: __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')) }));
+  // the fake camera itself can take longer than the 800 ms delay on a busy machine
+  await until(page, () => __ar.streams.length > 0 && __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')), null, 15000);
+  const late =await page.evaluate(() => ({ n: __ar.streams.length, ended: __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')) }));
   await page.evaluate(() => { __ar.delayMs = 0; });
   chk('a camera that answers after Close is stopped at once, so the light never stays on', late.n === 1 && late.ended,
       late.n + ' late stream, ended ' + late.ended);
 
   /* B14: every refusal, in words. */
+  /* wait: a fixed time, or the state the check asserts, waited for; the time
+     from before the tap to when it came is kept as r.ms. */
   const refuse = async (cfg, events, wait) => {
     await page.evaluate(c => { __ar.calls.length = 0; __ar.streams.length = 0; Object.assign(__ar, c); }, cfg);
+    const t0 = Date.now();
     await tapAR(page);
     if(events) await page.evaluate(e => {
       const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms), a = __aimAt(st.az, st.el, 0, q.decl || 0);
       __feed(e === 'tilt' ? { type: 'deviceorientation', a: null, b: 20, g: 5 } : Object.assign({ type: 'deviceorientationabsolute' }, a));
     }, events);
-    await page.waitForTimeout(wait || 500);
+    if(typeof wait === 'function') await until(page, wait, null, 15000);
+    else await page.waitForTimeout(wait || 500);
+    const ms = Date.now() - t0;
     const r = await page.evaluate(() => ({ q: (() => { const q = ARView.probe; delete q.stream; return q; })(),
       cls: document.getElementById('ar-status').className, calls: __ar.calls.map(c => c.what + ':' + c.evt),
       retry: !document.getElementById('ar-retry').hidden, retryText: document.getElementById('ar-retry').textContent,
       ended: __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')) }));
+    r.ms = ms;
     return r;
   };
   const reset = () => page.evaluate(() => { __feed(null); ARView.close();
@@ -899,7 +1127,7 @@ async function partB(browser, port){
   await page.waitForTimeout(600);
   await page.evaluate(() => { __ar.motion = 'granted'; __ar.calls.length = 0; });
   await page.tap('#ar-retry');
-  await page.waitForFunction(() => ARView.probe.camera === 'live', null, { timeout: 8000 }).catch(() => null);
+  await camLive(page);
   const rc = await page.evaluate(() => ({ calls: __ar.calls.map(c => c.what + ':' + c.evt), cam: ARView.probe.camera, state: ARView.state }));
   chk('...Try again, refused once more and then allowed, asks for the camera again and gets it',
       rc.calls.includes('motion:click') && rc.calls.includes('camera:click') && rc.cam === 'live',
@@ -917,39 +1145,44 @@ async function partB(browser, port){
   r = await refuse({ motion: 'throw' });
   chk('...a request that throws is named', r.q.state === 'failed' && /\(TypeError\)/.test(r.q.message), r.q.message);
   await reset();
-  r = await refuse({ motion: 'absent' }, 'aim', 700);
+  r = await refuse({ motion: 'absent' }, 'aim', () => ARView.state === 'running');
   chk('...a browser with nothing to ask (Firefox, Samsung Internet) asks only for the camera, and the view runs',
       r.calls[0] === 'camera:click' && r.calls.length === 1 && r.q.state === 'running', r.calls.join(' ') + ', ' + r.q.state);
   await reset();
-  r = await refuse({ camera: 'NotAllowedError' }, 'aim', 700);
+  r = await refuse({ camera: 'NotAllowedError' }, 'aim', () => { const q = ARView.probe;
+    return q.state === 'running' && /^Camera access was declined/.test(q.message) && q.marker && q.marker.on && !document.getElementById('ar-retry').hidden; });
   await page.evaluate(() => { __ar.camera = 'real'; __ar.calls.length = 0; });
   await page.tap('#ar-retry');
-  await page.waitForFunction(() => ARView.probe.camera === 'live', null, { timeout: 8000 }).catch(() => null);
+  await camLive(page);
   const camAgain = await page.evaluate(() => ({ calls: __ar.calls.map(c => c.what + ':' + c.evt), cam: ARView.probe.camera }));
   chk('camera declined: the sky is drawn on black, the spacecraft still marked, and Try again asks inside its own tap',
       r.q.state === 'running' && /^Camera access was declined — the sky is drawn on black instead/.test(r.q.message) && r.q.marker && r.q.marker.on
       && r.retry && camAgain.calls[0] === 'camera:click' && camAgain.cam === 'live', camAgain.calls.join(' ') + ' → ' + camAgain.cam);
   await reset();
-  r = await refuse({ camera: 'NotFoundError' }, 'aim');
+  r = await refuse({ camera: 'NotFoundError' }, 'aim', () => /^No camera on the back/.test(ARView.probe.message));
   chk('...no rear camera: said, and nothing to try again', r.q.message === 'No camera on the back of this device — the sky is drawn on black instead.' && !r.retry);
   await reset();
-  r = await refuse({ camera: 'NotReadableError' }, 'aim');
+  r = await refuse({ camera: 'NotReadableError' }, 'aim', () => /^The camera is in use/.test(ARView.probe.message) && !document.getElementById('ar-retry').hidden);
   chk('...a camera in use elsewhere: said, with Try again', /^The camera is in use by another app/.test(r.q.message) && r.retry);
   await reset();
-  r = await refuse({ camera: 'user' }, 'aim', 900);
+  r = await refuse({ camera: 'user' }, 'aim', () => ARView.probe.camera === 'front' && /^The only camera offered faces you/.test(ARView.probe.message)
+    && __ar.streams.length > 0 && __ar.streams.every(s => s.getTracks().every(t => t.readyState === 'ended')));
   chk('...only a front camera: stopped at once, since the sky drawn is the one behind the phone',
       /^The only camera offered faces you/.test(r.q.message) && r.ended && r.q.camera === 'front', r.q.camera);
   await reset();
-  r = await refuse({ noCam: true }, 'aim');
+  r = await refuse({ noCam: true }, 'aim', () => /^This browser gives pages no camera/.test(ARView.probe.message));
   chk('...no camera for pages at all', r.q.message === 'This browser gives pages no camera — the sky is drawn on black instead.');
   await reset();
-  r = await refuse({}, null, 3600);
+  /* The 3 s run from when both prompts are answered, which on a busy machine
+     the camera can take a second over, so the failure is waited for - and must
+     not have come before 3 s had passed since the tap. */
+  r = await refuse({}, null, () => ARView.state === 'failed');
   chk('no reading in 3 s after the prompts: said, with the camera stopped',
-      r.q.state === 'failed' && (r.q.reason === 'no-sensor' || r.q.reason === 'no-reading') && r.ended,
-      r.q.reason + ': "' + r.q.message.slice(0, 50) + '…"');
+      r.q.state === 'failed' && (r.q.reason === 'no-sensor' || r.q.reason === 'no-reading') && r.ended && r.ms >= 3000,
+      r.q.reason + ' after ' + r.ms + ' ms: "' + r.q.message.slice(0, 50) + '…"');
   await reset();
-  r = await refuse({}, 'tilt', 3600);
-  chk('...a device that reports its tilt but not which way it faces', r.q.reason === 'tilt'
+  r = await refuse({}, 'tilt', () => ARView.state === 'failed');
+  chk('...a device that reports its tilt but not which way it faces', r.q.reason === 'tilt' && r.ms >= 3000
       && r.q.message === 'This device reports its tilt but not which way it faces, so the view cannot follow it round.');
   await reset();
 
@@ -958,7 +1191,7 @@ async function partB(browser, port){
   await aimSat(page, 0, true);
   await page.waitForTimeout(300);
   await page.click('#ar-alignbtn');
-  const rules = await page.evaluate(() => {
+  const rules = await page.evaluate(screenW => {
     const small = [], root = document.getElementById('arview');
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for(let n = w.nextNode(); n; n = w.nextNode()){
@@ -970,12 +1203,16 @@ async function partB(browser, port){
     const btns = [...root.querySelectorAll('.btn, input')].filter(b => b.offsetParent || getComputedStyle(b).position === 'fixed');
     const blocked = btns.filter(b => { const r = b.getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
       return !(h === b || b.contains(h)); }).map(b => b.id);
-    return { small, n: btns.length, blocked, sw: document.documentElement.scrollWidth, w: innerWidth,
+    return { small, n: btns.length, blocked, sw: document.documentElement.scrollWidth, w: screenW,        // the screen's width, as in B2
              untitled: [...root.querySelectorAll('abbr')].filter(a => !a.title).length };
-  });
+  }, 390);
   chk('inside the view: no text under 11 px, every button reachable, no sideways scroll, every abbreviation titled',
       !rules.small.length && !rules.blocked.length && rules.sw <= rules.w && rules.untitled === 0,
       rules.n + ' controls' + (rules.small.length ? '; small: ' + rules.small.join(', ') : '') + (rules.blocked.length ? '; covered: ' + rules.blocked.join(', ') : ''));
+  const pics = await page.evaluate(() => __ar.pictures.slice());
+  chk('the camera\'s picture is not drawn, read back or captured, in any of the usual ways: the view lays the sky over the video and does nothing else with it',
+      pics.length === 0, pics.length ? [...new Set(pics)].join(', ')
+        : 'in this run so far: no drawImage of the video, no read of the view\'s canvas, no ImageBitmap, ImageCapture, MediaRecorder, WebGL texture, OffscreenCanvas, VideoFrame, frame callback or track processor');
   // kept out of the repository: a picture to look at, not a reference to compare against
   const shot = path.join(require('os').tmpdir(), 'gtc-ar-phone.png');
   await page.screenshot({ path: shot });
@@ -983,15 +1220,29 @@ async function partB(browser, port){
   await closeAR(page);
 
   /* B16: Cape Town, where the declination is 27° west. */
-  await page.evaluate(() => {
-    document.getElementById('siteopen').click();
-    document.getElementById('s-manual').open = true;
-    const set = (id, v) => { document.getElementById(id).value = v; };
-    set('s-name', 'Cape Town'); set('s-lat', -33.9249); set('s-lon', 18.4241); set('s-alt', 0); set('s-tz', 2);
-    document.getElementById('siteapply').click();
-  });
+  /* The observer's form, opened as a person opens it on a phone: every field and Apply on the screen and under a finger. The rebuilt page's is
+     a popover under the chip, and the chip is at the left of the phone: hung from the chip's right edge, as it first was, it ran off the left
+     with Apply in it, and the step below could not press it (a 30 s timeout is how that showed). */
+  await H.siteForm(page);
+  const frm = await page.evaluate(screenW => ['s-name', 's-lat', 's-lon', 's-alt', 's-tz', 'siteapply'].filter(id => {
+    const e = document.getElementById(id);
+    if(!e) return true;
+    /* Across first, with nothing scrolled: a panel that runs off an edge is off the screen, and a scroll that would bring it in must not be
+       one the reader needs. Only then down, since a panel taller than the screen scrolls inside itself. Across is measured against the width the
+       screen was set to and not innerWidth, which a phone's browser grows to fit a page that is too wide (as in B2): a panel hung 150 px over
+       the right edge made innerWidth 520 on a 390 px screen, and every field read as on it. */
+    const x = e.getBoundingClientRect();
+    if(!(x.width > 0 && x.left >= 0 && x.right <= screenW)) return true;
+    e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const r = e.getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+    return !(r.width > 0 && r.left >= 0 && r.right <= screenW && r.top >= 0 && r.bottom <= innerHeight && h && (h === e || e.contains(h)));
+  }), 390);
+  chk("the observer's form, opened on a phone, has every field and Apply on the screen and in reach", !frm.length, frm.length ? 'out of reach: ' + frm.join(', ') : 'all six');
+  await H.setSite(page,{ name: 'Cape Town', lat: -33.9249, lon: 18.4241, alt: 0, tz: 2 });         // typed in, as a person would
   await page.waitForFunction(() => __gt.OBS.name === 'Cape Town' && __gt.D && __gt.D.passes.length, null, { timeout: 20000 }).catch(() => null);
-  await atBestPass(page);
+  await H.closeSiteForm(page);                         // the rebuilt page's form is a popover, and it would be over the button
+  const bestCT = await atBestPass(page);
+  if(bestCT) await downTo(page, bestCT.k, 35);               // not the zenith, where Cape Town's best pass can reach: see downTo
   await tapAR(page);
   await aimSat(page, 0, true);
   await settle(page);
@@ -1006,10 +1257,10 @@ async function partB(browser, port){
   const ctDecl = await page.evaluate(() => document.getElementById('ar-decl').textContent);
   const miss = S.wrap180(ctSt.az - ct2.view.az);
   chk('Cape Town: the compass is 27° from true north, and correcting for it is what puts the spacecraft in the middle',
-      ct.decl < -25 && ct.marker && Math.hypot(ct.marker.x - ct.cx, ct.marker.y - ct.cy) < 1.5
+      bestCT && ct.decl < -25 && ct.marker && Math.hypot(ct.marker.x - ct.cx, ct.marker.y - ct.cy) < 1.5
       && near(miss, -ct.decl, 0.05) && ct2.marker && Math.hypot(ct2.marker.x - ct2.cx, ct2.marker.y - ct2.cy) > 50
       && ctDecl === Math.abs(ct.decl).toFixed(1) + '° W, applied',
-      'D ' + ct.decl.toFixed(2) + '°; uncorrected, the view faces ' + miss.toFixed(2) + '° away in azimuth at ' +
+      (bestCT ? '' : 'no pass from Cape Town in the window; ') + 'D ' + ct.decl.toFixed(2) + '°; uncorrected, the view faces ' + miss.toFixed(2) + '° away in azimuth at ' +
       ctSt.el.toFixed(1) + '° up, the marker ' + (ct2.marker ? Math.hypot(ct2.marker.x - ct2.cx, ct2.marker.y - ct2.cy).toFixed(0) + ' px' : '?') + ' off centre');
   await closeAR(page);
   console.log('\n  page errors (phone): ' + (errs.length ? errs.join(' | ') : 'none'));
@@ -1030,14 +1281,14 @@ async function partIOS(browser, port){
   // before any flat sample: upright, heading unusable
   await page.evaluate(c => { const a = __aimAt(ARView.probe.view ? 0 : 0, 10, 0, 0);
     __feed({ type: 'deviceorientation', a: (a.a + c) % 360, b: a.b, g: a.g, h: 0, acc: 10 }); }, C);
-  await page.waitForTimeout(800);
+  await until(page, () => { const q = ARView.probe; return q.state === 'finding' && q.drawn.horizon && /^Finding north/.test(q.message); });
   const f0 = await probe(page), n0 = await page.evaluate(() => document.getElementById('ar-north').textContent);
   chk('an iPhone held upright from the start is finding north: horizon and mask drawn, nothing that needs a bearing',
       f0.state === 'finding' && f0.source === 'ios' && !f0.marker && f0.drawn.horizon && f0.drawn.mask && !f0.drawn.craft && !f0.drawn.compass
       && /^Finding north/.test(f0.message) && /^finding it/.test(n0),
       f0.state + ': "' + f0.message + '" / north "' + n0 + '" / ' + JSON.stringify(f0.drawn));
   await flat();
-  await page.waitForTimeout(1500);
+  await until(page, () => ARView.probe.settled && ARView.state === 'running');
   const f1 = await probe(page);
   chk('...tipped towards flat, it takes a bearing: the offset is the one the zero was shifted by',
       f1.settled && near(S.wrap180(f1.offset - C), 0, 0.2) && f1.state === 'running', 'offset ' + (f1.offset === null ? 'none' : f1.offset.toFixed(3)));
@@ -1052,6 +1303,7 @@ async function partIOS(browser, port){
   await page.evaluate(c => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms), a = __aimAt(st.az, st.el, 0, q.decl || 0);
     __feed({ type: 'deviceorientation', a: (a.a + c) % 360, b: a.b, g: a.g, h: 0, acc: -1 }); }, C);
   await page.waitForTimeout(3600);
+  await until(page, () => /^The compass is not calibrated/.test(ARView.probe.message));
   const f3 = await probe(page);
   chk('...an uncalibrated compass for 3.5 s is said, and the bearing already taken is kept',
       /^The compass is not calibrated/.test(f3.message) && f3.marker && Math.hypot(f3.marker.x - f3.cx, f3.marker.y - f3.cy) < 1.5,
@@ -1059,10 +1311,10 @@ async function partIOS(browser, port){
   await page.evaluate(() => { __ar.vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); });
   await page.waitForTimeout(200);
   await page.evaluate(() => { __ar.vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
-  await page.waitForTimeout(300);
+  await until(page, () => /^Finding north again/.test(ARView.probe.message), null, 2500);
   const f4 = await probe(page);
   await page.evaluate(c => { __ar.orient = 90; __feed({ type: 'deviceorientation', a: (330 + c + 23) % 360, b: 20, g: -30, h: 7, acc: 8 }); }, C);
-  await page.waitForTimeout(1500);
+  await until(page, () => ARView.probe.settled);
   const f5 = await probe(page);
   chk('...coming back to the page starts again, since the iPhone may have re-zeroed; flat samples held sideways settle it',
       f4.offset === null && /^Finding north again/.test(f4.message) && f5.settled && near(S.wrap180(f5.offset - C), 0, 0.5),
@@ -1079,34 +1331,95 @@ async function partLondon(browser, port){
   console.log('\nPart B — a phone that is not where the observer is\n');
   const { ctx, page, errs } = await phone(browser, port, { timezoneId: 'Europe/London',
     permissions: ['camera', 'geolocation'], geolocation: { latitude: 51.5074, longitude: -0.1278, accuracy: 25 } });
+  /* Anything the page sends anywhere that has where this phone is in it: the fix is 51.5074, -0.1278, and the observer typed in below is
+     51.5, -0.12, which has no further digit to match. */
+  const sent = [];
+  page.on('request', r => { if(/51\.5\d|0\.12\d/.test(r.url() + (r.postData() || ''))) sent.push(r.url()); });
+  /* What this phone's own offset from UTC is on the day the page runs on: +1 while London keeps summer time, and the page names it. */
+  const lonOff = zoneHours('Europe/London', AT);
+  /* The phone is fed a pose from before the tap. With none, the view gives up
+     3 s after the prompts ("no motion sensor"), and everything below - two
+     moves of the observer and a location request - had to finish inside those
+     3 s for the last check to see Use my location's answer and not that. */
+  await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 20, 0, 0))));
+  const entry0 = await page.evaluate(() => navigation.currentEntry.index);
+  const kept0 = await page.evaluate(() => Object.keys(localStorage).concat(Object.keys(sessionStorage).map(k => 'session:' + k)));
   await tapAR(page);
-  await page.waitForTimeout(300);
+  await until(page, () => ARView.probe.state === 'running', null, 15000);
   const a = await probe(page);
   /* The warning follows the observer, not the request that moved it: a Use my
      location answer that lands after the view has been closed and opened again
      moves the observer all the same, and the warning must go with it. Moved
-     here by the page's own applySite, with the view open. */
-  await page.evaluate(() => { window.__obs0 = Object.assign({}, __gt.OBS);
-    __gt.applySite({ lat: 51.5, lon: -0.12, altKm: 0, name: 'London', tz: 1 }, false); });
-  await page.waitForTimeout(400);
+     here by the page's own applySite, with the view open; the readout sees a
+     move at its next quarter-second tick. */
+  await page.evaluate(tz => { window.__obs0 = Object.assign({}, __gt.OBS);
+    __gt.applySite({ lat: 51.5, lon: -0.12, altKm: 0, name: 'London', tz }, false); }, lonOff);
+  await until(page, () => !/^The sky is drawn from/.test(ARView.probe.message), null, 5000);
   const moved = await probe(page);
   await page.evaluate(() => __gt.applySite(__obs0, false));
-  await page.waitForTimeout(400);
+  await until(page, () => /^The sky is drawn from Bangkok/.test(ARView.probe.message), null, 5000);
   const back = await probe(page);
   chk('...the warning follows the observer however it moves: gone for London, back for Bangkok',
       !/^The sky is drawn from/.test(moved.message) && /^The sky is drawn from Bangkok/.test(back.message),
       '"' + moved.message.slice(0, 40) + '…" then "' + back.message.slice(0, 40) + '…"');
   await page.tap('#ar-here');
   await page.waitForFunction(() => __gt.OBS.name === 'My location', null, { timeout: 20000 }).catch(() => null);
-  await page.waitForTimeout(600);
-  const b = await page.evaluate(() => ({ msg: ARView.probe.message, lat: __gt.OBS.lat, decl: document.getElementById('ar-decl').textContent,
-    title: document.getElementById('ar-title').textContent, D: ARView.probe.decl }));
+  /* The answer is said, and the declination and the title written, by the
+     view once it has the site; read them when all three are there. */
+  await page.evaluate(() => { window.__hereNow = () => ({ msg: ARView.probe.message, lat: __gt.OBS.lat,
+    decl: document.getElementById('ar-decl').textContent, title: document.getElementById('ar-title').textContent, D: ARView.probe.decl }); });
+  const b = await until(page, () => { const s = __hereNow();
+    return /accurate to about/.test(s.msg) && s.title === 'Sky over My location' && s.D !== null
+      && s.decl === s.D.toFixed(1) + '° E, applied' ? s : false; }, null, 10000)
+    || await page.evaluate(() => __hereNow());
   chk('the sky is Bangkok\'s while the phone keeps London time: said, with the way out',
-      /^The sky is drawn from Bangkok, and this phone keeps UTC\+1 — /.test(a.message), '"' + a.message.slice(0, 60) + '…"');
+      a.message.startsWith('The sky is drawn from Bangkok, and this phone keeps UTC+' + lonOff + ' — '), '"' + a.message.slice(0, 60) + '…"');
   chk('...Use my location moves the observer to the phone and works out London\'s declination',
       near(b.lat, 51.5074, 1e-6) && /accurate to about 25 m\.$/.test(b.msg) && b.title === 'Sky over My location'
       && b.D > 0.5 && b.decl === b.D.toFixed(1) + '° E, applied', b.decl + ' | "' + b.msg + '"');
-  await page.evaluate(() => ARView.close());
+  /* The rebuilt page writes the observer into the address bar (?site=) so that a link reproduces the view, which the old page never did.
+     A position the device itself gave is the one place that must not be written there: history, bookmarks and share sheets would carry it. */
+  const bar = await page.evaluate(() => ({ href: location.href, state: JSON.stringify(history.state), name: __gt.OBS.name }));
+  chk('...and the position is kept as the observer, not written into the address bar or the history entry',
+      bar.name === 'My location' && !/[?&]site=/.test(bar.href) && !/51\.5\d|0\.12\d/.test(bar.href + bar.state), bar.href + ' ' + bar.state);
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  // the view's own history entry went with it, though the observer moved while it was open
+  const left = await until(page, e => navigation.currentEntry.index === e ? { here: true } : false, entry0, 5000)
+    ? 0 : await page.evaluate(e => navigation.currentEntry.index - e, entry0);
+  chk('...closing it after the observer moved leaves the page on the history entry it opened from', left === 0,
+      left === 0 ? 'back where it began' : left + ' entries past the start');
+  /* The address rewritten while the view is open. None of the above does it: Bangkok is home, and the page writes only a site that is not,
+     so the address has no site in it to lose. Typed in as another place, the observer is in the address bar; Use my location then takes it
+     out, under the open view, by replacing the entry the view's own Back entry sits on, and Close has to find that entry still its own. */
+  await H.setSite(page, { name: 'Cape Town', lat: -33.9249, lon: 18.4241, alt: 0, tz: 2 });
+  await H.closeSiteForm(page);
+  await page.waitForFunction(() => __gt.OBS.name === 'Cape Town' && __gt.D && __gt.D.entry, null, { timeout: 20000 }).catch(() => null);
+  // the old page never wrote an address, so there is nothing for the site to be in there
+  const inBar = await until(page, isNew => !isNew || /[?&]site=/.test(location.href) ? { href: location.href } : false, NEW, 5000);
+  chk('precondition: the observer typed in is in the address bar, where the rebuilt page keeps it', !!inBar,
+      inBar ? inBar.href : 'no site= in ' + await page.evaluate(() => location.href));
+  const entry1 = await page.evaluate(() => navigation.currentEntry.index);
+  await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 20, 0, 0))));
+  await tapAR(page);
+  await until(page, () => ARView.probe.state === 'running', null, 15000);
+  await page.tap('#ar-here');
+  await page.waitForFunction(() => __gt.OBS.name === 'My location', null, { timeout: 20000 }).catch(() => null);
+  const rewritten = await until(page, () => __gt.OBS.name === 'My location' && !/[?&]site=/.test(location.href)
+    ? { href: location.href, state: JSON.stringify(history.state) } : false, null, 5000)
+    || await page.evaluate(() => ({ href: location.href, state: JSON.stringify(history.state) }));
+  chk('...Use my location, with the view open, takes the site out of the address bar and puts the phone\'s position in neither it nor the history entry',
+      !/[?&]site=/.test(rewritten.href) && !/51\.5\d|0\.12\d/.test(rewritten.href + rewritten.state), rewritten.href + ' ' + rewritten.state);
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  const left1 = await until(page, e => navigation.currentEntry.index === e ? { here: true } : false, entry1, 5000)
+    ? 0 : await page.evaluate(e => navigation.currentEntry.index - e, entry1);
+  chk('...and closing the view over an address that was rewritten under it leaves the page on the history entry it opened from', left1 === 0,
+      left1 === 0 ? 'back where it began' : left1 + ' entries past the start');
+  chk('...and nothing the page sent, while all this went on, carried where the phone is', sent.length === 0,
+      sent.length ? sent.join(' ') : 'no request had it');
+  // the sensor's readings are not kept: what the view and Use my location leave in the browser is the lens, the saved site and the places list
+  const kept = (await page.evaluate(() => Object.keys(localStorage).concat(Object.keys(sessionStorage).map(k => 'session:' + k)))).filter(k => !kept0.includes(k));
+  chk('...and the browser was left holding only the saved site and the places list: the sensors\' readings are not kept',
+      kept.every(k => k === 'obs-site' || k === 'obs-recent' || k === 'gt.arlens'), 'written: ' + (kept.join(', ') || 'nothing'));
   console.log('\n  page errors (London): ' + (errs.length ? errs.join(' | ') : 'none'));
   const n = errs.length;
   await ctx.close();
@@ -1121,8 +1434,8 @@ async function partNoGL(port){
   console.log('\nPart B — a phone with no WebGL\n');
   const browser = await chromium.launch({ args: ['--disable-3d-apis', '--disable-webgl', '--disable-webgl2',
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
-    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' });
+  const ctx = await startClock(await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
+    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' }));
   await ctx.addInitScript(MOCKS);
   const page = await ctx.newPage(), errs = [];
   page.on('pageerror', e => errs.push(e.message));
@@ -1130,13 +1443,17 @@ async function partNoGL(port){
   await page.goto('http://127.0.0.1:' + port + '/index.html');
   await page.waitForFunction(() => window.__gt && window.__gt.D && window.ARView, null, { timeout: 60000 });
   await page.waitForTimeout(500);
-  const g = await page.evaluate(() => {
+  const g = await page.evaluate(isNew => {
     const b = document.getElementById('arbtn'), r = b.getBoundingClientRect();
     const h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
-    return { gl: !!(window.Orbit3D && Orbit3D.ok()), fallback: !document.getElementById('o3fallback').hidden,
+    const fb = document.getElementById('o3fallback'), seg = document.querySelector('.camseg .seg'), tab = document.querySelector('.stage [role=tab][aria-selected=true]');
+    return { gl: !!(window.Orbit3D && Orbit3D.ok()),
+             // the old page says so over the globe; the rebuilt page opens the map instead, with the note on the globe's own tab
+             fallback: isNew ? !!fb && !!tab && /^Map/.test(tab.textContent.trim()) : !!fb && !fb.hidden,
              w: r.width, reach: !!h && (h === b || b.contains(h)),
-             seg: getComputedStyle(document.querySelector('.camseg .seg')).display };
-  });
+             // the old page hides the camera group; the rebuilt page does not draw it
+             seg: seg ? getComputedStyle(seg).display : 'none' };
+  }, NEW);
   let ran = null;
   if(g.w){
     await atBestPass(page);
@@ -1160,19 +1477,25 @@ async function partNoGL(port){
  * Part C - the desktop, loaded the way snapshot.js loads it
  * ==================================================================== */
 async function partC(browser){
-  console.log('\nPart C — a desktop, over file://\n');
+  console.log('\nPart C — a desktop, over http\n');
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  await startClock(page.context());
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   for(const u of BLOCK) await page.route(u, r => r.abort());
-  await page.goto('file:///' + path.join(ROOT, 'index.html').split(path.sep).join('/'));
+  const __srv = await H.up();
+  await page.goto(__srv.page);
   await page.waitForFunction(() => window.__gt && window.__gt.D, null, { timeout: 60000 });
-  const d = await page.evaluate(() => ({ shown: getComputedStyle(document.getElementById('arbtn')).display !== 'none',
-    g: [typeof WMM, typeof SkyAR, typeof ARView].join(' '),
-    pressed: [...document.querySelectorAll('.camseg .cam')].filter(c => c.getAttribute('aria-pressed') === 'true').length,
-    povR: getComputedStyle(document.querySelector('.camseg .seg .btn:last-child')).borderTopRightRadius }));
-  chk('no AR button without a touch screen; the camera row is as it was', !d.shown && d.pressed === 1 && d.povR === '3px',
-      'one pressed, POV radius ' + d.povR);
+  const d = await page.evaluate(isNew => {
+    const cams = [...document.querySelectorAll('.camseg .cam')];
+    return { shown: getComputedStyle(document.getElementById('arbtn')).display !== 'none',
+      g: [typeof WMM, typeof SkyAR, typeof ARView].join(' '),
+      pressed: cams.filter(c => c.getAttribute('aria-pressed') === 'true').length,
+      // the group's rounded end, as in B1
+      endR: getComputedStyle(isNew ? document.querySelector('.camseg .seg') : cams[cams.length - 1]).borderTopRightRadius };
+  }, NEW);
+  chk('no AR button without a touch screen; the camera row is as it was', !d.shown && d.pressed === 1 && d.endR === END_R,
+      "one pressed, the group's end radius " + d.endR + ' (want ' + END_R + ')');
   chk('...the three new scripts load, and nothing throws while the page does', d.g === 'object object object' && !errs.length,
       d.g + (errs.length ? '; ' + errs.join(' | ') : ''));
   await page.close();

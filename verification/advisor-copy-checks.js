@@ -47,11 +47,12 @@
  * Run alone:  node verification/advisor-copy-checks.js
  */
 'use strict';
+const H = require('./lib/harness');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const MODULE_PATH = path.join(__dirname, '..', 'earth', 'advisor-copy.js');
+const MODULE_PATH = H.earthFile('advisor-copy');
 require(MODULE_PATH);
 
 /* ---------------------------------------------------------------- what the design table says
@@ -1040,7 +1041,10 @@ function run(chk, extra) {
   }
 
   /* ---- what this file is: data and formatters, loadable anywhere */
-  const srcText = fs.readFileSync(MODULE_PATH, 'utf8');
+  /* The module build scans the verbatim TypeScript source it was moved into, not the Node bundle. */
+  const NEW_BUILD = H.targetName() !== 'legacy';
+  const skipOut = (name, why) => console.log('  SKIP  copy: ' + name + ' - ' + why);
+  const srcText = fs.readFileSync(NEW_BUILD ? H.earthSource('advisor-copy') : MODULE_PATH, 'utf8');
   const code = srcText.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
   const wrapperLine = "})(typeof window !== 'undefined' ? window : globalThis);";
   const forbidden = [];
@@ -1049,16 +1053,23 @@ function run(chk, extra) {
     [/\bconsole\s*\./, 'console'], [/\bsetTimeout|setInterval|requestAnimationFrame/, 'a timer']].forEach(p => { if (p[0].test(code.replace(wrapperLine, ''))) forbidden.push(p[1]); });
   if (/\bwindow\s*[.\[]|typeof window/.test(code.replace(wrapperLine, ''))) forbidden.push('window outside the wrapper');
   list('advisor-copy.js is pure: no optional chaining or nullish coalescing, no DOM, storage, network, clock, randomness, timer or module', forbidden, 'source scanned without comments');
-  ok('advisor-copy.js is an IIFE over (window or globalThis), strict, like lifetime.js', /^\(function\(global\)\{\s*\n'use strict';/m.test(srcText) && srcText.replace(/\s+$/, '').endsWith(wrapperLine));
+  if (NEW_BUILD) skipOut('advisor-copy.js is an IIFE over (window or globalThis), strict', 'an ES module is already strict and scoped');
+  else ok('advisor-copy.js is an IIFE over (window or globalThis), strict, like lifetime.js', /^\(function\(global\)\{\s*\n'use strict';/m.test(srcText) && srcText.replace(/\s+$/, '').endsWith(wrapperLine));
   const profLines = code.split('\n').filter(l => /Professor/.test(l));
   ok('"Professor" appears once outside comments: the definition of ADVISOR_LABEL', profLines.length === 1 && /ADVISOR_LABEL\s*=\s*'Professor’s notes'/.test(profLines[0]), profLines.length + ' line(s)');
-  const bare = vm.createContext({});
-  vm.runInContext(srcText, bare, { filename: 'advisor-copy.js' });
-  ok('it loads in a context with no window, Planner, Advisor or Lifetime, and works there',
-    bare.AdvisorCopy && bare.AdvisorCopy.ITEMS.length === 87 && typeof bare.Planner === 'undefined' && typeof bare.Advisor === 'undefined' && bare.AdvisorCopy.render('{a:km}', { a: 6878.137 }) === '6,878 km');
-  const win = {}, withWin = vm.createContext({ window: win });
-  vm.runInContext(srcText, withWin, { filename: 'advisor-copy.js' });
-  ok('in a browser it attaches to window', win.AdvisorCopy && win.AdvisorCopy.ITEMS.length === 87 && typeof withWin.AdvisorCopy === 'undefined');
+  if (NEW_BUILD) {
+    /* what the bare-context load proved - that the words stand alone - the module graph now states directly */
+    ok('it imports nothing, so it works with no Planner, Advisor or Lifetime beside it', !/^\s*import\s/m.test(code) && AC.ITEMS.length === 87 && AC.render('{a:km}', { a: 6878.137 }) === '6,878 km');
+    skipOut('in a browser it attaches to window', 'a module has no global to attach to; the Node shim attaches it to globalThis');
+  } else {
+    const bare = vm.createContext({});
+    vm.runInContext(srcText, bare, { filename: 'advisor-copy.js' });
+    ok('it loads in a context with no window, Planner, Advisor or Lifetime, and works there',
+      bare.AdvisorCopy && bare.AdvisorCopy.ITEMS.length === 87 && typeof bare.Planner === 'undefined' && typeof bare.Advisor === 'undefined' && bare.AdvisorCopy.render('{a:km}', { a: 6878.137 }) === '6,878 km');
+    const win = {}, withWin = vm.createContext({ window: win });
+    vm.runInContext(srcText, withWin, { filename: 'advisor-copy.js' });
+    ok('in a browser it attaches to window', win.AdvisorCopy && win.AdvisorCopy.ITEMS.length === 87 && typeof withWin.AdvisorCopy === 'undefined');
+  }
 
   return { items: AC.ITEMS.length, scenarios: SCENARIOS.length, grid: nGrid, random: nRand, fired: Object.keys(firedAll).length };
 }

@@ -1,0 +1,267 @@
+/* The orbit planner's stylesheet.
+ *
+ * Plain CSS and global on purpose. It styles markup Svelte renders once (PlannerPanel, and the report's ProfessorSection) and
+ * nodes that plannerui.ts builds at run time - the notes, the group summaries, the saved rows, the error lines, the Undo
+ * buttons - which no scoped rule could reach, so it keys on the old page's class names and data attributes. It is loaded
+ * with the planner's chunk (PlannerPanel imports it), so a visit that never opens the planner never fetches it.
+ *
+ * Every colour is a token (tokens.css has the light and the dark set) and nothing animates. Meaning is never carried by colour
+ * alone: an error is a border and a glyph as well as red, a severity is a shape, a word and a border width as well as a hue.
+ *
+ * Where the planner goes is three presentations, chosen by the same media queries plannerui.ts reads in mode():
+ *   drawer  >= 901 px wide and >= 561 px tall: in the console's second cell, where the rail was; the rail is hidden
+ *   flow    <= 900 px wide: a panel under the stage on the page's own scroll; the rail stays below it
+ *   sheet   >= 901 px wide but <= 560 px tall: fixed over the whole screen, as a dialog
+ * App.svelte places the cell (the console grid); this file is what is inside it. */
+
+/* ---- hidden ------------------------------------------------------------------------------------------------------
+   An author display rule beats the attribute, so every node the controller hides with `hidden` needs a rule of its own.
+   base.css has the same thing for the whole page; these keep this sheet right when read alone. */
+.planner[hidden], .planner [hidden], .pl-err[hidden], .pl-shape[hidden], #sec-prof[hidden], #rp-nav[hidden] { display: none; }
+
+/* ---- the panel ---------------------------------------------------------------------------------------------------- */
+.planner {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--chrome); color: var(--chromeink); border-left: 1px solid var(--chromerule);
+}
+.pl-head {
+  display: flex; align-items: baseline; gap: var(--space-2) var(--space-3); padding: 11px var(--space-4) 10px;
+  border-bottom: 1px solid var(--chromerule); flex: none; scroll-margin-top: var(--space-4);
+}
+.pl-head h2 { font-size: 18px; flex: 1; min-width: 0; }
+.pl-head .eyebrow { flex: none; }
+.pl-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--chromerule) transparent;
+  scroll-padding-bottom: 76px;            /* a field reached with Tab scrolls clear of the sticky Add bar */
+}
+.pl-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'form' 'prof' 'saved'; }
+.pl-form-col { grid-area: form; min-width: 0; }
+.prof { grid-area: prof; min-width: 0; }
+.pl-saved { grid-area: saved; min-width: 0; }
+
+/* ---- the form ----------------------------------------------------------------------------------------------------- */
+.pl-form { display: flex; flex-direction: column; gap: var(--space-4); padding: 14px var(--space-4) var(--space-1); margin: 0; }
+.pl-set { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.pl-set > legend { padding: 0; margin-bottom: 1px; float: left; width: 100%; }   /* a legend as the first row of the flex column */
+.pl-set > legend + * { clear: both; }
+.pl-set > .seg { align-self: flex-start; }
+.pl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px var(--space-3); }
+.pl-f { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.pl-f.wide { grid-column: 1 / -1; }
+.pl-f > label, .pl-lab {
+  font-size: var(--fs-0); font-weight: 500; color: var(--ink2); display: flex; gap: 7px;
+  align-items: center; flex-wrap: wrap; line-height: 1.3; min-height: 26px;
+}
+.pl-f label i, .pl-lab i {
+  font-family: var(--font-head); font-style: italic; font-size: var(--fs-3); font-weight: 500;
+  color: var(--track); line-height: 1; letter-spacing: 0;
+}
+
+/* a box that holds an input and its unit; the box takes the focus ring so the unit sits inside it */
+.pl-num, .pl-text {
+  display: flex; align-items: center; background: var(--panel);
+  border: 1px solid var(--chromerule); border-radius: var(--r-1); min-height: 36px; min-width: 0;
+}
+.pl-num:focus-within, .pl-text:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+.pl-num input, .pl-text input {
+  flex: 1; min-width: 0; width: 100%; border: 0; background: none; outline: 0;
+  font: 500 var(--fs-1) var(--font-mono); font-variant-numeric: tabular-nums;
+  color: var(--ink); padding: 7px var(--space-1) 7px 9px; text-align: right;
+  align-self: stretch;                    /* the whole box takes the pointer, not a 31 px band of it */
+}
+.pl-text input, .pl-num input[type='datetime-local'] { text-align: left; }
+.pl-text input { padding-right: 9px; }
+.pl-num .u { flex: none; padding: 0 9px 0 3px; font: var(--fs-0) var(--font-mono); color: var(--muted); }
+.pl-tz { font: var(--fs-0) var(--font-mono); color: var(--chromeink); padding: 0 9px 0 3px; }
+.pl-epochrow { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
+.pl-epochrow .pl-num { flex: 1; }
+.pl-select {
+  font: inherit; font-size: var(--fs-1); color: var(--ink); background: var(--panel); min-height: 36px;
+  border: 1px solid var(--chromerule); border-radius: var(--r-1); padding: 5px var(--space-2); width: 100%; min-width: 0;
+}
+
+/* A value a fix has just written, until the next edit: an accent on the box, not a colour for text. An invalid one is a
+   border and a bar in --bad, so it does not rest on the colour alone. */
+.pl-f:not([data-invalid]) .pl-num.changed, .pl-f:not([data-invalid]) .pl-text.changed {
+  border-color: var(--track); box-shadow: inset 3px 0 0 var(--track);
+}
+.pl-f[data-invalid] .pl-num, .pl-f[data-invalid] .pl-text { border-color: var(--bad); box-shadow: inset 3px 0 0 var(--bad); }
+
+.pl-err {
+  display: flex; gap: 6px; align-items: flex-start; font-size: var(--fs-0); line-height: 1.4; color: var(--ink); margin: 0;
+}
+.pl-err svg { flex: none; width: 12px; height: 12px; margin-top: 2px; color: var(--bad); }
+.pl-err[data-kind='note'] svg { color: var(--muted); }
+.pl-err-form { padding: 0 var(--space-4) var(--space-2); }
+.pl-hint { font-size: var(--fs-0); line-height: 1.45; color: var(--muted); margin: 0; }
+.pl-derived { font: var(--fs-0) / 1.55 var(--font-mono); color: var(--ink2); margin: 0; font-variant-numeric: tabular-nums; }
+.pl-derived b { color: var(--ink); font-weight: 500; }
+
+/* an abbreviation says what it stands for under the pointer; inside a button the title still says it, a dotted rule is noise */
+.planner abbr[title], #sec-prof abbr[title] { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+.planner .btn abbr[title] { text-decoration: none; cursor: inherit; }
+
+/* ---- buttons ------------------------------------------------------------------------------------------------------ */
+/* The look of ui/Button and ui/Segmented, for buttons that are markup here and wired by the controller. */
+.planner .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: 32px; padding: 0 var(--space-3); border: 1px solid var(--chromerule); border-radius: var(--r-2);
+  background: var(--chrome2); color: var(--chromeink); font-size: var(--fs-1); font-weight: 500; line-height: 1.2; white-space: nowrap;
+}
+.planner .btn:hover { background: color-mix(in srgb, var(--chrome2) 80%, var(--ink)); }
+.planner .btn[aria-pressed='true'] { background: var(--sel-bg); color: var(--sel-ink); border-color: var(--sel-bg); }
+/* The primary button is never `disabled` (a disabled button cannot be pressed, and so cannot say why it is not allowed): when it
+   cannot act it only looks as if it could not, and pressing it speaks the reason. */
+.planner .btn.primary { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-ink); font-weight: 600; }
+.planner .btn.primary:hover { background: color-mix(in srgb, var(--sel-bg) 85%, var(--panel)); }
+.planner .btn.primary[aria-disabled='true'] { background: var(--chrome2); border-color: var(--chromerule); color: var(--muted); font-weight: 500; }
+
+.planner .seg { display: inline-flex; border: 1px solid var(--chromerule); border-radius: var(--r-2); overflow: hidden; background: var(--chrome2); }
+.planner .seg .btn { border: 0; border-left: 1px solid var(--chromerule); border-radius: 0; background: transparent; }
+.planner .seg .btn:first-child { border-left: 0; }
+.planner .seg .btn:hover { background: var(--hover); }
+.planner .seg .btn[aria-pressed='true'] { background: var(--sel-bg); color: var(--sel-ink); }
+.planner .seg .btn:focus-visible { outline-offset: -2px; }       /* the group clips what is outside it */
+.pl-lab .seg { margin-left: auto; }
+.pl-lab .seg .btn { min-height: 24px; padding: 1px var(--space-2); }
+
+/* ---- the action bar ----------------------------------------------------------------------------------------------- */
+.pl-actions {
+  position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-2); padding: 10px var(--space-4); background: var(--chrome); border-top: 1px solid var(--chromerule);
+}
+.pl-status { flex: 1 1 100%; margin: 0; font-size: var(--fs-0); line-height: 1.45; color: var(--ink); min-height: 1.45em; }
+.pl-status:empty { min-height: 0; }
+.planner .pl-status .btn { margin-left: var(--space-2); min-height: 26px; padding: 2px var(--space-2); }
+
+/* Visually hidden, and not display:none: a live region taken out of the page may not be read when something is written into it. */
+.pl-say {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---- the Professor's notes ---------------------------------------------------------------------------------------- */
+/* The panel and the report's copy (#sec-prof) share these classes: the same code writes the same notes into both, and only the
+   page around them differs. Both are <section>s, hence the flex column with no gap: the rhythm is the paddings and the rules
+   below, and a gap would leave dead air between the heading, the verdict and every group. */
+.prof, .pl-saved { display: flex; flex-direction: column; gap: 0; }
+.prof { border-top: 1px solid var(--chromerule); margin-top: var(--space-3); }
+.pf-head { display: flex; align-items: baseline; gap: var(--space-2) var(--space-3); padding: 14px var(--space-4) var(--space-2); flex-wrap: wrap; }
+.pf-head h3 { font-size: var(--fs-3); margin: 0; flex: 1; }
+.pf-verdict {
+  margin: 0 var(--space-4) 10px; padding: 9px 11px; background: var(--chrome2); border-radius: var(--r-1);
+  border-left: 3px solid var(--sev, var(--muted)); font-size: var(--fs-1); line-height: 1.5;
+}
+.pf-verdict[data-worst='good'] { --sev: var(--track); }
+.pf-verdict[data-worst='warn'] { --sev: var(--contact); }
+.pf-verdict[data-worst='bad'] { --sev: var(--bad); }
+.pf-verdict b { font-weight: 600; }
+.pf-verdict .sub { display: block; margin-top: 2px; font: var(--fs-0) / 1.5 var(--font-mono); color: var(--ink2); }
+.pf-verdict[data-stale] .sub { color: var(--muted); }
+
+.pf-grp { border-top: 1px solid var(--chromerule); }
+.pf-grp > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: var(--space-2);
+  padding: 10px var(--space-4); font: 600 var(--fs-1) var(--font-head); min-height: 40px;
+}
+.pf-grp > summary::-webkit-details-marker { display: none; }
+.pf-grp > summary::before { content: '\25B8'; color: var(--muted); font-size: var(--fs-0); width: 12px; flex: none; }
+.pf-grp[open] > summary::before { content: '\25BE'; }
+.pf-grp > summary:hover { background: var(--chrome2); }
+.pf-count { margin-left: auto; font: 400 var(--fs-0) var(--font-mono); color: var(--ink2); display: inline-flex; gap: 9px; align-items: center; }
+.pf-count span { display: inline-flex; gap: var(--space-1); align-items: center; }
+.pf-count svg { width: 12px; height: 12px; }
+.pf-list { list-style: none; margin: 0; padding: 2px var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: 10px; }
+.pf-errs { border-top: 1px solid var(--chromerule); padding-top: var(--space-3); }
+.pf-errs:empty { display: none; }
+.pf-empty { margin: 0 var(--space-4) 14px; font-size: var(--fs-1); color: var(--ink2); }
+.pf-foot { margin: 0; padding: 10px var(--space-4) 14px; border-top: 1px solid var(--chromerule); font-size: var(--fs-0); line-height: 1.55; color: var(--muted); }
+
+/* One note. The border on the left is the severity's third signal after the glyph's shape and the word: its width and style
+   differ as well as its colour (3 px for a note, 4 for a check, a 6 px double rule for a problem), so a greyscale screen reads it. */
+.adv { --sev: var(--muted); border-left: 3px solid var(--sev); padding: 2px 0 2px 11px; min-width: 0; }
+.adv[data-sev='good'] { --sev: var(--track); }
+.adv[data-sev='warn'] { --sev: var(--contact); }
+.adv[data-sev='bad'], .adv[data-sev='error'] { --sev: var(--bad); }
+.adv[data-sev='warn'], .adv[data-sev='bad'], .adv[data-sev='error'] { border-left-width: 4px; }
+.adv[data-sev='bad'], .adv[data-sev='error'] { border-left-style: double; border-left-width: 6px; }
+.adv .sev {
+  display: inline-flex; gap: 5px; align-items: center; color: var(--sev);
+  font: 500 var(--fs-0) var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+}
+.adv .sev svg { width: 12px; height: 12px; flex: none; }
+.adv .sev span { color: var(--ink2); }
+.adv h4 { font: 600 var(--fs-2) / 1.3 var(--font-head); margin: 2px 0 3px; letter-spacing: -.005em; }
+.adv p { margin: 0; font-size: var(--fs-1); line-height: 1.55; color: var(--ink2); }
+.adv p b { color: var(--ink); font-weight: 600; font-family: var(--font-mono); font-size: var(--fs-0); font-variant-numeric: tabular-nums; }
+.adv .basis { margin-top: var(--space-1); font: var(--fs-0) / 1.45 var(--font-mono); color: var(--muted); }
+.adv .basis a { color: inherit; text-decoration-color: var(--track); text-underline-offset: 2px; }
+.adv .fixes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.planner .adv .fixes .btn { white-space: normal; text-align: left; min-height: 30px; }
+
+/* ---- the Professor on a catalogue spacecraft: the report's own section ---------------------------------------------- */
+/* The report is paper (--surface, --rule), not chrome, and a full-width line is far too long a measure for a note, so each
+   group lays its notes out in columns. The section's frame is the report's, the same as the sections around it. */
+#sec-prof { padding: var(--space-6) 0; border-top: 1px solid var(--rule); scroll-margin-top: 56px; }
+#sec-prof .shead { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
+#sec-prof .shead .hint { color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-0); max-width: 70ch; }
+#sec-prof .pf-verdict { margin: 0 0 var(--space-3); background: var(--sunk); text-wrap: balance; }   /* two lines of a verdict break evenly */
+#sec-prof .pf-grp { border-top: 1px solid var(--rule); }
+#sec-prof .pf-grp > summary { padding: 10px 2px; }
+#sec-prof .pf-grp > summary:hover { background: var(--sunk); }
+#sec-prof .pf-list { padding: var(--space-1) 2px 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: var(--space-4) var(--space-6); align-items: start; }
+#sec-prof .pf-count { margin-left: 6px; }
+#sec-prof .pf-foot { padding: var(--space-3) 0 0; border-top: 1px solid var(--rule); }
+/* the link from the element set's hint: a link in muted text keeps the text colour, and the underline carries the link */
+#rp-link { color: var(--ink2); text-decoration-color: var(--track); text-underline-offset: 2px; }
+
+/* ---- saved orbits ------------------------------------------------------------------------------------------------- */
+.pl-saved { border-top: 1px solid var(--chromerule); padding: var(--space-3) var(--space-4) var(--space-4); }
+.pl-saved h3 { font-size: var(--fs-2); margin: 0 0 var(--space-2); }
+.pl-saved h3 .pl-hint { display: inline; margin-left: 6px; font-weight: 400; }
+.pl-saved ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+/* the Undo of a Delete, repeated under the list when the action bar that holds the real one is off screen */
+.pl-undo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: var(--space-2) 0 0; font-size: var(--fs-0); line-height: 1.45; color: var(--ink); }
+.planner .pl-undo .btn { min-height: 26px; padding: 2px var(--space-2); }
+.pl-saved li { display: flex; align-items: stretch; gap: var(--space-1); }
+.pl-open {
+  flex: 1; min-width: 0; text-align: left; background: none; border: 1px solid transparent;
+  border-radius: var(--r-1); padding: 6px 9px; color: inherit; min-height: 40px; font: var(--fs-1) var(--font-mono);
+}
+.pl-open:hover { background: var(--chrome2); }
+.pl-open[aria-current='true'] { background: var(--chrome2); border-color: var(--track); }
+.pl-open b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-open small { display: block; font-size: var(--fs-0); color: var(--muted); letter-spacing: .03em; }
+.pl-del { flex: none; width: 40px; background: none; border: 1px solid transparent; border-radius: var(--r-1); color: var(--muted); font-size: var(--fs-2); }
+.pl-del:hover { color: var(--ink); background: var(--chrome2); }
+
+/* ---- flow: no cell to take, so the panel sits under the stage and the page scrolls --------------------------------- */
+@media (max-width: 900px) {
+  .planner { border-left: 0; border-top: 1px solid var(--chromerule); }
+  .pl-scroll { overflow: visible; }
+  .pl-actions { position: static; }           /* no sticky bar: the status, and an Undo, can be off screen (#pl-undo) */
+}
+/* a tablet, or a wide but short screen (a large phone held sideways, a short laptop window): two columns, the form and
+   its neighbour the Professor, on one scroll */
+@media (min-width: 641px) and (max-width: 900px), (min-width: 901px) and (max-height: 560px) {
+  .pl-body { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: 'form prof' 'saved prof'; align-items: start; }
+  .prof { border-top: 0; margin-top: 0; border-left: 1px solid var(--chromerule); align-self: stretch; }
+}
+/* sheet: wide but short, where the stage is a sliver, so the planner is a dialog over the whole screen. Add closes it onto the globe. */
+@media (min-width: 901px) and (max-height: 560px) {
+  .planner { position: fixed; inset: 0; z-index: var(--z-dialog); border-left: 0; }
+  :root.pl-sheet { overflow: hidden; }
+  .pl-head { padding-top: calc(env(safe-area-inset-top) + 8px); padding-bottom: var(--space-2); }
+  .pl-form, .pf-head { padding-left: calc(env(safe-area-inset-left) + var(--space-4)); }
+}
+/* a finger: every control in the planner is 44 px, the smaller segmented and fix buttons included */
+@media (pointer: coarse) {
+  .planner .btn, .planner .pl-lab .seg .btn, .planner .adv .fixes .btn, .planner .pl-status .btn, .planner .pl-undo .btn,
+  .pl-select, .pf-grp > summary, .pl-open { min-height: 44px; }
+  .pl-num, .pl-text { min-height: 46px; }     /* the input inside is the control, and it is 44 px of that after the borders */
+  .pl-del { width: 44px; }
+  /* the node's label row holds the RAAN | LTAN switch, which is 44 px of button inside the group's 1 px border: 46 px tall here; its
+     neighbour's label is as tall, so the two boxes under them stay on one line */
+  .pl-f > label[for='pl-inc'] { min-height: 46px; }
+}

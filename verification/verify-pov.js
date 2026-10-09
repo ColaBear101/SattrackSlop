@@ -21,10 +21,11 @@
  *
  *   node verification/verify-pov.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 const U = 1 / 6378.137;                         // km -> scene units (Earth radii)
 
 let fails = 0;
@@ -36,6 +37,7 @@ const dot3 = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errs = [];
@@ -176,11 +178,20 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 40; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + i*10, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   });
-  await page.waitForTimeout(500);
-  const down = await cam();
-  const dn = down.pos.map(v => -v/Math.hypot(...down.pos));
-  const offNadir = Math.acos(Math.max(-1, Math.min(1, dot3(down.dir, dn))))*180/Math.PI;
+  /* The camera is read once the page has drawn the frame that takes the drag in: a fixed half second was enough when the scene drew sixty frames a
+     second whatever the machine was doing, and is not when it draws only what is worth drawing and the machine is busy. Waited on the state
+     this check asserts (polled up to four seconds); the assertion below is the same. */
+  let down, offNadir = 90;
+  for (let k = 0; k < 40 && !(offNadir < 1.5); k++) {
+    await page.waitForTimeout(100);
+    down = await cam();
+    const dn = down.pos.map(v => -v/Math.hypot(...down.pos));
+    offNadir = Math.acos(Math.max(-1, Math.min(1, dot3(down.dir, dn))))*180/Math.PI;
+  }
   chk('pitching down still reaches nadir, to within the one-degree clamp',
       offNadir < 1.5, offNadir.toFixed(2) + ' deg off nadir');
   c = await cam();
@@ -243,6 +254,9 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 10; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x + i*8, clientY: y, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   });
   await page.waitForTimeout(500);
   c = await cam();
@@ -292,6 +306,9 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
     for (let i = 1; i <= 20; i++)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + d*i/20, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    /* a real drag is pointer events as well as mouse events, and it is the pointer events that tell the rebuilt page's scene to draw (it draws only what is
+       worth drawing); the old page has no listener for them */
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
   }, deg/0.30);                                  // the drag rate, 0.30 deg per pixel
 
   for (const [what, extra] of [['a steep oblique', 30], ['near nadir', 59]]) {
@@ -440,11 +457,7 @@ const dist3 = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
      so the fallback runs - while nadir itself is ten degrees below the middle
      of a 42-degree frame, plainly in the picture. The label must drop the
      claim there rather than contradict the view. */
-  await page.evaluate(n => {
-    const b = document.getElementById('satsearch');
-    b.value = n; b.dispatchEvent(new Event('input', { bubbles: true }));
-    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  }, 'GOES 18');
+  await H.pickExact(page, 'GOES 18');                     // through the picker, whichever build it is
   await page.waitForFunction(() => window.__gt.D.entry.name === 'GOES 18', null, { timeout: 20000 });
   await page.evaluate(() => { Orbit3D.freeCam(); Orbit3D.setPov(true); });
   await page.waitForTimeout(600);

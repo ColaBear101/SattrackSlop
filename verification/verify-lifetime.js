@@ -31,12 +31,13 @@
  *
  *   node verification/verify-lifetime.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-require(path.join(__dirname, '..', 'earth', 'lifetime.js'));
+require(H.earthFile('lifetime'));
 const L = globalThis.Lifetime;
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 const DAY = 86400000;
 
 let fails = 0;
@@ -112,11 +113,11 @@ const heo = () => {
       rv.verdict === 'eccentric' && rv.eccMed > L.ECC_MAX && rv.ecc <= L.ECC_MAX,
       rv.verdict + ', median ' + (rv.eccMed || 0).toFixed(4) + ', latest ' + (rv.ecc || 0).toFixed(4));
 
-  const H = L.readPlot(plot(heo()));
+  const HEO = L.readPlot(plot(heo()));
   chk('a high orbit\'s history is read, not filtered out whole',
-      H.P && H.P.length === 200 && H.rows === 200,
-      (H.P ? H.P.length : 0) + ' of ' + H.rows + ' rows kept at ~60,555 km');
-  const hv = L.predict(H.P);
+      HEO.P && HEO.P.length === 200 && HEO.rows === 200,
+      (HEO.P ? HEO.P.length : 0) + ' of ' + HEO.rows + ' rows kept at ~60,555 km');
+  const hv = L.predict(HEO.P);
   chk('...and is refused as eccentric, with a perigee far above the air',
       hv.verdict === 'eccentric' && hv.hp > 25000, hv.verdict + ', perigee ' + (hv.hp || 0).toFixed(0) + ' km');
 
@@ -149,6 +150,7 @@ const heo = () => {
       Object.keys(got).map(k => k + '=' + (got[k].P ? got[k].P.length + ' sets' : got[k].why)).join(', '));
 
   // ---------------- the page ------------------------------------------------
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const errs = [];
   const panel = async (body, status) => {

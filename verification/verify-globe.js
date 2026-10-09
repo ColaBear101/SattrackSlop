@@ -30,10 +30,11 @@
  *
  *   node verification/verify-globe.js        (needs playwright and the network)
  */
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright({ net: 'open' });
 
 /* Served over http rather than opened as a file, for two reasons both learned
    the hard way. A file:// page has an opaque origin, so every image drawn into
@@ -42,6 +43,7 @@ const { chromium } = require('playwright');
    index.html carrying no <meta charset> at all. It is also how the page really
    runs. */
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or dist/ (ROOT stays the repo)
 const TYPES = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json',
                 '.jpg':'image/jpeg', '.png':'image/png', '.svg':'image/svg+xml',
                 '.css':'text/css', '.ico':'image/x-icon' };
@@ -49,8 +51,8 @@ function serve(){
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^[\\/]+/, '') || 'index.html';
-      const file = path.join(ROOT, rel);
-      if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
+      const file = path.join(SITE, rel);
+      if (!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()){
         res.writeHead(404); return res.end('not here');
       }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
@@ -134,7 +136,7 @@ const SITES = [
   /* Every Blue Marble rung the page asks for, in order, and every GIBS call. */
   const rungs = [], gibs = [];
   page.on('request', r => {
-    const m = r.url().match(/bluemarble-(\d+)\.jpg/);
+    const m = r.url().match(/bluemarble-(\d+)(?:-[\w-]+)?\.jpg/);
     if (m) rungs.push(+m[1]);
     if (/gibs\.earthdata/.test(r.url())) gibs.push(r.url());
   });
@@ -143,6 +145,11 @@ const SITES = [
   await page.goto(PAGE, { waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 40000 });
   await page.waitForTimeout(2000);
+  /* The page opens on a photographic surface and is still fetching it. Wait for that to finish (or fail: this is the real
+     network) before measuring anything that counts requests - the old page had a head start of the whole boot. */
+  await page.waitForFunction(() => { const n = document.getElementById('texnote'); return !!n && !/Fetching|sharpening/.test(n.textContent); },
+    null, { timeout: 90000 }).catch(() => {});
+  await page.waitForTimeout(500);
 
   // ---- the control exists and offers what GlobeTex offers --------------------
   const modes = await page.evaluate(() => Orbit3D.surfaces().map(m => m.key));
@@ -570,7 +577,7 @@ const SITES = [
     const p = await ctx.newPage();
     const got = [];
     p.on('pageerror', e => errs.push(e.message));
-    p.on('request', r => { const m = r.url().match(/bluemarble-(\d+)\.jpg/); if (m) got.push(+m[1]); });
+    p.on('request', r => { const m = r.url().match(/bluemarble-(\d+)(?:-[\w-]+)?\.jpg/); if (m) got.push(+m[1]); });
     await p.route('**celestrak.org/**', r => r.abort());
     await p.route('**tle.ivanstanojevic.me/**', r => r.abort());
     await p.goto(PAGE, { waitUntil: 'load' });

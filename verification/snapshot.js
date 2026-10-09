@@ -1,31 +1,34 @@
-/* snapshot.js — freeze what the Earth console currently computes.
+/* snapshot.js - freeze what the Earth console computes, or take the same measurements again.
  *
- * The central body is being made swappable. That is a refactor, and the only
- * honest answer to "did it change anything" is a diff against what the code
- * produced before it was touched. Eyeballing does not work here: the Kozai
- * semi-major-axis error was 512 m and the culmination bug hit 15 of 309
- * satellites, and neither would show up in a screenshot.
+ * The central body is being made swappable, and then the whole console is being rebuilt. Both are
+ * refactors, and the only honest answer to "did it change anything" is a diff against what the code
+ * produced before it was touched. Eyeballing does not work here: the Kozai semi-major-axis error was
+ * 512 m and the culmination bug hit 15 of 309 satellites, and neither would show up in a screenshot.
  *
- * This drives the REAL page in a browser rather than a re-implementation, so it
- * measures the shipping code. Values come from window.__gt at full precision,
- * not from the rendered text.
+ * This drives the REAL page in a browser rather than a re-implementation, so it measures the shipping
+ * code. Values come from window.__gt at full precision, not from the rendered text.
  *
- *   node verification/snapshot.js          write verification/baseline.json
- *   node verification/regress.js           compare against it
+ *   node verification/snapshot.js --write-baseline    rewrite verification/baseline.json
+ *                                                     (only ever from the legacy page: GT_TARGET=legacy)
+ *   node verification/snapshot.js --out FILE          take the measurements of the chosen target into FILE
+ *
+ *   GT_TARGET=legacy|new   which build is measured (see lib/harness.js); GT_URL adopts a running one.
  *
  * Reproducibility rules, both of which matter:
  *   - the analysis window start is FIXED, never Date.now()
- *   - the network is blocked, because refreshTLE() would otherwise rewrite the
- *     element set mid-run and the "baseline" would depend on what CelesTrak
- *     served that minute
+ *   - the network is blocked, because refreshTLE() would otherwise rewrite the element set mid-run and
+ *     the "baseline" would depend on what CelesTrak served that minute
+ *
+ * regress.js imports capture() from here and compares in memory. It no longer copies this file, patches
+ * its source text and runs the copy: that trick silently overwrote baseline.json if the `OUT` line was
+ * ever reformatted.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const H = require('./lib/harness');
 
-/* Windows path separators have to become forward slashes for a file:// URL. */
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
-const OUT  = path.join(__dirname, 'baseline.json');
+const BASELINE = path.join(__dirname, 'baseline.json');
 
 /* A fixed instant, chosen inside the embedded catalogue's epoch span so every
    object propagates sensibly. */
@@ -46,25 +49,12 @@ const WANTED = [
   'VELOX-1'
 ];
 
-(async () => {
-  const { chromium } = require(process.env.PW ||
-    'C:/Users/Lenovo/AppData/Roaming/npm/node_modules/playwright');
-  const browser = await chromium.launch();
-  const page = await browser.newContext().then(c => c.newPage());
-  const errs = [];
-  page.on('pageerror', e => errs.push(String(e)));
-  /* No network: the baseline must not depend on what a server returned today. */
-  await page.route('**://celestrak.org/**', r => r.abort());
-  await page.route('**://tle.ivanstanojevic.me/**', r => r.abort());
-  /* The baseline is numbers, not pixels, and regenerating it should not depend
-     on NASA being reachable. */
-  await page.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
-
-  await page.goto(PAGE, { waitUntil: 'load' });
-  await page.waitForFunction(() => !!window.__gt, null, { timeout: 30000 });
-
-  const result = await page.evaluate(({ T0, SPANS, WANTED }) => {
-    const gt = window.__gt;
+/* Everything the baseline records, read from an object with the window.__gt shape.
+ *
+ * This ONE function runs in the browser (page.evaluate is handed its source) and in Node (`gate:lib`),
+ * so the two gates cannot measure different things. It must stay self-contained: no closure over
+ * anything in this module, because its text is what crosses into the page. */
+function MEASURE_GT(gt, T0, SPANS, WANTED) {
     const byName = new Map(gt.CAT.map(c => [c.name, c]));
     const out = { meta: {}, missing: [], sats: {} };
     out.meta = { t0: T0, spans: SPANS, catalogue: gt.CAT.length,
@@ -83,7 +73,7 @@ const WANTED = [
 
         const E = D.E;
         /* Full precision. toString() on a double round-trips exactly, which is
-           the point — this file is compared byte for byte. */
+           the point - this file is compared byte for byte. */
         const elements = {
           epoch: E.epoch.getTime(), a: E.a, ecc: E.ecc, inc: E.inc, raan: E.raan,
           argp: E.argp, ma: E.ma, n: E.n, period: E.period,
@@ -110,7 +100,7 @@ const WANTED = [
         const probes = [];
         /* D.track after the body refactor, D.satrec before it. Accepting both
            is what lets this one file grade the code on either side of the
-           change — the quantity computed is identical, only the handle moved. */
+           change - the quantity computed is identical, only the handle moved. */
         const handle = D.track || D.satrec;
         for (let k = 0; k < 100; k++) {
           const ms = T0 + Math.round(hours * 3600000 * k / 99);
@@ -134,17 +124,71 @@ const WANTED = [
       out.sats[name] = rec;
     }
     return out;
-  }, { T0, SPANS, WANTED });
+}
 
-  await browser.close();
+/* ...from a page that exposes window.__gt (the shipping build, in a real browser). */
+async function capture(page) {
+  return page.evaluate(({ src, T0, SPANS, WANTED }) =>
+    (new Function('return (' + src + ')'))()(window.__gt, T0, SPANS, WANTED),
+  { src: MEASURE_GT.toString(), T0, SPANS, WANTED });
+}
 
-  if (errs.length) {
-    console.error('page errors during snapshot:\n  ' + errs.join('\n  '));
-    process.exit(1);
+/* ...from the library bundle (`npm run build:shims`) loaded into a BLANK Chromium page: no app, no server,
+   a few seconds, and the fast pre-gate. Same engine and satellite.js bytes as the app; the page run stays
+   the authoritative one.
+   Why a browser and not Node: the baseline was made in Chromium, and Node's V8 evaluates some Math
+   functions differently in the last bits - the same bundle run in Node 23.5 differs from the baseline in
+   364 values by up to 1e-14 relative, and run in Chromium it is BIT-IDENTICAL. The engine is not at
+   fault; the question "did the numbers move" has to be asked of the engine that made them. */
+async function measureLib() {
+  const bundle = path.join(__dirname, '.build', 'gt.cjs');
+  if (!fs.existsSync(bundle)) throw new Error(bundle + ' is missing - run `npm run build:shims`');
+  const text = fs.readFileSync(path.join(__dirname, '..', 'data', 'catalogue.txt'), 'utf8');
+  const { chromium } = H.playwright();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const errs = [];
+    page.on('pageerror', e => errs.push(String(e)));
+    await page.goto('about:blank');
+    await page.addScriptTag({ content: fs.readFileSync(bundle, 'utf8') });
+    const result = await page.evaluate(({ src, T0, SPANS, WANTED, text }) =>
+      (new Function('return (' + src + ')'))()(globalThis.__createGtForNode(text), T0, SPANS, WANTED),
+    { src: MEASURE_GT.toString(), T0, SPANS, WANTED, text });
+    return { result, errs, target: 'lib bundle in a blank Chromium page' };
+  } finally {
+    await browser.close();
   }
-  result.meta.written = new Date().toISOString();
-  fs.writeFileSync(OUT, JSON.stringify(result, null, 1));
+}
 
+/* Open the chosen target in a fresh browser with the network blocked, wait for the test surface,
+   and capture. Resolves to { result, errs, target }. */
+async function measure(opts) {
+  opts = opts || {};
+  if (opts.mode === 'lib') return measureLib();
+  const { chromium } = H.playwright();
+  const server = await H.up();
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext();
+    /* No network: the baseline must not depend on what a server returned today. Also no GIBS: the
+       baseline is numbers, not pixels, and regenerating it should not depend on NASA being reachable. */
+    await H.net(ctx, 'offline');
+    await ctx.addInitScript(() => { window.__GT_TEST__ = true; });
+    const page = await ctx.newPage();
+    const errs = [];
+    page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(server.page, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!window.__gt, null, { timeout: 30000 });
+    const result = await capture(page);
+    return { result, errs, target: server.target };
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+}
+
+function describe(result) {
   const n = Object.keys(result.sats).length;
   let passes = 0, probes = 0;
   for (const s of Object.values(result.sats))
@@ -152,9 +196,31 @@ const WANTED = [
       if (sp.passes) passes += sp.passes.length;
       if (sp.probes) probes += sp.probes.filter(Boolean).length;
     }
-  console.log('baseline written: ' + OUT);
-  console.log('  ' + n + ' satellites x ' + SPANS.length + ' spans');
-  console.log('  ' + passes + ' passes, ' + probes + ' sample probes');
-  if (result.missing.length)
-    console.log('  not in catalogue (skipped): ' + result.missing.join(', '));
-})();
+  return '  ' + n + ' satellites x ' + SPANS.length + ' spans\n' +
+         '  ' + passes + ' passes, ' + probes + ' sample probes' +
+         (result.missing.length ? '\n  not in catalogue (skipped): ' + result.missing.join(', ') : '');
+}
+
+module.exports = { capture, measure, describe, BASELINE, T0, SPANS, WANTED };
+
+if (require.main === module) {
+  (async () => {
+    const argv = process.argv.slice(2);
+    const arg = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
+    const writeBaseline = argv.includes('--write-baseline');
+    const out = writeBaseline ? BASELINE : arg('--out');
+    if (!out) { console.error('say where to write: --out FILE, or --write-baseline (legacy only)'); process.exit(2); }
+    /* The baseline is the legacy page's answer. Regenerating it from the thing being judged would make
+       the gate agree with whatever the rewrite computes, which is the one thing it exists to prevent. */
+    if (writeBaseline && (process.env.GT_TARGET !== 'legacy' || process.env.GT_URL)) {
+      console.error('refusing to rewrite baseline.json: set GT_TARGET=legacy explicitly (and no GT_URL)');
+      process.exit(2);
+    }
+    const { result, errs, target } = await measure({ mode: arg('--mode') || 'page' });
+    if (errs.length) { console.error('page errors during snapshot:\n  ' + errs.join('\n  ')); process.exit(1); }
+    result.meta.written = new Date().toISOString();
+    fs.writeFileSync(out, JSON.stringify(result, null, 1));
+    console.log('snapshot written: ' + out + '  (target: ' + target + ')');
+    console.log(describe(result));
+  })().catch(e => { console.error(e); process.exit(1); });
+}

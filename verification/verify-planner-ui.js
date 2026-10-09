@@ -41,48 +41,75 @@
  *   20 the Professor on a catalogue spacecraft: the report's read-only section #sec-prof (56, 53 read-only half, 58, 28 for the label, 41, 43, 46)
  * Every number 1..70 of SPEC 7.5 is reached or explicitly skipped, and a full run says so at the end. Nothing is skipped now that the read-only host of the Professor on a
  * catalogue spacecraft (WP9, the report's #sec-prof) is in the page (group 20); the only SKIP a run can still print is the half of 47 that needs git.
+ * verification/behaviours.json says which checks cover each of the seventy (and what the port to the rebuilt page did to them); node verification/check-behaviours.js keeps it honest.
  *
  * Time. Every wait is tied to a timer the page owns, and says which: the closed-form pass runs
  * 160 ms after the last input, the trial pass 500 ms, the spoken summary 1,200 ms, Undo lasts
  * 8 s (SPEC D32). Everywhere else the test calls __planner.flush() instead of sleeping.
  *
- * Environment variables, for working on one group and for the mutation runner; a plain run sets
- * none of them and runs everything:
+ * Environment variables, for working on one group; a plain run sets none of them and runs everything:
  *   PLANNER_UI_GROUPS=3,8     run only those groups (the closing coverage report is then skipped)
  *   PLANNER_UI_FAILFAST=1     stop at the first failing check and say which
- *   PLANNER_UI_OVR=<file>     a JSON object {"earth/plannerui.js": "<path of a mutated copy>"}: those
- *                             files are served instead of the repository's (never written to)
+ *   GT_TARGET=legacy|new      which build is driven (verification/lib/harness.js; GT_DIST names a build folder for `new`)
+ *
+ * Which way into the page is driven. Every group here runs on the TEST-SURFACE boot path, and only on it. The harness sets window.__GT_TEST__ before the rebuilt
+ * page loads, so src/main.ts loads src/testing/surface.ts, which brings the planner up first (restores the saved orbits, builds the controller, calls
+ * PlannerUI.init once) and only then assigns window.__gt: open() below waits for __gt and so finds the planner already up. A visitor's page carries no test
+ * flag; there the planner's chunks are fetched when the browser is idle after the first answer, or by the pill, and nothing in this file walks that path.
+ * verification/verify-visitor.js is the guard of the visitor's path; a green run of this file says nothing about it. (The old page has one way in.)
+ *
+ * One file drives both builds. What differs between them is the shell around the planner (the old page's always-open spacecraft field,
+ * its .hintrow and .bar-transport; the rebuilt page's picker popover, header bar and .transport) and the way a part of the page is
+ * made absent (the old page withheld a script file; the rebuilt one cannot lose an ES module, so a lazy chunk is aborted, or a fault
+ * is armed): those differences live in the `SEL` table, the helpers below and the harness, so a check reads the same on both.
+ * Counts: 665 checks on the old page; the rebuilt page makes nine more, which exist only there (group 1: the stage's cell-sum and the globe's own floor are two
+ * checks where the old page's globe, being its own cell, needs one; group 9: nothing collides on the globe, at the four drawer sizes in both schemes).
+ * Where the rebuilt header is a fixed height (1100 px and up) the header's height checks are true by construction, and say so in their names; the box test
+ * (__T.boxed: the pill, the chip and the age inside the header, nothing clipped) is what can fail there. CHANGES-FROM-LEGACY.md row P is the ledger of all of it.
  *
  *   node verification/verify-planner-ui.js        (needs playwright)
  */
 'use strict';
+const H = require('./lib/harness');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const http = require('http');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
 const ROOT = path.join(__dirname, '..');
+const SITE = H.targetRoot();   // what is being served: legacy/ or a build of the new page (ROOT stays the repo)
+const NEW = H.targetName() === 'new';
 const GROUPS = process.env.PLANNER_UI_GROUPS ? new Set(process.env.PLANNER_UI_GROUPS.split(',').map(Number)) : null;
 const FAILFAST = !!process.env.PLANNER_UI_FAILFAST;
-const OVR = process.env.PLANNER_UI_OVR ? JSON.parse(fs.readFileSync(process.env.PLANNER_UI_OVR, 'utf8')) : {};
 const want = n => !GROUPS || GROUPS.has(n);
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
-                '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css' };
-function serve() {
-  return new Promise(resolve => {
-    const srv = http.createServer((req, res) => {
-      const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
-      let file = path.join(ROOT, rel);
-      if (OVR[rel]) file = OVR[rel];
-      else if (!file.startsWith(ROOT)) { res.writeHead(404); return res.end('no'); }
-      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end('no'); }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
-      fs.createReadStream(file).pipe(res);
-    });
-    srv.listen(0, '127.0.0.1', () => resolve(srv));
-  });
-}
+
+/* The shell the planner is laid into, by the names each build gives it. `__SEL` is installed on every page before its scripts run
+   (open() below), so the code that runs inside the page reads the same table the test does.
+     glob       the buttons on the globe, which must stay reachable under an open planner
+     cell       the globe's cell: what the planner takes width from (the old page's globe box, the rebuilt console's first column,
+                whose globe sits inside a padded stage)
+     globe      the globe's own box (.viewport on both pages). The old page's globe fills its cell; the rebuilt stage keeps a 16 px gutter on each side of it,
+                so at 901 px, the narrowest drawer, the cell is 529 px and the globe 497. "Globe" is said only of what is measured on this box.
+     globeMin   the least width the globe may have with the drawer open at 901 px: the old page's 528 px, the rebuilt page's deliberate 496 px (the lead's
+                decision: the stage keeps its gutters, and the floor is stated for the globe, where it was once measured on the cell)
+     jump       the links of the page's section nav, which the Professor's link must not join (the old page's is in the header, the rebuilt page's is the sticky sub-nav)
+     overlays   the things laid over the globe that must not collide when the drawer narrows it (the rebuilt page only: the old page's seven overlays were placed for a 528 px globe)
+     liveIn     where #pl-live may be a direct child of: the old page's <body>; the rebuilt page's mount node (#app), where the planner's host puts it, or <body>
+     transport  the clock and its controls
+     pillRow    where the Plan pill sits (the old page: the hint row beside the count; the rebuilt page: the header's own cell for it)
+     fit        what is as tall as the screen under the header with the planner shut (the old .app is 900 tall at 900; the rebuilt .console ends at 900)
+     seglabels  how many captions the globe's controls show (the old page seven overlays, six captions; the rebuilt page two rows: Camera and Trail)
+     minText    the smallest text size, in px, that the planner and the report's Professor may use (the old page's floor was 11 px; the rebuilt type scale's is 12) */
+const SEL = NEW
+  ? { glob: '.viewport button', cell: '.stage-zone', globe: '.viewport', globeMin: 496, jump: 'nav.rnav a', transport: '.transport', pillRow: '.t-plan', fit: '.console', seglabels: 2, minText: 12,
+      overlays: [['clock', '.hud'], ['camera row', '.camseg'], ['trail row', '.trailseg'], ['Layers row', '.layerseg'], ['key', '.o3-key'], ['drag hint', '.hint-drag'], ['minimap', '.o3-mini']], liveIn: ['body', '#app'] }
+  : { glob: '.viewport .btn', cell: '.viewport', globe: '.viewport', globeMin: 528, jump: '.bar-top .jump a', transport: '.bar-transport', pillRow: '.hintrow', fit: '.app', seglabels: 6, minText: 11, overlays: null, liveIn: ['body'] };
+/* what the header's height figures are worth: from 1100 px up the rebuilt header is one row of a fixed height (AppBar.svelte: height: var(--bar-h)), so "within 3 px of the
+   pre-planner header" and "open equals closed" cannot fail there; they are true by construction. What can fail there is the content: the pill, the chip and the age lie inside
+   the box and nothing in it is clipped (__T.boxed). The old page's header grows with its content at every width, so there the height figures are measured. */
+const BYCONSTR = NEW ? ' (the rebuilt header is a fixed height from 1100 px up, so its height figures hold by construction there; what can fail there is the box test: pill, chip and age, where they are on screen, inside the header and nothing clipped)' : '';
+/* what the picker says when nothing matches (the rebuilt page's note is a sentence, with its full stop; the old page's was not) */
+const NONE = NEW ? 'Nothing in the catalogue matches that.' : 'Nothing in the catalogue matches that';
 
 /* Thrown by chk under PLANNER_UI_FAILFAST: unwinds to the handler at the bottom, which closes the browser and
    the server (process.exit from inside a check would leave Chromium behind) and names the check. */
@@ -93,7 +120,8 @@ const seen = new Set();          // the SPEC 7.5 numbers some check name started
 const skipped = [];              // [number, why]: a behaviour whose subject is not in the page yet
 const chk = (name, ok, detail) => {
   if (ok) passes++; else fails++;
-  const m = /^(\d+(?:[\/,]\d+)*) /.exec(name);
+  /* "<group> no page error" carries its GROUP number, not a behaviour's: it must not mark behaviour 1..20 as reached */
+  const m = / no page error/.test(name) ? null : /^(\d+(?:[\/,]\d+)*) /.exec(name);
   if (m) m[1].split(/[\/,]/).forEach(n => seen.add(+n));
   console.log((ok ? '  PASS  ' : '  FAIL  ') + name + (detail !== undefined && detail !== '' ? '   ' + detail : ''));
   if (!ok && FAILFAST) throw new FailFast(name);
@@ -103,7 +131,8 @@ const chk = (name, ok, detail) => {
 const skip = (n, why) => { skipped.push([n, why]); seen.add(n); console.log('  SKIP  ' + n + ' ' + why); };
 const skipPart = (n, why) => { skipped.push([n, why]); console.log('  SKIP  ' + n + ' (part) ' + why); };
 const allErrs = [];
-const NET = /celestrak\.org|tle\.ivanstanojevic\.me/;
+/* what a page must not ask for when an orbit of the reader's is on screen: CelesTrak, its mirror, and the rebuilt page's own cache API in front of them */
+const NET = /celestrak\.org|tle\.ivanstanojevic\.me|\/api\/(tle|history)\//;
 let BASE = '';
 
 /* A fresh context with the page's own network routes aborted. `init` runs before the page's scripts on every
@@ -112,19 +141,72 @@ let BASE = '';
    the planner makes into the page without a copy of the page's logic. Page errors are collected per page and
    once more in allErrs, so the final line cannot be green with one unreported. */
 const HOSTSPY = `(function(){ var p; Object.defineProperty(window, 'PlannerUI', { configurable: true, get: function(){ return p; }, set: function(v){
-  p = v; if(v && typeof v.init === 'function'){ var o = v.init; v.init = function(h){ window.__host = h; return o.apply(this, arguments); }; } } }); })();`;
+  p = v; if(v && typeof v.init === 'function'){ var o = v.init;
+    /* the controller as it is handed over, before anything has initialised it: a load told to it now must be a no-op (62) */
+    try { v.onLoad(null); window.__early = 'quiet'; } catch(e){ window.__early = 'threw: ' + (e && e.message); }
+    v.init = function(h){ window.__host = h; return o.apply(this, arguments); }; } } }); })();`;
+/* What the code that runs inside the page needs to know about the shell it is in (the SEL table, and the two reads of the picker that differ):
+   `note` is what the picker says under its list (the old page's li.note in the list, the rebuilt page's p.note after it), `shut` is whether
+   its list is closed (the old page hides it; the rebuilt page's popover is out of the page when shut), `railShown` is whether the rail has a box
+   (the rebuilt page hides its zone, not the rail's own display). */
+const PAGE_HELPERS = `(function(){ window.__SEL = ${JSON.stringify(SEL)}; window.__T = {
+  note: function(){ var l = document.querySelector('#satlist li.note'); if(l) return l.textContent;
+    var s = document.getElementById('satsearch'), d = s && s.closest('[role="dialog"]'), p = d && d.querySelector('p.note'); return p ? p.textContent : undefined; },
+  shut: function(){ var l = document.getElementById('satlist'), s = document.getElementById('satsearch'); return ${NEW ? '!s' : '!l || l.hidden'}; },
+  railShown: function(){ var r = document.querySelector('.rail'); return !!r && r.getClientRects().length > 0; },
+  /* what the header holds that the planner added or changes (the pill, the chip of an orbit of the reader's, the age chip), when it is on screen: it lies inside the header's box,
+     its own words fit its own box, and no ancestor that clips (the rebuilt header's .ids is overflow:hidden from 1100 px up) is hiding part of it. Returns the problems found. */
+  boxed: function(){ var bar = document.querySelector('.bar-top'), hb = bar.getBoundingClientRect(), bad = [], rnd = function(x){ return Math.round(x); };
+    [['pill', 'planopen'], ['chip', 'customchip'], ['age', 'agechip']].forEach(function(p){ var e = document.getElementById(p[1]); if(!e || !e.getClientRects().length) return;
+      var b = e.getBoundingClientRect();
+      if(b.left < hb.left - 1 || b.right > hb.right + 1 || b.top < hb.top - 1 || b.bottom > hb.bottom + 1) bad.push(p[0] + ' outside the header: ' + [b.left, b.right, b.top, b.bottom].map(rnd).join('/') + ' in ' + [hb.left, hb.right, hb.top, hb.bottom].map(rnd).join('/'));
+      if(e.scrollWidth > e.clientWidth + 1) bad.push(p[0] + ' words overflow their box: ' + e.scrollWidth + ' > ' + e.clientWidth);
+      for(var a = e.parentElement; a && a !== bar; a = a.parentElement){ var c = getComputedStyle(a); if(c.overflowX === 'visible' && c.overflowY === 'visible') continue;
+        var r = a.getBoundingClientRect(); if(b.left < r.left - 1 || b.right > r.right + 1 || b.top < r.top - 1 || b.bottom > r.bottom + 1) bad.push(p[0] + ' cut by ' + (a.className || a.localName)); } });
+    return bad; },
+  /* the pill's display as the layout has it: 'none' when it has no box at all (hidden itself, or inside a hidden wrapper, which is how the rebuilt page hides it) */
+  disp: function(id){ var e = document.getElementById(id); return e.getClientRects().length ? getComputedStyle(e).display : 'none'; },
+  /* does a rule's text write a colour out (a hex, an rgb()) instead of naming a token? A fully transparent one is no colour of any theme: the build's minifier writes \`transparent\` as #0000 */
+  lit: function(t){ return /#[0-9a-fA-F]{3,8}\\b|rgba?\\(/.test(t.replace(/#0000\\b|#00000000\\b|rgba\\(0, 0, 0, 0\\)/g, '')); },
+  /* a computed colour as {r,g,b,a}: rgb() and rgba() read as written; any other form (the rebuilt page's colour-mix() computes to color(srgb ...)) is painted on a pixel and read back */
+  rgba: function(c){ var m = c.match(/rgba?\\(([^)]+)\\)/);
+    if(m){ var p = m[1].split(/[ ,\\/]+/).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; }
+    var k = document.createElement('canvas'); k.width = k.height = 1; var g = k.getContext('2d', { willReadFrequently: true }); g.fillStyle = c; g.fillRect(0, 0, 1, 1); var d = g.getImageData(0, 0, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 }; },
+  /* how many siblings along the path from #planner up to <body> a sheet makes inert: all but the sprite, the scripts and #pl-live */
+  walk: function(){ var pl = document.getElementById('planner'), live = document.getElementById('pl-live'), w = 0;
+    for(var n = pl; n && n !== document.body; n = n.parentElement){ var par = n.parentElement; if(!par) break;
+      for(var c = par.firstElementChild; c; c = c.nextElementSibling) if(c !== n && c !== live && c.localName !== 'script' && c.localName !== 'svg') w++; }
+    return w; },
+  picked: function(){ var s = document.getElementById('satsearch'); return s ? s.value : (document.getElementById('satname') || {}).textContent; }
+}; })();`;
+/* A part of the planner that is not there, for the checks that prove the console does not depend on it. The old page's planner was four
+   script files; the rebuilt page's is lazy chunks, and a chunk that cannot be fetched is the same loss. Each pattern matches ONE chunk
+   (advisor- is also the start of advisor-copy-). The result is what open() takes as `route`. */
+const CHUNKS = { planner: /\/assets\/planner-[\w-]+\.js(\?|$)/, lifetime: /\/assets\/lifetime-[\w-]+\.js(\?|$)/, advisor: /\/assets\/advisor-(?!copy-)[\w-]+\.js(\?|$)/,
+  'advisor-copy': /\/assets\/advisor-copy-[\w-]+\.js(\?|$)/, plannerui: /\/assets\/plannerui-[\w-]+\.js(\?|$)/, parts: /\/assets\/parts-[\w-]+\.js(\?|$)/ };
+const withheld = mod => [[CHUNKS[mod], r => r.abort()]];
+/* The page with the planner's maths missing (open()'s options): the old page's global is hidden before its scripts run; the rebuilt page's chunk is not served. */
+const ABSENT_PLANNER = NEW ? { planner: false, route: withheld('planner') }
+  : { planner: false, init: `Object.defineProperty(window, 'Planner', { set: function(v){}, get: function(){ return undefined; }, configurable: true });` };
 async function open(browser, o) {
   o = o || {};
   const ctx = await browser.newContext(Object.assign({ viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', acceptDownloads: true }, o.ctx || {}));
   await ctx.addInitScript(HOSTSPY);
+  await ctx.addInitScript(PAGE_HELPERS);
   if (o.init) await ctx.addInitScript(o.init);
+  if (o.fault) await ctx.addInitScript('window.__GT_FAULT__ = ' + JSON.stringify(o.fault) + ';');
   const page = await ctx.newPage();
   /* A wait or a click that times out is a failed check with a name, not a crash with a stack trace: the first line of the report says which promise of the page was not
      kept (a disabled Add that never became enabled, a list that never gained its row), and the run goes on to the checks that can still say something. */
   for (const m of ['click', 'tap', 'fill', 'focus', 'selectOption', 'waitForFunction']) {
     const orig = page[m].bind(page);
     page[m] = async function () {
-      try { return await orig.apply(null, arguments); }
+      try {
+        /* The spacecraft field is always on the old page; on the rebuilt one it is in a popover, which a person opens first (a no-op when it is open) */
+        if (arguments[0] === '#satsearch' && m !== 'waitForFunction') await H.openPicker(page);
+        return await orig.apply(null, arguments);
+      }
       catch (e) {
         if (e instanceof FailFast || !/Timeout \d+ms exceeded/.test(String(e && e.message))) throw e;
         const a0 = arguments[0];
@@ -179,7 +261,7 @@ async function setWindow(page, ms) {
   await page.waitForFunction(m => __gt.D.start.getTime() === m, ms, { timeout: 30000 });
 }
 async function setSpan(page, h) {
-  await page.click('.bar-window .span[data-h="' + h + '"]');
+  await H.clickWindow(page, '[data-h="' + h + '"]');     // the old page's window bar is always on screen; the rebuilt one's is a popover, which this opens
   await page.waitForFunction(x => __gt.D.hours === x, h, { timeout: 30000 });
 }
 /* elements for a custom orbit through the page's own API (what a saved or programmatic orbit is) */
@@ -191,11 +273,47 @@ const addApi = (page, name, patch, extra) => page.evaluate(([n, p, e0, x]) => {
 }, [name, patch || null, E0, extra || null]);
 const visible = (page, id) => page.evaluate(i => { const e = document.getElementById(i); return !!e && !e.hidden && getComputedStyle(e).display !== 'none'; }, id);
 const nHeader = page => page.evaluate(() => Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10);
+/* The first rows of the spacecraft list as a person reads them: "kind:text", the kind being the row's own class (grp, cu), not the highlight the
+   keyboard cursor puts on one. The old page's list opens on the field's focus; the rebuilt page's is a popover, opened first and shut after. */
+/* The Decay section of an orbit of the reader's, once it is painted. The old page writes it in the same task as the load; the rebuilt page's section and its
+   chart are chunks fetched when it is wanted, so a read straight after Add can find the section not there yet. Waits for the words it ends up with. */
+const lifePainted = page => page.waitForFunction(() => { const n = document.getElementById('lifenote'), s = document.getElementById('lifespan');
+  return !!n && !!s && /^(forecast from your drag assumption|planned orbit — nothing was requested)/.test(s.textContent); }, null, { timeout: 20000 });
+/* Press a button of the element-set card ("Edit in planner", "Copy as TLE"), or with no id only bring the card into reach. On the old page the card is in the report,
+   always on screen. On the rebuilt page it is the Source tab of the rail, and an open drawer takes the rail's place: the rail is hidden for as long as the drawer is open,
+   so neither the card's two buttons nor the exports (CSV and calendar, in the rail's Passes tab) can be reached with the planner open. That is an INTENDED difference, accepted
+   by the lead (CHANGES-FROM-LEGACY.md L27, L9, L14, and row P): the drawer takes the rail's cell. A person shuts the planner first (Close), and opens it again afterwards if they want
+   it, so this does the same, and says whether it had to shut the planner. What is not tested on the rebuilt page is pressing these buttons with the drawer open: it cannot be done. */
+const pressCard = async (page, id) => {
+  let shut = false;
+  if (NEW) {
+    if (await ev(page, () => PlannerUI.isOpen() && !__T.railShown())) { await page.click('#pl-close'); shut = true; }
+    await H.showRailTab(page, 'Source');
+  }
+  if (id) await page.click('#' + id);
+  return shut;
+};
+const pickerRows = async (page, n) => {
+  await H.openPicker(page);
+  const rows = await ev(page, n => { const b = document.getElementById('satsearch'); b.focus();
+    const li = [...document.querySelectorAll('#satlist li')].slice(0, n).map(l => [...l.classList].filter(c => /^(grp|cu|plan|note)$/.test(c)).join(' ') + ':' + l.textContent); b.blur(); return li; }, n);
+  if (NEW) await H.closePicker(page);
+  return rows;
+};
 
 /* The header as it was before the planner: the count a direct child of the picker's column with its old words,
    and no pill. Measured by rearranging the live DOM and putting it back, so it is the same page, the same fonts and
-   the same width as the header it is compared with (verified against the git HEAD file at every width of group 9). */
+   the same width as the header it is compared with (verified against the git HEAD file at every width of group 9).
+   The rebuilt header never had a pre-planner form to compare with: its pill is a cell of its own (.t-plan) and its count is in
+   the picker's popover, so what is measured is the same header with that cell taken out of the layout and put back. */
 const PRISTINE_HEADER = () => {
+  if (window.__SEL.pillRow !== '.hintrow') {
+    const cell = document.querySelector(window.__SEL.pillRow), was = cell.style.display;
+    cell.style.display = 'none';
+    const h = Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10;
+    cell.style.display = was;
+    return h;
+  }
   const hr = document.querySelector('.hintrow'), cnt = document.getElementById('satcount'), par = hr.parentNode;
   const txt = cnt.textContent, was = hr.style.display;
   par.insertBefore(cnt, hr); hr.style.display = 'none'; cnt.textContent = '2,158 spacecraft — type to search';
@@ -205,9 +323,9 @@ const PRISTINE_HEADER = () => {
 };
 
 (async () => {
-  const srv = await serve(); srvRef = srv;
-  BASE = 'http://127.0.0.1:' + srv.address().port + '/index.html';
-  const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }); browserRef = browser;
+  const srv = await H.serve(SITE); srvRef = srv;
+  BASE = srv.url('index.html');
+  const browser = await chromium.launch({ args: H.GL_ARGS }); browserRef = browser;
   let t0 = Date.now();
   const lap = n => { const s = ((Date.now() - t0) / 1000).toFixed(0); t0 = Date.now(); if (want(n)) console.log('  (group ' + n + ': ' + s + ' s)'); };
 
@@ -215,35 +333,42 @@ const PRISTINE_HEADER = () => {
   if (want(1)) {
     console.log('1. the way in: the pill, focus, Escape, the picker');
     const { ctx, page, errs } = await open(browser);
-    const e1 = await ev(page, () => { const p = document.getElementById('planopen');
+    const e1 = await ev(page, () => { const p = document.getElementById('planopen'), row = p.closest(__SEL.pillRow), cnt = document.getElementById('satcount');
       return { exp: p.getAttribute('aria-expanded'), ctl: p.getAttribute('aria-controls'), name: p.getAttribute('aria-label'), text: p.textContent,
-        hid: getComputedStyle(document.getElementById('planner')).display, count: document.getElementById('satcount').textContent,
-        plannerHidden: document.getElementById('planner').hidden, inRow: !!p.closest('.hintrow') && p.closest('.hintrow').contains(document.getElementById('satcount')),
+        hid: getComputedStyle(document.getElementById('planner')).display,
+        plannerHidden: document.getElementById('planner').hidden, inRow: !!row && (!cnt || row.contains(cnt)),
         svg: !!p.querySelector('svg[aria-hidden="true"]') }; });
-    chk('1 #planopen sits in the hint row beside the count: aria-expanded false, aria-controls planner, the plus is a drawing, the name is "Plan an orbit"',
+    e1.count = await H.satCount(page);        // the old page shows its count under the field; the rebuilt page's is in the picker, so this opens it, reads it and shuts it
+    chk('1 #planopen sits in its row (the old page\'s hint row beside the count; the rebuilt header\'s cell for it): aria-expanded false, aria-controls planner, the plus is a drawing, the name is "Plan an orbit"',
         e1.exp === 'false' && e1.ctl === 'planner' && e1.name === 'Plan an orbit' && e1.inRow && e1.svg && /^Plan an orbit$/.test(e1.text), JSON.stringify(e1));
     chk('1 #planner is hidden and #satcount reads "2,158 spacecraft" (D15: no suffix)', e1.plannerHidden && e1.hid === 'none' && e1.count === '2,158 spacecraft', e1.count);
-    const h = await ev(page, () => ({ hdr: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, app: document.querySelector('.app').getBoundingClientRect().height,
-      seg: [...document.querySelectorAll('.seglabel')].filter(e => getComputedStyle(e).display !== 'none').length }));
+    const h = await ev(page, () => { const f = document.querySelector(__SEL.fit).getBoundingClientRect();
+      return { hdr: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, app: __SEL.fit === '.app' ? f.height : f.bottom,
+        seg: [...document.querySelectorAll('.seglabel')].filter(e => getComputedStyle(e).display !== 'none').length, boxed: __T.boxed() }; });
     const pris = await ev(page, PRISTINE_HEADER);
-    chk('2 at 1440x900 the header is at most 100 px and within 3 px of the pre-planner header (' + h.hdr + ' against ' + pris + '), .app is 900, six captions show',
-        h.hdr <= 100 && h.hdr - pris <= 3 && h.hdr - pris >= -3 && h.app === 900 && h.seg === 6, JSON.stringify(h));
-    const reach = await ev(page, () => [...document.querySelectorAll('.viewport .btn')].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    chk('2 at 1440x900 the header is at most 100 px and within 3 px of the pre-planner header (' + h.hdr + ' against ' + pris + '), the pill lies inside it unclipped, the console fills the screen (the old .app is 900 tall; the rebuilt console ends at 900), ' + SEL.seglabels + ' captions show' + BYCONSTR,
+        h.hdr <= 100 && h.hdr - pris <= 3 && h.hdr - pris >= -3 && h.boxed.length === 0 && h.app === 900 && h.seg === SEL.seglabels, JSON.stringify(h));
+    const reach = await ev(page, () => [...document.querySelectorAll(__SEL.glob)].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
       if (y < 0 || y > innerHeight) return { n: e.textContent.trim(), ok: false }; const t = document.elementFromPoint(x, y); return { n: e.textContent.trim(), ok: t === e || e.contains(t) }; }));
-    chk('2 every .viewport .btn is reachable with the planner closed (' + reach.length + ')', reach.length >= 8 && reach.every(r => r.ok), reach.filter(r => !r.ok).map(r => r.n).join(','));
+    chk('2 every button on the globe (' + SEL.glob + ') is reachable with the planner closed (' + reach.length + ')', reach.length >= 8 && reach.every(r => r.ok), reach.filter(r => !r.ok).map(r => r.n).join(','));
 
     await page.click('#planopen');
     const o = await ev(page, () => ({ act: document.activeElement.id, exp: document.getElementById('planopen').getAttribute('aria-expanded'), planning: document.querySelector('.app').hasAttribute('data-planning'),
-      rail: getComputedStyle(document.querySelector('.rail')).display, globe: document.querySelector('.viewport').getBoundingClientRect().width, pl: document.getElementById('planner').getBoundingClientRect().width,
+      rail: __T.railShown(), cell: document.querySelector(__SEL.cell).getBoundingClientRect().width, gb: document.querySelector(__SEL.globe).getBoundingClientRect().width, pl: document.getElementById('planner').getBoundingClientRect().width,
       vw: innerWidth, role: document.getElementById('planner').getAttribute('role'), isOpen: PlannerUI.isOpen(), mode: __planner.mode(), shown: !document.getElementById('planner').hidden }));
-    chk('3 a click opens it: aria-expanded true, the focus on #pl-name, .app[data-planning], the rail display:none, a drawer',
-        o.act === 'pl-name' && o.exp === 'true' && o.planning && o.rail === 'none' && o.isOpen && o.mode === 'drawer' && o.shown, JSON.stringify(o));
-    chk('3 the globe is the viewport minus the planner (' + Math.round(o.globe) + ' + ' + Math.round(o.pl) + ' = ' + o.vw + ') and at least 528 px', Math.abs(o.globe + o.pl - o.vw) < 2 && o.globe >= 528, '');
+    chk('3 a click opens it: aria-expanded true, the focus on #pl-name, .app[data-planning], the rail not displayed, a drawer',
+        o.act === 'pl-name' && o.exp === 'true' && o.planning && !o.rail && o.isOpen && o.mode === 'drawer' && o.shown, JSON.stringify(o));
+    /* The old page's globe is its own cell, so one check says both. The rebuilt stage pads its globe (a 16 px gutter on each side), so the cell the planner takes width from and
+       the globe are two boxes, and each claim is made of the box it is about. */
+    if (NEW) {
+      chk('3 the stage\'s cell is the viewport minus the planner (' + Math.round(o.cell) + ' + ' + Math.round(o.pl) + ' = ' + o.vw + ')', Math.abs(o.cell + o.pl - o.vw) < 2, '');
+      chk('3 the globe itself (its own box, inside the stage\'s gutters) is at least ' + SEL.globeMin + ' px wide with the drawer open (' + Math.round(o.gb) + ' px here; the old page\'s floor is 528, and the narrowest drawer is group 9)', o.gb >= SEL.globeMin, '');
+    } else chk('3 the globe\'s cell is the viewport minus the planner (' + Math.round(o.cell) + ' + ' + Math.round(o.pl) + ' = ' + o.vw + ') and at least 528 px', Math.abs(o.cell + o.pl - o.vw) < 2 && o.gb >= SEL.globeMin, '');
     chk('3 in the drawer the planner is a region, not a dialog', o.role === 'region');
     await page.keyboard.press('Escape');
     const c = await ev(page, () => ({ act: document.activeElement.id, hid: getComputedStyle(document.getElementById('planner')).display, exp: document.getElementById('planopen').getAttribute('aria-expanded'),
-      planning: document.querySelector('.app').hasAttribute('data-planning'), rail: getComputedStyle(document.querySelector('.rail')).display }));
-    chk('4 Escape with the focus inside closes it, the focus returns to the pill, the rail is back', c.act === 'planopen' && c.hid === 'none' && c.exp === 'false' && !c.planning && c.rail !== 'none', JSON.stringify(c));
+      planning: document.querySelector('.app').hasAttribute('data-planning'), rail: __T.railShown() }));
+    chk('4 Escape with the focus inside closes it, the focus returns to the pill, the rail is back', c.act === 'planopen' && c.hid === 'none' && c.exp === 'false' && !c.planning && c.rail, JSON.stringify(c));
     // the other openers need a custom orbit on screen: the chip and "Edit in planner"
     const r = await addApi(page, 'Opener test');
     chk('4 a custom orbit can be added through the page for the openers below', r.ok === true, JSON.stringify(r).slice(0, 80));
@@ -254,6 +379,7 @@ const PRISTINE_HEADER = () => {
     chk('4 ...and the verdict line says the orbit is on the globe, with its passes', /^On the globe now: Opener test · (\d+ passes? from Bangkok, [\d.]+ min in 24 h|no pass above 5° from Bangkok in this window)$/.test(o2.sub), o2.sub);
     await page.keyboard.press('Escape');
     chk('4 Escape from the chip returns the focus to the chip', await ev(page, () => document.activeElement.id) === 'customchip');
+    await H.showRailTab(page, 'Source');       // the element set is a tab of the rebuilt rail; the old page shows it in the report
     await page.click('#tle-edit');
     chk('4 "Edit in planner" opens it with the focus in the name field', await ev(page, () => PlannerUI.isOpen() && document.activeElement.id === 'pl-name'));
     await page.keyboard.press('Escape');
@@ -262,21 +388,29 @@ const PRISTINE_HEADER = () => {
     await page.click('#satsearch'); await page.fill('#satsearch', 'zzqq nothing'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
     await page.waitForFunction(() => PlannerUI.isOpen(), null, { timeout: 5000 }).catch(() => {});
     await page.keyboard.press('Escape');
-    const pr = await ev(page, () => ({ act: document.activeElement.id, listHidden: document.getElementById('satlist').hidden, open: PlannerUI.isOpen() }));
+    const pr = await ev(page, () => ({ act: document.activeElement.id, listHidden: __T.shut(), open: PlannerUI.isOpen() }));
     chk('4/63 the picker row then Escape: the focus is on the pill and the list is closed (never back in the search box)', pr.act === 'planopen' && pr.listHidden && !pr.open, JSON.stringify(pr));
     await ev(page, () => __gt.removeCustom(__gt.CUSTOM[0]));
 
     // 5. the picker
     await page.click('#satsearch'); await page.fill('#satsearch', 'zzqq nothing');
     const pk = await ev(page, () => { const li = document.querySelector('#satlist li.plan');
-      return { have: !!li, last: li === document.querySelector('#satlist').lastElementChild, note: (document.querySelector('#satlist li.note') || {}).textContent, role: li && li.getAttribute('role') }; });
-    chk('5 a query that matches nothing lists "Nothing in the catalogue matches that" and the Plan row, last, as an option',
-        pk.have && pk.last && pk.role === 'option' && pk.note === 'Nothing in the catalogue matches that', JSON.stringify(pk));
+      return { have: !!li, last: li === document.querySelector('#satlist').lastElementChild, note: __T.note(), role: li && li.getAttribute('role') }; });
+    chk('5 a query that matches nothing says "Nothing in the catalogue matches that" and lists the Plan row, last, as an option',
+        pk.have && pk.last && pk.role === 'option' && pk.note === NONE, JSON.stringify(pk));
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => PlannerUI.isOpen(), null, { timeout: 5000 }).catch(() => {});
-    const en = await ev(page, () => ({ name: document.getElementById('pl-name').value, act: document.activeElement.id, picker: document.getElementById('satsearch').value, list: document.getElementById('satlist').hidden }));
-    chk('5 Enter on that query opens the planner with the query as the name, the field focused, the list closed and the picker back on the spacecraft on screen',
-        en.name === 'zzqq nothing' && en.act === 'pl-name' && en.list && en.picker === 'KNACKSAT-2', JSON.stringify(en));
+    const en = await ev(page, () => ({ name: document.getElementById('pl-name').value, act: document.activeElement.id, picker: __T.picked(), list: __T.shut() }));
+    /* The old page's field holds the name of the spacecraft on screen, so reading it back (__T.picked) is the whole answer there. The rebuilt picker's box holds only the query and its
+       title is what names the spacecraft, so a picker that kept "zzqq nothing" would read as KNACKSAT-2 all the same: open it again, as a person does, and look at the box. */
+    if (NEW) {
+      await H.openPicker(page);
+      en.query = await ev(page, () => document.getElementById('satsearch').value);
+      await H.closePicker(page);
+      await page.focus('#pl-name');          // the next key is the planner's Escape
+    }
+    chk('5 Enter on that query opens the planner with the query as the name, the field focused, the list closed and the picker back on the spacecraft on screen' + (NEW ? ' (its title names it, and the picker opened again has no query left in its box)' : ''),
+        en.name === 'zzqq nothing' && en.act === 'pl-name' && en.list && en.picker === 'KNACKSAT-2' && (!NEW || en.query === ''), JSON.stringify(en));
     await page.keyboard.press('Escape');
     await page.click('#satsearch'); await page.fill('#satsearch', 'ISS'); await page.keyboard.press('Enter');
     await page.waitForFunction(() => /^ISS/.test(__gt.D.entry.name), null, { timeout: 20000 }).catch(() => {});
@@ -285,7 +419,11 @@ const PRISTINE_HEADER = () => {
     // ArrowDown from the last catalogue hit reaches the Plan row (a query with few hits, so the last one is easy to reach)
     await page.click('#satsearch'); await page.fill('#satsearch', 'ISS');
     const nShown = await ev(page, () => document.querySelectorAll('#satlist li[data-idx]').length);
-    for (let k = 0; k < nShown; k++) await page.keyboard.press('ArrowDown');
+    /* down to the last hit: the old list starts with nothing highlighted (nShown presses), the rebuilt one with the first hit highlighted (one fewer) */
+    for (let k = 0; k < nShown; k++) {
+      if (await ev(page, () => { const a = document.getElementById('satsearch').getAttribute('aria-activedescendant'), hits = document.querySelectorAll('#satlist li[data-idx]'); return !!a && hits.length > 0 && hits[hits.length - 1].id === a; })) break;
+      await page.keyboard.press('ArrowDown');
+    }
     const last = await ev(page, () => ({ active: document.getElementById('satsearch').getAttribute('aria-activedescendant'), onLast: (document.querySelector('#satlist li.on') || {}).id }));
     await page.keyboard.press('ArrowDown');
     const plan = await ev(page, () => ({ active: document.getElementById('satsearch').getAttribute('aria-activedescendant'), on: (document.querySelector('#satlist li.on') || {}).id }));
@@ -569,9 +707,10 @@ const PRISTINE_HEADER = () => {
     await page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 30000 });
     const a1 = await ev(page, () => { const g = id => document.getElementById(id), vis = id => !g(id).hidden && getComputedStyle(g(id)).display !== 'none';
       return { custom: __gt.D.entry.custom === true, same: __gt.D.entry === __gt.CUSTOM[0], name: g('satname').textContent, chip: vis('customchip'), chipTag: g('customchip').tagName, chipText: g('customchip').textContent,
-        norad: g('idnorad').textContent, noradPar: getComputedStyle(g('idnorad').parentNode).display, cospar: g('idcospar').textContent, note: vis('customnote'), brief: vis('briefnote'), tle: vis('tleactions'),
-        n: Object.assign({}, __n), header: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, planning: document.querySelector('.app').hasAttribute('data-planning'),
-        sub: g('pf-sub').textContent, count: g('satcount').textContent, cat: __gt.CAT.length, idx: __gt.indexOf(__gt.D.entry) }; });
+        norad: g('idnorad').textContent, noradPar: getComputedStyle(g('idnorad').parentNode).display, cospar: g('idcospar').textContent, note: vis('customnote'), brief: !!g('briefnote') && vis('briefnote'), tle: vis('tleactions'),
+        n: Object.assign({}, __n), header: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, boxed: __T.boxed(), planning: document.querySelector('.app').hasAttribute('data-planning'),
+        sub: g('pf-sub').textContent, cat: __gt.CAT.length, idx: __gt.indexOf(__gt.D.entry) }; });
+    a1.count = await H.satCount(page);        // under the field on the old page; in the rebuilt page's picker, which this opens, reads and shuts
     const s1 = await status(page);
     chk('20 Add: the status says "Added My SSO and loaded it: N passes from Bangkok in 24 h."', /^Added My SSO and loaded it: \d+ passes? from Bangkok in 24 h\.$/.test(s1), s1);
     chk('20 Add: D.entry.custom is true and is the saved entry, #satname is the name, the number reads "none · custom" with its span hidden, the catalogue is still 2,158',
@@ -579,12 +718,12 @@ const PRISTINE_HEADER = () => {
     chk('20 Add: #customchip is a visible <button> with exactly "Custom orbit · edit", #customnote and the element-set buttons show, #briefnote does not',
         a1.chip && a1.chipTag === 'BUTTON' && a1.chipText === 'Custom orbit · edit' && a1.note && a1.tle && !a1.brief, JSON.stringify([a1.chip, a1.chipTag, a1.chipText, a1.note, a1.tle, a1.brief]));
     chk('20 Add loads the orbit once (host.add once, load once), the drawer stays open, and the count reads "2,158 + 1 of yours"', a1.n.add === 1 && a1.n.loads === 1 && a1.planning && a1.count === '2,158 + 1 of yours', JSON.stringify(a1.n) + ' ' + a1.count);
-    chk('2/8 with a custom orbit loaded the header is still at most 100 px (' + a1.header + ')', a1.header <= 100);
+    chk('2/8 with a custom orbit loaded the header is still at most 100 px (' + a1.header + '), and the chip, the age and the pill lie inside it unclipped' + BYCONSTR, a1.header <= 100 && a1.boxed.length === 0, a1.boxed.join(' | '));
     const rw = await rows();
     chk('20 the saved list gains the row, summarised "SSO 700 km · i 98.21° · LTAN 10:30", marked aria-current', rw.length === 1 && rw[0].name === 'My SSO' && rw[0].sum === 'SSO 700 km · i 98.21° · LTAN 10:30' && rw[0].cur === 'true', JSON.stringify(rw));
     chk('20 the heading counts them: "1 of 12, kept in this browser"', await ev(page, () => document.getElementById('pl-saved-count').textContent) === '1 of 12, kept in this browser');
     chk('20 the verdict line follows the globe: "On the globe now: My SSO · N passes from Bangkok, M min in 24 h"', /^On the globe now: My SSO · \d+ passes? from Bangkok, [\d.]+ min in 24 h$/.test(a1.sub), a1.sub);
-    const pk = await ev(page, () => { const b = document.getElementById('satsearch'); b.focus(); const li = [...document.querySelectorAll('#satlist li')].slice(0, 3).map(l => l.className + ':' + l.textContent); b.blur(); return li; });
+    const pk = await pickerRows(page, 3);
     chk('20 the picker lists the orbit under "Your orbits" with the tag "custom"', pk[0] === 'grp:Your orbits' && pk[1] === 'cu:My SSOcustom', JSON.stringify(pk));
     const p1 = await primary();
     chk('21 after Add: "Shown on globe", aria-disabled, Save as new visible', p1.label === 'Shown on globe' && p1.aria === 'true' && p1.sv, JSON.stringify(p1));
@@ -705,6 +844,7 @@ const PRISTINE_HEADER = () => {
     await page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 30000 });
     await ev(page, () => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(500);
+    await lifePainted(page);
     const nn = await ev(page, () => ({ go: !!document.getElementById('lifego'), note: document.getElementById('lifenote').textContent, span: document.getElementById('lifespan').textContent, satnum: __gt.D.entry.satnum }));
     chk('27 adding through the planner makes no request of CelesTrak or the TLE mirror (the synthesised number ' + nn.satnum + ' is nobody\'s), including from the re-check', reqs.length === 0, reqs.join(' ') || 'none');
     chk('27 the Decay section has no "Estimate remaining life" button and carries the custom note', !nn.go && /atmosphere model run forward/.test(nn.note) && nn.span === 'forecast from your drag assumption, not from a history', JSON.stringify([nn.go, nn.span]));
@@ -718,7 +858,8 @@ const PRISTINE_HEADER = () => {
     await page.reload({ waitUntil: 'load' });
     await page.waitForFunction(() => !!window.__gt && !!window.__gt.D && !!window.__planner, null, { timeout: 40000 });
     await page.waitForTimeout(300);
-    const rl = await ev(page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, count: document.getElementById('satcount').textContent }));
+    const rl = await ev(page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name }));
+    rl.count = await H.satCount(page);
     chk('23 reload in the same context: the orbit is listed (count "2,158 + 1 of yours") and the page still opens on the default spacecraft', rl.n === 1 && rl.count === '2,158 + 1 of yours' && rl.name === 'KNACKSAT-2', JSON.stringify([rl.n, rl.count, rl.name]));
     await page.click('#planopen');
     await page.click('#pl-saved-list .pl-open');
@@ -1042,12 +1183,17 @@ const PRISTINE_HEADER = () => {
     await setWindow(page, E0);
     await addApi(page, 'Observer one', { hp: 700, ha: 700, inc: 98.2129701429026 });
     await ev(page, () => { __planner.open({ entry: __gt.CUSTOM[0] }); __planner.flush(); });
-    chk('26 the planner is open in the flow presentation beside the rail', await ev(page, () => __planner.mode() === 'flow' && PlannerUI.isOpen() && getComputedStyle(document.querySelector('.rail')).display !== 'none'));
-    /* the rail's own observer form: applySite alone only changes OBS, and the console reloads from the form's Apply (siteChanged) */
-    await page.click('#siteopen'); await page.click('#s-manual > summary');
-    await page.fill('#s-name', 'Quito'); await page.fill('#s-lat', '-0.18'); await page.fill('#s-lon', '-78.47'); await page.fill('#s-alt', '2.8'); await page.fill('#s-tz', '-5');
-    await page.click('#siteapply');
-    await page.waitForFunction(() => __gt.OBS.name === 'Quito' && /from Quito/.test(document.getElementById('pf-sub').textContent), null, { timeout: 30000 });
+    chk('26 the planner is open in the flow presentation beside the rail', await ev(page, () => __planner.mode() === 'flow' && PlannerUI.isOpen() && __T.railShown()));
+    /* the observer form (the old page's is the rail's, the rebuilt page's the header's popover): applySite alone only changes OBS, and the console reloads from the form's Apply (siteChanged) */
+    await H.setSite(page, { name: 'Quito', lat: -0.18, lon: -78.47, alt: 2.8, tz: -5 });
+    /* a wait that times out says what the page was in, so that a rare failure is a finding and not a rerun */
+    await page.waitForFunction(() => __gt.OBS.name === 'Quito' && /from Quito/.test(document.getElementById('pf-sub').textContent), null, { timeout: 30000 }).catch(async e => {
+      const st = await page.evaluate(() => {
+        const d = document.querySelector('[role=dialog][aria-label="Observer"]'), f = id => { const x = document.getElementById(id); return x ? x.value : null; };
+        return { obs: __gt.OBS.name, chip: document.getElementById('siteopen').textContent.trim(), dialogOpen: !!d && !d.hidden, fields: [f('s-name'), f('s-lat'), f('s-lon')], sub: document.getElementById('pf-sub').textContent };
+      }).catch(x => String(x));
+      throw new Error(String(e.message).split('\n')[0] + ' | page: ' + JSON.stringify(st));
+    });
     const quito = await ev(page, () => { __planner.flush();
       const texts = __planner.items().map(i => i.titleText + ' ' + i.bodyText).join(' | '), grp = [...document.querySelectorAll('#prof details.pf-grp summary .gt')].map(e => e.textContent);
       return { bkk: /Bangkok/.test(texts) || grp.some(x => /Bangkok/.test(x)) || /Bangkok/.test(document.getElementById('pf-sub').textContent), quito: /Quito/.test(texts), grp: grp, sub: document.getElementById('pf-sub').textContent, note: document.getElementById('pl-epoch-note').textContent, dsite: __planner.advise().c.site }; });
@@ -1135,13 +1281,23 @@ const PRISTINE_HEADER = () => {
     }
     // 58 and 62: the planner off, every [hidden] rule, and the boot paths that must not take the page down
     {
-      const r = await open(browser, { planner: false, init: `Object.defineProperty(window, 'Planner', { set: function(v){}, get: function(){ return undefined; }, configurable: true });` });
+      const r = await open(browser, ABSENT_PLANNER);
       const pr = await ev(r.page, PRISTINE_HEADER);
-      const d = await ev(r.page, () => ({ pill: getComputedStyle(document.getElementById('planopen')).display, header: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10, init: PlannerUI.init({}), hook: typeof window.__planner, enabled: PlannerUI.enabled(),
-        chip: getComputedStyle(document.getElementById('customchip')).display }));
-      chk('58 with Planner absent the pill is display:none, #planopen is not offered, the planner is not enabled and there is no hook', d.pill === 'none' && d.init === false && d.hook === 'undefined' && !d.enabled, JSON.stringify(d));
-      chk('58 ...and the header height equals the pre-planner header (' + d.header + ' against ' + pr + ' with the pill gone; the hint row adds nothing)', Math.abs(d.header - pr) <= 1.3, d.header + ' vs ' + pr);
-      chk('62 PlannerUI.onLoad before init is a no-op', await ev(r.page, () => { try { PlannerUI.onLoad(__gt.D); return true; } catch (e) { return false; } }));
+      /* The old page still held a controller when its maths was missing, and the controller's own init said no. The rebuilt page, with the planner's chunk gone,
+         builds no controller at all (nothing is put on the window), so there is nothing to ask: `ui` says which of the two this is. */
+      const d = await ev(r.page, () => ({ pill: __T.disp('planopen'), header: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10,
+        init: window.PlannerUI ? PlannerUI.init({}) : false, hook: typeof window.__planner, enabled: window.PlannerUI ? PlannerUI.enabled() : false, ui: typeof window.PlannerUI,
+        chip: getComputedStyle(document.getElementById('customchip')).display, boxed: __T.boxed() }));
+      /* "Not displayed" is asked of the layout (__T.disp: no box at all), not of the pill's own display property: the rebuilt page hides the pill by hiding the wrapper it sits in, and the pill's own
+         computed display stays what the author gave it. A changed expectation, recorded in CHANGES-FROM-LEGACY row P: what is asked is that nothing of the pill is on screen. */
+      chk('58 with Planner absent the pill has no box on screen (display:none on the old page; on the rebuilt page the wrapper it sits in is hidden), #planopen is not offered, the planner is not enabled and there is no hook', d.pill === 'none' && d.init === false && d.hook === 'undefined' && !d.enabled && (!NEW || d.ui === 'undefined'), JSON.stringify(d));
+      chk('58 ...and the header height equals the pre-planner header (' + d.header + ' against ' + pr + ' with the pill gone; the hint row adds nothing), and what the header still shows lies inside it unclipped' + BYCONSTR, Math.abs(d.header - pr) <= 1.3 && d.boxed.length === 0, d.header + ' vs ' + pr + ' ' + d.boxed.join(' | '));
+      /* A controller that has not been brought up must take a load without a sound. On the old page that is the one whose maths is missing; the rebuilt page has no such
+         controller there, so it is asked on the snapshot's, which is built and has said no. */
+      const idle = NEW ? await open(browser, { search: '?tle=embedded', planner: false }) : r;
+      /* (and told to it at the moment it was put on the window, before any init: HOSTSPY did that, on both pages, and kept what happened in window.__early) */
+      chk('62 PlannerUI.onLoad before init is a no-op', await ev(idle.page, () => { try { PlannerUI.onLoad(__gt.D); return !PlannerUI.enabled() && window.__early === 'quiet'; } catch (e) { return false; } }));
+      if (NEW) await idle.ctx.close();
       chk('8 no page error', r.errs.length === 0, r.errs.join(' | ') || 'none');
       await r.ctx.close();
     }
@@ -1149,15 +1305,13 @@ const PRISTINE_HEADER = () => {
       const { ctx, page, errs } = await open(browser);
       const d = await ev(page, () => ['customchip', 'customnote', 'tleactions', 'planner', 'plannote', 'pf-verdict', 'pf-empty', 'pl-err-name', 'pl-err-hp', 'pl-savenew'].map(id => id + '=' + getComputedStyle(document.getElementById(id)).display));
       chk('58 on a catalogue spacecraft every element the planner hides is display:none, the chip, the note and the element-set buttons included', d.every(x => /=none$/.test(x)), d.join(' '));
+      /* A fresh element that carries the real one's classes, told to be hidden, set beside it. The old page's rules are plain class names (.custom-chip, .planpill, .tle-actions, ...), which a
+         bare element with those names meets. The rebuilt page's are scoped to their component (a hash class on the element), which a bare element never meets, so the copy is made from the real
+         element: the same classes, and with them the same scope. The id goes (an id rule would be a second author rule), except where the rule is the id's (#sec-prof). */
       const probe = await ev(page, () => { const out = {};
-        const tryHidden = (key, make) => { const e = make(); e.hidden = true; document.body.appendChild(e); out[key] = getComputedStyle(e).display; e.remove(); };
-        tryHidden('chip', () => { const b = document.createElement('button'); b.className = 'age-chip custom-chip'; return b; });
-        tryHidden('pill', () => { const b = document.createElement('button'); b.className = 'planpill'; return b; });
-        tryHidden('tle', () => { const b = document.createElement('div'); b.className = 'tle-actions'; return b; });
-        tryHidden('secprof', () => { const s = document.createElement('section'); s.id = 'sec-prof'; return s; });
-        tryHidden('shape', () => { const s = document.createElement('div'); s.className = 'pl-grid pl-shape'; return s; });
-        tryHidden('err', () => { const s = document.createElement('p'); s.className = 'pl-err'; return s; });
-        tryHidden('planner', () => { const s = document.createElement('aside'); s.className = 'planner'; return s; });
+        const tryHidden = (key, src) => { const e = src.cloneNode(false); if (key !== 'secprof') e.removeAttribute('id'); e.hidden = true; src.insertAdjacentElement('afterend', e); out[key] = getComputedStyle(e).display; e.remove(); };
+        tryHidden('chip', document.getElementById('customchip')); tryHidden('pill', document.getElementById('planopen')); tryHidden('tle', document.getElementById('tleactions'));
+        tryHidden('secprof', document.getElementById('sec-prof')); tryHidden('shape', document.querySelector('.pl-shape')); tryHidden('err', document.querySelector('.pl-err')); tryHidden('planner', document.getElementById('planner'));
         return out; });
       chk('58 each of the four rules of D37 (.custom-chip, .planpill, #sec-prof, .tle-actions) and the planner\'s own three beat the author display rule: a hidden one computes display:none', Object.values(probe).every(x => x === 'none'), JSON.stringify(probe));
       /* the real section, not a stand-in: with a custom orbit on the globe both it and the link to it compute display:none (group 20 is the whole read-only host) */
@@ -1172,16 +1326,17 @@ const PRISTINE_HEADER = () => {
       const STORE = JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'Seeded', made: 1, el: GOODEL }] });
       const seed = `try{localStorage.setItem('gt.custom', ${JSON.stringify(STORE)});}catch(e){}`;
       {
-        const r = await open(browser, { planner: false, init: seed, route: [['**/earth/lifetime.js', rt => rt.fulfill({ contentType: 'text/javascript', body: '/* lifetime.js withheld by the test */' })]] });
-        const d = await ev(r.page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, pill: getComputedStyle(document.getElementById('planopen')).display, on: PlannerUI.enabled() }));
+        /* the old page was given an empty script in place of the file; the rebuilt page's chunk of it is not served */
+        const r = await open(browser, { planner: false, init: seed, route: NEW ? withheld('lifetime') : [['**/earth/lifetime.js', rt => rt.fulfill({ contentType: 'text/javascript', body: '/* lifetime.js withheld by the test */' })]] });
+        const d = await ev(r.page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, pill: __T.disp('planopen'), on: window.PlannerUI ? PlannerUI.enabled() : false }));
         chk('62 a seeded valid store with Lifetime missing: the planner is off, no orbit is listed, the stored record is untouched, the pill is hidden, the console is loaded, no page error',
             d.n === 0 && d.store === STORE && d.name === 'KNACKSAT-2' && d.pill === 'none' && !d.on && r.errs.length === 0, JSON.stringify(d) + ' ' + r.errs.join('|'));
         await r.ctx.close();
       }
       {
-        const planner = fs.readFileSync(path.join(ROOT, 'earth/planner.js'), 'utf8');
-        const stub = planner + '\n;(function(){ var o = window.Planner.toTLE; window.Planner.toTLE = function(){ throw new Error("toTLE stub (test)"); }; })();';
-        const r = await open(browser, { planner: false, init: seed, route: [['**/earth/planner.js', rt => rt.fulfill({ contentType: 'text/javascript', body: stub })]] });
+        /* a planner whose TLE writer throws: the old page's file served with a stub appended; the rebuilt page's test surface is told to break the writer before anything is built with it */
+        const stub = NEW ? null : fs.readFileSync(path.join(SITE, 'earth/planner.js'), 'utf8') + '\n;(function(){ var o = window.Planner.toTLE; window.Planner.toTLE = function(){ throw new Error("toTLE stub (test)"); }; })();';
+        const r = await open(browser, NEW ? { planner: false, init: seed, fault: { toTLE: true } } : { planner: false, init: seed, route: [['**/earth/planner.js', rt => rt.fulfill({ contentType: 'text/javascript', body: stub })]] });
         const d = await ev(r.page, () => ({ n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), name: __gt.D.entry.name, passes: __gt.D.passes.length }));
         chk('62 a stub Planner.toTLE that throws, with the seeded store: zero page errors, no orbit listed, the store untouched (a fault is not a bad record), the console loaded',
             d.n === 0 && d.store === STORE && d.name === 'KNACKSAT-2' && r.errs.length === 0, JSON.stringify(d) + ' ' + r.errs.join('|'));
@@ -1227,10 +1382,10 @@ const PRISTINE_HEADER = () => {
       const vis = e => { for (let a = e; a; a = a.parentElement) { const c = getComputedStyle(a); if (c.display === 'none' || c.visibility === 'hidden' || a.hidden) return false; } return true; };
       /* the planner's own text and what it adds to the page (the pill and its row, the chip, the element-set buttons); the rest of the page is verify-layout's */
       const small = [];
-      for (const root of [pl, q('.hintrow'), q('#customchip'), q('#tleactions'), q('#plannote')]) {
+      for (const root of [pl, q(__SEL.pillRow), q('#customchip'), q('#tleactions'), q('#plannote')]) {
         const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
         for (let n; (n = w.nextNode());) { const t = n.textContent.trim(), e = n.parentElement; if (!t || e.closest('.pl-say')) continue; if (!vis(e)) continue; const r = e.getBoundingClientRect(); if (!r.width || !r.height) continue;
-          const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < 11) small.push(fs + ' ' + t.slice(0, 24)); }
+          const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < __SEL.minText) small.push(fs + ' ' + t.slice(0, 24)); }
       }
       const over = [...pl.querySelectorAll('*')].filter(e => vis(e) && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0 && !e.closest('svg') && !e.closest('.pl-say') && !['INPUT', 'SELECT'].includes(e.tagName)).map(e => e.tagName.toLowerCase() + '#' + e.id + '.' + e.className + ' ' + e.scrollWidth + '>' + e.clientWidth).slice(0, 5);
       const ctl = [...pl.querySelectorAll('button, input, select, summary, a[href]')].filter(vis).filter(e => { const d = e.closest('details'); return !d || d.open || (e.tagName === 'SUMMARY' && e.parentElement === d); });
@@ -1244,9 +1399,17 @@ const PRISTINE_HEADER = () => {
       }
       scrollTo(0, 0); const sc = q('.pl-scroll'); if (sc) sc.scrollTop = 0;
       const add = q('#pl-add').getBoundingClientRect();
-      return { header: q('.bar-top').getBoundingClientRect().height, pl: R(pl), vp: R(q('.viewport')), sw: document.documentElement.scrollWidth, iw: innerWidth, ih: innerHeight,
-        small: small, over: over, nctl: ctl.length, bad: bad, addTop: Math.round(add.top), addBottom: Math.round(add.bottom), railDisp: getComputedStyle(q('.rail')).display,
-        transportPos: getComputedStyle(q('.bar-transport')).position, role: pl.getAttribute('role'), modal: pl.getAttribute('aria-modal'), mode: __planner.mode() };
+      /* what is laid over the globe, each inside the globe's box and none on another (boxes that merely touch are not a collision): the rebuilt page only */
+      let collide = null;
+      if (__SEL.overlays) {
+        const gbx = q(__SEL.globe).getBoundingClientRect(), bx = [];
+        for (const [n, s] of __SEL.overlays) { const e = q(s); if (!e || !e.getClientRects().length) continue; const b = e.getBoundingClientRect(); bx.push({ n: n, l: b.left, r: b.right, t: b.top, b: b.bottom }); }
+        collide = { n: bx.length, out: bx.filter(b => b.l < gbx.left - 0.5 || b.r > gbx.right + 0.5 || b.t < gbx.top - 0.5 || b.b > gbx.bottom + 0.5).map(b => b.n), hit: [] };
+        for (let i = 0; i < bx.length; i++) for (let j = i + 1; j < bx.length; j++) { const a = bx[i], c = bx[j]; if (a.l < c.r - 0.5 && c.l < a.r - 0.5 && a.t < c.b - 0.5 && c.t < a.b - 0.5) collide.hit.push(a.n + ' on ' + c.n + ' (' + Math.round(a.l) + '-' + Math.round(a.r) + ' against ' + Math.round(c.l) + '-' + Math.round(c.r) + ')'); }
+      }
+      return { header: q('.bar-top').getBoundingClientRect().height, pl: R(pl), vp: R(q(__SEL.cell)), gb: R(q(__SEL.globe)), boxed: __T.boxed(), collide: collide, sw: document.documentElement.scrollWidth, iw: innerWidth, ih: innerHeight,
+        small: small, over: over, nctl: ctl.length, bad: bad, addTop: Math.round(add.top), addBottom: Math.round(add.bottom), railShown: __T.railShown(),
+        transportPos: getComputedStyle(q(__SEL.transport)).position, role: pl.getAttribute('role'), modal: pl.getAttribute('aria-modal'), mode: __planner.mode() };
     };
     const table = [], pages = new Map();
     /* One page load per kind of screen (a desktop window, a phone, a tablet), resized between the sizes of that kind: a context's touch and pixel-ratio
@@ -1273,22 +1436,27 @@ const PRISTINE_HEADER = () => {
         const tag = name + ' ' + scheme;
         chk('7 ' + tag + ': the presentation is a ' + expect + ' (mode() says ' + m.mode + ')', m.mode === expect && !!m.pl.w);
         chk('6 ' + tag + ': no sideways scroll (' + m.sw + ' of ' + m.iw + ')', m.sw <= m.iw);
-        chk('6 ' + tag + ': no visible text under 11 px', m.small.length === 0, m.small.slice(0, 4).join(', '));
+        chk('6 ' + tag + ': no visible text under ' + SEL.minText + ' px', m.small.length === 0, m.small.slice(0, 4).join(', '));
         chk('6 ' + tag + ': nothing overflows inside the planner', m.over.length === 0, m.over.join(' | '));
         chk('6 ' + tag + ': every visible planner control is reachable by a pointer (' + m.nctl + ')', m.bad.length === 0, m.bad.slice(0, 5).join(', '));
-        chk('8 ' + tag + ': the header is ' + Math.round(m.header * 10) / 10 + ' px open and ' + closed + ' closed (the same)', Math.abs(m.header - closed) < 0.6);
+        chk('8 ' + tag + ': the header is ' + Math.round(m.header * 10) / 10 + ' px open and ' + closed + ' closed (the same), and the pill, the age and a custom chip lie inside it unclipped' + (opt.viewport.width >= 1100 ? BYCONSTR : ''),
+            Math.abs(m.header - closed) < 0.6 && m.boxed.length === 0, m.boxed.join(' | '));
         if (expect === 'drawer' || expect === 'sheet') chk('7 ' + tag + ': Add is in view without scrolling (' + m.addTop + ' to ' + m.addBottom + ' of ' + m.ih + ')', m.addTop >= 0 && m.addBottom <= m.ih);
         if (expect === 'drawer') {
-          const hits = await ev(page, () => [...document.querySelectorAll('.viewport .btn')].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+          const hits = await ev(page, () => [...document.querySelectorAll(__SEL.glob)].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
             if (y < 0 || y > innerHeight) return { name: e.textContent.trim(), ok: false }; const h = document.elementFromPoint(x, y); return { name: e.textContent.trim(), ok: h === e || e.contains(h) }; }));
           chk('3 ' + tag + ': with the drawer open every globe button is still reachable (' + hits.length + ')', hits.length >= 8 && hits.every(h => h.ok), hits.filter(h => !h.ok).map(h => h.name).join(', '));
-          chk('3 ' + tag + ': the rail is hidden and globe + planner fill the width (' + m.vp.w + ' + ' + m.pl.w + ' of ' + m.iw + ')', m.railDisp === 'none' && Math.abs(m.vp.w + m.pl.w - m.iw) <= 2);
-          if (name === '901x700') chk('3 ' + tag + ': at the narrowest drawer width the globe is still at least 528 px wide (' + m.vp.w + ')', m.vp.w >= 528, String(m.vp.w));
+          /* the cell is what the planner takes width from; the old page's cell is the globe itself, the rebuilt stage's cell holds the globe between two gutters, so "globe" is said only of the box that is the globe's */
+          chk('3 ' + tag + ': the rail is hidden and ' + (NEW ? 'the stage\'s cell' : 'the globe') + ' + planner fill the width (' + m.vp.w + ' + ' + m.pl.w + ' of ' + m.iw + ')', !m.railShown && Math.abs(m.vp.w + m.pl.w - m.iw) <= 2);
+          if (name === '901x700') chk('3 ' + tag + ': at the narrowest drawer width the globe itself is still at least ' + SEL.globeMin + ' px wide (' + m.gb.w + (NEW ? ' in a cell of ' + m.vp.w + ': the stage keeps its two 16 px gutters; the old page\'s floor is 528)' : ')'), m.gb.w >= SEL.globeMin, String(m.gb.w));
+          /* the narrower globe (497 px at 901, where the clock on the left once met the camera row on the right: "UTC" ran into "CAMERA") must still carry its overlays without a collision */
+          if (NEW) chk('3 ' + tag + ': nothing collides on the globe with the drawer open: the clock, the camera, trail and Layers rows, the key and the drag hint each lie inside it and none overlaps another (' + m.collide.n + ' boxes in ' + m.gb.w + ' px)',
+            m.collide.n >= 6 && m.collide.out.length === 0 && m.collide.hit.length === 0, JSON.stringify(m.collide));
         }
         if (expect === 'flow') chk('10 ' + tag + ': narrow: the transport bar is static while planning, the rail is still displayed, the heading was brought just below the header where that is sticky (top ' + opened.headTop + ', header bottom ' + opened.barBottom + ')',
-          m.transportPos === 'static' && m.railDisp !== 'none' && opened.headTop >= opened.barBottom && opened.headTop < opened.barBottom + 40, 'transport ' + m.transportPos + ' rail ' + m.railDisp + ' headTop ' + opened.headTop + ' scrollY ' + opened.scrollY);
+          m.transportPos === 'static' && m.railShown && opened.headTop >= opened.barBottom && opened.headTop < opened.barBottom + 40, 'transport ' + m.transportPos + ' rail ' + m.railShown + ' headTop ' + opened.headTop + ' scrollY ' + opened.scrollY);
         if (expect === 'sheet') chk('9 ' + tag + ': the sheet is a dialog with aria-modal and fills the screen', m.role === 'dialog' && m.modal === 'true' && m.pl.w === m.iw && m.pl.h === m.ih, JSON.stringify([m.role, m.modal, m.pl.w + 'x' + m.pl.h]));
-        table.push([tag, expect, 'planner ' + [m.pl.x, m.pl.y, m.pl.w, m.pl.h].join(','), 'globe ' + m.vp.w + 'x' + m.vp.h, 'header ' + Math.round(m.header * 10) / 10, 'controls ' + m.nctl].join(' | '));
+        table.push([tag, expect, 'planner ' + [m.pl.x, m.pl.y, m.pl.w, m.pl.h].join(','), (NEW ? 'cell ' + m.vp.w + 'x' + m.vp.h + ' ' : '') + 'globe ' + m.gb.w + 'x' + m.gb.h, 'header ' + Math.round(m.header * 10) / 10, 'controls ' + m.nctl].join(' | '));
       }
     }
     for (const [kind, r] of pages) { chk('9 no page error across the sizes of one kind of screen ' + kind, r.errs.length === 0, r.errs.join(' | ') || 'none'); await r.ctx.close(); }
@@ -1307,13 +1475,13 @@ const PRISTINE_HEADER = () => {
         await page.setViewportSize({ width: w, height: 900 });
         await page.waitForTimeout(90);
         const m = await ev(page, PRISTINE_HEADER);
-        const h = await nHeader(page), sw = await ev(page, () => document.documentElement.scrollWidth);
+        const h = await nHeader(page), sw = await ev(page, () => document.documentElement.scrollWidth), fitC = await ev(page, () => __T.boxed());
         /* the same header with the planner open (a drawer, or the panel under the globe, according to the width) */
         await ev(page, () => document.getElementById('planopen').click());
         await page.waitForTimeout(70);
-        const ho = await nHeader(page), mode = await ev(page, () => __planner.mode()), sw2 = await ev(page, () => document.documentElement.scrollWidth);
+        const ho = await nHeader(page), mode = await ev(page, () => __planner.mode()), sw2 = await ev(page, () => document.documentElement.scrollWidth), fitO = await ev(page, () => __T.boxed());
         await ev(page, () => { PlannerUI.close(); scrollTo(0, 0); });
-        rows.push({ state: state, w: w, h: h, pristine: m, delta: Math.round((h - m) * 10) / 10, sw: sw, open: ho, mode: mode, swOpen: sw2 });
+        rows.push({ state: state, w: w, h: h, pristine: m, delta: Math.round((h - m) * 10) / 10, sw: sw, open: ho, mode: mode, swOpen: sw2, fitC: fitC, fitO: fitO });
       }
     };
     await measure('0 orbits');
@@ -1321,36 +1489,42 @@ const PRISTINE_HEADER = () => {
     await measure('1 orbit');
     await ev(page, e0 => { for (let k = 0; k < 11; k++) { const f = Planner.defaultForm(__gt.OBS, e0); __gt.addCustom({ name: 'Header ' + (k + 2), el: Planner.fromForm(f).el, show: false }); } }, E0);
     await measure('12 orbits');
+    /* the count is read where a person sees it: under the field on the old page (beside the pill, in its row); in the rebuilt picker's popover, which this opens and shuts */
+    await H.openPicker(page);
     const cnt = await ev(page, () => document.getElementById('satcount').textContent);
-    chk('54 the count with 12 orbits reads "2,158 + 12 of yours", on one line beside the pill', cnt === '2,158 + 12 of yours' && await ev(page, () => { const c = document.getElementById('satcount').getBoundingClientRect(), p = document.getElementById('planopen').getBoundingClientRect(); return c.height < 24 && Math.abs((c.top + c.bottom) / 2 - (p.top + p.bottom) / 2) < 16; }), cnt);
+    const oneLine = await ev(page, () => { const c = document.getElementById('satcount').getBoundingClientRect(), p = document.getElementById('planopen').getBoundingClientRect(); return { h: c.height < 24, beside: Math.abs((c.top + c.bottom) / 2 - (p.top + p.bottom) / 2) < 16 }; });
+    if (NEW) await H.closePicker(page);
+    chk('54 the count with 12 orbits reads "2,158 + 12 of yours", on one line' + (NEW ? '' : ' beside the pill'), cnt === '2,158 + 12 of yours' && oneLine.h && (NEW || oneLine.beside), cnt);
     for (const state of ['0 orbits', '1 orbit', '12 orbits']) {
       const rs = rows.filter(r => r.state === state);
-      chk('8/54 ' + state + ': the closed header is within 3 px of the pre-planner header at 1440, 1280, 1100, 1080, 1060, 1040, 1024, 901, 768 and 641 (worst +' + Math.max(...rs.map(r => r.delta)) + ' px at ' + rs.find(r => r.delta === Math.max(...rs.map(x => x.delta))).w + ')',
-          rs.every(r => r.delta <= 3 && r.delta >= -3 && r.h <= Math.max(100, r.pristine + 3)), rs.map(r => r.w + ':' + r.h + '/' + r.pristine).join(' '));
+      chk('8/54 ' + state + ': the closed header is within 3 px of the pre-planner header at 1440, 1280, 1100, 1080, 1060, 1040, 1024, 901, 768 and 641 (worst +' + Math.max(...rs.map(r => r.delta)) + ' px at ' + rs.find(r => r.delta === Math.max(...rs.map(x => x.delta))).w + '), and the pill and the age lie inside it unclipped at every one' + BYCONSTR,
+          rs.every(r => r.delta <= 3 && r.delta >= -3 && r.h <= Math.max(100, r.pristine + 3) && r.fitC.length === 0), rs.map(r => r.w + ':' + r.h + '/' + r.pristine + (r.fitC.length ? ' ' + r.fitC.join(';') : '')).join(' '));
       chk('6 ' + state + ': no sideways scroll at any of those widths', rs.every(r => r.sw <= r.w));
     }
     chk('54 the header is at most 100 px at 1440x900 and at 1060x800 with 12 orbits', rows.filter(r => r.state === '12 orbits' && (r.w === 1440 || r.w === 1060)).every(r => r.h <= 100));
     // the planner open does not change the header (drawer widths and flow widths alike), at 0, 1 and 12 orbits, and nothing scrolls sideways with it open
     for (const state of ['0 orbits', '1 orbit', '12 orbits']) {
       const rs = rows.filter(r => r.state === state);
-      chk('8 ' + state + ': with the planner open the header is exactly the height it is closed, at every width (worst difference ' + Math.max(...rs.map(r => Math.abs(r.open - r.h))).toFixed(1) + ' px)', rs.every(r => Math.abs(r.open - r.h) < 0.6), rs.map(r => r.w + ':' + r.h + '/' + r.open).join(' '));
+      chk('8 ' + state + ': with the planner open the header is exactly the height it is closed, at every width (worst difference ' + Math.max(...rs.map(r => Math.abs(r.open - r.h))).toFixed(1) + ' px), and the pill and the age still lie inside it unclipped' + BYCONSTR,
+          rs.every(r => Math.abs(r.open - r.h) < 0.6 && r.fitO.length === 0), rs.map(r => r.w + ':' + r.h + '/' + r.open + (r.fitO.length ? ' ' + r.fitO.join(';') : '')).join(' '));
       chk('6 ' + state + ': no sideways scroll with the planner open at any of those widths', rs.every(r => r.swOpen <= r.w), rs.filter(r => r.swOpen > r.w).map(r => r.w + ':' + r.swOpen).join(' '));
     }
     /* the table the report quotes: header height closed (against the pre-planner header on the same page) and open, at every width of SPEC 7.5 test 8 */
     console.log('        header height in px, closed (pre-planner header, difference) / open [presentation]; 900 px tall');
     for (const state of ['0 orbits', '1 orbit', '12 orbits'])
       console.log('        ' + state.padEnd(9) + rows.filter(r => r.state === state).map(r => r.w + ': ' + r.h + ' (' + r.pristine + ', ' + (r.delta >= 0 ? '+' : '') + r.delta + ') / ' + r.open + ' [' + r.mode + ']').join('   '));
-    await ev(page, () => { document.getElementById('satsearch').blur(); __gt.removeCustom(__gt.CUSTOM[0]); });
+    await ev(page, () => { const s = document.getElementById('satsearch'); if (s) s.blur(); __gt.removeCustom(__gt.CUSTOM[0]); });
     await ev(page, e0 => { const f = Planner.defaultForm(__gt.OBS, e0); __gt.addCustom({ name: 'Chip on screen', el: Planner.fromForm(f).el }); }, E0);
     const chipRows = [];
     for (const w of [1440, 1280, 1100, 1080, 1060, 1024, 901, 768, 641]) {
       await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(80);
       const h = await nHeader(page), p = await ev(page, PRISTINE_HEADER);
-      const chip = await ev(page, () => { const c = document.getElementById('customchip'), b = c.getBoundingClientRect(), hd = document.querySelector('.bar-top').getBoundingClientRect(); return { shown: b.width > 0, inside: b.right <= hd.right + 1 && b.left >= hd.left - 1 }; });
+      const chip = await ev(page, () => { const c = document.getElementById('customchip'), b = c.getBoundingClientRect(), hd = document.querySelector('.bar-top').getBoundingClientRect();
+        return { shown: b.width > 0, inside: b.right <= hd.right + 1 && b.left >= hd.left - 1, boxed: __T.boxed() }; });
       chipRows.push({ w: w, h: h, p: p, chip: chip });
     }
-    chk('8 with a custom orbit on screen (the "Custom orbit · edit" chip shown, the number fields hidden) the header is at most 100 px or within 3 px of the pre-planner one, and the chip is inside it',
-        chipRows.every(r => (r.h <= 100 || r.h - r.p <= 3) && r.chip.shown && r.chip.inside), chipRows.map(r => r.w + ':' + r.h + '/' + r.p).join(' '));
+    chk('8 with a custom orbit on screen (the "Custom orbit · edit" chip shown, the number fields hidden) the header is at most 100 px or within 3 px of the pre-planner one, and the chip, the age and the pill are inside it, none of them clipped, at every width' + BYCONSTR,
+        chipRows.every(r => (r.h <= 100 || r.h - r.p <= 3) && r.chip.shown && r.chip.inside && r.chip.boxed.length === 0), chipRows.map(r => r.w + ':' + r.h + '/' + r.p + (r.chip.boxed.length ? ' ' + r.chip.boxed.join(';') : '')).join(' '));
     chk('10 no page error', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();
     // touch: within 16 px
@@ -1371,18 +1545,31 @@ const PRISTINE_HEADER = () => {
     await setWindow(page, E0);
     await page.click('#planopen');
     await page.waitForTimeout(200);
+    /* The path from #planner up to <body>: the old page's is main.stage, div.app (eight siblings along it); the rebuilt page's is .planner-zone, .console, main.app, #app (the siblings of
+       those are the stage, rail and transport cells, the report, the skip link, the header and its notes). `walk` is the number of siblings along the path that the sheet is to make inert:
+       every one but the sprite, the scripts and the confirmation region #pl-live, which stay as they are. */
     const s = await ev(page, () => {
-      const inert = [...document.querySelectorAll('[inert]')], pl = document.getElementById('planner');
+      const inert = [...document.querySelectorAll('[inert]')], pl = document.getElementById('planner'), live = document.getElementById('pl-live');
       const desc = e => e.localName + (e.id ? '#' + e.id : '') + (e.classList.length ? '.' + e.classList[0] : '');
-      return { inert: inert.map(desc), role: pl.getAttribute('role'), modal: pl.getAttribute('aria-modal'), htmlClass: document.documentElement.classList.contains('pl-sheet'), planInert: !!pl.closest('[inert]'),
-        liveInert: !!document.getElementById('pl-live').closest('[inert]'), appInert: document.querySelector('.app').inert, stageInert: document.querySelector('main.stage').inert, act: document.activeElement.id,
-        ovf: getComputedStyle(document.documentElement).overflow, anyInPlanner: [...pl.querySelectorAll('*')].some(e => e.inert), live: document.getElementById('pl-live').parentNode === document.body, svgInert: document.querySelector('main.stage > svg').inert };
+      const path = []; for (let n = pl; n && n !== document.body; n = n.parentElement) path.push(n);
+      const walk = __T.walk();
+      const sprite = document.getElementById('sv-good') && document.getElementById('sv-good').closest('svg');
+      const outside = [...document.querySelectorAll('a[href], button, input, select, summary, textarea, [tabindex]:not([tabindex="-1"])')].filter(e => !pl.contains(e) && !live.contains(e) && !e.closest('[inert]') && e.getClientRects().length > 0 && !e.closest('[hidden]'));
+      return { inert: inert.map(desc), walk: walk, role: pl.getAttribute('role'), modal: pl.getAttribute('aria-modal'), htmlClass: document.documentElement.classList.contains('pl-sheet'), planInert: !!pl.closest('[inert]'),
+        liveInert: !!live.closest('[inert]'), pathInert: path.filter(n => n.inert).length, act: document.activeElement.id,
+        ovf: getComputedStyle(document.documentElement).overflow, anyInPlanner: [...pl.querySelectorAll('*')].some(e => e.inert),
+        /* where the confirmation region sits: the old page's is a direct child of <body>; the rebuilt page's is a direct child of the mount node (#app), which is where the planner's host puts it, or of <body> */
+        live: !pl.contains(live) && __SEL.liveIn.some(s => live.parentNode === (s === 'body' ? document.body : document.querySelector(s))), liveParent: desc(live.parentNode),
+        sprite: !!sprite, svgInert: !!sprite && sprite.inert, outside: outside.map(desc).slice(0, 5) };
     });
-    const EXPECT = ['a.skip', 'div.arview', 'div#report', 'aside.rail', 'div.viewport', 'header.bar-top', 'footer.bar-transport', 'div.bar-window'];
+    const EXPECT = NEW ? ['a.skip', 'header.bar-top', 'div.stage-zone', 'div.rail-zone', 'div.transport-zone', 'div#report']
+      : ['a.skip', 'div.arview', 'div#report', 'aside.rail', 'div.viewport', 'header.bar-top', 'footer.bar-transport', 'div.bar-window'];
     const got = await ev(page, sels => sels.map(q => [q, [...document.querySelectorAll('[inert]')].filter(e => e.matches(q)).length]), EXPECT);
-    chk('59 the sheet makes inert exactly the eight siblings along the path from #planner to body: a.skip, div.arview, div#report, aside.rail, .viewport, header.bar-top, footer.bar-transport, .bar-window (' + s.inert.length + ' found)',
-        s.inert.length === 8 && got.every(x => x[1] === 1), s.inert.join(' '));
-    chk('59 div.app, main.stage, #planner, everything inside #planner, the icon sprite and #pl-live are not inert', !s.appInert && !s.stageInert && !s.planInert && !s.liveInert && !s.anyInPlanner && !s.svgInert && s.live);
+    chk('59 the sheet makes inert exactly the siblings along the path from #planner to body (the old page\'s eight: a.skip, div.arview, div#report, aside.rail, .viewport, header.bar-top, footer.bar-transport, .bar-window; the rebuilt page\'s: ' + EXPECT.join(', ') + ' and what else sits beside the path), ' + s.walk + ' in all (' + s.inert.length + ' found)',
+        s.inert.length === s.walk && (NEW || s.inert.length === 8) && got.every(x => x[1] === (NEW && x[0] === 'a.skip' ? 2 : 1)), s.inert.join(' '));   // the rebuilt page has two skip links (L35)
+    /* the sprite must be there to be left alone (a missing one is not "not inert"), and #pl-live must be exactly where the page keeps it: a direct child of <body> on the old page, of the mount node (or <body>) on the rebuilt one */
+    chk('59 the path itself (the old page\'s div.app and main.stage), #planner, everything inside #planner, the icon sprite (#sv-good is in the page) and #pl-live (a direct child of ' + (NEW ? 'the mount node #app or <body>' : '<body>') + ') are not inert, and nothing outside the planner can still take focus',
+        !s.pathInert && !s.planInert && !s.liveInert && !s.anyInPlanner && s.sprite && !s.svgInert && s.live && s.outside.length === 0, JSON.stringify([s.outside, s.sprite, s.liveParent]));
     chk('9 role="dialog", aria-modal="true", html.pl-sheet with the page scroll locked, the focus in the planner (#pl-name)', s.role === 'dialog' && s.modal === 'true' && s.htmlClass && s.ovf === 'hidden' && s.act === 'pl-name', JSON.stringify(s));
     await ev(page, () => { const f = [...document.querySelectorAll('#planner button, #planner input, #planner select, #planner summary, #planner a[href]')].filter(e => { if (!e.getClientRects().length || e.closest('[hidden]') || e.disabled) return false; const d = e.closest('details'); return !d || d.open || (e.localName === 'summary' && e.parentNode === d); });
       window.__first = f[0]; window.__last = f[f.length - 1]; window.__last.focus(); });
@@ -1394,18 +1581,19 @@ const PRISTINE_HEADER = () => {
     await page.keyboard.press('Escape');
     const e1 = await ev(page, () => ({ inert: document.querySelectorAll('[inert]').length, role: document.getElementById('planner').getAttribute('role'), modal: document.getElementById('planner').getAttribute('aria-modal'), act: document.activeElement.id, cls: document.documentElement.classList.contains('pl-sheet'), hid: document.getElementById('planner').hidden }));
     chk('9/59 Escape closes the sheet, releases every inert, restores role="region" and the scroll, and returns the focus to the pill', e1.inert === 0 && e1.role === 'region' && e1.modal === null && e1.act === 'planopen' && !e1.cls && e1.hid, JSON.stringify(e1));
-    await ev(page, () => { document.querySelector('div.arview').inert = true; });
+    const PRE = NEW ? '#report' : 'div.arview';      // a sibling along the path that is already inert when the sheet opens: the old page's AR view has such a list of its own
+    await ev(page, q => { document.querySelector(q).inert = true; }, PRE);
     await page.click('#planopen');
     await page.keyboard.press('Escape');
-    chk('59 a node that was already inert (the AR view\'s own list) stays inert through open and close, and nothing else is left inert', await ev(page, () => document.querySelector('div.arview').inert === true && document.querySelectorAll('[inert]').length === 1));
-    await ev(page, () => { document.querySelector('div.arview').inert = false; });
+    chk('59 a node that was already inert (the AR view\'s own list) stays inert through open and close, and nothing else is left inert', await ev(page, q => document.querySelector(q).inert === true && document.querySelectorAll('[inert]').length === 1, PRE));
+    await ev(page, q => { document.querySelector(q).inert = false; }, PRE);
     await page.click('#planopen');
     await page.setViewportSize({ width: 915, height: 700 }); await page.waitForTimeout(250);
     const rz = await ev(page, () => ({ mode: __planner.mode(), role: document.getElementById('planner').getAttribute('role'), modal: document.getElementById('planner').getAttribute('aria-modal'), inert: document.querySelectorAll('[inert]').length, cls: document.documentElement.classList.contains('pl-sheet'), open: PlannerUI.isOpen() }));
     chk('9 resizing out of the sheet while it is open (915x700): a drawer, role="region", no aria-modal, nothing inert, still open', rz.mode === 'drawer' && rz.role === 'region' && rz.modal === null && rz.inert === 0 && !rz.cls && rz.open, JSON.stringify(rz));
     await page.setViewportSize({ width: 915, height: 412 }); await page.waitForTimeout(250);
-    const rz2 = await ev(page, () => ({ mode: __planner.mode(), role: document.getElementById('planner').getAttribute('role'), inert: document.querySelectorAll('[inert]').length }));
-    chk('9 ...and back into it: a dialog again with eight inert', rz2.mode === 'sheet' && rz2.role === 'dialog' && rz2.inert === 8, JSON.stringify(rz2));
+    const rz2 = await ev(page, () => ({ mode: __planner.mode(), role: document.getElementById('planner').getAttribute('role'), inert: document.querySelectorAll('[inert]').length, walk: __T.walk() }));
+    chk('9 ...and back into it: a dialog again with every sibling along the path inert (the old page\'s eight)', rz2.mode === 'sheet' && rz2.role === 'dialog' && rz2.inert === rz2.walk && (NEW || rz2.inert === 8), JSON.stringify(rz2));
     // 64 Add closes the sheet onto the globe and the confirmation is written outside the planner
     await ev(page, () => { __planner.setModel({ name: 'Sheet one' }); __planner.flush(); });
     await page.click('#pl-add');
@@ -1432,7 +1620,7 @@ const PRISTINE_HEADER = () => {
   if (want(12)) {
     console.log('12. accessibility');
     const CONTRAST = () => {
-      const parse = c => { const m = c.match(/rgba?\(([^)]+)\)/); const p = m[1].split(/[ ,\/]+/).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+      const parse = __T.rgba;
       const lum = ({ r, g, b }) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
       const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
       const bgOf = e => { for (let a = e; a; a = a.parentElement) { const c = getComputedStyle(a).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return parse(c); } return parse('rgb(255,255,255)'); };
@@ -1471,7 +1659,7 @@ const PRISTINE_HEADER = () => {
       // no planner colour is a literal: every colour a rule gives the planner comes from a token (the rule text has no # or rgb( outside the token definitions)
       const lit = await ev(page, () => { const out = []; for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch (e) { continue; }
         const walk = list => { for (const r of list) { if (r.cssRules && !r.selectorText) walk(r.cssRules); else if (r.selectorText && /(^|[ ,.#])(planner|pl-|pf-|planpill|custom-chip|tle-actions|adv\b)/.test(r.selectorText) && !/^:root/.test(r.selectorText)) {
-          if (/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(r.style.cssText)) out.push(r.selectorText + ' { ' + r.style.cssText.slice(0, 80)); } } }; walk(rules); } return out; });
+          if (__T.lit(r.style.cssText)) out.push(r.selectorText + ' { ' + r.style.cssText.slice(0, 80)); } } }; walk(rules); } return out; });
       chk('46 no planner rule carries a colour literal in the ' + scheme + ' scheme (every colour is a token)', lit.length === 0, lit.slice(0, 3).join(' | '));
       await r.ctx.close();
     }
@@ -1525,7 +1713,7 @@ const PRISTINE_HEADER = () => {
       const order = [], ringless = [];
       for (let k = 0; k < 220; k++) {
         await page.keyboard.press('Tab');
-        const d = await ev(page, () => { const a = document.activeElement; if (!a) return null; const where = a.closest('#planner') ? 'P' : a.closest('.rail') ? 'R' : a.closest('.bar-transport') ? 'T' : a.closest('.bar-window') ? 'W' : a.closest('header') ? 'H' : a.closest('.viewport') ? 'V' : 'O';
+        const d = await ev(page, () => { const a = document.activeElement; if (!a) return null; const where = a.closest('#planner') ? 'P' : a.closest('.rail') ? 'R' : a.closest(__SEL.transport) ? 'T' : a.closest('.bar-window') ? 'W' : a.closest('header') ? 'H' : a.closest('.viewport') ? 'V' : 'O';
           return where + ':' + (a.id || (a.getAttribute('data-shape') ? 'shape-' + a.getAttribute('data-shape') : a.getAttribute('data-node') ? 'node-' + a.getAttribute('data-node') : a.localName === 'summary' ? 'summary' : a.localName === 'a' && /^#t-/.test(a.getAttribute('href') || '') ? 'terms' : a.classList.contains('pl-open') ? 'row-open' : a.classList.contains('pl-del') ? 'row-del' : a.closest('.fixes') ? 'fix' : a.localName)); });
         if (order[order.length - 1] !== d) order.push(d);
         /* the focus indicator: the control's own outline, a box-shadow, or (an input inside its box) the box's outline; read after a keyboard move, so :focus-visible applies */
@@ -1572,11 +1760,12 @@ const PRISTINE_HEADER = () => {
       chk('12 no page error', r.errs.length === 0, r.errs.join(' | ') || 'none');
       await r.ctx.close();
     }
-    // 44 reduced motion
+    /* 44 reduced motion. Under the preference the old page said `transition: none; animation: none`; the rebuilt page says .001ms (a microsecond: the usual way, which still
+       fires transitionend). Both are no motion at all, so a duration counts as motion from one millisecond up. */
     {
       const r = await open(browser, { ctx: { reducedMotion: 'reduce' } }); const page = r.page;
       await page.click('#planopen'); await ev(page, () => { __planner.setModel({ inc: 97.9 }); __planner.flush(); document.querySelectorAll('details.pf-grp').forEach(d => { d.open = true; }); });
-      const mo = await ev(page, () => [...document.querySelectorAll('#planner *, #planopen, #customchip, #tleactions *')].filter(e => { const c = getComputedStyle(e); return parseFloat(c.transitionDuration) > 0 || parseFloat(c.animationDuration) > 0; }).map(e => e.id || e.className.toString()).slice(0, 5));
+      const mo = await ev(page, () => [...document.querySelectorAll('#planner *, #planopen, #customchip, #tleactions *')].filter(e => { const c = getComputedStyle(e); return parseFloat(c.transitionDuration) >= 0.001 || parseFloat(c.animationDuration) >= 0.001; }).map(e => e.id || e.className.toString()).slice(0, 5));
       const an = await ev(page, () => [...document.querySelectorAll('#planner *')].filter(e => getComputedStyle(e).animationName !== 'none').length);
       chk('44 with prefers-reduced-motion: reduce no planner element has a transition or animation duration above zero, and none animates', mo.length === 0 && an === 0, mo.join(',') + ' ' + an);
       const r2 = await open(browser); await r2.page.click('#planopen');
@@ -1609,7 +1798,7 @@ const PRISTINE_HEADER = () => {
     /* 47 first, on pages nobody has touched: the keys and the values compute() returns are the same with and without the planner in the page
        (the planner adds no field), storage is empty, the catalogue and its cloud are what they were, and the gate's own file is not ours. */
     {
-      const off = await open(browser, { planner: false, init: `Object.defineProperty(window, 'Planner', { set: function(v){}, get: function(){ return undefined; }, configurable: true });` });
+      const off = await open(browser, ABSENT_PLANNER);
       const on = await open(browser);
       const sig = page => page.evaluate(e0 => { const d = __gt.compute(__gt.CAT[0], e0, 24);
         return { top: Object.keys(d).sort().join(), E: Object.keys(d.E).sort().join(), n: d.passes.length, passes: JSON.stringify(d.passes), epoch: +d.E.epoch, total: d.totalS }; }, E0);
@@ -1617,7 +1806,8 @@ const PRISTINE_HEADER = () => {
       chk('47 the planner adds no field to compute()\'s output: the same keys (' + b.top.split(',').length + ' of the analysis, ' + b.E.split(',').length + ' of its elements) with the planner in the page and without it', a.top === b.top && a.E === b.E, a.top + ' | ' + b.top);
       chk('47 ...and the same passes (' + b.n + ') and minutes (' + b.total.toFixed(1) + ' s), value for value', a.n === b.n && a.passes === b.passes && a.total === b.total && a.epoch === b.epoch);
       const f = await ev(on.page, () => { const pts = []; Orbit3D.scene.traverse(o => { if (o.isPoints) pts.push(o.geometry.attributes.position.count); });
-        return { keys: Object.keys(localStorage), cat: __gt.CAT.length, custom: __gt.CUSTOM.length, pts: pts, count: document.getElementById('satcount').textContent }; });
+        return { keys: Object.keys(localStorage), cat: __gt.CAT.length, custom: __gt.CUSTOM.length, pts: pts }; });
+      f.count = await H.satCount(on.page);
       chk('47 with empty storage: nothing is written by opening the page, CAT.length is 2,158, the cloud is one Points object of exactly that size, and the count reads "2,158 spacecraft"',
           f.keys.length === 0 && f.cat === 2158 && f.custom === 0 && f.pts.indexOf(2158) >= 0 && f.count === '2,158 spacecraft', JSON.stringify(f));
       let st = null;
@@ -1641,14 +1831,15 @@ const PRISTINE_HEADER = () => {
     await page.click('#pl-add');
     await page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 30000 });
     reqs.length = 0;                     // what the default spacecraft asked for while the page booted is not what is asked for this one
-    // 38 the element-set card
-    const card = await ev(page, () => { const g = id => document.getElementById(id), vis = id => !g(id).hidden && getComputedStyle(g(id)).display !== 'none';
+    // 38 the element-set card (a tab of the rebuilt rail, which the drawer replaces: the planner is shut to reach it; the old page shows it in the report)
+    const shutForCard = await pressCard(page, null);
+    const card = await ev(page, () => { const g = id => document.getElementById(id), vis = id => !g(id).hidden && getComputedStyle(g(id)).display !== 'none' && g(id).getClientRects().length > 0;
       return { src: g('srcline').textContent, meta: g('tlemeta').textContent, edit: g('tle-edit').textContent, editTag: g('tle-edit').tagName, copy: g('tle-copy').textContent, copyTag: g('tle-copy').tagName,
         vis: vis('tleactions') && vis('tle-edit') && vis('tle-copy'), raw: g('tleraw').textContent, l1: __gt.D.entry.l1, l2: __gt.D.entry.l2, num: __gt.D.entry.satnum }; });
     chk('38 the element-set card says where the lines came from: "Synthesized from your elements · not a real TLE", and the note names the placeholder number and says what it is',
         card.src === 'Synthesized from your elements · not a real TLE' && /The two lines above are a synthetic element set written from your inputs/.test(card.meta) && card.meta.indexOf(card.num) >= 0 && /Alpha-5/.test(card.meta) && card.raw.indexOf(card.l1) >= 0 && card.raw.indexOf(card.l2) >= 0, card.src + ' | ' + card.meta.slice(0, 60));
     chk('38 "Edit in planner" and "Copy as TLE" are two visible <button>s under the lines', card.vis && card.edit === 'Edit in planner' && card.copy === 'Copy as TLE' && card.editTag === 'BUTTON' && card.copyTag === 'BUTTON');
-    await page.click('#tle-copy');
+    await pressCard(page, 'tle-copy');
     await page.waitForFunction(() => /^Copied/.test(document.getElementById('pl-status').textContent), null, { timeout: 8000 }).catch(() => {});
     const copied = await ev(page, async () => ({ text: await navigator.clipboard.readText(), st: document.getElementById('pl-status').textContent, live: document.getElementById('pl-live').textContent, tip: document.getElementById('tle-said').textContent }));
     const lines = copied.text.replace(/\r/g, '').split('\n').filter(Boolean);
@@ -1659,6 +1850,7 @@ const PRISTINE_HEADER = () => {
     chk('38 ...the status is written after the clipboard said yes and adds the sentence about the numeric number: "Copied the two lines. Some tools want a numeric catalogue number; replace O0001."',
         copied.st === 'Copied the two lines. Some tools want a numeric catalogue number; replace ' + card.num + '.' && copied.live === copied.st && copied.tip === copied.st, JSON.stringify([copied.st, copied.live]));
     // 40 the exports, through the page's own buttons
+    if (NEW) await H.showRailTab(page, 'Passes');
     const n = await ev(page, () => __gt.D.passes.length);
     chk('40 the window holds passes from Bangkok (so the export checks below really run)', n > 0, n + ' passes');
     const csv = await grab(page, 'exp-csv'), rows = csv.text.trim().split(/\r?\n/), h = rows[0].split(','), c1 = rows[1].split(',');
@@ -1670,6 +1862,7 @@ const PRISTINE_HEADER = () => {
     chk('40 ICS: SUMMARY carries "[custom orbit]", DESCRIPTION says the orbit is hypothetical, the UID is the unique placeholder, and every line is folded to 75 octets',
         /SUMMARY:\[custom orbit\] Marks one/.test(flat) && /Hypothetical orbit planned on the Ground Track Console: not a catalogue object/.test(flat) && /UID:O0001-\d+@ground-track/.test(flat) && ics.text.split('\r\n').every(l => Buffer.byteLength(l) <= 75), ics.name);
     // 39 the age chip and the rail's provenance: a planned orbit has no element set to age, and nothing is refreshed
+    if (shutForCard) await page.click('#planopen');           // the steps below press Add in the planner
     const age = async ms => {
       await ev(page, v => { __planner.setModel({ epoch: v }); __planner.flush(); }, iso19(ms));
       await page.click('#pl-add');
@@ -1704,7 +1897,8 @@ const PRISTINE_HEADER = () => {
     const d = await ev(page, () => { const p = document.getElementById('planopen'), n = document.getElementById('plannote'); p.focus();
       return { aria: p.getAttribute('aria-disabled'), title: p.title, shown: !p.hidden && getComputedStyle(p).display !== 'none', focus: document.activeElement === p, exp: p.getAttribute('aria-expanded'), dis: p.disabled,
         note: n.hidden || getComputedStyle(n).display === 'none' ? null : n.textContent, link: n.querySelector('a') ? n.querySelector('a').getAttribute('href') + '|' + n.querySelector('a').textContent : null,
-        count: document.getElementById('satcount').textContent, cust: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), enabled: PlannerUI.enabled(), hook: typeof window.__planner }; });
+        cust: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), enabled: PlannerUI.enabled(), hook: typeof window.__planner }; });
+    d.count = await H.satCount(page);
     chk('50 under ?tle=embedded the pill is shown and focusable with aria-disabled="true" (not disabled), its title and the note under it hold the sentence, and the note links back to the live element sets',
         d.aria === 'true' && d.dis === false && d.shown && d.focus && d.exp === 'false' && d.title === SENT && d.note !== null && d.note.indexOf(SENT) === 0 && d.link === '?|Back to the live element sets', JSON.stringify(d));
     chk('50 ...the planner is off (not enabled, no hook), the count reads "2,158 spacecraft", and a seeded valid store is neither listed (0 orbits) nor touched (byte for byte)', !d.enabled && d.hook === 'undefined' && d.count === '2,158 spacecraft' && d.cust === 0 && d.store === STORE, JSON.stringify([d.enabled, d.hook, d.count, d.cust]));
@@ -1712,16 +1906,16 @@ const PRISTINE_HEADER = () => {
     await page.keyboard.press('Enter'); await page.keyboard.press('Space');
     await page.waitForTimeout(150);
     const o = await ev(page, () => ({ hidden: document.getElementById('planner').hidden, disp: getComputedStyle(document.getElementById('planner')).display, planning: document.querySelector('.app').hasAttribute('data-planning'), open: PlannerUI.isOpen(), exp: document.getElementById('planopen').getAttribute('aria-expanded'),
-      rail: getComputedStyle(document.querySelector('.rail')).display }));
-    chk('50 activating the pill (click, Enter, Space) opens nothing: #planner stays hidden, no drawer, aria-expanded false, the rail stays', o.hidden && o.disp === 'none' && !o.planning && !o.open && o.exp === 'false' && o.rail !== 'none', JSON.stringify(o));
+      rail: __T.railShown() }));
+    chk('50 activating the pill (click, Enter, Space) opens nothing: #planner stays hidden, no drawer, aria-expanded false, the rail stays', o.hidden && o.disp === 'none' && !o.planning && !o.open && o.exp === 'false' && o.rail, JSON.stringify(o));
     await page.click('#satsearch'); await page.fill('#satsearch', 'zzqq nothing');
-    const pk = await ev(page, () => ({ plan: !!document.querySelector('#satlist li.plan'), note: (document.querySelector('#satlist li.note') || {}).textContent }));
+    const pk = await ev(page, () => ({ plan: !!document.querySelector('#satlist li.plan'), note: __T.note() }));
     await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');
     const ad = await ev(page, () => { const f = Planner.defaultForm(__gt.OBS, Date.now()); f.name = 'Pinned try'; const res = __gt.addCustom({ name: 'Pinned try', el: Planner.fromForm(f).el });
       return { ok: res.ok, code: res.errors && res.errors[0] && res.errors[0].code, msg: res.errors && res.errors[0] && res.errors[0].msg, n: __gt.CUSTOM.length, store: localStorage.getItem('gt.custom'), open: PlannerUI.isOpen() }; });
     chk('50 the picker offers no Plan row (a query that matches nothing opens nothing), and __gt.addCustom answers planner.off with the same sentence and keeps nothing; the store is still byte for byte what was seeded',
-        !pk.plan && pk.note === 'Nothing in the catalogue matches that' && !ad.ok && ad.code === 'planner.off' && ad.msg === SENT && ad.n === 0 && ad.store === STORE && !ad.open, JSON.stringify([pk, ad]));
+        !pk.plan && pk.note === NONE && !ad.ok && ad.code === 'planner.off' && ad.msg === SENT && ad.n === 0 && ad.store === STORE && !ad.open, JSON.stringify([pk, ad]));
     chk('14 no page error', r.errs.length === 0, r.errs.join(' | ') || 'none');
     await r.ctx.close();
   }
@@ -1788,6 +1982,7 @@ const PRISTINE_HEADER = () => {
     for (const [what, init] of CASES) {
       const r = await open(browser, { init: init });
       await addApi(r.page, 'Clip one', {}, {});
+      await H.showRailTab(r.page, 'Source');
       await r.page.click('#tle-copy');
       await r.page.waitForFunction(() => /Select and copy/.test(document.getElementById('pl-status').textContent), null, { timeout: 8000 }).catch(() => {});
       await r.page.waitForTimeout(150);
@@ -1801,6 +1996,7 @@ const PRISTINE_HEADER = () => {
       // the success message is written only after the clipboard resolves, never before
       const r = await open(browser, { init: `window.__wrote = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: function(t){ window.__wrote.push(t); return new Promise(function(ok){ setTimeout(ok, 500); }); } }, configurable: true });` });
       await addApi(r.page, 'Clip two', {}, {});
+      await H.showRailTab(r.page, 'Source');
       await r.page.click('#tle-copy');
       await r.page.waitForTimeout(150);
       const early = await ev(r.page, () => document.getElementById('pl-status').textContent);
@@ -1825,9 +2021,14 @@ const PRISTINE_HEADER = () => {
       : d < 60 ? d.toFixed(0) + ' days' : d < 400 ? (d / 30.44).toFixed(1) + ' months' : (d / 365.25).toFixed(1) + ' years';
     /* put an orbit on the globe through the page, redraw the chart, and read what the section says and what the chart drew */
     const show = async (name, patch) => {
+      /* what the section said before: the rebuilt page's section and chart are drawn a moment after the load (a chunk), so what is read must wait for words that are new */
+      const was = await ev(page, () => ['lifebig', 'lifesub'].map(i => document.getElementById(i) ? document.getElementById(i).textContent : '').join('|'));
+      await ev(page, () => { window.__ct.length = 0; });
       await addApi(page, name, patch, {});
       await page.waitForFunction(n => __gt.D.entry.name === n, name, { timeout: 30000 });
-      await ev(page, () => { window.__ct.length = 0; window.dispatchEvent(new Event('resize')); });
+      await page.waitForFunction(w => { const b = document.getElementById('lifebig'), s = document.getElementById('lifesub'), n = document.getElementById('lifespan');
+        return !!b && !!s && !!n && /^forecast from your drag assumption/.test(n.textContent) && b.textContent + '|' + s.textContent !== w; }, was, { timeout: 20000 });
+      await ev(page, () => { window.dispatchEvent(new Event('resize')); });     // the old chart is redrawn on the page's resize; the rebuilt one draws when its words arrive
       await page.waitForFunction(() => window.__ct.some(c => c.base === 'top'), null, { timeout: 8000 });
       await page.waitForTimeout(150);
       return ev(page, () => {
@@ -1857,7 +2058,8 @@ const PRISTINE_HEADER = () => {
         document.getElementById('lifecv').addEventListener('pointermove', e => { window.__px = e.clientX - document.getElementById('lifecv').getBoundingClientRect().left; }, true); });
       await page.mouse.move(x - 4, y); await page.mouse.move(x, y);
       await page.waitForTimeout(60);
-      const t = await ev(page, () => { const tip = document.getElementById('lifetip'); return { on: tip.classList.contains('on'), html: tip.innerHTML, px: window.__px }; });
+      /* the old tooltip is two lines of markup (a <br>); the rebuilt one is text with a line break (white-space: pre-line): read as the markup it stands for */
+      const t = await ev(page, () => { const tip = document.getElementById('lifetip'); return { on: tip.classList.contains('on'), html: tip.innerHTML.replace(/\n/g, '<br>'), px: window.__px }; });
       const d = (t.px - g.L) / (g.Wc - g.L - g.R) * (g.tEnd - g.t0) / 864e5;
       return { on: t.on, html: t.html, d: d };
     };
@@ -1885,12 +2087,13 @@ const PRISTINE_HEADER = () => {
     {
       const p = await open(browser, { ctx: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
       await addApi(p.page, 'Decay phone', { hp: 400, ha: 400 }, {});
+      await p.page.waitForFunction(() => { const c = document.getElementById('lifecv'); return !!c && !!c.__geom; }, null, { timeout: 15000 });     // the chart is drawn
       await p.page.locator('#lifecv').scrollIntoViewIfNeeded();
       const g = await ev(p.page, () => { const c = document.getElementById('lifecv'), b = c.getBoundingClientRect(), gm = c.__geom; return { x: b.left + gm.Wc - gm.R - 2, y: b.top + 150 }; });
       const before = await ev(p.page, () => ({ sw: document.documentElement.scrollWidth, iw: innerWidth }));
       await p.page.mouse.move(g.x - 5, g.y); await p.page.mouse.move(g.x, g.y);
       await p.page.waitForTimeout(80);
-      const o = await ev(p.page, () => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, tip: document.getElementById('lifetip').innerHTML, on: document.getElementById('lifetip').classList.contains('on'), right: Math.round(document.getElementById('lifetip').getBoundingClientRect().right) }));
+      const o = await ev(p.page, () => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, tip: document.getElementById('lifetip').innerHTML.replace(/\n/g, '<br>'), on: document.getElementById('lifetip').classList.contains('on'), right: Math.round(document.getElementById('lifetip').getBoundingClientRect().right) }));
       chk('66 at 390 px wide, with the tooltip at the far right of the chart (its right edge at ' + o.right + ' px), the page is no wider than the screen: ' + before.sw + ' of ' + before.iw + ' before, ' + o.sw + ' of ' + o.iw + ' after',
           o.on && before.iw === 390 && before.sw <= before.iw && o.iw === 390 && o.sw <= o.iw && o.right <= o.iw, JSON.stringify([before, o]));
       await p.ctx.close();
@@ -1952,7 +2155,7 @@ const PRISTINE_HEADER = () => {
       await ev(page, e0 => { __planner.setModel({ name: 'Status two', epoch: new Date(e0).toISOString().slice(0, 19) }); __planner.flush(); }, E0);
       loud.push(await step('Add', async () => { await page.mouse.click(...(await ev(page, () => { const r = document.getElementById('pl-add').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }))); await page.waitForFunction(() => __gt.CUSTOM.length === 1, null, { timeout: 30000 }); }));
       loud.push(await step('Enter on an unchanged form', async () => { await page.focus('#pl-inc'); await page.keyboard.press('Enter'); }));
-      loud.push(await step('Copy as TLE', async () => { await page.click('#tle-copy'); await page.waitForFunction(() => /^Copied/.test(document.getElementById('pl-status').textContent), null, { timeout: 8000 }); }));
+      loud.push(await step('Copy as TLE', async () => { const shut = await pressCard(page, 'tle-copy'); await page.waitForFunction(() => /^Copied/.test(document.getElementById('pl-status').textContent), null, { timeout: 8000 }); if (shut) await page.click('#planopen'); }));
       loud.push(await step('Delete', async () => { await page.click('#pl-saved-list .pl-del'); }));
       chk('34 ...and it is written exactly once by each of a preset, a fix, its Undo, Reset, Add, Enter on an unchanged form, Copy as TLE and Delete (' + loud.map(q => q.d).join(',') + ')', loud.every(q => q.d === 1), JSON.stringify(loud));
       chk('18 no page error', errs.length === 0, errs.join(' | ') || 'none');
@@ -2057,7 +2260,7 @@ const PRISTINE_HEADER = () => {
       const d2 = await ev(page, () => ({ name: document.getElementById('pl-name').value, hp: document.getElementById('pl-hp').value }));
       chk('21 the picker\'s Plan row opens the kept draft under the typed name: "zzqq nothing" with 612 km still in the form', d2.name === 'zzqq nothing' && d2.hp === '612', JSON.stringify(d2));
       // the buttons that close it: the pill again, Close; Escape with the focus outside does nothing
-      await ev(page, () => document.querySelector('.viewport .btn').focus());
+      await ev(page, () => document.querySelector(__SEL.glob).focus());
       await page.keyboard.press('Escape');
       chk('4 Escape with the focus outside the planner (on a globe button) leaves it open and the focus where it was', await ev(page, () => PlannerUI.isOpen() && !!document.activeElement.closest('.viewport')));
       await page.click('#planopen');
@@ -2121,9 +2324,11 @@ const PRISTINE_HEADER = () => {
          the status line that appears under the button grows the sticky bar and moves the button up by a line, so a second click at the same coordinates lands on the status text. */
       await ev(page, () => { const b = document.getElementById('pl-add'); b.click(); b.click(); });
       await page.waitForFunction(() => __gt.CUSTOM.length >= 1, null, { timeout: 30000 });
+      await H.openPicker(page);          // the old page's list opens on the field's focus (below); the rebuilt page's is a popover
       const d = await ev(page, () => { const b = document.getElementById('satsearch'); b.focus(); const rowText = (document.querySelector('#satlist li.cu') || {}).textContent; b.blur();
         return { n: __gt.CUSTOM.length, name: __gt.CUSTOM[0].name, masthead: document.getElementById('satname').textContent, store: JSON.parse(localStorage.getItem('gt.custom')).items.map(i => i.name), row: rowText,
           saved: [...document.querySelectorAll('#pl-saved-list li b')].map(x => x.textContent), st: document.getElementById('pl-status').firstChild.textContent, prim: document.getElementById('pl-add').textContent }; });
+      if (NEW) await H.closePicker(page);
       chk('18 a name with a formula in front is saved as the tidied text on every surface: the entry, the masthead, the store, the picker row and the saved list all say `HYPERLINK("x") ok` (no leading =)',
           d.name === 'HYPERLINK("x") ok' && d.masthead === d.name && d.store.join() === d.name && d.saved.join() === d.name && /^HYPERLINK\("x"\) ok/.test(d.row), JSON.stringify(d));
       chk('21 activating Add twice in one task adds one orbit: the second press finds the form already on the globe ("Already on the globe.") and the primary reads "Shown on globe"', d.n === 1 && d.st === 'Already on the globe.' && d.prim === 'Shown on globe', JSON.stringify([d.n, d.st, d.prim]));
@@ -2248,11 +2453,13 @@ const PRISTINE_HEADER = () => {
 
       // the link in the Elements hint (not in the jump nav, which has a header-height budget)
       await ev(page, () => window.scrollTo(0, 0));
-      const hk = await ev(page, () => { const hint = document.querySelector('#sec-elements .shead p.hint'), a = hint.querySelector('a'), nav = [...document.querySelectorAll('.bar-top .jump a')].map(x => x.getAttribute('href'));
+      /* the section nav is a different element on each page, named by SEL.jump (the old page's .bar-top .jump, the rebuilt page's sticky sub-nav nav.rnav): a changed scope, recorded in row P.
+         It must hold its section links for "did not gain a link" to mean anything (the report's six sections on the rebuilt page, eight on the old). */
+      const hk = await ev(page, () => { const hint = document.querySelector('#sec-elements p.hint'), a = hint.querySelector('a'), nav = [...document.querySelectorAll(__SEL.jump)].map(x => x.getAttribute('href'));
         return { n: hint.querySelectorAll('a').length, href: a && a.getAttribute('href'), text: a && a.textContent, shown: !!a && a.getClientRects().length > 0, tail: hint.textContent.slice(-' · Professor’s notes'.length), inNav: nav.indexOf('#sec-prof') >= 0, navN: nav.length, hdr: Math.round(document.querySelector('.bar-top').getBoundingClientRect().height * 10) / 10,
           target: !!document.getElementById('sec-prof') && getComputedStyle(document.getElementById('sec-prof')).display !== 'none', label: AdvisorCopy.ADVISOR_LABEL }; });
-      chk('56 the Elements hint ends with a link to the section, in the words of ADVISOR_LABEL (" · Professor’s notes", href #sec-prof), it is on screen, the target is shown, and the jump nav (header budget) did not gain a link (' + hk.navN + ' links, header ' + hk.hdr + ' px)',
-          hk.n === 1 && hk.href === '#sec-prof' && hk.text === hk.label && hk.shown && hk.tail === ' · ' + hk.label && hk.target && !hk.inNav && hk.hdr <= 100, JSON.stringify(hk));
+      chk('56 the Elements hint ends with a link to the section, in the words of ADVISOR_LABEL (" · Professor’s notes", href #sec-prof), it is on screen, the target is shown, and the section nav (' + (NEW ? 'the sticky sub-nav nav.rnav' : 'the jump nav of the header, which has a height budget') + ') did not gain a link (' + hk.navN + ' links, header ' + hk.hdr + ' px)',
+          hk.n === 1 && hk.href === '#sec-prof' && hk.text === hk.label && hk.shown && hk.tail === ' · ' + hk.label && hk.target && hk.navN >= 6 && !hk.inNav && hk.hdr <= 100, JSON.stringify(hk));
       await page.click('#rp-link');
       await page.waitForTimeout(150);
       const jp = await ev(page, () => ({ top: Math.round(document.getElementById('sec-prof').getBoundingClientRect().top), hash: location.hash }));
@@ -2294,7 +2501,9 @@ const PRISTINE_HEADER = () => {
       await page.keyboard.press('Escape');
       // the observer: the console reloads from the rail's form, and the section is rebuilt for the new site ({site} in the group title and the notes, never the literal Bangkok)
       /* the form is the rail's, which a 1440 px console keeps in the header's panel: filled and applied from inside the page, as a person would with the same four boxes */
-      await ev(page, () => { document.getElementById('siteopen').click(); const m = document.getElementById('s-manual'); if (m) m.open = true;
+      /* (the rebuilt page's form is a popover whose fields exist only once it is open, so the same four boxes are filled one by one, through the harness) */
+      if (NEW) await H.setSite(page, { name: 'Quito', lat: -0.18, lon: -78.47, alt: 2.8, tz: -5 });
+      else await ev(page, () => { document.getElementById('siteopen').click(); const m = document.getElementById('s-manual'); if (m) m.open = true;
         [['s-name', 'Quito'], ['s-lat', '-0.18'], ['s-lon', '-78.47'], ['s-alt', '2.8'], ['s-tz', '-5']].forEach(([id, v]) => { const i = document.getElementById(id); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); });
         document.getElementById('siteapply').click(); });
       await page.waitForFunction(() => __gt.OBS.name === 'Quito', null, { timeout: 30000 });
@@ -2357,7 +2566,7 @@ const PRISTINE_HEADER = () => {
       chk('28 as shipped, the section\'s heading and the link read "Professor’s notes" and no other text in it says Professor (the notes never name the speaker)', /^Professor’s notes on KNACKSAT-2$/.test(dflt.h) && dflt.link === 'Professor’s notes' && dflt.other === 0, JSON.stringify(dflt));
       await ev(page, () => { AdvisorCopy.ADVISOR_LABEL = 'Tutor'; });
       await pick(page, 'ISS (ZARYA)');
-      const d = await ev(page, () => { const s = document.getElementById('sec-prof'); return { h: document.getElementById('rp-title').textContent, link: document.getElementById('rp-link').textContent, hint: document.querySelector('#sec-elements .shead p.hint').textContent.slice(-8),
+      const d = await ev(page, () => { const s = document.getElementById('sec-prof'); return { h: document.getElementById('rp-title').textContent, link: document.getElementById('rp-link').textContent, hint: document.querySelector('#sec-elements p.hint').textContent.slice(-8),
         prof: (s.textContent.match(/Professor/g) || []).length, tips: [...s.querySelectorAll('.basis[title]')].map(e => e.title), nTips: s.querySelectorAll('.basis').length }; });
       chk('56/28 ADVISOR_LABEL stubbed to "Tutor": the section is headed "Tutor on ISS (ZARYA)", the link in the Elements hint reads Tutor, the tooltips on the Basis lines say "Tutor: ...", and nothing in the section or the hint says Professor',
           d.h === 'Tutor on ISS (ZARYA)' && d.link === 'Tutor' && d.hint === ' · Tutor' && d.prof === 0 && d.tips.length > 0 && d.tips.every(t => /^Tutor: /.test(t)), JSON.stringify(d));
@@ -2368,14 +2577,18 @@ const PRISTINE_HEADER = () => {
     // ---- D. the planner off, the snapshot, a fault in the build ------------------------------------------------------------------------------------------------
     {
       // Planner absent: plannerOn() is false, init never runs, the section stays hidden and nothing is computed
-      const r = await open(browser, { planner: false, init: `Object.defineProperty(window, 'Planner', { set: function(v){}, get: function(){ return undefined; }, configurable: true });` });
-      await ev(r.page, () => { const real = Advisor.advise; window.__calls = 0; Advisor.advise = function(){ window.__calls++; return real.apply(this, arguments); }; });
+      const r = await open(browser, ABSENT_PLANNER);
+      /* What could compute advice is counted, on the old page: it still holds the advisor when only the maths is missing, so the counter is installed and means something.
+         On the rebuilt page the counter can never be installed: with the planner's chunk refused no Advisor exists on the window, so `calls` is 0 by construction and counts nothing. The check
+         therefore claims only what is measured there (the section hidden and empty, no aria-busy, no li, its link hidden, the console working, no page error); the counting half is made on the
+         rebuilt page by the ?tle=embedded check below, where the surface does bring the advisor up and the counter is real. */
+      await ev(r.page, () => { window.__calls = 0; if (window.Advisor) { const real = Advisor.advise; Advisor.advise = function(){ window.__calls++; return real.apply(this, arguments); }; } });
       await r.page.click('#satsearch'); await r.page.fill('#satsearch', 'ISS'); await r.page.keyboard.press('Enter');
       await r.page.waitForFunction(() => /^ISS/.test(__gt.D.entry.name), null, { timeout: 30000 });
       await r.page.waitForTimeout(1500);
       const d = await ev(r.page, () => { const s = document.getElementById('sec-prof'); return { hidden: s.hidden, display: getComputedStyle(s).display, nav: getComputedStyle(document.getElementById('rp-nav')).display, calls: window.__calls, name: __gt.D.entry.name, busy: s.hasAttribute('aria-busy'), kids: s.querySelectorAll('li').length }; });
-      chk('56 with the planner modules missing (Planner absent, plannerOn() false) the section stays hidden and empty, its link too, nothing is computed for it, the console works (the picker loaded ' + d.name + ') and there is no page error',
-          d.hidden && d.display === 'none' && d.nav === 'none' && d.calls === 0 && !d.busy && d.kids === 0 && r.errs.length === 0, JSON.stringify(d) + ' ' + r.errs.join('|'));
+      chk('56 with the planner modules missing (' + (NEW ? 'the planner\'s chunk refused' : 'Planner absent, plannerOn() false') + ') the section stays hidden and empty (no aria-busy, no li), its link too, ' + (NEW ? '' : 'nothing is computed for it (the advisor is wrapped and counted), ') + 'the console works (the picker loaded ' + d.name + ') and there is no page error',
+          d.hidden && d.display === 'none' && d.nav === 'none' && (NEW || d.calls === 0) && !d.busy && d.kids === 0 && r.errs.length === 0, JSON.stringify(d) + ' ' + r.errs.join('|'));
       await r.ctx.close();
     }
     {
@@ -2505,14 +2718,14 @@ const PRISTINE_HEADER = () => {
         const dets = [...s.querySelectorAll('details.pf-grp')].filter(d => !d.hidden), v = R(q('#rp-verdict')), foot = R(q('#rp-foot'));
         const gaps = []; for (let i = 1; i < dets.length; i++) gaps.push(Math.round((R(dets[i]).top - R(dets[i - 1]).bottom) * 10) / 10);
         const small = []; const w = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
-        for (let n; (n = w.nextNode());) { const t = n.textContent.trim(), e = n.parentElement; if (!t) continue; let vis = true; for (let a = e; a && a !== s; a = a.parentElement) { if (getComputedStyle(a).display === 'none') { vis = false; break; } } if (!vis) continue; const r = R(e); if (!r.width || !r.height) continue; const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < 11) small.push(fs + ' ' + t.slice(0, 24)); }
+        for (let n; (n = w.nextNode());) { const t = n.textContent.trim(), e = n.parentElement; if (!t) continue; let vis = true; for (let a = e; a && a !== s; a = a.parentElement) { if (getComputedStyle(a).display === 'none') { vis = false; break; } } if (!vis) continue; const r = R(e); if (!r.width || !r.height) continue; const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < __SEL.minText) small.push(fs + ' ' + t.slice(0, 24)); }
         const sums = [...s.querySelectorAll('details.pf-grp:not([hidden]) > summary')].map(x => Math.round(R(x).height));
         const probe = document.createElement('i'); probe.style.color = 'var(--muted)'; document.body.appendChild(probe); const muted = getComputedStyle(probe).color; probe.remove();
         return { rail: getComputedStyle(q('#rp-verdict')).borderLeftColor, muted: muted, gaps: gaps, verdictToFirst: dets.length ? Math.round((R(dets[0]).top - v.bottom) * 10) / 10 : null, lastToFoot: dets.length ? Math.round((foot.top - R(dets[dets.length - 1]).bottom) * 10) / 10 : null, small: small, sums: sums,
           sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, secW: Math.round(R(s).width), overRight: [...s.querySelectorAll('*')].filter(e => R(e).right > innerWidth + 1 && getComputedStyle(e).display !== 'none').length };
       };
       const CONTRAST = () => {
-        const parse = c => { const m = c.match(/rgba?\(([^)]+)\)/); const p = m[1].split(/[ ,\/]+/).map(Number); return { r: p[0], g: p[1], b: p[2] }; };
+        const parse = __T.rgba;
         const lum = ({ r, g, b }) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
         const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
         const bgOf = e => { for (let a = e; a; a = a.parentElement) { const c = getComputedStyle(a).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return parse(c); } return parse('rgb(255,255,255)'); };
@@ -2532,7 +2745,7 @@ const PRISTINE_HEADER = () => {
         const m = await ev(page, MEASURE);
         chk('56/5 visual: the groups sit one under the next with no dead air (the page\'s section{gap:16px} must not spread them: gaps ' + JSON.stringify(m.gaps) + ' px, verdict to first group ' + m.verdictToFirst + ', last group to the footer ' + m.lastToFoot + ')',
             m.gaps.length >= 3 && m.gaps.every(g => Math.abs(g) <= 1.5) && m.verdictToFirst >= 8 && m.verdictToFirst <= 16 && Math.abs(m.lastToFoot) <= 1.5, JSON.stringify(m));
-        chk('56 visual: at 1440 px no text is under 11 px and nothing runs past the right edge', m.small.length === 0 && m.overRight === 0 && m.sw <= m.cw, JSON.stringify([m.small.slice(0, 3), m.overRight, m.sw, m.cw]));
+        chk('56 visual: at 1440 px no text is under ' + SEL.minText + ' px and nothing runs past the right edge', m.small.length === 0 && m.overRight === 0 && m.sw <= m.cw, JSON.stringify([m.small.slice(0, 3), m.overRight, m.sw, m.cw]));
         chk('56 visual: the verdict strip names the orbit and is not coloured by its worst note (GOES 18 is a healthy spacecraft whose Problem is that Bangkok cannot see it: a red strip would say the orbit is bad), its rail is the muted token ' + m.muted, m.rail === m.muted, m.rail + ' vs ' + m.muted);
         await ctx.close();
         chk('20 no page error', errs.length === 0, errs.join(' | ') || 'none');
@@ -2543,7 +2756,7 @@ const PRISTINE_HEADER = () => {
         await pick(page, 'THEOS');
         await ev(page, () => document.querySelectorAll('#sec-prof details').forEach(d => { if (!d.hidden) d.open = true; }));
         const m = await ev(page, MEASURE);
-        chk('56 visual: at 390 px (a phone) the section fits the screen (no sideways scroll: ' + m.sw + ' of ' + m.cw + ' px), no text under 11 px, nothing past the right edge, and every group header is a 44 px touch target (' + m.sums.join(',') + ')',
+        chk('56 visual: at 390 px (a phone) the section fits the screen (no sideways scroll: ' + m.sw + ' of ' + m.cw + ' px), no text under ' + SEL.minText + ' px, nothing past the right edge, and every group header is a 44 px touch target (' + m.sums.join(',') + ')',
             m.sw <= m.cw && m.small.length === 0 && m.overRight === 0 && m.sums.length >= 3 && m.sums.every(h => h >= 44), JSON.stringify(m));
         await ctx.close();
         chk('20 no page error', errs.length === 0, errs.join(' | ') || 'none');
@@ -2559,7 +2772,7 @@ const PRISTINE_HEADER = () => {
         }
         const lowRows = Object.values(all).filter(x => x[2] < x[3]);
         chk('56/43 contrast in the ' + scheme + ' scheme: ' + Object.keys(all).length + ' pairs measured on the report\'s own background (text at least 4.5, glyphs and borders at least 3)', lowRows.length === 0 && Object.keys(all).length >= 18, lowRows.map(x => x[0] + ' ' + x[1] + '<' + x[3]).join(', ') || Object.values(all).map(x => x[0].split(' ')[0] + ' ' + x[1]).slice(0, 8).join(' | '));
-        const lit = await ev(page, () => { const out = []; for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch (e) { continue; } const walk = list => { for (const r of list) { if (r.cssRules && !r.selectorText) walk(r.cssRules); else if (r.selectorText && /#sec-prof|#rp-/.test(r.selectorText) && /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(r.style.cssText)) out.push(r.selectorText); } }; walk(rules); } return out; });
+        const lit = await ev(page, () => { const out = []; for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch (e) { continue; } const walk = list => { for (const r of list) { if (r.cssRules && !r.selectorText) walk(r.cssRules); else if (r.selectorText && /#sec-prof|#rp-/.test(r.selectorText) && __T.lit(r.style.cssText)) out.push(r.selectorText); } }; walk(rules); } return out; });
         chk('56/46 no rule of the section carries a colour literal in the ' + scheme + ' scheme (every colour is a token)', lit.length === 0, lit.join(' | '));
         await ctx.close();
         chk('20 no page error', errs.length === 0, errs.join(' | ') || 'none');

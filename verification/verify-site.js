@@ -25,10 +25,11 @@
  *
  *   node verification/verify-site.js          (needs playwright)
  */
+const H = require('./lib/harness');
 const path = require('path');
-const { chromium } = require('playwright');
+const { chromium } = H.playwright();
 
-const PAGE = 'file:///' + path.join(__dirname, '..', 'index.html').split(path.sep).join('/');
+let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -40,6 +41,7 @@ const chk = (name, ok, detail) => {
 const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 };
 
 (async () => {
+  const __srv = await H.up(); PAGE = __srv.page;
   const browser = await chromium.launch();
   const ctx = await browser.newContext();
   const page = await ctx.newPage({ viewport: { width: 1400, height: 900 } });
@@ -78,7 +80,8 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   }), T0);
   /* The flat map's site label is painted, not laid out, so it is read off the
      canvas: every string filled on #map during one forced redraw. */
-  const mapTexts = () => page.evaluate(async () => {
+  const mapTexts = async () => { await H.showMap(page); const t = await mapTextsNow(); await H.showGlobe(page); return t; };
+  const mapTextsNow = () => page.evaluate(async () => {
     const seen = [], proto = CanvasRenderingContext2D.prototype, orig = proto.fillText;
     proto.fillText = function (t, ...a) {
       if (this.canvas && this.canvas.id === 'map') seen.push(String(t));
@@ -118,9 +121,12 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   /* The observer form starts closed. .siteform set display:flex, which beats the
      UA's [hidden] rule, so it was open on every first load before the button
      was pressed - and the button's aria-expanded said "false" over it. */
-  const formState = () => page.evaluate(() => ({
-    shown: getComputedStyle(document.getElementById('siteform')).display !== 'none',
-    expanded: document.getElementById('siteopen').getAttribute('aria-expanded') }));
+  const formState = () => page.evaluate(() => {
+    /* the rebuilt form is a popover that is not in the page at all while it is shut */
+    const f = document.getElementById('siteform');
+    return { shown: !!f && f.offsetParent !== null && getComputedStyle(f).display !== 'none',
+             expanded: document.getElementById('siteopen').getAttribute('aria-expanded') };
+  });
   const f0 = await formState();
   await page.click('#siteopen');
   const f1 = await formState();
@@ -131,19 +137,17 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
       && !f2.shown && f2.expanded === 'false',
       [f0, f1, f2].map(f => (f.shown ? 'open' : 'closed') + '/' + f.expanded).join(' -> '));
 
+  /* The 3D scene is not in the rebuilt app until milestone M6; its pin, its camera label and its key are checked then,
+     unchanged. Said out loud rather than passed over. */
+  const hasScene = await page.evaluate(() => typeof window.Orbit3D !== 'undefined');
+  if (!hasScene) console.log('  SKIP  the 3D pin, the camera label and the globe\'s key (4 checks): no 3D scene in this build yet (milestone M6)');
   const pin0 = await pinLatLon();
-  chk('...and the 3D pin stands there', pin0 &&
+  if (hasScene) chk('...and the 3D pin stands there', pin0 &&
       Math.abs(pin0.lat - 13.75) < 1e-3 && Math.abs(pin0.lon - 100.52) < 1e-3,
       pin0 ? pin0.lat.toFixed(3) + ', ' + pin0.lon.toFixed(3) : 'pin not found');
 
   // ---- move it -------------------------------------------------------------
-  await page.evaluate(S => {
-    const set = (id, v) => { document.getElementById(id).value = v; };
-    document.getElementById('siteopen').click();
-    set('s-name', S.name); set('s-lat', S.lat); set('s-lon', S.lon);
-    set('s-alt', S.altKm); set('s-tz', S.tz);
-    document.getElementById('siteapply').click();
-  }, SITE);
+  await H.setSite(page, SITE);
   await page.waitForTimeout(2500);
   const moved = await state();
   console.log('moved to     : ' + moved.obs.name + '  ' + moved.obs.lat + ', ' + moved.obs.lon);
@@ -159,17 +163,17 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
       home.passes + ' passes -> ' + moved.passes + ' passes');
 
   const pin1 = await pinLatLon();
-  chk('the 3D pin followed, so GT.OBS was mutated and not replaced', pin1 &&
+  if (hasScene) chk('the 3D pin followed, so GT.OBS was mutated and not replaced', pin1 &&
       Math.abs(pin1.lat - SITE.lat) < 1e-3 && Math.abs(pin1.lon - SITE.lon) < 1e-3,
       pin1 ? pin1.lat.toFixed(3) + ', ' + pin1.lon.toFixed(3) : 'pin not found');
 
   chk('the labels renamed', /Svalbard/.test(moved.heading) && /Svalbard/.test(moved.eyebrow)
-      && moved.cam === 'Svalbard', moved.heading);
+      && (hasScene ? moved.cam === 'Svalbard' : true), moved.heading);
   chk('...and the clock says the new offset', moved.tz === 'UTC+1', 'shows "' + moved.tz + '"');
   chk('...and so do the readout and the section hint, which were static markup',
       moved.ro.every(t => /@ Svalbard$/.test(t)) && /^78\.23° N 15\.41° E, 450 m above sea level/.test(moved.hint),
       moved.ro.join(' / ') + ' · ' + moved.hint);
-  chk('...and so does the key on the globe', moved.key.length === 2 && moved.key.every(t => /Svalbard/.test(t || '')),
+  if (hasScene) chk('...and so does the key on the globe', moved.key.length === 2 && moved.key.every(t => /Svalbard/.test(t || '')),
       moved.key.join(' / '));
   const movedMap = await mapTexts();
   chk('...and the flat map labels the site by its own name',
@@ -185,10 +189,8 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
       reloaded.totalS.toFixed(1) + ' s, computed once at the restored site');
 
   // ---- reset -------------------------------------------------------------
-  await page.evaluate(() => {
-    document.getElementById('siteopen').click();
-    document.getElementById('sitereset').click();
-  });
+  await H.siteForm(page);
+  await page.click('#sitereset');
   await page.waitForTimeout(2200);
   const back = await state();
   chk('reset restores Bangkok exactly', back.obs.lat === 13.75 && back.obs.lon === 100.52
@@ -279,10 +281,9 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
                 body: JSON.stringify({ results: HITS[q] || [] }) });
   });
 
-  const openForm = () => page.evaluate(() => {
-    const f = document.getElementById('siteform');
-    if (f.hidden) document.getElementById('siteopen').click();
-  });
+  const openForm = async () => {
+    if (!(await page.isVisible('#s-search'))) await page.click('#siteopen');
+  };
   const typeSearch = async text => {
     await openForm();
     await page.evaluate(t => {
@@ -363,7 +364,7 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
      London's, UTC+1 on the 23rd, worked out here from Intl rather than from the
      page - and has to open the window at the instant meant. */
   const WEEK0 = Date.UTC(2026, 9, 23, 6);
-  await page.evaluate(() => document.querySelector('.bar-window .span[data-h="168"]').click());
+  await H.clickWindow(page, '[data-h="168"]');
   await page.waitForTimeout(2500);
   await page.evaluate(v => {
     const i = document.getElementById('winStartIn');
@@ -438,8 +439,8 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('a dead search says so, rather than looking like no such place',
       /unreachable/i.test(offline.note) && offline.hits, offline.note.trim());
 
+  await H.siteForm(page);
   await page.evaluate(() => {
-    document.getElementById('s-manual').open = true;
     const set = (id, v) => { document.getElementById(id).value = v; };
     set('s-name', 'Chiang Mai'); set('s-lat', 18.7883); set('s-lon', 98.9853);
     set('s-alt', 0.31); set('s-tz', 7);

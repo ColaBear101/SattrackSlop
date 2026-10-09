@@ -30,12 +30,13 @@
  * No page and no browser: node and satellite.js only. Ends ALL CHECKS PASS.
  */
 'use strict';
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 
-require(path.join(__dirname, '..', 'earth', 'lifetime.js'));
-const PLANNER_JS = process.env.PLANNER_JS ? path.resolve(process.env.PLANNER_JS) : path.join(__dirname, '..', 'earth', 'planner.js');
+require(H.earthFile('lifetime'));
+const PLANNER_JS = process.env.PLANNER_JS ? path.resolve(process.env.PLANNER_JS) : H.earthFile('planner');
 require(PLANNER_JS);
 const sat = require('./satellite.min.js');
 const P = globalThis.Planner, L = globalThis.Lifetime;
@@ -550,7 +551,13 @@ group('V15 the atmosphere the planner and the Decay section share', () => {
     return z.dadt_kmday === 0 && z.dedt_day === 0 && Math.abs(r3.dadt_kmday / r1.dadt_kmday - 3) < 1e-12 && r1.dadt_kmday < 0;
   })());
   chk('V15 dragAvg: e = 0 gives no de/dt (the cosine integrates to zero), and a drag-free orbit stays put', Math.abs(P.dragAvg(7000, 0, 0.01, 1).dedt_day) < 1e-15 * Math.abs(P.dragAvg(7000, 0, 0.01, 1).dadt_kmday) + 1e-30 && P.dragAvg(7000, 0.01, 0, 1).dadt_kmday === 0);
-  chk('V15 the four drag functions throw the stated Error when Lifetime is absent, and only then', (() => {
+  /* "Lifetime is absent" is a state of the classic wiring only: those scripts looked the atmosphere up on
+     globalThis at call time, so a page could load the planner without it. In the module build the
+     dependency is an import, so the state cannot occur; a chunk that fails to load is the CALLER's dynamic
+     import failing, which the browser suites cover ("with the planner chunk blocked the pill is hidden").
+     Skipped out loud, not dropped: see CHANGES-FROM-LEGACY.md. */
+  if (H.targetName() !== 'legacy') console.log('  SKIP  V15 the four drag functions throw when Lifetime is absent - not reachable in the module build (static import)');
+  else chk('V15 the four drag functions throw the stated Error when Lifetime is absent, and only then', (() => {
     const keep = globalThis.Lifetime; let ok = true;
     try {
       delete globalThis.Lifetime;
@@ -638,7 +645,7 @@ group('parse: numbers, local times, epochs (never throws, never the browser zone
   chk('formatEpoch is toISOString().slice(0,19), and parseEpoch inverts it', P.formatEpoch(EP) === '2026-10-01T12:00:00' && P.parseEpoch(P.formatEpoch(EP)).value === EP && P.formatEpoch(NaN) === '');
   /* the zone: a child process with TZ set, which also proves the zone really was applied */
   const code = 'require(process.env.LIFETIME_JS);require(process.env.PLANNER_JS);const P=globalThis.Planner;process.stdout.write(JSON.stringify({off:new Date(Date.UTC(2026,9,1,12)).getTimezoneOffset(),ms:P.parseEpoch("2026-10-01T12:00:00").value,txt:P.formatEpoch(Date.UTC(2026,9,1,12)),w:P.fromForm({shape:"alt",nodeMode:"ltan",hp:700,ha:700,inc:98.2,ltan:"10:30",argp:0,ma:0,epoch:"2026-10-01T12:00:00",am:0.0043}).el.raan}));';
-  const inZone = tz => JSON.parse(cp.execFileSync(process.execPath, ['-e', code], { env: Object.assign({}, process.env, { TZ: tz, PLANNER_JS, LIFETIME_JS: path.join(__dirname, '..', 'earth', 'lifetime.js') }), encoding: 'utf8' }));
+  const inZone = tz => JSON.parse(cp.execFileSync(process.execPath, ['-e', code], { env: Object.assign({}, process.env, { TZ: tz, PLANNER_JS, LIFETIME_JS: H.earthFile('lifetime') }), encoding: 'utf8' }));
   const ny = inZone('America/New_York'), bk = inZone('Asia/Bangkok');
   chk('parseEpoch under TZ=America/New_York and Asia/Bangkok: the zones really differ (' + ny.off + ' vs ' + bk.off + ' min) and the epoch is the same instant, as is the node derived from it',
     ny.off !== bk.off && ny.ms === EP && bk.ms === EP && ny.txt === '2026-10-01T12:00:00' && bk.txt === ny.txt && ny.w === bk.w, JSON.stringify([ny, bk]));

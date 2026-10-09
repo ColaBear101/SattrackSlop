@@ -1,3 +1,4 @@
+const H = require('./lib/harness');
 const path = require('path');
 /* Validate Body.Moon()'s rotation against JPL Horizons.
  *
@@ -21,7 +22,7 @@ const os = require('os');
 const TMP = path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp')
                                                  : path.join(os.tmpdir(), 'gtc-lunar'), '/');
 fs.mkdirSync(TMP, { recursive: true });
-require(path.join(__dirname, '..', 'core/body.js'));
+H.loadClassic(path.join(H.ROOT, 'public', 'core', 'body.js'));
 const M = globalThis.Body.Moon();
 const DEG = 180/Math.PI;
 

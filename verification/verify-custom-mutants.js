@@ -1,4 +1,5 @@
-/*
+
+const H = require('./lib/harness');/*
  * Does verify-custom.js notice when a guard of index.html is taken away?
  *
  * A check that cannot fail is not a check. This removes ONE guard at a time from a copy of index.html
@@ -32,7 +33,7 @@ const path = require('path');
 const cp = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const BASE = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const BASE = fs.readFileSync(path.join(H.TARGETS.legacy, 'index.html'), 'utf8');
 const JOBS = Math.max(1, +process.env.MUTANT_JOBS || 3);
 const ONLY = process.env.MUTANT_ONLY ? new Set(process.env.MUTANT_ONLY.split(',')) : null;
 const DRY = !!process.env.MUTANT_DRY;

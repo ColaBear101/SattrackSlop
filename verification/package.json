@@ -1,0 +1,5 @@
+{
+  "type": "commonjs",
+  "private": true,
+  "description": "The verification suites are CommonJS scripts; the repository root is an ES-module package, so this file says so for everything under verification/."
+}

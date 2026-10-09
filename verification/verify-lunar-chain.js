@@ -1,3 +1,4 @@
+const H = require('./lib/harness');
 const path = require('path');
 /* End-to-end: baked daily elements -> anchoredTrack -> Body.Moon rotation ->
  * sub-spacecraft lat/lon, compared against Horizons' own sub-observer point.
@@ -22,9 +23,9 @@ const fs = require('fs');
 const os = require('os');
 const TMP = path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp')
                                                  : path.join(os.tmpdir(), 'gtc-lunar'), '/');
-require(path.join(__dirname, '..', 'core/body.js'));
-require(path.join(__dirname, '..', 'core/propagator.js'));
-require(path.join(__dirname, '..', 'moon/moondata.js'));
+H.loadClassic(path.join(H.ROOT, 'public', 'core', 'body.js'));
+H.loadClassic(path.join(H.ROOT, 'public', 'core', 'propagator.js'));
+H.loadClassic(path.join(H.ROOT, 'public', 'moon', 'moondata.js'));
 const M = globalThis.Body.Moon(), P = globalThis.Propagator, MD = globalThis.MoonData;
 const DEG = 180/Math.PI;
 

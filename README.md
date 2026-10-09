@@ -13,78 +13,172 @@ that was ever really Earth-specific.
 | **Lunar track console** *(testing)* | https://sattrackslop.vercel.app/moon-track.html |
 | **Earth–Moon system** *(testing)* | https://sattrackslop.vercel.app/moon.html |
 
-No build step and no server. Open `index.html` in a browser. The satellite catalogue, the
-coastlines, the Blue Marble imagery and the lunar ephemerides ship with the pages. What they fetch,
-and what happens without it:
+The Earth console is a Svelte 5 and TypeScript app built with Vite 8, so, unlike the page it
+replaced, it has a build step and cannot be opened from disk: ES modules and the data files it
+fetches need an origin. `npm ci`, then `npm run dev` (Vite on port 5173, with the cache API on
+3001 beside it), or `npm run build` and `npm run preview` (port 4173); **Running it** has the
+rest. It needs no server of its own, though: `dist/` is static files, and the cache API in
+`server/` is optional. Every difference from the old page is listed, with its reason, in
+`CHANGES-FROM-LEGACY.md`. The Moon pages are the plain scripts they always were, in `public/`,
+copied to `dist/` as they are, and they still open from disk. The satellite catalogue, the
+coastlines, the Blue Marble imagery and the city lights, and the lunar ephemerides ship with the
+pages. What they fetch, and what happens without it:
 
-- **On load, from cdnjs:** `satellite.js` 6.0.1, the SGP4 the Earth page cannot work without, and
-  `three.js` r128 for the 3D views on all three pages, which fall back to the flat map or the
-  tables without it. Every page pins what it loads by a Subresource Integrity hash as well as by
-  version, so a changed file is refused rather than run.
-- **On load, optional:** the webfonts from Google Fonts (system fonts otherwise). On the Earth
-  page, the current element set for the spacecraft on screen (never for an orbit you designed
-  yourself), from CelesTrak's `gp.php` with
-  `tle.ivanstanojevic.me` as the fallback, asked for when a spacecraft is put on screen and every
-  three hours while it stays there; an answer is reused for three hours and a failure retried
-  after five minutes (the embedded snapshot otherwise; never under `?tle=embedded`). Also the VIIRS
-  night-lights mosaic from NASA GIBS for the default globe surface, or yesterday's VIIRS true
-  colour if *Yesterday's clouds* is picked (the drawn coastlines otherwise). On the lunar track
-  page, the LRO surface mosaic from NASA Moon Trek (a surface painted from the feature list
-  otherwise). The Earth–Moon page fetches nothing past the fonts and `three.js`.
-- **Only when asked:** an object's element-set history from CelesTrak, for the decay forecast,
-  and a place-name search from Open-Meteo's geocoder. On a phone or tablet, the AR view asks the
-  device, not a server, for its rear camera, its motion sensors and — if *Use my location* is
-  pressed — its position. The picture is drawn over on the phone and goes nowhere, and the sensor
-  readings are neither kept nor sent; a position taken with *Use my location* becomes the observer,
-  saved in this browser the way the console's own *Use my location* saves it.
+- **On load, from cdnjs, on the Moon pages only:** `three.js` r128 for their 3D views, which fall
+  back to the flat map or the tables without it. They pin it by a Subresource Integrity hash as
+  well as by version, so a changed file is refused rather than run. The Earth page loads no script
+  from anyone else: `satellite.js` 6.0.1, the SGP4 it cannot work without, and `three.js` r128 are
+  bundled from npm at exactly those versions, and the lockfile pins their tarballs by hash.
+- **On load, optional:** on the Moon pages, the webfonts from Google Fonts (system fonts
+  otherwise); the Earth page's fonts are files of its own. On the Earth page, the current element
+  set for the spacecraft on screen (never for an orbit you designed yourself), from the page's own
+  cache API, `/api/tle/<n>`, if one answers as itself (see **Staying current**), and otherwise
+  from CelesTrak's `gp.php` with `tle.ivanstanojevic.me` as the fallback, asked for when a
+  spacecraft is put on screen and every three hours while it stays there; an answer is reused for
+  three hours and a failure retried after five minutes (the embedded snapshot otherwise; never
+  under `?tle=embedded`, which asks no one for an element set, the page's own API included). On
+  the lunar track page, the LRO surface mosaic from NASA Moon Trek (a surface painted from the
+  feature list otherwise). The Earth–Moon page fetches nothing past the fonts and `three.js`.
+- **Only when asked:** an object's element-set history for the decay forecast, from the page's own
+  cache API, `/api/history/<n>`, if one answers as itself (see **Staying current**), and
+  otherwise from CelesTrak's `graph-orbit-data.php`; a place-name search from Open-Meteo's
+  geocoder; and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
+  (the drawn coastlines otherwise). The default globe asks nobody for anything: the Blue Marble
+  and the city lights (`citylights-2048.jpg`, the VIIRS 2012 night-lights mosaic, saved once from
+  GIBS on 2026-10-08) ship with the page. On a phone or tablet, the AR view asks the device, not a
+  server, for its rear camera, its motion sensors and — if *Use my location* is pressed — its
+  position. The picture is drawn over on the phone and goes nowhere, and the sensor readings are
+  neither kept nor sent; a position taken with *Use my location* becomes the observer, saved in
+  this browser the way the console's own *Use my location* saves it.
 
 ## What's here
 
-Three pages over one shared core. The layout says which is which:
+Three pages over one shared core, which now exists in two forms: the classic scripts in
+`public/core/`, which the lunar track page loads, and the Earth half of them ported to TypeScript
+in `src/lib/core/`, which the Earth console is built from. A permanent test
+(`tests/lib/core-equivalence.test.ts`) holds the two bit for bit equal. The layout says which is
+which:
 
 ```
 index.html          Earth ground track, elements, Bangkok visibility, decay forecast,
-                    and orbits you design yourself
-moon-track.html     Moon-centred: lunar orbiters and landing sites
-moon.html           Earth–Moon system and the five libration points
+                    and orbits you design yourself. Vite's entry: it takes a build, and
+                    does not open from disk
+public/moon-track.html
+                    Moon-centred: lunar orbiters and landing sites
+public/moon.html    Earth–Moon system and the five libration points
 
-core/               the body-agnostic half
-  body.js             what is a property of the CENTRAL BODY — rotation,
-                      sub-satellite point, look angles, radii, mu
-  propagator.js       what is a property of HOW A THING MOVES — SGP4 for Earth
-                      TLEs, Kepler and daily-anchored for everything else
+src/                the Earth console's source: Svelte 5 + TypeScript
+  main.ts             mounts App.svelte; the test surface (testing/surface.ts, which the
+                      suites drive as window.__gt) is a lazy chunk, fetched only when
+                      window.__GT_TEST__ is set
+  styles/             the tokens (colour, type, space; light and dark), the base, the fonts
+  lib/                plain TypeScript, no framework and no page state
+    core/               the body-agnostic half: the Earth's, ported from public/core/
+      body.ts             what is a property of the CENTRAL BODY — rotation,
+                          sub-satellite point, look angles, radii, mu
+      propagator.ts       what is a property of HOW A THING MOVES — SGP4 for Earth TLEs
+      sun.ts              where the Sun is, and where it is overhead (from the old
+                          page's inline script, not from public/core/)
+    analysis/           elements, ground track, passes, the optics, the Doppler shift
+    catalogue/          reading the catalogue; ranking what the picker offers
+    text/               the sentences the page builds from its numbers, and the glossary, as data
+    net/                the element sets (the page's own cache API first, then CelesTrak and its
+                        mirror, as the old page asked them) and the decay histories (the API,
+                        then CelesTrak)
+    export/             the CSV and the calendar
+    data/               the downlink table's lookups (the table is data/transmitters.json)
+    shims/              the entries scripts/build-shims.mjs bundles for the Node suites
+    planner/            the planner, the Professor and the decay model, moved from the old page's
+                        files with their arithmetic untouched
+      planner.ts          your own orbits, the maths: typed mean elements to a Two-Line
+                          Element set, validation, the matched B*, the eleven presets
+      advisor.ts          the Professor's numbers: the kernels, the lifetime model and
+                          the dictionary of figures worked out for an orbit
+      advisor-copy.ts     the Professor's words: 87 items, each one condition and one text
+      lifetime.ts         orbital decay and re-entry forecasting
+      custom.ts           the reader's own orbits, from the old page's inline script, as
+                          pure functions
+    ar/
+      wmm.ts              the World Magnetic Model 2025: how far a compass's north is
+                          from true north, at the observer
+      skyar.ts            the AR view's maths: the phone's orientation as a camera,
+                          the projection, the iPhone's compass
+      arview.ts           the AR view: the motion sensors, the rear camera, and the
+                          sky drawn over the picture
+    places.ts           finding the observer: place search, this device, timezones
+    observer.ts         where the observer is, and how that is remembered
+    gt.ts               the DOM-free half of the test surface, which the gate measures
+  state/              the stores (Svelte runes): app, clock, custom, live, life, prefs,
+                      report, doppler, wall; url.ts, shortcuts.ts, storage.ts; and the
+                      one engine, the network's wiring and the planner's modules
+  components/         the page's parts
+    shell/              the app bar, the spacecraft picker, the observer chip, the theme toggle
+    stage/              the globe and its controls, and the flat map
+    rail/               the answer rail: the passes, the orbit, the element set's source
+    transport/          the clock and the window
+    report/             the written report: elements, ground track, passes, decay, method,
+                        terms, and the Professor's notes
+    planner/            the planner and the Professor
+      plannerui.ts        the planner's form, the Professor's panel, the saved list, and
+                          the Professor's section on the spacecraft on screen (the old
+                          controller, ported; its markup is the .svelte files beside it)
+    ar/                 the AR view, and the page's side of it
+    ui/                 the primitives: buttons, popovers, tabs, icons
+  scene/              the 3D globe (three r128, imperative, not Svelte)
+    orbit3d.ts          the WebGL globe
+    orbitviz.ts         orbital-element vectors, stars, constellations, planets
+    globetex.ts         NASA imagery for the globe's surface: the Blue Marble and the night
+                        lights from src/assets/globe/, the dated layers from GIBS
+  assets/globe/       the Blue Marble (2048, 4096 and 8192 px) and the city lights
 
-earth/
-  orbit3d.js          the WebGL globe
-  orbitviz.js         orbital-element vectors, stars, constellations, planets
-  globetex.js         NASA imagery for the globe's surface: the Blue Marble from
-                      earth/img/, the night lights and dated layers from GIBS
-  places.js           finding the observer: place search, this device, timezones
-  lifetime.js         orbital decay and re-entry forecasting
-  wmm.js              the World Magnetic Model 2025: how far a compass's north is
-                      from true north, at the observer
-  skyar.js            the AR view's maths: the phone's orientation as a camera,
-                      the projection, the iPhone's compass
-  arview.js           the AR view: the motion sensors, the rear camera, and the
-                      sky drawn over the picture
-  planner.js          your own orbits, the maths: typed mean elements to a Two-Line
-                      Element set, validation, the matched B*, the eleven presets
-  advisor.js          the Professor's numbers: the kernels, the lifetime model and
-                      the dictionary of figures worked out for an orbit
-  advisor-copy.js     the Professor's words: 87 items, each one condition and one text
-  plannerui.js        the planner's form, the Professor's panel, the saved list, and
-                      the Professor's section on the spacecraft on screen
+public/             what the build copies to dist/ as it is: the Moon pages above, the
+                    scripts they load, and favicon.svg
+  core/               the body-agnostic half, whole: the Earth's and the Moon's
+    body.js             the central body, Earth and Moon (the Earth's half is body.ts)
+    propagator.js       SGP4 for Earth TLEs, Kepler and daily-anchored for everything else
+  moon/
+    lunar.js            ELP-2000 lunar ephemeris + CR3BP libration points
+    moonviz.js          the Earth–Moon 3D scene
+    moondata.js         baked lunar orbiter ephemerides, landing sites, features
+    moon3d.js           the lunar track console's 3D scene
 
-moon/
-  lunar.js            ELP-2000 lunar ephemeris + CR3BP libration points
-  moonviz.js          the Earth–Moon 3D scene
-  moondata.js         baked lunar orbiter ephemerides, landing sites, features
+server/, shared/    the cache API (Elysia): GET /api/health, /api/tle/:norad and
+                    /api/history/:norad; and the code the browser and the server share
+serve.ts            runs the API on a port (3001 unless PORT says otherwise)
+data/               catalogue.txt (+ .meta.json): the 2,158 element sets; world.json: the
+                    coastlines; transmitters.json: downlink frequencies; WMM.COF: NOAA's
+                    magnetic model
 
+scripts/            extract-data (the data files, from what the old page carried inline),
+                    build-shims (esbuild bundles of the library for the Node suites),
+                    check-deps (the layer rule), csp (the page's inline script against the
+                    hash in vercel.json), legacy-manifest (pins the old page's files),
+                    compare-planner-markup (the planner's markup against the old page's)
+tests/              Vitest, a folder to a layer: lib, state, components, scene, net, shared,
+                    server; and data, build (what the bundle holds) and moon (the Moon
+                    pages are unchanged)
 verification/       an independent second implementation, and the regression gate
+                    (regress.js against baseline.json). Also the browser suites, which
+                    serve the build over http through lib/harness.js; run.js, which runs
+                    every stage and prints one table; and, made from the old page, what the
+                    rebuilt one is held to: golden.json (its prose) and ab3d/ (its 3D scene)
+
+vercel.json         frontend-only: the build, immutable /assets, nosniff, no-referrer, a
+                    Permissions-Policy, and a report-only CSP that names the page's one
+                    inline script by hash
+
+legacy/             deleted at the cutover. The old page lives in git at the tag
+                    `legacy-earth-console` (main@4eadd7a). To run a suite against it:
+                    `git worktree add legacy legacy-earth-console`, then
+                    `GT_TARGET=legacy node verification/<suite>.js`. Three of the scripts
+                    above (extract-data, legacy-manifest, compare-planner-markup) read it too.
 ```
 
-The dependency graph is one-way: pages depend on `core/`, `core/` depends on nothing. No file in
-`earth/` is loaded by the Moon pages, and no file in `moon/` is loaded by the Earth page.
+The dependency graph is one-way, and `npm run check:deps` holds it: the components import the
+stores, the stores import `lib/`, `lib/` imports only `shared/` (the one thing it takes from
+`server/` is a type), the scene imports `lib/`, and the server imports `shared/` only. Pages
+depend on `core/`, `core/` depends on nothing. No file in `src/` is loaded by the Moon pages, and
+no file in `public/moon/` is loaded by the Earth page.
 
 ### Status
 
@@ -117,8 +211,9 @@ and shares its 51.63° orbit at roughly 360 km, not a sun-synchronous one.
 `verification/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
 came into this catalogue from SatNOGS rather than from a CelesTrak group (see **Data
 provenance**). The figures in (a) to (c) are correct for KNACKSAT-2, but they are not an answer
-from the group the brief names. KNACKSAT-2 stays the page's default; while it is on screen the
-answer block says it is outside the brief.
+from the group the brief names. KNACKSAT-2 stays the page's default. The page no longer says so
+over the answer (the old one did, in a note headed "Outside the brief"); this is where it is said,
+and the glossary's entry "Earth Resources group, the brief" says it again.
 
 ```
 KNACKSAT-2
@@ -135,15 +230,17 @@ will differ — and should. The line under the headline total says which window 
 used, so two readers an hour apart can see why their numbers disagree.
 
 To reproduce the README on the page, open it with `?tle=embedded` — the **assignment snapshot**
-link under *Element set*. That keeps the embedded element sets, asks no source for a newer one,
-and opens each spacecraft's window at its own epoch. The observer has to be Bangkok too: a site
-you moved to is remembered, so press *Reset to Bangkok* first if you did. KNACKSAT-2 then reads
+link in the answer rail's *Source* tab, under the element set's two lines. That keeps the embedded
+element sets, asks no source for a newer one, and opens each spacecraft's window at its own epoch.
+The observer has to be Bangkok too: a site you moved to is remembered, so press *Reset to Bangkok*
+in the observer's panel (the chip in the header) first if you did. KNACKSAT-2 then reads
 899.7 s over 2 passes ("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set
 epoch 2026-09-12 07:29Z, embedded").
 `verification/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
 
-The picker at the top right searches **2,158 spacecraft** by name or NORAD ID — type `knack`,
-`noaa`, `iss`, or `43722`. Everything on the page recomputes on selection.
+The picker is the page's title, at the top left: press the name and it opens a search over **2,158
+spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. Everything on the page
+recomputes on selection.
 
 ## (a) Orbital elements at epoch
 
@@ -299,7 +396,8 @@ this one:
   harness's naive values.
 - The semi-major axis the page does show is checked on its own. The harness re-derives SGP4's
   un-Kozai step from Spacetrack Report #3 on WGS-72 and compares it with the value
-  `core/propagator.js` hands the page: they agree to 2.7e-16 relative across all 167 element sets
+  `src/lib/core/propagator.ts` hands the page (the harness reaches it through the library bundle
+  that `npm run build:shims` makes): they agree to 2.7e-16 relative across all 167 element sets
   in `verification/resource.txt`. Until that check existed, nothing independent looked at the
   number on the card — the naive-against-naive comparison above passed whatever SGP4 did.
 - Topocentric elevation agrees with `satellite.js` look angles to 2.6e-10 degrees over 200
@@ -311,15 +409,22 @@ this one:
   - KNACKSAT-2: **899 s in 2 runs** vs this program's **899.7 s in 2 passes**
 
   The gap is the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
-- Both sides run the same SGP4 bytes. The harness propagates with `verification/satellite.min.js`;
-  the page loads `satellite.js` 6.0.1 from cdnjs under an integrity hash, and the harness requires
-  that hash to be the sha512 of its own copy. A re-pinned page or a replaced copy fails the check,
-  so the second implementation cannot drift onto a different build from the page it is checking.
-  The gate, which loads the page and so the CDN's copy, would already notice a file that moved
-  the numbers; the hash also refuses one that leaves them alone and does something else in the
-  page's origin, or one served only to some visitors.
+- Both sides run the same SGP4 bytes. The harness propagates with `verification/satellite.min.js`,
+  the `satellite.js` 6.0.1 file the old page loaded from cdnjs under an integrity hash. The
+  rebuilt page loads nothing from a CDN: it bundles `satellite.js` 6.0.1 from npm, and the harness
+  requires `package.json` and `package-lock.json` to name exactly that version and the sha512 of
+  its tarball recorded in `verification/verify.js` (check 5a; three.js r128, which the globe's
+  palette is tuned to, is pinned the same way). `tests/lib/satellite-parity.test.ts` proves that
+  the npm build and `verification/satellite.min.js` give the same bits, on every element set in the
+  catalogue and a spread of instants. A bumped version or a swapped tarball fails the check, and a
+  build that gave other bits would fail the parity test, so the second implementation cannot drift
+  onto a different build from the page it is checking. The gate, which loads the built page, would
+  already notice a build that moved the numbers; the pin also refuses one that leaves them alone
+  and does something else. The Moon pages, which still load three.js r128 from cdnjs, are held to
+  the hash of the bytes npm ships for it (check 5b).
 
-Run it yourself: `node verification/verify.js`.
+Run it yourself, on the rebuilt page: `npm run build:shims` once, then
+`GT_TARGET=new node verification/verify.js`.
 
 ## The view from the spacecraft
 
@@ -328,8 +433,8 @@ camera. The first three are the *same* camera: a point at a fixed distance from 
 looking at the Earth's centre, differing only in how the bearing is chosen. "Satellite" therefore
 shows the Earth from the spacecraft's **direction**, which is not the same thing as showing it from
 the spacecraft. At 4.2 Earth radii out, the spacecraft is a dot in the middle of the frame.
-*AR*, beside them on a touch screen, is not a fifth: it leaves the globe for the phone's own camera
-(see **The sky through the phone**).
+*AR*, which a touch screen has in the stage's row of tabs and not among these, is not a fifth: it
+leaves the globe for the phone's own camera (see **The sky through the phone**).
 
 **POV** sits on the spacecraft, facing **along-track** by default: forward along the horizontal part
 of the velocity, with the zenith as screen-up, so the horizon runs level across the frame. Nadir is
@@ -410,76 +515,120 @@ within a quarter of that. At the opening 4.2 Earth radii it is 2.56 times the dr
 sharper rung is fetched once the view has held still for 400 ms, alone, without the coarse insurance
 copy the first load starts with; POV always wants the best the GPU holds, since its lens is on the
 ground. Save-Data, or a connection the browser rates 3G or slower, keeps the coarse rung throughout,
-and the note under the picker says so. `npm run globe` checks each of those against a rung it works
-out itself from the canvas and the camera.
+and the note under the surface choices in the Layers panel says so. `npm run globe` checks each of
+those against a rung it works out itself from the canvas and the camera.
 
 ### Finding your way round the page
 
-The console fills the first screen, and at 1440×900 nothing on it said that the analysis the
-assignment asks for — the elements, the ground-track map, the pass table — was underneath. The one
-pointer was a link at the foot of the rail, which scrolls on its own, about 1000 px out of view,
-and the two Moon pages were linked beside it. The header now has a line of links to each section
-below and to both Moon pages. At that size the header grows by 6 px, and with the transport's tick
-labels at 11 px the globe is 8 px shorter than it was. Between 901 and about 1030 px wide the links
-wrap to two lines under the ids, which have already wrapped under the name, and the globe gives up
-about 50 px there.
+The console fills the first screen. From 1100 px wide the header is one row, 76 px high, and the
+console takes what is left of the screen: the stage on the left, the answer rail beside it in a
+column 360 px wide, and the transport docked under both. On the old page too the console filled the
+first screen, and at 1440×900 nothing on it said that the analysis the assignment asks for — the
+elements, the ground-track map, the pass table — was underneath. The one pointer was a link at the
+foot of the rail, which scrolls on its own, about 1000 px out of view, and the two Moon pages were
+linked beside it. The old header was given a line of links to each section below and to both Moon
+pages. At that size the header grew by 6 px, and with the transport's tick labels at 11 px the
+globe was 8 px shorter than it had been. Between 901 and about 1030 px wide the links wrapped to two
+lines under the ids, which had already wrapped under the name, and the globe gave up about 50 px
+there.
 
-That was also where the desktop's layers panel ran out of room. It is 327 px tall from 92 px down,
-so it wants a globe 431 px tall, and between those widths or in a short window it does not get one.
-Its last switches, the orbital elements and the constellations, ran under the transport bar, and
-the viewport clips them there, out of the pointer's reach. The panel now stops 12 px above the
-globe's lower edge and scrolls in what that leaves.
+The rebuilt page says it where the eye already is. The stage's row of tabs carries a **Report ↓**
+link at its right, and the report opens with a sticky line of links to each section — Elements,
+Ground track, Passes, Decay, Method, Terms — with both Moon pages at its right end and again in the
+footer. Two skip links come before everything else, "Skip to the page" and "Skip to the written
+analysis", and a link into the report lands 56 px under the top of the screen, to make room for
+the sticky line.
 
-Below 900 px the console stacks, and on a 390×844 phone three things were wrong with it:
+The old page's layers panel ran out of room between 901 and about 1030 px wide too. It was open
+all the time, 327 px tall from 92 px down, so it wanted a globe 431 px tall, and between those
+widths or in a short window it did not get one. Its last switches, the orbital elements and the
+constellations, ran under the transport bar, and the viewport clipped them there, out of the
+pointer's reach. The old panel was then made to stop 12 px above the globe's lower edge and scroll
+in what that left. Layers is now a button on the globe, under the camera and trail rows, closed to
+begin with, and the panel it opens is 260 px wide and scrolls within 60 % of the window's height,
+420 px at most. It opens upward where it would not fit below and there is more room above, and
+hangs from its other edge where it would run off the side of the screen.
+
+Below 1100 px the console is one column, in reading order — the stage, the transport, the answer —
+and the answer rail changes shape with the width: a panel under the stage that folds away behind
+its headline from 720 px, and under 720 px a sheet along the foot of the screen whose peek is the
+headline and the countdown, for which the page leaves 72 px at its end. On the old page, below
+900 px the console stacked, and on a 390×844 phone three things were wrong with it:
 
 - **The layers panel** hung open over half the globe, the clock and the trail row, and nothing
-  closed it. It now folds behind a Layers button, closed to begin with, which reports its state in
-  `aria-expanded` and closes on Escape. Opened, it stops short of the trail and camera rows and
-  scrolls within the height that leaves. It folds the same way on any screen 500 px tall or less:
-  the largest phones held sideways are 915 and 932 px wide and get the desktop console, where the
-  open panel covered a 231 px globe and could not be put away. Otherwise, above 900 px, it is the
-  open panel it always was.
-- **The transport bar** was sticky at the foot of the screen, where it wraps to four rows, 193 px,
-  so the camera and trail buttons along the globe's lower edge were under it: a tap on Free landed
-  on the transport. The window bar had no place in the stacking order, so it sat between the header
-  and the globe and pushed the globe down into it. It now follows the transport, as on a desktop.
-  The header and the transport stay sticky only where they fit round the globe, from 641 to 900 px
-  wide on a screen taller than 700 px. Everywhere narrower or shorter they are ordinary bars, one
-  either side of the globe. Held sideways, the phone's sticky header used to cover the Layers button
-  and the clock whenever the camera row was in view. Where it is sticky, it is sticky inside the
-  console and scrolls away with it, so a jump from its links lands 16 px from the top of the screen
-  with nothing to make room for.
+  closed it. The old page then folded it behind a Layers button, closed to begin with, which
+  reported its state in `aria-expanded` and closed on Escape. Opened, it stopped short of the trail
+  and camera rows and scrolled within the height that left. It folded the same way on any screen
+  500 px tall or less: the largest phones held sideways are 915 and 932 px wide and got the desktop
+  console, where the open panel covered a 231 px globe and could not be put away. Otherwise, above
+  900 px, it was the open panel it always was. The rebuilt page folds it at every size, the desktop
+  included: the button reports its state in `aria-expanded`, and the panel closes on Escape, which
+  returns the focus to the button, and on a press outside it.
+- **The transport bar** was sticky at the foot of the screen, where it wrapped to four rows, 193
+  px, so the camera and trail buttons along the globe's lower edge were under it: a tap on Free
+  landed on the transport. The window bar had no place in the stacking order, so it sat between the
+  header and the globe and pushed the globe down into it. The old page then had it follow the
+  transport, as on a desktop. Its header and transport stayed sticky only where they fit round the
+  globe, from 641 to 900 px wide on a screen taller than 700 px. Everywhere narrower or shorter
+  they were ordinary bars, one either side of the globe. Held sideways, the phone's sticky header
+  used to cover the Layers button and the clock whenever the camera row was in view. Where it was
+  sticky, it was sticky inside the console and scrolled away with it, so a jump from its links
+  landed 16 px from the top of the screen with nothing to make room for. The rebuilt page's header
+  and transport are ordinary bars at every size, the header above the console and the transport
+  under the globe, and the bar that sticks is the report's line of links (the planner's Add bar
+  sticks above 900 px, and from 1100 px the sky plot beside the pass table sticks within its
+  section). The window's controls are not a bar of their own but a Window button in the transport,
+  which opens a popover. Under 820 px the transport is three rows: play, the rate and the Window
+  button; the scrubber across the width; the two clocks on a line of their own, which wraps onto two
+  lines on a 360 px phone rather than make the page wider than the screen.
 - **The captions** over the button rows were all hidden below 900 px. That left three rows of
   "6 h" and "24 h", for trail length, window step and window length, with nothing to say which was
-  which. They stay now, and on a phone the camera and trail captions sit above their rows.
+  which. The old page kept them from then on, and on a phone put the camera and trail captions above
+  their rows. In the rebuilt page the window's start, its steps and its length are in the Window
+  popover, under the headings "Window opens" and "Span". The camera and trail captions are drawn
+  from 720 px up (but not from 901 to 940 px wide with the planner's drawer open, where there is no
+  room for them) and left out on a screen 520 px tall or less. On a phone they are left out too,
+  and the controls are a strip along the foot of the globe, the camera row across its width and the
+  trail row beside the Layers button. Without a caption the buttons name themselves: Free,
+  Satellite, Bangkok, POV; Off, 30 m, 1 orbit, 6 h, 24 h.
 
-No text on the page is smaller than 11 px, including the labels drawn into the sky plot and the
-decay chart. It used to go down to 9 px, the layers panel's heading. Twenty labels were 9.5 px, and
-the local time of every pass in the rail was 10 px, though it is the figure a reader most wants.
-The degree sign on the element cards now sits on its number rather than a space away.
+No text on the page is smaller than 11 px. What is set in HTML comes from a type scale whose floor
+is 12 px; the labels drawn into the sky plot, the map and the decay chart, and the AR view's
+readout, go down to 11. The old page's went down to 9 px, the layers panel's heading. Twenty
+labels were 9.5 px, and the local time of every pass in the rail was 10 px, though it is the figure
+a reader most wants. The degree sign on the element cards now sits on its number rather than a
+space away.
 
 The page's vocabulary is spelled out in a **Terms** section at the foot of the page: AOS and LOS,
 Z, NORAD and COSPAR IDs, TEME, B* in 1/ER, standard magnitude, penumbra, POV, FOV and GSD, AR,
-heading and declination, the entry interface, and the brief's Earth Resources group. The abbreviations in the header, over the
-globe, in the rail, in the sky plot and in the pass table carry their expansion as a tooltip, and
-the notes that lean on a term, the outside-the-brief note and the re-entry warning, link to its
-entry.
+heading and declination, the entry interface, and the brief's Earth Resources group. It has a
+search box; an entry that does not match is hidden, not removed, so a link to any of them still
+lands. The abbreviations in the header, over the globe, in the rail, in the sky plot and in the
+pass table carry their expansion as a tooltip, and the notes that lean on a term, the re-entry
+warning and the Professor's notes, link to its entry.
 
-`npm run layout` checks all of this at 1440×900, in three narrow or short laptop windows, on a
-tablet, on a phone held upright and sideways, and on a larger phone held sideways, 915×412, which
-gets the desktop console. It tests whether a button or a layer switch is covered with
-`elementFromPoint` at its centre, with the globe's lower edge scrolled to the foot of the screen and
-the layers panel scrolled to the switch, rather than by reading z-indices.
+`npm run layout` checks all of this on the production build, in light and in dark, at 1440×900 and
+1280×720, at 1100 and 1099 px wide (the one-row header's narrowest and the panel's widest), at
+1024×650, on a tablet, on a phone held upright and sideways, on the two largest phones held
+sideways, 915×412 and 932×430, and on the two smallest, 360×640 and 320×568, and in the states that
+change what is on screen: the Layers panel, the picker, the observer's form, the window popover, the
+Map tab, the answer rail's three tabs and the planner. It tests whether a button or a layer switch
+is covered with `elementFromPoint` at its centre, with the layers panel, or any panel that scrolls,
+scrolled to the control, with the page at its top, with the stage's foot at the foot of the screen,
+with the stage's top at the top, at the foot of the page and with each control brought to the
+middle of the screen, rather than by reading z-indices. The reasons for each difference from the
+old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3, L5, L17, L21, L26 and L35 are the ones
+this section describes).
 
 ## The sky through the phone
 
 The console says when a pass happens and where to look — "68° NE" — and outdoors that still
 leaves the reader turning a compass bearing into a direction in the sky. On a phone or a tablet
-the camera row has one more button, **AR**, which does it for them: the rear camera's picture,
-full screen, with the sky drawn over it where the phone points. It is offered where the primary
-pointer is a finger, `(pointer: coarse)`, and not under a mouse, so the desktop console is
-unchanged. It is not a camera position of the globe, and sits beside the camera group rather than
-in it.
+the stage's row of tabs has one more button, **AR**, which does it for them: the rear camera's
+picture, full screen, with the sky drawn over it where the phone points. It is offered where the
+primary pointer is a finger, `(pointer: coarse)`, and not under a mouse, so the desktop console is
+unchanged. It is not a camera position of the globe, and sits at the right of the row of tabs
+rather than among the camera buttons, so it is there on the Map tab too.
 
 Drawn over the picture, back to front: the ground below the horizon, lightly shaded; elevation
 rings every 15° and meridians every 30°; the horizon with a tick every 10°; the 5° mask, dashed;
@@ -514,8 +663,9 @@ there while the motion-sensor setting stays at its default of Allow. Firefox and
 have none, and give events to anyone who listens. Nothing sniffs the browser.
 
 Only a secure page gets either: Chrome delivers orientation events only to one, and Safari 26.4
-does not even define `DeviceOrientationEvent` over http. https and `file://` pages qualify; a copy
-of the page served over plain http from a laptop to a phone does not, and says so, with the https
+does not even define `DeviceOrientationEvent` over http. An https page qualifies, and so does
+localhost; `file://` did too, but the Earth console no longer opens from disk. A copy of the page
+served over plain http from a laptop to a phone does not qualify, and says so, with the https
 address. Every refusal has its sentence, and a refused camera is not fatal — the sky is drawn on
 black and says why: declined, no rear camera, in use by another app, or only a front camera (whose
 picture would be of the reader, under a sky drawn for the direction behind the phone). A declined
@@ -580,10 +730,10 @@ and no alarm for silence after that.
 
 True azimuth = magnetic azimuth + D, with D east of true north positive. D comes from the World
 Magnetic Model 2025 at the observer, for today — the wall clock, not the console's clock, since it
-corrects the compass in the reader's hand now. `earth/wmm.js` reproduces all 100 rows of NOAA's
-test file to within 0.005° in declination and inclination (the file prints them to 0.01°), and the
-twelve rows of NOAA's separate table to the 0.01° it gives them to. At the end of September 2026
-(decimal year 2026.74), at sea level:
+corrects the compass in the reader's hand now. `src/lib/ar/wmm.ts` reproduces all 100 rows of
+NOAA's test file to within 0.005° in declination and inclination (the file prints them to 0.01°),
+and the twelve rows of NOAA's separate table to the 0.01° it gives them to. At the end of
+September 2026 (decimal year 2026.74), at sea level:
 
 | | D |
 |---|---|
@@ -596,9 +746,13 @@ twelve rows of NOAA's separate table to the 0.01° it gives them to. At the end 
 In Bangkok the correction is smaller than the spacecraft's marker, which is exactly why leaving it
 out would be easy to miss from there. In Cape Town the check moves the observer, aims the phone,
 and finds that without it the view faces 26.8° away from the spacecraft. How far that is on the
-screen depends on the pass the check aims at, which depends on the day it runs: in the run this
-was written from, a 77° culmination, 85 px off centre; at a low pass, off a 34.6°-wide portrait
-frame altogether. The model expires at 2030.0, after which the view still uses it and says so.
+screen depends on how high the spacecraft is, since an azimuth offset shrinks by the cosine of the
+elevation, so the check does not leave it to the day it runs: it sets its own clock and moves it
+along the pass to where the spacecraft is about 35° up (the culmination, when the pass never gets
+so high). There, in the last run, the marker was 335 px off centre, off a 34.6°-wide portrait frame
+altogether. Before the suite set its own clock the pass it aimed at depended on the day: in the run
+this was written from, a 77° culmination, 85 px off centre; at a low pass, off the frame
+altogether. The model expires at 2030.0, after which the view still uses it and says so.
 Near the magnetic poles, where the horizontal field is under 2000 nT — NOAA's "blackout zone" — a
 compass is no guide at all, and the view says that instead of applying a figure.
 
@@ -636,29 +790,31 @@ cities in one zone apart, which is why the title always names the observer.
 ### What it costs
 
 While the view is open the WebGL globe draws nothing and its labels are not laid out — the check
-counts no render calls in 600 ms under the view, and some within 600 ms of closing — and the
+counts no render calls in 20 frames under the view, and some within 20 frames of closing — and the
 screen is kept awake, since a phone held up to the sky is not being touched. Closing it, by
 *Close*, Escape, the phone's Back or leaving the page, stops the camera and removes every listener
 it added. The picture is never read or drawn into the canvas. The view itself keeps only the lens
 setting, in `localStorage`; *Use my location* goes through the console's own path, which saves the
-observer there as well.
+observer there as well, and which never writes it into the address bar.
 
 ### What is checked, and what is not
 
-`npm run ar` checks the maths in node — the frame against the spec's worked poses, 2000 random
-ones, the projection, the Sun against a separate derivation, the iPhone's compass fusion, the
-ticks, and the magnetic model against NOAA — and then drives the page in Chromium phone contexts
-with the permissions, the camera, the page's visibility and the sensors mocked: the order the tap
-asks in, the marker on the spacecraft to 1e-13 px, the pointer's words, every refusal's sentence,
-the phone held sideways, the globe paused, closing by *Close*, Escape and Back, an iPhone finding north,
-a phone in London with the observer in Bangkok, and a phone with no WebGL. It was run against
-three deliberate faults, and each was caught: the declination's sign flipped fails 10 of its checks,
-the camera asked for before the motion sensors fails the order check, and the screen's rotation
-ignored fails both sideways horizons, 220 px out of level. Its events are synthetic, so it proves the
-maths and the wiring, not a phone's sensors. What only a phone can show is left to a checklist:
-on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's Chrome, Samsung Internet
-and Firefox for Android — the first tap, a refusal and Try again, a declined camera, locking and
-unlocking, turning sideways, and pointing at the Sun and at a landmark of known bearing.
+`GT_TARGET=new npm run ar` checks the maths in node — the frame against the spec's worked poses,
+2000 random ones, the projection, the Sun against a separate derivation, the iPhone's compass
+fusion, the ticks, and the magnetic model against NOAA — and then drives the production build,
+served over http, in Chromium phone contexts with the permissions, the camera, the page's
+visibility and the sensors mocked, on a clock of its own (see **Running it**): the order the tap
+asks in, the marker on the spacecraft to about 1e-12 px, the pointer's words, every refusal's
+sentence, the phone held sideways, the globe paused, closing by *Close*, Escape and Back, an iPhone
+finding north, a phone in London with the observer in Bangkok, and a phone with no WebGL. It was
+run against three deliberate faults, and each was caught: the declination's sign flipped fails 10 of
+its checks, the camera asked for before the motion sensors fails the order check, and the screen's
+rotation ignored fails both sideways horizons, 220 px out of level. Its events are synthetic, so it
+proves the maths and the wiring, not a phone's sensors. What only a phone can show is left to a
+checklist: on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's Chrome, Samsung
+Internet and Firefox for Android — the first tap, a refusal and Try again, a declined camera,
+locking and unlocking, turning sideways, and pointing at the Sun and at a landmark of known
+bearing.
 
 ## Architecture: the central body is a parameter
 
@@ -669,7 +825,12 @@ parameter. Extending to the Moon meant turning the assumption back into a choice
 
 ### The seam, and why it goes exactly there
 
-Two objects, each with one job.
+Two objects, each with one job. The Earth console runs their Earth halves as
+`src/lib/core/body.ts` and `src/lib/core/propagator.ts`, moved as they were; the classic scripts
+`public/core/body.js` and `public/core/propagator.js`, which hold the Moon's halves too, stay for
+`moon-track.html`, and `tests/lib/core-equivalence.test.ts` holds the two copies of the Earth half
+to the same bits, on the constants, on the frame maths and on the track of every element set in the
+catalogue.
 
 **`core/body.js`** — what is a property of the *central body*: where the prime meridian is now, how to
 get from inertial to body-fixed, the sub-satellite point, look angles from a surface site, plus
@@ -702,13 +863,14 @@ Three things fell out of the work:
 
 - The four propagation adapters (`sampleMs`, `sample`, `elevationAt`, `stateAt`) were the same
   three lines written out four times, each calling `satellite.js` directly and each closing over
-  the observer. They are one place now.
+  the observer. They are one place now (`src/lib/analysis/engine.ts`).
 - Two latent Earth gates would have silently broken the second body: `orbitviz` rejected any orbit
   with `a < RE*0.9` — a 1829 km lunar orbit fails that by a factor of three, and the whole element
   panel would have vanished with no error — and carried a *second* hard-coded μ.
-- `earth/orbit3d.js` needed less work than expected. Its scene unit was already one Earth **radius**
-  rather than one kilometre, so every geometry literal in it (sphere 1, atmosphere 1.022, track
-  1.004, footprint 1.006) is body-relative already and survives the swap untouched.
+- `earth/orbit3d.js` (now `src/scene/orbit3d.ts`) needed less work than expected. Its scene unit
+  was already one Earth **radius** rather than one kilometre, so every geometry literal in it
+  (sphere 1, atmosphere 1.022, track 1.004, footprint 1.006) is body-relative already and survives
+  the swap untouched.
 
 ### The gate
 
@@ -717,18 +879,34 @@ actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The
 hit 15 satellites out of 309. Neither would survive contact with a screenshot, and both would pass
 a "looks the same to me".
 
-`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation,
-and reads full-precision values through a `window.__gt` test surface instead of scraping rounded
-text. 38 satellites spanning LEO, sun-synchronous, GEO, HEO and a decaying object, at two window
-spans: all six elements and every derived quantity, every AOS/LOS to the millisecond, culmination,
-azimuths, range, visibility totals, and 100 fixed sample probes each.
+`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation —
+since the rebuild, the production bundle that `npm run build` makes, served over http — and reads
+full-precision values through a `window.__gt` test surface instead of scraping rounded text. The
+surface is `src/testing/surface.ts`, a lazy chunk the page fetches only when `window.__GT_TEST__` is
+set before it loads, so no visitor's bundle contains it. 38 satellites spanning LEO,
+sun-synchronous, GEO, HEO and a decaying object, at two window spans: all six elements and every
+derived quantity, every AOS/LOS to the millisecond, culmination, azimuths, range, visibility
+totals, and 100 fixed sample probes each.
 
-**67,488 values, bit-identical**, across `index.html`, `earth/orbit3d.js` and `earth/orbitviz.js`.
+**67,488 values, bit-identical**, across `index.html`, `earth/orbit3d.js` and `earth/orbitviz.js`
+when the central body became a parameter, and again, against the same baseline, across the rebuilt
+console. `npm run gate` builds the production bundle, takes the measurements again in a real
+browser, compares them with `verification/baseline.json` with `===` and prints `BIT-IDENTICAL`.
+`npm run gate:lib` takes the same measurements of the library bundle alone, in a blank Chromium
+page with no app and no server, in seconds. It is Chromium and not Node because the baseline was
+made in Chromium: the same bundle in Node 23.5 differs from it in 364 values by up to 1e-14, V8's
+`Math` functions differing in the last bits, and in Chromium it is bit-identical.
 
 Two reproducibility rules, both learned by getting them wrong first: the window start is a fixed
-instant and never `Date.now()`; and the network is blocked during a run, because `refreshTLE()`
-would otherwise rewrite the element set mid-snapshot and the "baseline" would depend on what
-CelesTrak served that minute.
+instant and never `Date.now()`; and the network is blocked during a run, because the live
+element-set refresh (`refreshTLE()` on the old page) would otherwise rewrite the element set
+mid-snapshot and the "baseline" would depend on what CelesTrak served that minute.
+
+The baseline is the old page's answer, and it is written only from the old page:
+`snapshot.js --write-baseline` refuses unless `GT_TARGET=legacy` is set, and the old page is the
+tag `legacy-earth-console`, `main` at `4eadd7a`, the last commit before the rebuild
+(`git worktree add legacy legacy-earth-console` puts it where the harness looks). `regress.js` takes the measurements in memory and compares them there, so
+a failing run cannot overwrite the baseline it is being judged against.
 
 A gate that has never failed is not a gate, so it was checked against a deliberate fault:
 perturbing Earth's radius by **10 cm** produced 77 differences, down to 1.5e-9 relative in derived
@@ -737,8 +915,9 @@ gaining `name` and `tz` fields — which retired a duplicate `ICT` constant — 
 re-taken only after confirming no numeric value had moved.
 
 ```
-node verification/snapshot.js     # write verification/baseline.json
-node verification/regress.js      # assert bit-identical
+npm run gate        # build the production bundle, measure it, assert bit-identical
+npm run gate:lib    # the same measurements of the library bundle alone, in a blank Chromium page
+GT_TARGET=legacy node verification/snapshot.js --write-baseline    # only ever from the old page
 ```
 
 ## Orbital decay and remaining life
@@ -755,6 +934,13 @@ run of mean elements embedded in one `plotData` string — date, RAAN, inclinati
 perigee, SMA, eccentricity, for every element set CelesTrak has held. For KNACKSAT-2 that is 534
 rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major axis. It sends
 `Access-Control-Allow-Origin: *`, so the browser can read it without a backend.
+
+The page asks its own cache API first, `/api/history/<id>`, if one answers as itself (*Staying
+current* says how that is judged), and CelesTrak directly when none does, or when the one that does
+cannot reach CelesTrak itself. Both read the page with one function (`shared/plot.ts`), so the
+bounds and the answers below are the same either way. The cache keeps a history for twelve hours,
+and if it reports that CelesTrak did not answer inside its own 70 seconds, that is the answer: the
+page does not wait a second time.
 
 Rows are read between 80 km and 400,000 km of mean altitude, bounds meant to throw out garbage
 rather than orbits. The ceiling was 60,000 km, which threw out every row of every high eccentric
@@ -931,12 +1117,26 @@ what is not: the planner and the Professor**.
 
 ### Opening it
 
-*Plan an orbit* sits beside the spacecraft count (*+ Plan* at 1,080 px and below). The picker's last
-row, *+ Plan a custom orbit…*, opens it too, and so does Enter on a search that matches nothing (the
-search becomes the name); on a designed orbit so do the header's *Custom orbit · edit* chip and
-*Edit in planner* under its element set. It takes the room there is: a drawer in the rail's place
-from 901 px wide and 561 px tall, a panel under the globe at 900 px and narrower (the Professor
-beside the form from 641 px), a full-screen dialog when the window is wide but 560 px tall or less.
+The planner is not on the first screen. Its maths, the Professor, the Professor's words, the drag
+integrator, the form's controller and the form's markup are six lazy chunks (`src/lib/planner/`,
+`src/components/planner/`), five of them fetched when the browser is idle after the first answer, or
+at once when the pill is pressed; the sixth, the drag integrator, is the Decay section's too and
+comes with whichever asks first. Until they arrive the console is the console without a planner: the
+pill works (it brings them in and opens the planner when they are here), the saved orbits are not
+yet in the picker and the Professor's notes on the spacecraft on screen are not yet built; if a
+chunk cannot be fetched the pill goes and the console is what it was (`CHANGES-FROM-LEGACY.md`, L28,
+L33). Under `?tle=embedded` none of the five is fetched. The old page loaded the planner's five
+scripts before its first paint.
+
+*Plan an orbit* is a button in the header, between the observer and the theme toggle (*+ Plan* at
+1,080 px and below); the count of spacecraft is the last line of the picker, the popover the page's
+title opens. The picker's last row, *+ Plan a custom orbit…*, opens the planner too, and so does
+Enter on a search that matches nothing (the search becomes the name); on a designed orbit so do the
+header's *Custom orbit · edit* chip and *Edit in planner* under its element set, in the answer
+rail's *Source* tab. It takes the room there is: a drawer in the rail's place (the rail is not shown
+while it is open; `CHANGES-FROM-LEGACY.md`, L27) from 901 px wide and 561 px tall, a panel under
+the globe at 900 px and narrower (the Professor beside the form from 641 px), a full-screen dialog
+when the window is wide but 560 px tall or less.
 
 The form takes a name; a starting point (the spacecraft on screen, a saved orbit, or one of eleven
 presets, from an ISS-like orbit to Molniya and Tundra); the orbit as altitudes, as *a* and *e*, or
@@ -1012,11 +1212,12 @@ from 98247 to 99416, each with a SatNOGS downlink.
 
 The number is never looked up; identity is the flag `custom`, not the number. A custom entry
 carrying the real number 25544 still finds no downlink; one whose lines equal the ISS's is not
-"docked to" it for brightness; one named KNACKSAT-2 does not raise *Outside the brief*. Adding an
+"docked to" it for brightness. Adding an
 orbit, and the re-check after it, make **zero requests to any host** (`verify-custom.js` counts
-them), and `fetchTLE` also refuses anything that is not one to five digits, so a second layer holds
-with the first removed. The counter only grows (clearing site data restarts it at `O0001`), and
-*Undo* of a delete hands back the same number. *Copy as TLE* says that some tools want a numeric
+them, the page's own cache API among them), and `fetchLiveTle` (`src/lib/net/tle-source.ts`) also
+refuses anything that is not one to five digits, so a second layer holds with the first removed.
+The counter only grows (clearing site data restarts it at `O0001`), and *Undo* of a delete hands
+back the same number. *Copy as TLE* says that some tools want a numeric
 catalogue number, so `O0001` has to be replaced.
 
 ### Drag: area over mass, not B*
@@ -1087,17 +1288,17 @@ the comparison a rough cross-check only.
 
 ### The Professor
 
-Two layers, one contract between them. `earth/advisor.js` works the numbers out of the elements and
-hands over a flat dictionary of figures (144 keys in the contract: `h_mean`, `period`, `sso_inc`,
-`life_mid` …). Its rates are SGP4's own secular terms, not first-order J2, which would put the
-sun-synchronous inclination 0.024° low (97.4019° at 500 km for SGP4's 97.4260°) and slide the local
-time by about 4.65 minutes a year; its Sun is the page's own, so the eclipse and beta angle quoted
-are the ones the globe's shading uses. `earth/advisor-copy.js` holds the 87 things that can be said,
-each a record: a condition on the dictionary, a title, a body, a basis line and sometimes buttons.
-Sixty-seven are advice, in five groups (*What kind of orbit is this?* 21, *Will it survive?* 15,
-*Sun and eclipse* 7, *Ground track and Bangkok*, or whichever site is set, 12, *Caveats* 12); twenty
-are messages about the input. There is no logic in a template, and an item whose figure has no value
-is dropped rather than written with `NaN` in it.
+Two layers, one contract between them. `src/lib/planner/advisor.ts` works the numbers out of the
+elements and hands over a flat dictionary of figures (144 keys in the contract: `h_mean`, `period`,
+`sso_inc`, `life_mid` …). Its rates are SGP4's own secular terms, not first-order J2, which would
+put the sun-synchronous inclination 0.024° low (97.4019° at 500 km for SGP4's 97.4260°) and slide
+the local time by about 4.65 minutes a year; its Sun is the page's own, so the eclipse and beta
+angle quoted are the ones the globe's shading uses. `src/lib/planner/advisor-copy.ts` holds the 87
+things that can be said, each a record: a condition on the dictionary, a title, a body, a basis line
+and sometimes buttons. Sixty-seven are advice, in five groups (*What kind of orbit is this?* 21,
+*Will it survive?* 15, *Sun and eclipse* 7, *Ground track and Bangkok*, or whichever site is set,
+12, *Caveats* 12); twenty are messages about the input. There is no logic in a template, and an
+item whose figure has no value is dropped rather than written with `NaN` in it.
 
 Each item carries one of five words, a glyph (a circle with a tick, a circle with an *i*, a
 triangle, a square with a cross) and a coloured border, so the scale reads in greyscale and aloud:
@@ -1110,12 +1311,12 @@ The words keep to a **ladder of certainty**. *Is* means computed here from these
 *roughly* means a closed form, rounded. *Usually* and *often* mean convention. *Between X and Y* is
 a range, the only way a lifetime is ever written. *This page does not model* is a stated limit. A
 bold figure is always a number worked out from the elements or the page's own run. The ladder is a
-convention written at the head of `earth/advisor-copy.js`; no check reads a sentence for the right
-rung. What is checked, on every item rendered with real numbers, is the rest of the voice: a title of
-at most 48 characters, a body of at most 70 words (the longest is 66), no sentence past 32 words,
-none of fifteen words ("wrong", "obviously", "just", "guarantee" among them), no contraction, "I" or
-"we", no `NaN` or hole, and that a bold figure is a number. The observer is `{site}`, never a
-literal Bangkok; a check moves the observer and reads every item again.
+convention written at the head of `src/lib/planner/advisor-copy.ts`; no check reads a sentence for
+the right rung. What is checked, on every item rendered with real numbers, is the rest of the voice:
+a title of at most 48 characters, a body of at most 70 words (the longest is 66), no sentence past
+32 words, none of fifteen words ("wrong", "obviously", "just", "guarantee" among them), no
+contraction, "I" or "we", no `NaN` or hole, and that a bold figure is a number. The observer is
+`{site}`, never a literal Bangkok; a check moves the observer and reads every item again.
 
 **Fixes.** Twenty-six buttons sit on twenty-two items. A button writes the form and nothing else: it
 says what it did (*Set i to 97.43 (was 51.64).*), moves the focus to the first field it changed and
@@ -1130,33 +1331,34 @@ that height; *Lower it to 490 km (about 5 years)* is the one offered. Where no h
 absent and the item stays. A fix that resizes a sun-synchronous orbit solves its inclination again.
 
 **The label.** The panel's name is one constant, `AdvisorCopy.ADVISOR_LABEL`, in
-`earth/advisor-copy.js`: `'Professor’s notes'`. The heading, the region's accessible name, the
-spoken summary (a separate status, 1.2 s after the last change and only when the set of things to
-check has changed) and the tooltip on each *Basis* line read it, and nothing else does: no title,
-body or button names the speaker or contains the label. To rename the panel, change that one line.
-`advisor-copy-checks.js` and `verify-advisor.js` stub it to `Tutor` and confirm that no string of any
-advice changes, and "Professor" appears once in the four modules outside a comment, as the
-constant's definition. The panel's footer says what it is: closed-form estimates, good for
+`src/lib/planner/advisor-copy.ts`: `'Professor’s notes'`. The heading, the region's accessible
+name, the spoken summary (a separate status, 1.2 s after the last change and only when the set of
+things to check has changed) and the tooltip on each *Basis* line read it, and nothing else does:
+no title, body or button names the speaker or contains the label. To rename the panel, change that
+one line. `advisor-copy-checks.js` and `verify-advisor.js` stub it to `Tutor` and confirm that no
+string of any advice changes, and "Professor" appears once in the four modules outside a comment,
+as the constant's definition. The panel's footer says what it is: closed-form estimates, good for
 learning, sizing and comparing, and for a real mission a tool such as GMAT.
 
 **On the catalogue spacecraft.** The Professor also reads whatever spacecraft is on the globe: under
 *Orbital elements at epoch* a section, *Professor’s notes on KNACKSAT-2* (the name follows the
 spacecraft), holds the same five groups in the same words, built by the same code as the planner’s
 panel, and a link to it ends the hint under that heading. It is worked out from the spacecraft’s own
-two lines, not validated first (the catalogue holds a set with its perigee underground, two with e
-above 0.9 and one with a B* of −0.27, and the Professor describes them as they are), and the passes it
-quotes are the page’s own run. It has no buttons and none of the notes that talk about what was
-typed; it leaves lifetime to the forecast fitted to the spacecraft’s own history under *Orbital
-decay* (*Lifetime: see Orbital decay* links there), because an assumed drag set beside that forecast
-would contradict it. It is built after the spacecraft has loaded, in an idle moment (the median is
-0.6 ms and the slowest of the 2,158 sets 6 ms, so nothing the console computes waits for it), and
-it is hidden for a designed orbit (the planner is that orbit’s panel), in the assignment snapshot
-(`?tle=embedded`, where the planner is off), when any planner module is missing and, with a message
-on the console, if building it ever fails. At the window of 2026-10-01 12:00Z, 24 h, Bangkok, eight
-spacecraft (KNACKSAT-2, the ISS, SENTINEL-2A, LANDSAT 9, NOAA 20, THEOS and two geostationary ones,
-which add the 225-minute note) get exactly the notes expected of them; the one note that changes with
-the day is the one about the best pass of the window, which needs that pass to stay under 60°.
-`verify-planner-ui.js` group 20 holds all of this.
+two lines, not validated first (the catalogue holds two sets with their perigee underground, which
+are also the two with e above 0.9, and one with a B* of −0.27, and the Professor describes them as
+they are), and the passes it quotes are the page’s own run. It has no buttons and none of the notes
+that talk about what was typed; it leaves lifetime to the forecast fitted to the spacecraft’s own
+history under *Orbital decay* (*Lifetime: see Orbital decay* links there), because an assumed drag
+set beside that forecast would contradict it. It is built once the planner has arrived (*Opening
+it*) and the spacecraft has loaded, in an idle moment (the median is 0.6 ms and the slowest of the
+2,158 sets 6 ms, so nothing the console computes waits for it), and it is hidden until then, for a
+designed orbit (the planner is that orbit’s panel), in the assignment snapshot (`?tle=embedded`,
+where the planner is off), for good when a chunk of the planner cannot be fetched and, with a
+message on the console, if building it ever fails. At the window of 2026-10-01 12:00Z, 24 h,
+Bangkok, eight spacecraft (KNACKSAT-2, the ISS, SENTINEL-2A, LANDSAT 9, NOAA 20, THEOS and two
+geostationary ones, which add the 225-minute note) get exactly the notes expected of them; the one
+note that changes with the day is the one about the best pass of the window, which needs that pass
+to stay under 60°. `verify-planner-ui.js` group 20 holds all of this.
 
 ### Saved orbits
 
@@ -1170,9 +1372,10 @@ An orbit is kept in `localStorage` under `gt.custom`, as the typed elements and 
 No lines, number, flag or B* is stored, so every stored byte passes the same validator as the form
 and the TLE is rebuilt on every read. At most **12** orbits and 24 code points of name; the
 thirteenth Add is refused and nothing is evicted. A page opened with nothing saved writes nothing and
-adds no request of its own, and it opens on the catalogue default, never on a saved orbit. If
-storage is blocked or full the orbit works for the visit and the form says that it will not be
-remembered.
+adds no request of its own, and it opens on the catalogue default, never on a saved orbit. The
+saved orbits are read when the planner arrives, so for the first moments of a visit the picker lists
+the catalogue only (`CHANGES-FROM-LEGACY.md`, L33). If storage is blocked or full the orbit works
+for the visit and the form says that it will not be remembered.
 
 **Validated on read.** `Planner.sanitizeStore` treats a stored record as hostile. Above 65,536
 characters it is refused before parsing and dropped unread; a record that is not JSON or is of
@@ -1193,8 +1396,8 @@ has used every orbit number" rather than hand one out twice. **Tabs are last-wri
 tab takes the orbits the first one added and never removes one, above all not the one on its screen,
 so an orbit deleted in one tab can come back from another tab's next save; tombstones were weighed
 and left out as more machinery than twelve orbits justify. The store is per browser and per origin,
-never synced; Chromium gives every page opened from a file the one origin `file://`, so two copies of
-this project on one disk share a list.
+never synced: the dev server (`127.0.0.1:5173`), the preview (`127.0.0.1:4173`) and any other host
+each keep a list of their own, and two builds served from one origin share it.
 
 ### Decay for a planned orbit
 
@@ -1243,18 +1446,25 @@ was fetched*. The calendar's `SUMMARY` starts `[custom orbit] ` and its `DESCRIP
 spacecraft is known to fly the orbit. File names read `passes-custom-<name>-<site>-<date>.csv`. Both
 exports still refuse an orbit SGP4 takes under 120 km inside the window.
 
-`?tle=embedded`, the assignment snapshot, turns the planner **off by design**: nothing is restored or
-written, the saved store is neither listed nor modified (another tab's change is not merged in
-either), and the count reads `2,158 spacecraft`. The *Plan* pill stays, focusable and marked
-`aria-disabled`, with the sentence saying why and a link back to the live element sets.
+`?tle=embedded`, the assignment snapshot, turns the planner **off by design**: none of its five own
+chunks is fetched, nothing is restored or written, the saved store is neither listed nor modified
+(another tab's change is not merged in either), and the picker's count reads `2,158 spacecraft`. The
+*Plan* pill stays, focusable and marked `aria-disabled`, with the sentence saying why and a link
+back to the live element sets.
 
 ### What is checked, and what is not: the planner and the Professor
 
 The checks are the repository's usual kind: a second implementation, SGP4 itself, or a count of what
 the page does, and a fault put in on purpose to see which check dies.
 
-**In node.** `verification/verify-planner.js` (666 checks, about 8 s) holds the planner to
-`satellite.js`, an independent regex checksum and real element sets:
+**In node.** `verification/verify-planner.js` (`GT_TARGET=new npm run planner`; 665 checks, about
+8 s) holds the planner to `satellite.js`, an independent regex checksum and real element sets. The
+counts in this section are the rebuilt page's, which `GT_TARGET=new` names; run against the old page
+(`GT_TARGET=legacy`) the suites count a few more or fewer. The node suites load the TypeScript
+modules as one esbuild bundle (`npm run build:shims`, into `verification/.build/`), and where they
+scan a module's text, for a clock or for the word "Professor", they scan the TypeScript it was moved
+into. One check, V15 (the four drag functions throw when `Lifetime` is absent), is skipped out loud:
+in a module the atmosphere is an import, and cannot be absent.
 
 - The TLE writer: its checksum agrees with an independent one on all 4,316 catalogue lines; the B*
   and epoch vectors and two golden pairs of lines match to the character; 5,000 random valid orbits
@@ -1272,17 +1482,24 @@ the page does, and a fault put in on purpose to see which check dies.
   (i = 0.01°) by 864 to 865 km after a day, whatever `a` (6,700 to 11,500 km). The planner computes
   the error from the elements the TLE will hold (857 km here; SGP4's measured error is at most 1.010
   times that over 48 cases) and blocks the Add above 100 km.
-- Forty-nine faults put into `planner.js` one at a time (no inversion, the wrong rounding order, the
-  textbook B*, `BODY.omega`, `mu = 398600.4418`, no 120 km clamp …): every one failed a check.
+- Forty-nine faults put into the planner (`earth/planner.js` then; `src/lib/planner/planner.ts` is
+  that file moved without a change to its arithmetic) one at a time (no inversion, the wrong
+  rounding order, the textbook B*, `BODY.omega`, `mu = 398600.4418`, no 120 km clamp …): every one
+  failed a check.
 
-`verification/verify-advisor.js` (394 checks, about 80 s) holds the Professor to SGP4 and to real
-element sets. It runs the checks of `advisor-copy-checks.js` (88 on their own, under a second)
-again against the real dictionary:
+`verification/verify-advisor.js` (`GT_TARGET=new npm run advisor`; 392 checks, about 80 s, and
+three more skipped out loud: two ask whether a script is an IIFE over `window` and one whether it
+attaches itself to `window`, which a module is not) holds the Professor to SGP4 and to real element
+sets. It runs the checks of `advisor-copy-checks.js` (87 on their own under `GT_TARGET=new`, under a
+second) again against the real dictionary:
 
 - The Sun to an independent one within 0.0083° over 500 dates, and equal to the page's `sunEci` to
-  the last bit. Local time of the node against SGP4's node crossing: 0.000 minutes at +0, +3, +30 and
-  +90 days for five orbits; the daytime pass over Bangkok and Hobart against SGP4's own passes,
-  within 0.1 h for five local times.
+  the last bit: the old page's, read out of its `index.html`, so this group needs the old page
+  checked out as `legacy/` (see **Guards taken away**, below) and fails without it.
+  `src/lib/core/sun.ts` is that function moved verbatim, and group 12 of `verify-custom.js` asks the
+  same of the rebuilt page's. Local time of the node against SGP4's node crossing: 0.000 minutes at
+  +0, +3, +30 and +90 days for five orbits; the daytime pass over Bangkok and Hobart against SGP4's
+  own passes, within 0.1 h for five local times.
 - Five published repeating orbits (Landsat 233/16, Sentinel-2 143/10, Sentinel-1 175/12, Envisat
   501/35, TOPEX/Jason 127/10) to 0.02 km and 0.002°, and a sixth, TerraSAR-X from the catalogue, to
   0.5 km (it comes out 1 m off); SGP4 closes a 233/16 track to 6·10⁻⁵°.
@@ -1300,19 +1517,61 @@ again against the real dictionary:
   survivor is an equivalent mutant (a condition on one button that the item's own condition implies).
   The mutation scripts, like the planner's, are not in the repository.
 
-**In the page.** `verification/verify-custom.js` (203 checks in 24 groups, about three to four
-minutes): zero requests; the differential above; the eleven poisoned stores; blocked storage; the
-thirteenth Add; the counter; two tabs; an Add SGP4 cannot load, refused with the console's note
-untouched; the page opening cleanly with any one of the five modules missing, with a stored orbit
-and with a `Planner.toTLE` that throws; a deep-space orbit a year from the window.
-`verification/verify-custom-mutants.js` takes 79 guards out of a copy of `index.html` one at a time
-and each is caught by a named check; 3 more, second layers behind a tested first one, survive as
-listed (25 to 35 minutes; not in `npm test`). `verification/verify-planner-ui.js` drives the
-planner's own screen the way a student does: the form, the notes, the fixes, the saved list, twelve
-viewport sizes in both colour schemes, and the Professor’s section on catalogue spacecraft (eight
-real ones, eleven awkward sets through the picker, and the section hidden for a designed orbit, with
-the planner off, in the snapshot and when its build throws). `node verification/regress.js` still reads `BIT-IDENTICAL` on
-all 67,488 values with the planner loaded: none of this touches `compute()` or `elements()`.
+**In the page.** `verification/verify-custom.js` (`GT_TARGET=new npm run custom`; 208 checks in 24
+groups, about three to four minutes): zero requests, to any host and the page's own cache API
+included; the differential above; the eleven poisoned stores; blocked storage; the thirteenth Add;
+the counter; two tabs; an Add SGP4 cannot load, refused with the console's note untouched; the page
+opening cleanly with any one of the planner's six chunks refused, with a stored orbit and with a
+`Planner.toTLE` that throws; a deep-space orbit a year from the window. Like every browser suite it
+serves the page over http through `verification/lib/harness.js`, and one file runs against either
+build (`GT_TARGET=new` or `legacy`).
+
+`verification/verify-planner-ui.js` (`npm run planner-ui`) drives the planner's own screen the way a
+student does: the form, the notes, the fixes, the saved list, twelve viewport sizes in both colour
+schemes, and the Professor’s section on catalogue spacecraft (eight real ones, eleven awkward sets
+through the picker, and the section hidden for a designed orbit, with the planner off, in the
+snapshot and when its build throws). `verification/behaviours.json` traces each of the seventy
+behaviours it holds to the checks that prove it, and `node verification/check-behaviours.js` keeps
+that map honest. `npm run gate` (it builds the page first, then compares) still reads
+`BIT-IDENTICAL` on all 67,488 values with the planner loaded: none of this touches `compute()` or
+`elements()`.
+
+**The way in.** Every group of those two suites runs on the test-surface path: the harness sets
+`window.__GT_TEST__`, and the page then brings the planner up eagerly, before it publishes
+`window.__gt`. That is not how a visitor meets it, so `verification/verify-visitor.js`
+(`npm run visitor`) opens the page without the flag and says what was fetched and when: the first
+answer on screen before any of the planner's five own chunks is asked for, the pill from the first
+paint, each of the five once within seconds of the answer and none of them under `?tle=embedded`
+(the sixth, the drag integrator the Decay section shares, is counted once for the whole visit,
+whichever asks first), a chunk that cannot be fetched taking the pill away and leaving the console,
+the picker and the saved record as they were, and the pill pressed at first paint opening a planner
+that was started once.
+
+**Guards taken away.** `verification/verify-custom-mutants.js` takes 79 guards out of a copy of the
+old page's `index.html` one at a time and each is caught by a named check; 3 more, second layers
+behind a tested first one, survive as listed (25 to 35 minutes; not in `npm run test:all`). It edits
+that page's text, so it cannot be pointed at a bundle, and runs only with the old page checked out
+as `legacy/` (`git worktree add legacy legacy-earth-console`). For the rebuilt page there is
+`npm run mutate` (`verification/mutate-new.js`; 36 minutes at one job, about 20 at two): each of the
+85 mutants in `verification/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
+scratch copy that is built and run through `verify-custom.js` on the groups meant to catch it, and 3
+of them are equivalents that must survive. Its first full run caught 81 of the other 82 and let one
+through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
+either build; group 13 has the check now. `--list` checks that every edit's anchor still matches
+exactly once. `verification/behaviours-custom.json` maps each of the 79 old mutants, the 3
+equivalents and the 24 groups to the check, or the Vitest test, that guards the same behaviour here,
+and `node verification/check-behaviours-custom.js` keeps that map honest.
+
+**Beside the suites.** Vitest (`npm run test:unit`) holds the pure halves of this:
+`tests/lib/custom.test.ts` (what an entry is, what is stored and read back, which names and numbers
+are free), `tests/lib/custom-guards.test.ts` (the guards above that are pure functions: a custom
+orbit is judged by its flag, never by its number or its name, and what it writes into a file a
+reader takes away says what it is), `tests/lib/life-custom.test.ts` (the Decay section's words for a
+planned orbit) and `tests/components/planner-markup.test.ts` (the ids, the aria wiring and the
+hidden states of the markup the controller writes into, which is the old page's;
+`node scripts/compare-planner-markup.mjs` compares it with the old page node for node, and needs a
+browser and the old page checked out). `npm run axe` sweeps axe-core's rules over the console, the
+planner open among its states, at five viewports in both colour schemes.
 
 **Not checked, and limits.**
 
@@ -1366,9 +1625,12 @@ all 67,488 values with the planner loaded: none of this touches `compute()` or `
 
 ## The Earth–Moon system page
 
-`moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration points
-marked and moving with it. Linked from the console's rail. `moon/lunar.js` holds the physics,
-`moon/moonviz.js` the three.js scene.
+`public/moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration
+points marked and moving with it. Linked from the Earth console, at the right of the report's
+sticky sub-navigation and again in its footer. `public/moon/lunar.js` holds the physics,
+`public/moon/moonviz.js` the three.js scene. The two Moon pages and the scripts they load
+(`public/core/`, `public/moon/`) are plain files that the Vite build does not process: it copies
+them to `dist/` as they are.
 
 ### The Moon's position
 
@@ -1492,8 +1754,10 @@ radii away.
 
 ## The lunar track console
 
-`moon-track.html` — the same console pointed at the Moon. Same layout, same transport, same
-palette; different central body, which is the point of the split above.
+`public/moon-track.html` — the same console pointed at the Moon. Same layout, same transport, same
+palette; different central body, which is the point of the split above. "Same" means the old
+Earth page's: the Earth console has since been rebuilt (`CHANGES-FROM-LEGACY.md`) and this page
+has not.
 
 Five objects, and the page's job is to say **how well each one is actually known**:
 
@@ -1564,9 +1828,9 @@ anchor sat 69.184 s late (37 leap seconds, plus TT − TAI = 32.184 s), and LRO 
 in that time. The checks missed it because they fetched their reference in TT and compared it with
 TDB epochs: consistent with each other to 2 ms, and blind to the one conversion the page actually
 makes. The bake now converts — TAI − UTC is 37 s through June 2027 by IERS Bulletin C 72, and it
-warns past that — and writes `moon/moondata.js` itself, so there is no hand-copied step between
-Horizons and the page. Both checks run in UTC, and the chain check fails above 3 km near an anchor:
-on the old data it reads 107 km.
+warns past that — and writes `public/moon/moondata.js` itself, so there is no hand-copied step
+between Horizons and the page. Both checks run in UTC, and the chain check fails above 3 km near an
+anchor: on the old data it reads 107 km.
 
 ### Fit, then prediction
 
@@ -1617,9 +1881,9 @@ entirely plausible.
 
 ### The globe
 
-A 3D view, in `moon/moon3d.js`, with the flat map kept as a toggle.
+A 3D view, in `public/moon/moon3d.js`, with the flat map kept as a toggle.
 
-It differs from `earth/orbit3d.js` in one deliberate way: the Earth globe draws the
+It differs from `src/scene/orbit3d.ts` in one deliberate way: the Earth globe draws the
 **inertial** frame and spins the planet under a fixed orbit, while this one is **body-fixed** —
 the Moon holds still and the orbit sweeps around it. That is the right choice for a tidally
 locked body. The near side permanently faces the Earth, so holding it still is how anyone
@@ -1649,7 +1913,7 @@ Same affordances, because it is the same instrument:
 - **Every object is drawn at once**, not just the selected one — there has to be something to
   click. Hovering names it; clicking switches to it.
 - A **layers panel** built from the scene's own layer list, so adding a layer to
-  `moon/moon3d.js` puts a checkbox on the page without touching the page.
+  `public/moon/moon3d.js` puts a checkbox on the page without touching the page.
 - **Follow** swings the camera to hold the selected spacecraft's sub-point beneath it, the lunar
   equivalent of the Earth console's satellite camera.
 
@@ -1719,7 +1983,9 @@ than a day.
 
 ## Data provenance
 
-The embedded catalogue is **2,158 satellites, 319 KB**, built from:
+The embedded catalogue — `data/catalogue.txt`, a file of the page's own that it fetches when it
+opens, with `data/catalogue.meta.json` beside it recording when it was fetched and from what — is
+**2,158 satellites, 319 KB**, built from:
 
 1. **SatNOGS DB** — `https://db.satnogs.org/api/tle/?format=json`, which serves anonymously
    (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
@@ -1745,12 +2011,13 @@ data for exactly this reason.
 
 **The magnetic model** the AR view corrects a compass with is WMM2025, from NOAA's National
 Centers for Environmental Information and the British Geological Survey: epoch 2025.0, degree and
-order 12, valid to 2030.0, and in the public domain. Its coefficient file, `WMM.COF`, is embedded
-verbatim in `earth/wmm.js`, copied in by script from `WMM2025COF.zip`
-(https://www.ncei.noaa.gov/sites/default/files/2024-12/WMM2025COF.zip, 42,887 bytes), and
-`verification/WMM.COF` is the same file committed as a second copy. The same zip's
-`WMM2025_TestValues.txt` is `verification/WMM2025_TestValues.txt`, and is what the model is checked
-against. The zip's README offers test values of its own; they are the previous model's.
+order 12, valid to 2030.0, and in the public domain. Its coefficient file, `WMM.COF`, is
+`data/WMM.COF`, which `src/lib/ar/wmm.ts` imports as text. It is NOAA's file verbatim: on the old
+page it was a literal in `earth/wmm.js`, copied in by script from `WMM2025COF.zip`
+(https://www.ncei.noaa.gov/sites/default/files/2024-12/WMM2025COF.zip, 42,887 bytes), and the
+bytes are the same now. `verification/WMM.COF` is the same file committed as a second copy. The
+same zip's `WMM2025_TestValues.txt` is `verification/WMM2025_TestValues.txt`, and is what the model
+is checked against. The zip's README offers test values of its own; they are the previous model's.
 
 **Orbits you design are not in this catalogue.** One made in the planner is built in the page from
 the elements typed and is never added to the 2,158: the catalogue, its count in the regression gate
@@ -1769,8 +2036,8 @@ titled with the spacecraft, its peak elevation and where to look, so a phone say
 "KNACKSAT-2 — 68° NE" rather than nothing at all (its 18:12Z pass on 14 September, in the
 regression baseline's 72-hour window).
 
-Both are built in the page and handed over as a Blob, which works from `file://` where this page
-mostly lives.
+Both are built in the page and handed over as a Blob, so nothing is sent anywhere and no server is
+needed to make them; the code that writes them is a chunk of its own, fetched at the first press.
 
 A pass cut by the window edge is flagged in both, because its AOS or LOS is where the analysis
 stopped and the files otherwise present it as a horizon crossing. The CSV's `aos_clipped` and
@@ -1827,11 +2094,15 @@ existed; only the value was frozen. It is editable now, with a UTC offset, and i
 
 Two things make that safe rather than merely possible:
 
-- **`OBS` is mutated in place, never replaced.** `earth/orbit3d.js` is handed the object once at
-  init and reads it every frame. Assigning a new object would leave the globe pinned to the old
-  site while every number on the page moved — the worst kind of failure, because it looks fine.
-  The check reads the pin's own geometry back out of the scene and compares it against the new
-  coordinates.
+- **`OBS` is never held, only read.** The old page handed `earth/orbit3d.js` the object once at
+  init and mutated it in place: the scene read it every frame, and assigning a new object would
+  have left the globe pinned to the old site while every number on the page moved — the worst
+  kind of failure, because it looks fine. The rebuilt console goes the other way and removes the
+  failure by a different route. Moving the observer builds a new site object and a new engine
+  around it (`setObserver`, `src/state/engine.ts`), and the globe is given a getter, so it asks
+  for the current site each time it needs it and keeps no reference to an old one; the pin is
+  rebuilt and the site camera re-aimed when the site changes. The check is the same one: it reads
+  the pin's own geometry back out of the scene and compares it against the new coordinates.
 - **Bangkok stays the default.** `verification/baseline.json` records `obs = Bangkok` in its meta,
   and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
   cannot leak into it. Reset restores the assignment's own total to the bit.
@@ -2010,9 +2281,13 @@ derivative at ±1, which is precisely where that test sits, so a double's 2×10�
 
 ### One duplication deliberately kept
 
-`earth/orbit3d.js` carries its own copy of the solar position for the directional light. It is a
+`src/scene/orbit3d.ts` (the old `earth/orbit3d.js`) carries its own copy of the solar position for
+the directional light, one that leaves out the obliquity's slow drift, about 0.004°. It is a
 standalone renderer that has to work without the page, and the two are used for different things.
-The page's own copy is now stated once, as `sunEci`, with `subsolar` expressed in terms of it.
+The library's own copy, `src/lib/core/sun.ts`, is stated once, as `sunEci`, with `subsolar`
+expressed in terms of it. Merging the two was planned for the rewrite and declined
+(`CHANGES-FROM-LEGACY.md`, row 2): the globe is held to the old page's pixels, and its light is
+part of them.
 
 ## Doppler, and where the frequency comes from
 
@@ -2053,10 +2328,12 @@ than leaving a tolerance that looks arbitrary.
 
 ### The frequency is the one thing that cannot be derived
 
-`earth/transmitters.js` is baked from **SatNOGS DB**'s transmitter endpoint — the same anonymous
-source that supplies most of the embedded catalogue, so this adds a field to a source already
-trusted rather than a new dependency. One request, not 2,158: the whole table is 3.9 MB unpaginated
-in about seven seconds, and asking per object would be 2,158 requests for the same bytes.
+`data/transmitters.json` (on the old page, `earth/transmitters.js`) is baked from **SatNOGS DB**'s
+transmitter endpoint — the same anonymous source that supplies most of the embedded catalogue, so
+this adds a field to a source already trusted rather than a new dependency. One request, not
+2,158: the whole table is 3.9 MB unpaginated in about seven seconds, and asking per object would
+be 2,158 requests for the same bytes. The table is a chunk of its own, asked for as soon as the
+first answer has been computed, so the entry the page cannot start without does not carry it.
 
 Kept: **active** transmitters only, with a published downlink, deduplicated on frequency and mode,
 at most four per object, and only for objects actually in the catalogue.
@@ -2077,7 +2354,7 @@ telemetry. Over its 68.1° pass at 18:12Z on 14 September, in the regression bas
 window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 
 ```
-node verification/fetch-transmitters.js   # re-bake earth/transmitters.js
+node verification/fetch-transmitters.js   # re-bake data/transmitters.json
 ```
 
 ## Staying current
@@ -2090,13 +2367,46 @@ week-old set is quoting fiction. So the page does not rely on what is baked into
 the current element set for that one object** — not the whole catalogue. A few hundred bytes, for
 the object actually being analysed:
 
-1. `celestrak.org/NORAD/elements/gp.php?CATNR=<id>&FORMAT=tle` — authoritative, ~170 bytes.
-2. `tle.ivanstanojevic.me/api/tle/<id>` — fallback, JSON.
-3. The embedded snapshot, if neither answers.
+1. The page's own cache API, `/api/tle/<id>`, if one answers as itself (below).
+2. `celestrak.org/NORAD/elements/gp.php?CATNR=<id>&FORMAT=tle` — authoritative, ~170 bytes.
+3. `tle.ivanstanojevic.me/api/tle/<id>` — fallback, JSON.
+4. The embedded snapshot, if none of them answers.
 
-Both live sources send `Access-Control-Allow-Origin: *`, which is the only reason a static page
-with no backend can do this at all. (CelesTrak emits the header only when the request carries an
-`Origin`, so a bare `curl` appears to show no CORS support; a browser sees it.)
+Both live sources send `Access-Control-Allow-Origin: *`, which is the only reason a static page with
+no backend can do this at all, and the way every visit goes where there is no cache API. (CelesTrak
+emits the header only when the request carries an `Origin`, so a bare `curl` appears to show no CORS
+support; a browser sees it.)
+
+The first of those is new with the rebuild, and optional. `server/` is a small Elysia app —
+`GET /api/health`, `/api/tle/:norad` and `/api/history/:norad`, with the types the two ends share
+in `shared/` — that does what the page would otherwise do for itself: ask CelesTrak, then the
+mirror, and judge what comes back with the same functions the page uses (`shared/tle.ts`). It
+keeps the answer, so that N visitors cost CelesTrak one request, not N, and it computes nothing:
+every number on the page is still made in the browser. An element set is served from memory for
+three hours counted from the instant it was fetched, not the instant it was asked for, so passing
+through the cache does not make a set look younger, and concurrent requests for one object share
+one upstream call. A set older than the one already held, or with an epoch more than three days
+ahead of the server's clock, is refused. CelesTrak's "No GP data found" is an answer and is kept
+like one; a failure is never kept, and a set past its three hours is not served because a source
+is down. The decay history is the same arrangement with a twelve-hour life.
+
+`npm run dev` starts it beside Vite, which proxies `/api` to it; `npm run serve` starts it alone,
+on 127.0.0.1:3001, and with `SERVE_STATIC=1` it serves `dist/` too, so that one process is the
+whole site. Outside production it also serves its own OpenAPI documentation at `/api/docs`.
+Nothing in the repository chooses a host for it: the deploy `vercel.json` describes is the
+frontend alone, and there the page does what the old one did.
+
+The page does not take the API's word for being the API. Only a reply that carries the header
+`x-gt-api: 1` and whose body is the JSON the schema promises counts (`src/lib/net/api.ts`); a 404
+page, the app shell, a captive portal, a rate limit, a timeout or a connection that failed is "no
+API here", and the page goes straight on to CelesTrak and the mirror. Such a failure opens a
+circuit breaker, which leaves the API alone for ten minutes and then probes it once more, so a
+page with no API behind it costs one failed request per ten minutes and not one for every
+spacecraft picked. The one failure that does not open it is the API answering as itself that its
+own sources are down (502 or 504): the page goes direct for that object and asks the API about
+the next. `VITE_API=off` at build time skips even the probe, and `VITE_API_BASE` points the page
+at another origin. Under `?tle=embedded` nothing is asked, the API included, and nothing is asked
+for an orbit you designed.
 
 Five details that matter more than the fetch itself:
 
@@ -2123,10 +2433,11 @@ Five details that matter more than the fetch itself:
   CelesTrak · checked 2.4 h ago" reads differently from the same sentence with no time on it, which
   is the point.
 
-The embedded catalogue remains the offline fallback and what paints on first frame, and the
-other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not
-analysis. To refresh that baseline, rebuild `catalog.txt` and re-inject it into the
-`<script id="tledata">` block.
+The embedded catalogue remains the offline fallback and what the first answer is computed from, and
+the other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not
+analysis. To refresh that baseline, rebuild the catalogue and replace `data/catalogue.txt` (and
+`data/catalogue.meta.json`) with it, together with `verification/catalog.txt`, its independent
+copy, which a unit test holds equal to it.
 
 ### When the object is no longer there
 
@@ -2173,8 +2484,8 @@ The live refresh has three answers of its own that are not a fresher set:
   change of spacecraft never reset, so it described whichever object had been checked last:
   GOES 18's embedded set read "Updated live from CelesTrak" because KNACKSAT-2's had been, and
   KNACKSAT-2's live set, revisited, read "No live source reachable" because GOES 18's check had
-  failed. Each catalogue entry now carries its own result, and the line is read from the entry
-  actually displayed.
+  failed. The result of each object's last check is now kept under its own NORAD number, and the
+  line is read for the object actually displayed.
 
 These objects stay in the embedded catalogue for now. Dropping them belongs to the next rebuild;
 doing it by hand would change the catalogue count the regression gate compares.
@@ -2185,37 +2496,97 @@ The default's fallback is not in the suite: exercising it needs a doctored catal
 
 ## Running it
 
-**The pages need nothing.** No build, no server, no install — open them:
+**The Moon pages need nothing; the Earth console needs a build.** The console is a Svelte 5 and
+TypeScript app bundled by Vite 8, and a browser will not load its modules from a file, so
+`index.html` opened from disk does not run. The two Moon pages are the old plain scripts, served
+from `public/` as they were, and open from disk as they always did (their links back to the Earth
+console only find it on a server):
 
 ```
-index.html   moon-track.html   moon.html
+public/moon-track.html   public/moon.html
 ```
 
-`index.html?tle=embedded` is the assignment snapshot: the embedded element sets, each window at
-its set's epoch, which is how the README's figures are computed.
-
-The `package.json` in the root is for the *checks*, not the pages. Several of them drive a real
-browser through Playwright, which was previously required with nothing declaring it — so running
-the gate on a fresh clone meant setting `NODE_PATH` by hand. Now:
+Several of the checks drive a real browser through Playwright, which was once required with nothing
+declaring it, so running the gate on a fresh clone meant setting `NODE_PATH` by hand. It is declared
+now, and a fresh clone needs, once:
 
 ```
-npm install          # Playwright, once
-npm test             # the offline suite; must end BIT-IDENTICAL
+npm ci                            # the exact versions package-lock.json names
+npx playwright install chromium   # the browser the checks drive; only the checks need it
 ```
 
-`npm test` runs the second implementation, the element-vector geometry, the planner and Professor
-checks and the regression gate, then the browser checks from `refresh` to `layout` in that order
-(`custom` after `catalogue`), then `planner-ui`, and stops at the first failure. Individually:
+It wants Node `^20.19.0 || >=22.12.0`, which is `engines` in `package.json` and Vite 8's own
+requirement; Vitest 5 narrows that to 22.12, 24 and 26 and later, so the unit tests want one of
+those. Every dependency is pinned exactly and `.npmrc` keeps it so, because the gate is
+bit-identical and the globe's colours are tuned to three.js r128. Then:
 
 ```
-npm run verify       # independent second implementation of elements/elevation/visibility,
-                     # and that index.html pins by hash the satellite.js bytes it runs on
+npm run dev          # Vite on http://127.0.0.1:5173, and the cache API on :3001 beside it
+npm run build        # the production build, into dist/
+npm run preview      # dist/ on http://127.0.0.1:4173
+npm run serve        # the cache API alone, on 127.0.0.1:3001
+```
+
+`dev:web` and `dev:api` start the two halves of `dev` on their own. `preview` proxies `/api` to the
+same port, so `npm run serve` in a second terminal gives a preview a cache API. With nothing
+answering behind `/api`, as under a preview that has none beside it or on the deploy `vercel.json`
+describes, the page asks CelesTrak and the mirror itself (see *Staying current*).
+
+The page opened with `?tle=embedded` (`http://127.0.0.1:5173/?tle=embedded`) is the assignment
+snapshot: the embedded element sets, each window at its set's epoch, and nothing asked of any other
+host, the cache API included, which is how the README's figures are computed.
+
+The rest of `package.json` is the checks. Two commands run them, each building first:
+
+```
+npm run test:fast    # types, layers, unit tests and the quick stages of run.js
+npm run test:all     # every stage of verification/run.js, one table at the end
+```
+
+`test:fast` is the layer rule (`check:deps`: `src/lib` imports nothing from the stores, the stores
+nothing from the components, the server nothing from the page), the type checks of the page and of
+the server (`check`, `check:server`), a production build, the check that the one inline script in it
+is the one `vercel.json`'s report-only policy names by hash (`check:csp`), the bundles the Node
+suites load (`build:shims`), the Vitest tests in `tests/` (`test:unit`), and the stages `run.js`
+marks quick. `test:all` is the build, `check:csp`, `build:shims` and then every stage of `run.js`:
+the suites below, against the page `GT_TARGET` names (a stage written for the rebuilt page alone
+runs only when that is `new`). `run.js` stops early only when the numbers move (`verify`, `evec`,
+`planner`, `gate` and `slice`, in that order: nothing else is worth reading while they are wrong);
+then it runs every other stage, the ones that measure time alone and the rest two at a time, prints
+one table and exits non-zero if any stage failed. Each stage's output is in
+`verification/.logs/<stage>.log` and the summary in `verification/last-run.json`; `--only a,b`,
+`--skip a,b`, `--fast` and `--target new|legacy` choose what runs.
+
+The suites do not open the page from disk. They serve the production build in `dist/` over http
+through `verification/lib/harness.js`, a static server with no fall-back to the app shell (a missing
+file is a 404), and drive it with Playwright's Chromium, the only browser any of them launches. So
+build first (`gate`, `test:fast` and `test:all` do it themselves). `GT_DIST=<folder>` names a build
+made elsewhere (`vite build --outDir <folder>`), so two runs never share a folder, and
+`GT_URL=<url>` adopts a page that is already running, a preview or a deployment. Five of the suites,
+`verify`, `planner`, `advisor`, `lifetime` and `ar`, also load the TypeScript library in node, as
+the bundle `npm run build:shims` makes in `verification/.build/`, which is not in git: run it once
+on a fresh clone and again after changing `src/lib` (`gate:lib`, `test:fast` and `test:all` do it
+themselves). Individually:
+
+```
+npm run verify       # independent second implementation of elements/elevation/visibility, and that
+                     # what runs is what is pinned: satellite.js and three.js by exact version and
+                     # the lockfile's hash, the Moon pages' three.js tag by the hash of npm's file
 npm run evec         # element-vector geometry, across e = 0.00013 to 0.91
 npm run planner      # your own orbits, the maths: the TLE writer, the Kozai inversion, the matched
                      # B*, validation and the saved store, against satellite.js (node only, ~8 s)
 npm run advisor      # the Professor: kernels against SGP4, all 87 items, every text rendered
                      # (node only, about 80 s)
+npm run gate         # build, then compare the page's numbers with baseline.json: must print
+                     # BIT-IDENTICAL
+npm run gate:lib     # the same comparison on the library alone, bundled and loaded into a blank
+                     # Chromium page with no app and no server: seconds, and exact, because it is
+                     # the engine that made the baseline
+npm run slice        # the page end to end as a visitor meets it: the assignment snapshot's 899.7 s
+                     # over 2 passes read off the screen, no test surface and no third-party host
+                     # on a visitor's load, the Moon pages served
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
+                     # (run.js runs it again as refresh-api, with a mock cache API answering)
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range
 npm run optical      # shadow cone geometry, brightness, and naked-eye passes
@@ -2231,52 +2602,98 @@ npm run lifetime     # the decay forecast's refusals, and what it says when it h
 npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
                      # order the tap asks in, every refusal's words, the marker on the
                      # spacecraft, the phone held sideways, the globe paused while covered
-npm run layout       # phone, tablet and desktop: nothing over the globe's buttons, the layers
-                     # toggle, captions, the header's links, an 11 px floor, the Terms section
+npm run layout       # the rebuilt console at twelve sizes, light and dark: nothing scrolls
+                     # sideways, nothing covers a control or hangs off the screen, no text under
+                     # 12 px, targets big enough to tap, and what the design promises
 npm run planner-ui   # the planner's own screen, driven as a student drives it: the form, the
                      # Professor's panel, the fixes, the saved list, the layouts, the details
-npm run snapshot     # (re)write verification/baseline.json
-npm run gate         # compare the live code against it — must print BIT-IDENTICAL
+npm run visitor      # the page with no test flag, as a visitor gets it: how the planner and the
+                     # AR view arrive, what the first screen weighs, and a page that is refused
+                     # what it asks for (site data, the element sets, a chunk)
+npm run axe          # axe-core at five viewports in both colour schemes, in the states that change
+                     # what is on screen; --strict fails on anything not listed with its reason
+npm run golden       # the report's words against the old page's, word for word (white space is
+                     # collapsed; the intentional differences are listed in golden-diffs.json): the
+                     # 38 spacecraft of the baseline, two spans, three observers (minutes;
+                     # golden-lite, in test:fast, is five spacecraft from one observer)
+npm run ab3d         # the 3D scene against the old page's in 16 states: the scene graph and the
+                     # pixels, exactly and then tile by tile
+npm run frames       # how often the globe draws: none when nothing moves, about ten a second
+npm run perf         # the old page and this one measured the same way, in one table (not in
+                     # run.js; the old page, below, must be checked out, or pass --target new)
+npm run mutate       # takes one guard at a time out of a scratch copy of src/ and asks whether
+                     # `custom` notices (about 36 minutes for the list; not in run.js)
 ```
 
-Every one of those blocks NASA's imagery service before loading the page, so the globe falls back
-to its drawn coastlines. Two reasons: the timings some of them measure are wall-clock, and a
-megabyte of JPEG fetched ten times a run is rude to a service that is free.
+`baseline.json` is the old page's answer and is written only from it
+(`GT_TARGET=legacy node verification/snapshot.js --write-baseline`, which refuses anything else);
+`npm run snapshot -- --out FILE` takes the same measurements of the page under test into a file.
+`golden.json` and `verification/ab3d/` are the old page's too, and `golden:write` and `ab3d:write`
+capture only that.
 
-`npm run ar` has two checks that depend on which pass the clock lands on: *out of frame to the right*
-and its *above and to the right* twin aim the virtual phone 40° and 30° in azimuth away from the
-spacecraft at the highest pass in the window and expect it to be out of frame, with a pointer. On 4
-October 2026 that pass peaked at 79.3°, where 40° of azimuth is about 7° on the sky, so the spacecraft
-stayed in frame and both checks failed with *no pointer*. They fail the same way against the committed
-page and the committed `verify-ar.js`, without the planner. Since `npm test` stops at the first
-failure, on such a day it stops at `ar` and never reaches `layout` or `planner-ui`; run those two by
-name.
+**The old page** is no longer in the tree. It is in git at the tag `legacy-earth-console`, which is
+`main` at 4eadd7a, the last commit before the rebuild. To run a suite on it, check it out where the
+harness looks:
+
+```
+git worktree add legacy legacy-earth-console
+GT_TARGET=legacy node verification/verify-site.js
+```
+
+Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
+`new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
+files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe` and `layout` are about
+the rebuilt page alone. `npm run extract-data`, which made `data/` from the old page's files, reads
+that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
+
+Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in
+the harness: CelesTrak, its mirror, NASA's imagery service, Open-Meteo and the font hosts are
+refused, the cdnjs scripts the old page and the Moon pages ask for are answered from copies here,
+and anything under `/api/` on the page's own origin answers 503, so a client that tries its cache
+API first falls back to the paths the suites mock. Two reasons: the timings some of them measure are
+wall-clock, and on the old page a megabyte of JPEG fetched ten times a run was rude to a service
+that is free (the rebuilt page asks the imagery service only for the "Yesterday's clouds" surface).
+`perf` makes its network another way, with stand-ins of its own for the third-party hosts the old
+page asks, because Chromium's throttling does not reach a response that Playwright fulfils (its
+header says why).
+
+`npm run ar` sets its own clock. The window opens at "now", and what some of its checks need of it is
+not true every day: *out of frame to the right* and its *above and to the right* twin aim the virtual
+phone 40° and 30° in azimuth away from the spacecraft and expect it to be out of frame, with a pointer,
+which fails when the spacecraft is near the zenith (on 4 October 2026 the highest pass peaked at 79.3°,
+where 40° of azimuth is about 7° on the sky), the Cape Town check has the same trap, and London keeps
+UTC+1 only until late October. So every page the suite opens starts at 2026-09-13T00:00Z on Playwright's
+clock, which runs on from there and moves `Date`, the timers, `requestAnimationFrame` and
+`performance.now` together; `GT_AR_AT=<an ISO instant in 2025-2029>` starts it somewhere else. Those
+checks also make the geometry they need, so they do not depend on the day: they move the clock along
+the pass to where the spacecraft is about 35° up, and the London check works out the phone's own offset
+for the day.
 
 A few checks measure wall-clock time, so on a machine busy with something else one can fail while
 nothing is wrong: the advisor suite's budget of 120 ms at the 95th percentile for a whole advisor
 pass read 128 ms once while this was written, and passed on the next run. Run it again before
-looking for a fault.
+looking for a fault. `run.js` gives the stages that measure time the machine to themselves.
 
-The lunar checks, and the globe imagery check, are kept **out** of `npm test`, because they fetch
+The lunar checks, and the globe imagery check, are kept **out** of `test:all`, because they fetch
 from JPL Horizons and NASA GIBS and a clean run should not depend on someone else's uptime:
 
 ```
 npm run moon         # rotation vs Horizons sub-observer point
 npm run moon:chain   # baked elements -> sub-point, end to end
-npm run moon:bake    # re-bake moon/moondata.js from Horizons
+npm run moon:bake    # re-bake public/moon/moondata.js from Horizons
 npm run globe        # the globe's NASA imagery: orientation, terminator, city lights, map size
 ```
 
 **No CI runs on this repository.** The token it is pushed with has no `workflow` scope, so GitHub
 refuses any push that touches `.github/workflows/`, and `.gitignore` keeps that directory out; no
-workflow file is committed. The suite runs when someone runs `npm test`. A scheduled run would be
-the useful one, since the embedded catalogue ages on its own and the pages depend on cdnjs still
-serving their scripts — the Earth page on `satellite.js` 6.0.1, and all three on `three.js` r128.
-The integrity hashes mean a changed file is refused, not that a withdrawn one is replaced. Adding
-a scheduled run needs a token with that scope, or GitHub's own *Actions → New workflow* editor,
-which needs none.
+workflow file is committed. The suite runs when someone runs `npm run test:all`. A scheduled run
+would be the useful one, since the embedded catalogue ages on its own and the Moon pages depend on
+cdnjs still serving their script, `three.js` r128; the Earth console bundles satellite.js and
+three.js and asks no CDN for anything. The integrity hashes mean a changed file is refused, not that
+a withdrawn one is replaced. Adding a scheduled run needs a token with that scope, or GitHub's own
+*Actions → New workflow* editor, which needs none.
 
-Playwright is used for the browser-driven checks. The lunar scripts cache their Horizons responses
-in `$CLAUDE_JOB_DIR/tmp`, or in `gtc-lunar` under the system's temporary directory, so a re-run is
-free; delete the files to fetch again. `moon:chain` reads the reference tables that `npm run moon`
-fetches, so run that first.
+Playwright's Chromium is what the browser-driven checks drive. The lunar scripts cache their
+Horizons responses in `$CLAUDE_JOB_DIR/tmp`, or in `gtc-lunar` under the system's temporary
+directory, so a re-run is free; delete the files to fetch again. `moon:chain` reads the reference
+tables that `npm run moon` fetches, so run that first.

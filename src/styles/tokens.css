@@ -1,0 +1,68 @@
+/* Design tokens.
+ *
+ * The colour names and meanings are the old page's, kept on purpose: cyan is the ground track, orange is "in
+ * view" (contact), magenta is the observer, red is "cannot be". "An instrument, not a document": the chrome
+ * tokens are a rung darker or lighter than the page surface, so the console reads as apparatus and the
+ * analysis below it reads as paper.
+ *
+ * What is new: a spacing scale, radii, a type scale with a floor (nothing under 12 px), layers, and --warn so
+ * orange stops doing double duty as "warning". The theme is a data attribute that JavaScript always sets
+ * (index.html does it before first paint, from the saved choice or the system), so there is one dark set here,
+ * not the same values written twice behind a media query.
+ */
+
+:root {
+  /* ---- colour: light is the base ------------------------------------------------------------ */
+  --surface: #F2F4F5; --panel: #FFFFFF; --sunk: #E9EDEF;
+  --ink: #0E1A1F; --ink2: #3C4D56; --muted: #536169; --rule: #CBD6DB;
+  --chrome: #E4EAED; --chrome2: #D8E0E4; --chromeink: #0E1A1F; --chromerule: #C2CED4;
+  --track: #0086AD; --contact: #A8600D; --observer: #C42A6E; --bad: #B3261E;   /* contact was #B4670F: 4.3:1 as text on white, 4.8:1 now */
+  --link: #006F8F;                        /* the track colour darkened to 4.8:1 on the sunk panels, where it carries text */
+  --warn: #7A5C00;                       /* amber-brown, 5.9:1 on --panel; always paired with a glyph */
+  --good: #1E6B3A;
+  --ocean: #DFE6E9; --land: #B3C2CA; --landline: #93A6B0; --grat: #CDD8DD;
+  --night: rgba(16, 34, 44, .18); --day: rgba(255, 250, 232, .22); --fov: #4C6270;
+  --swday: #E6ECEE; --swnight: #BCC7CD; --ring: #A9B9C1;
+  --shadow: 0 1px 2px rgba(14, 26, 31, .06), 0 10px 26px -18px rgba(14, 26, 31, .34);
+  --void: #0B1116;                       /* the globe: space has no light mode */
+
+  /* interaction, derived so a theme change moves them together */
+  --focus: var(--track);
+  --sel-bg: var(--ink); --sel-ink: var(--panel);
+  --hover: color-mix(in srgb, var(--ink) 6%, transparent);
+
+  /* ---- type ---------------------------------------------------------------------------------- */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-head: 'Archivo', var(--font-sans);
+  --fs-0: 12px;      /* the floor: eyebrows, axis labels, chips */
+  --fs-1: 13px;      /* secondary text, table headers */
+  --fs-2: 14px;      /* body of the console */
+  --fs-3: 16px;      /* prose in the report */
+  --fs-4: 20px;      /* section headings */
+  --fs-5: 28px;      /* the satellite's name */
+  --fs-6: 44px;      /* the one big number */
+  --lh-tight: 1.15; --lh-body: 1.5; --lh-prose: 1.6;
+
+  /* ---- space, shape, layers ------------------------------------------------------------------ */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --r-1: 4px; --r-2: 6px; --r-3: 12px; --r-pill: 999px;
+  --bar-h: 76px; --transport-h: 68px; --rail-w: 360px; --tap: 44px;   /* the wide layout fixes both heights so the console can fill the rest */
+  --z-bar: 20; --z-sheet: 30; --z-popover: 40; --z-dialog: 60;
+  --ease: cubic-bezier(.2, .7, .2, 1); --dur: 140ms;
+}
+
+:root[data-theme='dark'] {
+  --surface: #0B1014; --panel: #121A20; --sunk: #0E161B;
+  --ink: #E8EFF2; --ink2: #AEBFC8; --muted: #8096A1; --rule: #22313A;
+  --chrome: #0D141A; --chrome2: #131D24; --chromeink: #E8EFF2; --chromerule: #1E2B34;
+  --track: #17A3CC; --contact: #CE801A; --observer: #E2557E; --bad: #F2776B;
+  --link: #17A3CC;
+  --warn: #E3B93C; --good: #5FC58A;
+  --ocean: #091319; --land: #2F404B; --landline: #47606D; --grat: #1C2933;
+  --night: rgba(0, 0, 0, .32); --day: rgba(168, 214, 240, .055); --fov: #E9F2F7;
+  --swday: #17242C; --swnight: #070D11; --ring: #374954;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px -20px rgba(0, 0, 0, .9);
+  --void: #05090C;
+}

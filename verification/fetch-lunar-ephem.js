@@ -24,7 +24,7 @@ const path = require('path');
 const TMP = path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp')
                                                  : path.join(os.tmpdir(), 'gtc-lunar'), '/');
 fs.mkdirSync(TMP, { recursive: true });
-const MOONDATA = path.join(__dirname, '..', 'moon', 'moondata.js');
+const MOONDATA = path.join(__dirname, '..', 'public', 'moon', 'moondata.js');
 
 const CRAFT = [
   { id: '-85',  key: 'lro',  name: 'LRO',

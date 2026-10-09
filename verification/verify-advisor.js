@@ -36,13 +36,14 @@
  * No page and no browser: node and satellite.js only. Ends ALL CHECKS PASS.
  */
 'use strict';
+const H = require('./lib/harness');
 const path = require('path');
 const fs = require('fs');
 
-require(path.join(__dirname, '..', 'earth', 'lifetime.js'));
-require(path.join(__dirname, '..', 'earth', 'planner.js'));
+require(H.earthFile('lifetime'));
+require(H.earthFile('planner'));
 const CC = require('./advisor-copy-checks.js');           // loads the real earth/advisor-copy.js
-const ADVISOR_JS = process.env.ADVISOR_JS ? path.resolve(process.env.ADVISOR_JS) : path.join(__dirname, '..', 'earth', 'advisor.js');
+const ADVISOR_JS = process.env.ADVISOR_JS ? path.resolve(process.env.ADVISOR_JS) : H.earthFile('advisor');
 require(ADVISOR_JS);
 if (process.env.ADVISOR_COPY_JS) require(path.resolve(process.env.ADVISOR_COPY_JS));      // after CC, so it replaces the real words
 const sat = require('./satellite.min.js');
@@ -160,10 +161,16 @@ group('A0 the Sun: advisor.js carries index.html\'s sunEci, and a second Sun agr
   const s0 = A.sunEci(new Date(EP));
   chk('A0 sunEci returns {ra, dec, distKm, x, y, z}, a unit vector, from a Date or from milliseconds alike',
     JSON.stringify(Object.keys(s0)) === '["ra","dec","distKm","x","y","z"]' && Math.abs(Math.hypot(s0.x, s0.y, s0.z) - 1) < 1e-12 && JSON.stringify(A.sunEci(EP)) === JSON.stringify(s0) && JSON.stringify(K.sunEci(EP)) === JSON.stringify(s0));
-  /* byte for byte: the function is read out of index.html and run beside ours */
-  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const m = /function sunEci\(date\)\{[\s\S]*?\n\}/.exec(html);
-  chk('A0 index.html still has a function sunEci(date) to compare with', !!m);
+  /* byte for byte, in two ways. The old page's function was run once over these 500 dates and the outputs hashed (SUN_GOLDEN: made from
+     `git show legacy-earth-console:index.html`, never from this code), so no checkout of the old page is needed to hold the Sun to it... */
+  const SUN_GOLDEN = '63358177a8f22ae5f581295a144d87350eb60b60a3d8189a9dc92ed8ad704c42';
+  const here = dates.map(ms => JSON.stringify(A.sunEci(new Date(ms)))).join('\n');
+  chk('A0 Advisor.sunEci equals the old index.html\'s sunEci, to the last bit, on all 500 dates (the outputs hash to what the old function made)', require('crypto').createHash('sha256').update(here).digest('hex') === SUN_GOLDEN);
+  /* ...and, where the old page is checked out as legacy/, its function is also read out of index.html and run beside ours */
+  const oldHtml = path.join(H.TARGETS.legacy, 'index.html');
+  const html = fs.existsSync(oldHtml) ? fs.readFileSync(oldHtml, 'utf8') : '';
+  const m = html ? /function sunEci\(date\)\{[\s\S]*?\n\}/.exec(html) : null;
+  if (html) chk('A0 index.html still has a function sunEci(date) to compare with', !!m);
   if (m) {
     const ref = new Function('RAD', 'DEG', m[0] + '\nreturn sunEci;')(Math.PI / 180, 180 / Math.PI);
     let diff = 0;
@@ -1239,16 +1246,22 @@ group('A2 cost: the dictionary of a circular orbit under 60 ms, an eccentric one
 });
 
 group('A0 purity: the advisor reads no clock, no page, no storage, no network, and uses no syntax beyond ES2017', () => {
-  const src = fs.readFileSync(ADVISOR_JS, 'utf8');
+  /* The module build scans the verbatim TypeScript source it was moved into, not the Node bundle (which also
+     carries Lifetime and the Planner). An ADVISOR_JS mutant is still scanned as given. */
+  const NEW_BUILD = H.targetName() !== 'legacy' && !process.env.ADVISOR_JS;
+  const src = fs.readFileSync(NEW_BUILD ? H.earthSource('advisor') : ADVISOR_JS, 'utf8');
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
   const wrapperLine = "})(typeof window !== 'undefined' ? window : globalThis);";
-  const body = code.replace(wrapperLine, '');
+  /* its three sibling modules are imports now; anything else imported is still a violation */
+  const siblings = /^import \{[^}]*\} from '\.\/(?:lifetime|planner|advisor-copy)';$/gm;
+  const body = (NEW_BUILD ? code.replace(siblings, '') : code).replace(wrapperLine, '');
   const forbidden = [];
   [[new RegExp('\\?' + '\\.[A-Za-z_$\\[(]'), 'optional chaining'], [new RegExp('\\?' + '\\?'), 'nullish coalescing'], [new RegExp('inner' + 'HTML'), 'inner' + 'HTML'], [/\bdocument\b/, 'document'], [/localStorage|sessionStorage|indexedDB/, 'storage'],
     [/\bfetch\s*\(|XMLHttpRequest|WebSocket|navigator/, 'network'], [new RegExp('Date\\.' + 'now|performance\\.now|new Date\\(\\s*\\)'), 'the clock'], [new RegExp('Math\\.' + 'random'), 'randomness'], [/\brequire\s*\(|\bprocess\s*\.|\bimport\s*[({]/, 'a module'],
     [/\bconsole\s*\./, 'console'], [/\bsetTimeout|setInterval|requestAnimationFrame|requestIdleCallback/, 'a timer'], [/(^|[^.\w$'"])window\b(?!\s*:)/, 'window outside the wrapper'], [/\?\.|\?\?|\*\*=|\basync\b|\bawait\b|\.flatMap|\.flat\(|Object\.fromEntries|\.matchAll|\.trimStart|\.trimEnd|\bBigInt\b/, 'beyond ES2017']].forEach(p => { if (p[0].test(body)) forbidden.push(p[1]); });
   chk('A0 earth/advisor.js (comments stripped): no optional chaining or nullish coalescing, no DOM, window, storage, network, clock (Date.now, a Date with no argument, performance.now), randomness, timer or module', forbidden.length === 0, forbidden.join(', '));
-  chk('A0 it is an IIFE over (window or globalThis), strict, like lifetime.js, and "Professor" appears nowhere outside comments', /^\(function\(global\)\{\s*\n'use strict';/m.test(src) && src.replace(/\s+$/, '').endsWith(wrapperLine) && !/Professor/.test(body));
+  if (NEW_BUILD) console.log('  SKIP  A0 it is an IIFE over (window or globalThis), strict - an ES module is already strict and scoped');
+  chk('A0 ' + (NEW_BUILD ? '' : 'it is an IIFE over (window or globalThis), strict, like lifetime.js, and ') + '"Professor" appears nowhere outside comments', (NEW_BUILD || (/^\(function\(global\)\{\s*\n'use strict';/m.test(src) && src.replace(/\s+$/, '').endsWith(wrapperLine))) && !/Professor/.test(body));
   /* at run time: count the reads of the clock while the advisor works */
   const RealDate = Date; let clock = 0;
   globalThis.Date = new Proxy(RealDate, { construct(t, args, nt) { if (args.length === 0) clock++; return Reflect.construct(t, args, nt === undefined ? t : nt); }, get(t, k) { if (k === 'now') return () => { clock++; return t.now(); }; return t[k]; } });

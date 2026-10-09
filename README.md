@@ -1,4 +1,105 @@
+<div align="center">
+
 # Ground Track Console
+
+**Pick a satellite. See where it is, where it goes, and when it is above your horizon.**
+
+[**Open the console →**](https://sattrackslop.vercel.app)
+&nbsp;·&nbsp; [Lunar track console](https://sattrackslop.vercel.app/moon-track.html) *(testing)*
+&nbsp;·&nbsp; [Earth–Moon system](https://sattrackslop.vercel.app/moon.html) *(testing)*
+
+<img src="docs/img/console-light.jpg" alt="The console: a globe with the satellite KNACKSAT-2 and its trail, and on the right '19.2 min visible from Bangkok' with the next passes" width="900">
+
+</div>
+
+It started as a coursework assignment: read a Two-Line Element set, report the orbit's elements, plot a day of ground track, and total the time the satellite is above 5° elevation from Bangkok. It grew into a small satellite console. Everything is computed in your browser; there is no account, no analytics or cookies of its own, and nothing to install.
+
+## What you can do
+
+- **Search 2,158 spacecraft** by name or NORAD number and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot.
+- **Watch it move.** A 3D globe and a flat map, a clock you can run up to 3,600× or scrub, trails, the footprint on the ground, and a camera that can ride on the satellite or look from your site.
+- **Set your own place.** Bangkok is the default; search for a town, use your location, or type coordinates. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates, the nearest hour of solar time unless you enter an offset).
+- **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar; the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
+- **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
+- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why.
+- **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture. The picture never leaves the phone.
+- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, and a naked-eye verdict for each pass.
+
+<p align="center">
+  <img src="docs/img/console-dark-map.jpg" alt="Dark theme, flat map: the ISS ground track over a day with Bangkok's visibility circle" width="49%">
+  <img src="docs/img/planner.jpg" alt="The orbit planner open beside the globe" width="49%">
+</p>
+<p align="center">
+  <img src="docs/img/phone-dark.jpg" alt="The console on a phone, dark theme" width="24%">
+</p>
+
+## Try it
+
+Links open the console already set up:
+
+| Link | Shows |
+|---|---|
+| [`/?sat=25544`](https://sattrackslop.vercel.app/?sat=25544) | the ISS |
+| [`/?sat=25544&span=72&tab=map`](https://sattrackslop.vercel.app/?sat=25544&span=72&tab=map) | the ISS, a three-day window, on the flat map |
+| [`/?site=35.6762,139.6503`](https://sattrackslop.vercel.app/?site=35.6762,139.6503) | passes seen from Tokyo |
+| [`/?tle=embedded`](https://sattrackslop.vercel.app/?tle=embedded) | the *assignment snapshot*: the element sets that ship with the page, each window opening at its set's epoch, and no element-set requests at all (the planner is switched off) |
+
+Keys: <kbd>Space</kbd> play/pause · <kbd>←</kbd> <kbd>→</kbd> a minute back/forward (with <kbd>Shift</kbd>, an hour) · <kbd>[</kbd> <kbd>]</kbd> slower/faster · <kbd>g</kbd> globe · <kbd>m</kbd> map · <kbd>/</kbd> search for a spacecraft.
+
+## Run it yourself
+
+You need Node 22.12 or newer. (Node 20.19 can build and preview the page, but `npm run dev` and the tests need 22.12.)
+
+```bash
+npm ci
+npm run dev        # the console on http://127.0.0.1:5173, with the optional cache API beside it
+npm run build      # the production build, into dist/
+npm run preview    # dist/ on http://127.0.0.1:4173
+```
+
+The built page is static files: any web server will do. The cache API in `server/` (a small [Elysia](https://elysiajs.com) service that remembers element sets for a few hours) is optional; without it the page asks [CelesTrak](https://celestrak.org) itself, as it always did.
+
+## How it works, in a paragraph
+
+The page takes a satellite's Two-Line Element set, works out its orbit, and runs the **SGP4** model (the one the published element sets are made for) to place it every few seconds over the window you choose. From the satellite's position and yours it computes elevation and azimuth, finds the stretches above the 5° mask, and totals them. The globe is [three.js](https://threejs.org); the SGP4 is [satellite.js](https://github.com/shashwatak/satellite-js); the page is [Svelte 5](https://svelte.dev) and TypeScript, built with [Vite](https://vite.dev).
+
+## Can you trust the numbers?
+
+This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 27 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
+
+## Data and privacy
+
+The console loads nothing from anyone else: its fonts, its maths library, the Blue Marble picture and the night-lights map are all files of the page itself. (The two Moon pages are older and still use cdnjs and Google Fonts, and the lunar one NASA Moon Trek.) CelesTrak and the other services below do see your IP address and what you ask them for.
+
+| When | Who is asked | What for |
+|---|---|---|
+| a spacecraft is on screen (then every 3 hours) | the page's cache API if there is one, otherwise [CelesTrak](https://celestrak.org), with [tle.ivanstanojevic.me](https://tle.ivanstanojevic.me) as a fallback | its current element set (never for an orbit you designed, and never under `?tle=embedded`) |
+| you ask for a remaining-life estimate | the cache API if there is one, otherwise CelesTrak | the object's history of element sets |
+| you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
+| you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
+
+The camera, motion sensors and your location are used only when you tap the button that needs them, and they are never sent anywhere.
+
+## Where things are
+
+| | |
+|---|---|
+| `src/` | the console: `lib/` the maths and the sentences, `state/` the stores, `components/` the screens, `scene/` the 3D globe |
+| `server/`, `shared/` | the optional cache API |
+| `data/` | the catalogue, the coastlines, the radio table, the magnetic model |
+| `public/` | the two Moon pages, as they always were |
+| `verification/`, `tests/` | the checks |
+| [`CHANGES-FROM-LEGACY.md`](CHANGES-FROM-LEGACY.md) | every difference from the original page, with its reason |
+| [`CLAUDE.md`](CLAUDE.md) | the working rules for anyone changing the code |
+
+## The full technical README
+
+The long account of the project (the orbit maths worked through for the assignment, the decay model, the planner and the Professor, the AR view, the Moon pages, how every check works) is below, folded away. It was written with AI assistance.
+
+<details>
+<summary><b>Open the full technical README</b> <i>(about 2,700 lines)</i></summary>
+
+### Ground Track Console
 
 Read a Two-Line Element set, report the Keplerian elements, propagate and plot a day of ground
 track, and total the time a spacecraft is visible from Bangkok above a 5° elevation mask.
@@ -51,7 +152,7 @@ pages. What they fetch, and what happens without it:
   neither kept nor sent; a position taken with *Use my location* becomes the observer, saved in
   this browser the way the console's own *Use my location* saves it.
 
-## What's here
+#### What's here
 
 Three pages over one shared core, which now exists in two forms: the classic scripts in
 `public/core/`, which the lunar track page loads, and the Earth half of them ported to TypeScript
@@ -180,7 +281,7 @@ stores, the stores import `lib/`, `lib/` imports only `shared/` (the one thing i
 depend on `core/`, `core/` depends on nothing. No file in `src/` is loaded by the Moon pages, and
 no file in `public/moon/` is loaded by the Earth page.
 
-### Status
+##### Status
 
 The Earth console is the finished piece: it answers the assignment and is held to a
 bit-identical regression gate on every change.
@@ -194,14 +295,14 @@ data; and two of the five spacecraft have no published ephemeris at all. Each pa
 shows its own staleness — how long ago the data was baked, and which craft runs out of coverage
 first — so the warning cannot quietly go out of date.
 
-## The assignment
+#### The assignment
 
 Select a satellite from CelesTrak's Earth Resources group and build a web program that reports its
 orbital elements, plots a day of ground track, and totals its visibility from Bangkok above a 5°
 mask. Parts (a), (b) and (c) below work it for KNACKSAT-2, which is **not** in that group — see
 **Satellite**.
 
-## Satellite
+#### Satellite
 
 **KNACKSAT-2** — NORAD 67683, international designator 1998-067XZ — a Thai CubeSat. That
 designator is the giveaway: `1998-067` is the ISS, so KNACKSAT-2 was deployed from the station
@@ -242,7 +343,7 @@ The picker is the page's title, at the top left: press the name and it opens a s
 spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. Everything on the page
 recomputes on selection.
 
-## (a) Orbital elements at epoch
+#### (a) Orbital elements at epoch
 
 | Element | Symbol | Value | Where it comes from |
 |---|---|---|---|
@@ -318,7 +419,7 @@ revolution, and does not set a radius swing from half an orbit against 2ae.
 Note also the drag term `ndot = .00056149` — three orders of magnitude larger than a sun-synchronous imager's. At
 360 km the atmosphere is still biting, and this element set goes stale fast.
 
-## (b) Ground track
+#### (b) Ground track
 
 24 hours from the epoch, SGP4-propagated, sampled every 10 s (8641 points), drawn on an
 equirectangular projection with Natural Earth 110 m coastlines. TEME → ECEF by Greenwich mean
@@ -350,7 +451,7 @@ and the arc in it reached ±11.5° in the case that found this. For such a windo
 plane's osculating tilt at the window start, about ±74° — a geocentric figure, as the plane's bound
 is — and says how far the arc got, in geodetic latitude like the map.
 
-## (c) Visibility from Bangkok (13.75°N, 100.52°E, 5° mask)
+#### (c) Visibility from Bangkok (13.75°N, 100.52°E, 5° mask)
 
 **Total cumulative time in view: 899.7 s = 14.99 minutes** — 1.04 % of the day, over **2 passes**.
 
@@ -384,7 +485,7 @@ radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 
 9.9 arcminutes, which adds roughly **8.4 s (+0.93 %)** to the total and moves each horizon crossing
 by about 2 s. Worth knowing when reading a figure quoted to 0.1 s.
 
-## How the Earth numbers are checked
+#### How the Earth numbers are checked
 
 An independent second implementation (own WGS-84 ECEF→ENU elevation, own TLE column parsing,
 own Kepler-third-law semi-major axis, own Kozai-to-Brouwer conversion) was cross-checked against
@@ -426,7 +527,7 @@ this one:
 Run it yourself, on the rebuilt page: `npm run build:shims` once, then
 `GT_TARGET=new node verification/verify.js`.
 
-## The view from the spacecraft
+#### The view from the spacecraft
 
 The camera control has four positions — Free, Satellite, Bangkok, POV — but only two kinds of
 camera. The first three are the *same* camera: a point at a fixed distance from the Earth's centre,
@@ -483,7 +584,7 @@ the clock and pushes it into the scene every frame, so setting the scene's time 
 overwritten on the next animation frame, and at 7.7 km/s that single frame of drift reads exactly
 like a camera-placement bug.
 
-### Reading the globe
+##### Reading the globe
 
 The globe uses the flat map's colours for the flat map's meanings: cyan the spacecraft and its track,
 pink the site and its access circle, pale the footprint, and orange **in view from the site** — the
@@ -518,7 +619,7 @@ ground. Save-Data, or a connection the browser rates 3G or slower, keeps the coa
 and the note under the surface choices in the Layers panel says so. `npm run globe` checks each of
 those against a rung it works out itself from the canvas and the camera.
 
-### Finding your way round the page
+##### Finding your way round the page
 
 The console fills the first screen. From 1100 px wide the header is one row, 76 px high, and the
 console takes what is left of the screen: the stage on the left, the answer rail beside it in a
@@ -620,7 +721,7 @@ middle of the screen, rather than by reading z-indices. The reasons for each dif
 old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3, L5, L17, L21, L26 and L35 are the ones
 this section describes).
 
-## The sky through the phone
+#### The sky through the phone
 
 The console says when a pass happens and where to look — "68° NE" — and outdoors that still
 leaves the reader turning a compass bearing into a direction in the sky. On a phone or a tablet
@@ -647,7 +748,7 @@ the left, clear of the middle — half the width, the first way it was tried, co
 — with only the rows that pointing needs; North and Declination are left to the phone held
 upright. The view needs no WebGL, and stays offered when the globe falls back to the flat map.
 
-### Asking
+##### Asking
 
 Two permissions, the motion sensors and the camera, from one tap, and the order is not free. On
 an iPhone `DeviceOrientationEvent.requestPermission()` asks only while the tap is still the current
@@ -672,7 +773,7 @@ picture would be of the reader, under a sky drawn for the direction behind the p
 motion prompt on an iPhone comes back only once Safari has been closed and reopened, and the
 sentence says that. A camera that answers after the view has been closed is stopped at once.
 
-### Which way the camera points
+##### Which way the camera points
 
 The W3C angles are an intrinsic Z-X′-Y″ rotation, R = Rz(α)·Rx(β)·Ry(γ), from the device's axes to
 East-North-Up, and the rear camera looks along the device's −z. The camera's direction is always
@@ -688,7 +789,7 @@ up is used. A marker in the middle of the screen is blind to all of this — it 
 whichever way the picture is turned — so the check holds the phone sideways both ways and measures
 the horizon instead: level to within 0.01 px across 20°, with east to the right.
 
-### Which way is north
+##### Which way is north
 
 Every platform gives **magnetic** north, and none corrects it.
 
@@ -726,7 +827,7 @@ possibly, though that is not measured here, while a permission prompt is showing
 So there is a timeout only for the *first* reading, started once both prompts have been answered,
 and no alarm for silence after that.
 
-### Declination
+##### Declination
 
 True azimuth = magnetic azimuth + D, with D east of true north positive. D comes from the World
 Magnetic Model 2025 at the observer, for today — the wall clock, not the console's clock, since it
@@ -756,7 +857,7 @@ altogether. The model expires at 2030.0, after which the view still uses it and 
 Near the magnetic poles, where the horizontal field is under 2000 nT — NOAA's "blackout zone" — a
 compass is no guide at all, and the view says that instead of applying a figure.
 
-### The lens
+##### The lens
 
 No web API reports a camera's field of view. Phone main cameras are 24 to 28 mm equivalent, 71.6°
 to 63.4° across a 4:3 sensor's long side, and the view assumes 68°. Behind `object-fit: cover` on
@@ -771,7 +872,7 @@ sky by hand, divided by the cosine of the elevation so that the sky follows the 
 *North* line says by how much ("turned +4.0° by hand"). The turn is forgotten on every open,
 because the error changes with the place and with what metal is nearby.
 
-### The clock and the observer
+##### The clock and the observer
 
 There is one clock. Opened on the present at 1×, the view stays on it: the console's clock is
 capped at a quarter of a second a frame, so a phone locked and unlocked would otherwise come back
@@ -787,7 +888,7 @@ phone keeps UTC+1 — if you are not there, every direction here is wrong" — a
 moves the observer to the phone through the same path as the console's own. It cannot tell two
 cities in one zone apart, which is why the title always names the observer.
 
-### What it costs
+##### What it costs
 
 While the view is open the WebGL globe draws nothing and its labels are not laid out — the check
 counts no render calls in 20 frames under the view, and some within 20 frames of closing — and the
@@ -797,7 +898,7 @@ it added. The picture is never read or drawn into the canvas. The view itself ke
 setting, in `localStorage`; *Use my location* goes through the console's own path, which saves the
 observer there as well, and which never writes it into the address bar.
 
-### What is checked, and what is not
+##### What is checked, and what is not
 
 `GT_TARGET=new npm run ar` checks the maths in node — the frame against the spec's worked poses,
 2000 random ones, the projection, the Sun against a separate derivation, the iPhone's compass
@@ -816,14 +917,14 @@ Internet and Firefox for Android — the first tap, a refusal and Try again, a d
 locking and unlocking, turning sideways, and pointing at the Sun and at a landmark of known
 bearing.
 
-## Architecture: the central body is a parameter
+#### Architecture: the central body is a parameter
 
 The console was written for the Earth, and the Earth had leaked into every layer: `RE` and `MU`
 at module scope in three files, every position through `satellite.gstime` → `eciToGeodetic`, and
 SGP4 as the propagator. None of that was wrong; all of it was an assumption rather than a
 parameter. Extending to the Moon meant turning the assumption back into a choice.
 
-### The seam, and why it goes exactly there
+##### The seam, and why it goes exactly there
 
 Two objects, each with one job. The Earth console runs their Earth halves as
 `src/lib/core/body.ts` and `src/lib/core/propagator.ts`, moved as they were; the classic scripts
@@ -872,7 +973,7 @@ Three things fell out of the work:
   (sphere 1, atmosphere 1.022, track 1.004, footprint 1.006) is body-relative already and survives
   the swap untouched.
 
-### The gate
+##### The gate
 
 A refactor's honest self-assessment is a diff, not an opinion — and the errors this code has
 actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The culmination bug
@@ -920,14 +1021,14 @@ npm run gate:lib    # the same measurements of the library bundle alone, in a bl
 GT_TARGET=legacy node verification/snapshot.js --write-baseline    # only ever from the old page
 ```
 
-## Orbital decay and remaining life
+#### Orbital decay and remaining life
 
 KNACKSAT-2 is falling. The drag term in its TLE is three orders of magnitude larger than a
 sun-synchronous imager's, and CelesTrak's record shows the mean altitude going **418.6 km → 362.9 km between
 5 Feb and 13 Sep 2026** — 55.7 km in 220 days, and accelerating. The page estimates when it runs
 out of altitude.
 
-### Where the history comes from
+##### Where the history comes from
 
 `celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=<id>` returns an HTML page with the whole
 run of mean elements embedded in one `plotData` string — date, RAAN, inclination, argument of
@@ -958,7 +1059,7 @@ does not fire when you pick a spacecraft: clicking through the catalogue could q
 minute-long requests against someone else's server. There is a button, one shared request per
 object, and a 12-hour cache, and the page quotes the range rather than a typical time.
 
-### Why not just extrapolate the line
+##### Why not just extrapolate the line
 
 A straight line through the observed drop always over-estimates the remaining life, because decay
 accelerates: the object falls into denser air, so it falls faster. For a near-circular orbit
@@ -998,7 +1099,7 @@ Three implementation details that each changed the answer:
 Re-entry is called at 120 km. The exact threshold barely matters: 100 km and 150 km move a 170-day
 answer by 0.16 days, because by then the object has hours left.
 
-### How well it works
+##### How well it works
 
 Validated against objects that **actually re-entered**, with decay dates from the CelesTrak SATCAT.
 The history is truncated at a fixed lead time, the predictor is run on what remains, and the answer
@@ -1039,7 +1140,7 @@ predictor on each object's **full** history reproduces its real decay date to ±
 forecast — those histories run to within a day of re-entry, when the object is already near 150 km
 and falling fast. It confirms the endgame integration, nothing more.
 
-### What it refuses to answer
+##### What it refuses to answer
 
 A drag model applied to a spacecraft under thrust produces fiction, so the estimator checks first:
 
@@ -1084,7 +1185,7 @@ panel read "2026-09-14 — 0 days from the last element set" eleven days after t
 within-three-weeks backtest line. It now reads **Probably re-entered**, with the forecast date and
 how long ago it was, and no accuracy claim: the backtest measured dates still to come.
 
-### KNACKSAT-2
+##### KNACKSAT-2
 
 | | |
 |---|---|
@@ -1102,7 +1203,7 @@ since the backtest says this range runs about two months early, the true date is
 April than before it: moved by the 63-day median, into June 2027, which is the month the page now
 gives under the date.
 
-## Your own orbits: the planner and the Professor
+#### Your own orbits: the planner and the Professor
 
 Type the elements of an orbit nobody flies and the console treats it as it treats a catalogue
 spacecraft: the globe and ground track, the Bangkok passes, the naked-eye verdict (on an assumed
@@ -1115,7 +1216,7 @@ sizing and comparing orbits: the orbit is exactly what SGP4 makes of the element
 no station-keeping and no radiation pressure. The limits are collected under **What is checked, and
 what is not: the planner and the Professor**.
 
-### Opening it
+##### Opening it
 
 The planner is not on the first screen. Its maths, the Professor, the Professor's words, the drag
 integrator, the form's controller and the form's markup are six lazy chunks (`src/lib/planner/`,
@@ -1152,7 +1253,7 @@ and an orbit SGP4 cannot fly is refused with SGP4's own reason and nothing kept.
 after the last keystroke; at 500 ms the page's own pass finder runs the draft over the window on
 screen, painting nothing, so the pass count and minutes in view the Professor quotes are the rail's.
 
-### How the elements become a TLE
+##### How the elements become a TLE
 
 The planner does not make a second kind of object. It writes the two 69-character lines a catalogue
 entry has, and the existing path (SGP4, passes, exports) runs on them unchanged: KNACKSAT-2's own
@@ -1202,7 +1303,7 @@ when it is stepped in:
   refused (a part of each revolution underground is a warning). The page keeps an orbit only if its
   own gate and `verifyTLE` both pass.
 
-### The placeholder number
+##### The placeholder number
 
 A designed orbit has no catalogue number, and an invented one must not be mistakable for a real
 object's. It is `O0001`, `O0002` and on: NORAD's Alpha-5 numbering, which extends the five-character
@@ -1220,7 +1321,7 @@ The counter only grows (clearing site data restarts it at `O0001`), and *Undo* o
 back the same number. *Copy as TLE* says that some tools want a numeric
 catalogue number, so `O0001` has to be replaced.
 
-### Drag: area over mass, not B*
+##### Drag: area over mass, not B*
 
 A student knows an area and a mass, not a B*, so the planner asks for the area over the mass in
 m²/kg, with the drag coefficient fixed at 2.2 (shown, never typed). *What it is* fills it: *Typical
@@ -1286,7 +1387,7 @@ outside the range. `verify-planner.js` asserts that each of the last six rows li
 3; the first row is in no suite. For these orbits the Decay section says "sooner or later" and calls
 the comparison a rough cross-check only.
 
-### The Professor
+##### The Professor
 
 Two layers, one contract between them. `src/lib/planner/advisor.ts` works the numbers out of the
 elements and hands over a flat dictionary of figures (144 keys in the contract: `h_mean`, `period`,
@@ -1360,7 +1461,7 @@ geostationary ones, which add the 225-minute note) get exactly the notes expecte
 note that changes with the day is the one about the best pass of the window, which needs that pass
 to stay under 60°. `verify-planner-ui.js` group 20 holds all of this.
 
-### Saved orbits
+##### Saved orbits
 
 An orbit is kept in `localStorage` under `gt.custom`, as the typed elements and nothing derived:
 
@@ -1399,7 +1500,7 @@ and left out as more machinery than twelve orbits justify. The store is per brow
 never synced: the dev server (`127.0.0.1:5173`), the preview (`127.0.0.1:4173`) and any other host
 each keep a list of their own, and two builds served from one origin share it.
 
-### Decay for a planned orbit
+##### Decay for a planned orbit
 
 A planned orbit has no history of element sets to fit, so the Decay section cannot do what it does
 for KNACKSAT-2, and it makes no request. What it has is the area over mass typed and the page's own
@@ -1434,7 +1535,7 @@ perigee above 1,000 km (above the atmosphere this page knows; a very light sail 
 it), an apogee past 5,000 km or e above 0.3, a perigee under 120 km (*Re-entering*), or an area over
 mass of 0 (*No drag*).
 
-### Exports and `?tle=embedded`
+##### Exports and `?tle=embedded`
 
 The CSV and calendar of a designed orbit say so. **No column is added**: columns are only ever
 appended, and `verify-export.js` pins the order from `spacecraft` to the end (the clip flags,
@@ -1452,7 +1553,7 @@ chunks is fetched, nothing is restored or written, the saved store is neither li
 *Plan* pill stays, focusable and marked `aria-disabled`, with the sentence saying why and a link
 back to the live element sets.
 
-### What is checked, and what is not: the planner and the Professor
+##### What is checked, and what is not: the planner and the Professor
 
 The checks are the repository's usual kind: a second implementation, SGP4 itself, or a count of what
 the page does, and a fault put in on purpose to see which check dies.
@@ -1623,7 +1724,7 @@ planner open among its states, at five viewports in both colour schemes.
   `verify-planner.js`; its first group compares every constant it takes with `satellite.constants`.
 - None of this is mission analysis. For that, use a tool made for it: GMAT, or STK.
 
-## The Earth–Moon system page
+#### The Earth–Moon system page
 
 `public/moon.html` — a geocentric view of the Moon's orbit with the five Earth–Moon libration
 points marked and moving with it. Linked from the Earth console, at the right of the report's
@@ -1632,7 +1733,7 @@ sticky sub-navigation and again in its footer. `public/moon/lunar.js` holds the 
 (`public/core/`, `public/moon/`) are plain files that the Vite build does not process: it copies
 them to `dist/` as they are.
 
-### The Moon's position
+##### The Moon's position
 
 Truncated ELP-2000/82B: the standard 60-term longitude and radius tables plus the 60-term
 latitude table, with nutation in longitude and true obliquity for the apparent place. Not a
@@ -1649,7 +1750,7 @@ Checked against JPL Horizons over **731 daily samples spanning 2026–2028**:
 The lunar disc is 1865″ across, so the worst case is about 1/200 of a diameter. Calls cost
 8.5 µs, which matters because the scene asks for a position every frame.
 
-### The libration points
+##### The libration points
 
 Solved, not approximated. L1, L2 and L3 are roots of a quintic in the circular restricted
 three-body problem, found by bracketed bisection to machine precision — residual gradient
@@ -1678,7 +1779,7 @@ Two things the numbers settle:
   406 700 km. So they breathe: **L1 moves 42 600 km in and out every month**, L2 about 58 600.
   "Fixed point" is the wrong mental model before you even reach the instability.
 
-### μ comes from GM, not from kilogrammes
+##### μ comes from GM, not from kilogrammes
 
 Nobody measures the mass of the Earth. Spacecraft tracking measures the *product* GM, and DE440
 carries GM_earth and GM_moon to about one part in 10¹¹. Converting to kilogrammes means dividing
@@ -1689,7 +1790,7 @@ is pure loss.
 Not merely tidy: μ from kg came out **0.0253 % high**, which moved L2 by 5.7 km and the
 barycentre by 1.2 km — visible at the resolution this page quotes.
 
-### Three defects found while verifying the scene
+##### Three defects found while verifying the scene
 
 - **The default camera sat in the orbit plane.** Elevation was measured from the *equator*, but
   the Moon's orbit is inclined 18.3°–28.6° to the equator depending on where the nodes have
@@ -1702,7 +1803,7 @@ barycentre by 1.2 km — visible at the resolution this page quotes.
 - **The barycentre tag landed on the Earth's**, rendering as "Earthcentre" — inevitable at true
   scale, since the two are 4 671 km apart. It gets its own line.
 
-### Facts that needed correcting
+##### Facts that needed correcting
 
 Written from sources rather than memory, and three claims did not survive:
 
@@ -1732,7 +1833,7 @@ Written from sources rather than memory, and three claims did not survive:
   particles wandering chaotically and many escaping. The page says "in theory" and explains why.
   The Kordylewski dust clouds reported there since 1961 remain unconfirmed.
 
-### Two checkable claims the page makes
+##### Two checkable claims the page makes
 
 Both computed rather than repeated:
 
@@ -1744,7 +1845,7 @@ Both computed rather than repeated:
   heliocentric path over a year, the minimum of (path acceleration · Sun direction) is **+0.889**
   — positive everywhere, so it never loops backwards. The reason is the 2.20 : 1 pull ratio above.
 
-### Verified
+##### Verified
 
 Zero page errors in light and dark after exercising every control; no horizontal scroll at 390,
 414, 768 and 1400 px; time controls advance the readouts; the scene renders with all nine labels
@@ -1752,7 +1853,7 @@ placed. The scale toggle defaults to **true scale** and always states which mode
 enlarging the bodies makes them visible but misrepresents a geometry where the Moon is 60 Earth
 radii away.
 
-## The lunar track console
+#### The lunar track console
 
 `public/moon-track.html` — the same console pointed at the Moon. Same layout, same transport, same
 palette; different central body, which is the point of the split above. "Same" means the old
@@ -1776,7 +1877,7 @@ Leaving them off would assert that three spacecraft are at the Moon, which is fa
 as though tracked would be worse than either. So they are on the map with the grade stated on
 every row.
 
-### There are no lunar TLEs
+##### There are no lunar TLEs
 
 The Earth console runs on SGP4, which exists only for Earth satellites described by two-line
 elements. Celestrak's own catalogue record for LRO settles it:
@@ -1790,7 +1891,7 @@ Elements Available*; `ORBIT_CENTER = MO` is the Moon. Requesting its elements re
 found`. Celestrak's documentation explains why: the SGP4 assumptions "are completely invalid when
 applied to other celestial bodies."
 
-### Why daily anchors, not one element set
+##### Why daily anchors, not one element set
 
 The Moon's gravity field is dominated by mascons rather than a smooth J2 term, so the quantities a
 Keplerian propagator holds constant do not stay constant. Measured from Horizons, LRO's argument
@@ -1832,7 +1933,7 @@ warns past that — and writes `public/moon/moondata.js` itself, so there is no 
 between Horizons and the page. Both checks run in UTC, and the chain check fails above 3 km near an
 anchor: on the old data it reads 107 km.
 
-### Fit, then prediction
+##### Fit, then prediction
 
 All of the above is agreement **with Horizons**. A Horizons spacecraft trajectory is fit to the
 operating agency's tracking up to some date and is a prediction after it, and a prediction cannot
@@ -1852,7 +1953,7 @@ by 21 September, thirteen days after its revision. So
 the page grades those anchors *tracked · predicted*, says how many days past the data the instant
 is, and labels the ± "error vs Horizons" rather than calling it the error.
 
-### The rotation, and why libration is not optional
+##### The rotation, and why libration is not optional
 
 Earth's GMST is a smooth polynomial. The Moon's orientation is a polynomial **plus a 13-term
 libration series**, applied to the pole's right ascension and declination *and* to the prime
@@ -1879,7 +1980,7 @@ A fourth, about the API rather than the physics: **date parameters must not be q
 The first validation run returned a year of defaults instead of the range asked for, and looked
 entirely plausible.
 
-### The globe
+##### The globe
 
 A 3D view, in `public/moon/moon3d.js`, with the flat map kept as a toggle.
 
@@ -1906,7 +2007,7 @@ which would take out the whole scene rather than just the imagery. Painting else
 readability first means a blocked tile costs nothing: the procedurally painted fallback, where
 the maria are drawn from the feature list, simply stays.
 
-### Working it like the Earth console
+##### Working it like the Earth console
 
 Same affordances, because it is the same instrument:
 
@@ -1941,7 +2042,7 @@ And the drag guard measures **displacement from pointerdown**, not the sum of th
 every delta lets ordinary hand jitter exceed any sane threshold and silently kills the click —
 also already paid for once.
 
-### Engineering readouts
+##### Engineering readouts
 
 Sub-point, altitude and altitude rate, inertial and ground speed, the radial/transverse velocity
 split, live osculating elements recovered from the state vector rather than read off the stored
@@ -1964,7 +2065,7 @@ site the Earth never rises — the elevation is permanently negative, not merely
 Chang'e-6 both landed there and neither could have returned a single bit directly, which is the
 entire reason Queqiao exists. The table computes it rather than asserting it.
 
-### Frames, and why they agree
+##### Frames, and why they agree
 
 Landing-site coordinates are published in the **mean Earth / polar axis** (ME) frame, the
 cartographic standard. The IAU/WGCCRE series implemented here approximates that same frame —
@@ -1981,7 +2082,7 @@ satellite sees about 6 %. So lunar ground tracks are nearly great circles, LRO's
 shift west by only **1.07°** (~32 km) per revolution, and global coverage takes a month rather
 than a day.
 
-## Data provenance
+#### Data provenance
 
 The embedded catalogue — `data/catalogue.txt`, a file of the page's own that it fetches when it
 opens, with `data/catalogue.meta.json` beside it recording when it was fetched and from what — is
@@ -2026,7 +2127,7 @@ requests). Its element set is synthetic, numbered `O0001` and up so that it cann
 real object, and the page says so under the element set. What the browser keeps is the typed
 elements, in `localStorage` under `gt.custom` (see *Your own orbits*).
 
-## Taking the answer away
+#### Taking the answer away
 
 Two formats, because they answer different questions. The **CSV** is the whole pass table at full
 precision — AOS and LOS as RFC 3339, duration, elevations, azimuths, range, range rate, Doppler,
@@ -2086,7 +2187,7 @@ name is typed by a user though, and `Bangkok, "KMUTNB" site` is the obvious thin
 check sets exactly that and confirms the field round-trips with doubled quotes rather than shifting
 every column after it.
 
-## The observer is a value now
+#### The observer is a value now
 
 Bangkok was a constant. `lookAngles(site, rFixed)` had always taken the site as an argument, the
 propagation adapters had always passed it, and `orbit3d` had always read `GT.OBS` — so the seam
@@ -2148,7 +2249,7 @@ the site had gone.
 Moving to Svalbard (78.23°N) returns **0 passes**, which is the right answer and a useful check:
 KNACKSAT-2's 51.6° orbit never reaches that latitude, so a site there cannot see it at all.
 
-## Radio visibility is not naked-eye visibility
+#### Radio visibility is not naked-eye visibility
 
 Every pass figure in this README is **radio** visibility: geometry above a 5° mask, day or night.
 The page used to say so in a disclaimer. It computes the difference now.
@@ -2161,7 +2262,7 @@ passes are not watchable at all. KNACKSAT-2's two highest passes in the regressi
 at 18:12Z on 14 September has the sun 67° below Bangkok's horizon but the spacecraft **in
 eclipse**; the 50.1° pass at 07:20Z on 15 September has it sunlit and the sun **55.8° up**.
 
-### Lit is not the same as bright
+##### Lit is not the same as bright
 
 The first version stopped at geometry, and said "naked eye: yes" whenever part of a pass was lit
 against a dark sky. At LEO that is most of the answer. Further out it is none of it: an object
@@ -2249,7 +2350,7 @@ The row below the estimate gives the Sun's elevation and the spacecraft's illumi
 and is labelled **At mid-pass** to say so. It was "Sun at site", and read "spacecraft eclipsed"
 directly under a yes whenever the lit stretch of the pass fell before or after its middle.
 
-### The shadow is a cone
+##### The shadow is a cone
 
 The Sun is not a point. At 696,000 km radius and 1.496×10⁸ km away it subtends about half a degree,
 so Earth's shadow tapers and is wrapped in a penumbra that widens with distance. A cylinder is the
@@ -2267,7 +2368,7 @@ rather than dark.
 The same code has to produce both extremes, which is the check worth having: a 51.6° LEO orbit is
 sunlit **60.5 %** of the day, a sun-synchronous METOP-B **71.4 %**.
 
-### One bug this found, which was not hypothetical
+##### One bug this found, which was not hypothetical
 
 Solar elevation comes from `asin` of the cosine of the zenith angle. With the site *at* the
 sub-solar point that expression is sin² + cos², which rounds to 1.0000000000000002 and takes `asin`
@@ -2279,7 +2380,7 @@ What survives is 8.54×10⁻⁷ degrees, and that is the formulation, not the co
 derivative at ±1, which is precisely where that test sits, so a double's 2×10⁻¹⁶ becomes √(4×10⁻¹⁶)
 ≈ 1.1×10⁻⁶ degrees. Three milliarcseconds, at the one point on Earth where it is worst.
 
-### One duplication deliberately kept
+##### One duplication deliberately kept
 
 `src/scene/orbit3d.ts` (the old `earth/orbit3d.js`) carries its own copy of the solar position for
 the directional light, one that leaves out the obliquity's slow drift, about 0.004°. It is a
@@ -2289,7 +2390,7 @@ expressed in terms of it. Merging the two was planned for the rewrite and declin
 (`CHANGES-FROM-LEGACY.md`, row 2): the globe is held to the old page's pixels, and its light is
 part of them.
 
-## Doppler, and where the frequency comes from
+#### Doppler, and where the frequency comes from
 
 Range rate is what the pass table was missing. It is taken in the **body-fixed frame**, because
 that is the one frame where the ground station is at rest: the site is a constant vector there, so
@@ -2306,7 +2407,7 @@ Checked against a numerical derivative of the range, which shares only the propa
 no ω, no transport term. Worst disagreement **3.1 cm/s** over 401 samples; dropping the transport
 term breaks it by **0.439 km/s**, 14,000× larger, so the check demonstrably has teeth.
 
-### The floor that check runs into
+##### The floor that check runs into
 
 The agreement cannot be improved by shrinking the step, and finding out why was the useful part.
 The first threshold failed at 2.2e-4 km/s, which looked like a formula error. It was not: moving to
@@ -2326,7 +2427,7 @@ differenced range carries ε/(2h) of noise however exact the propagation is:
 `h` is chosen where that noise and the stencil's truncation balance, and the script says so rather
 than leaving a tolerance that looks arbitrary.
 
-### The frequency is the one thing that cannot be derived
+##### The frequency is the one thing that cannot be derived
 
 `data/transmitters.json` (on the old page, `earth/transmitters.js`) is baked from **SatNOGS DB**'s
 transmitter endpoint — the same anonymous source that supplies most of the embedded catalogue, so
@@ -2357,7 +2458,7 @@ window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 node verification/fetch-transmitters.js   # re-bake data/transmitters.json
 ```
 
-## Staying current
+#### Staying current
 
 A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with
 `ndot = .00056` the KNACKSAT-2 element set is worth about a day; quoting pass times from a
@@ -2439,7 +2540,7 @@ analysis. To refresh that baseline, rebuild the catalogue and replace `data/cata
 `data/catalogue.meta.json`) with it, together with `verification/catalog.txt`, its independent
 copy, which a unit test holds equal to it.
 
-### When the object is no longer there
+##### When the object is no longer there
 
 The catalogue is a snapshot, and some of what it holds has since come down. SGP4 meets such an
 object in one of two ways, and the page used to handle neither.
@@ -2494,7 +2595,7 @@ buttons, the transport and the export buttons, in a fixed window — which objec
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
 The default's fallback is not in the suite: exercising it needs a doctored catalogue.
 
-## Running it
+#### Running it
 
 **The Moon pages need nothing; the Earth console needs a build.** The console is a Svelte 5 and
 TypeScript app bundled by Vite 8, and a browser will not load its modules from a file, so
@@ -2697,3 +2798,5 @@ Playwright's Chromium is what the browser-driven checks drive. The lunar scripts
 Horizons responses in `$CLAUDE_JOB_DIR/tmp`, or in `gtc-lunar` under the system's temporary
 directory, so a re-run is free; delete the files to fetch again. `moon:chain` reads the reference
 tables that `npm run moon` fetches, so run that first.
+
+</details>

@@ -181,6 +181,7 @@
     background: var(--chrome2); color: var(--chromeink); font-size: var(--fs-1);
   }
   .chip :global(svg) { color: var(--observer); }
+  @media (pointer: coarse) { .chip { min-height: var(--tap); } .recent { min-height: var(--tap); } .hits button { min-height: var(--tap); } }
   .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14ch; }
   .tz { color: var(--muted); font-size: var(--fs-0); }
   .form { display: grid; gap: var(--space-3); }
@@ -200,6 +201,7 @@
   .recent { border: 1px solid var(--rule); background: var(--sunk); color: var(--ink); border-radius: var(--r-pill); padding: 2px var(--space-3); font-size: var(--fs-0); }
   .recent:hover { border-color: var(--observer); }
   .manual summary { cursor: pointer; color: var(--ink2); font-size: var(--fs-1); }
+  @media (pointer: coarse) { .manual summary { display: flex; align-items: center; min-height: var(--tap); } }
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-3); }
   .fields label { display: grid; gap: var(--space-1); font-size: var(--fs-0); color: var(--muted); }
   .fields label:first-child { grid-column: 1 / -1; }

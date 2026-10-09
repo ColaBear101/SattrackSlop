@@ -86,6 +86,7 @@
     background: var(--chrome2); color: var(--chromeink);
   }
   .play:hover { background: var(--hover); }
+  @media (pointer: coarse) { .play { width: var(--tap); height: var(--tap); } }
   .rate { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); }
   .x { min-width: 4ch; text-align: right; font-size: var(--fs-1); }
   .scrub { position: relative; display: grid; gap: 0; }

@@ -136,7 +136,9 @@
     height: clamp(340px, calc(100dvh - var(--bar-h) - var(--transport-h) - 132px), 880px);
   }
   @media (max-width: 1099px) { .viewport { height: clamp(360px, 78vw, 620px); } }
-  @media (max-width: 719px) { .viewport { height: clamp(420px, 130vw, 600px); } }
+  /* a phone: tall, but not taller than leaves the strip along the globe's foot above the answer sheet's peek on the first screen (the header and
+     the tabs above it are about 230 px, the peek 56-73 px) */
+  @media (max-width: 719px) { .viewport { height: clamp(280px, min(130vw, calc(100dvh - 316px)), 600px); } }
   /* a phone on its side: the globe is the screen, the page scrolls to the rest */
   @media (max-height: 520px) { .viewport { height: max(300px, calc(100dvh - 24px)); } }
   #globe { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }

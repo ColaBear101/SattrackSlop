@@ -150,6 +150,7 @@
     padding: var(--space-2) var(--space-3); border-radius: var(--r-2); cursor: pointer; color: var(--ink);
   }
   li.on { background: var(--hover); }
+  @media (pointer: coarse) { li[role='option'] { min-height: var(--tap); align-items: center; } .search input { height: var(--tap); } }
   li.grp { cursor: default; padding: var(--space-2) var(--space-3) var(--space-1); color: var(--muted); font-size: var(--fs-0); letter-spacing: .13em; text-transform: uppercase; }
   li.grp:hover { background: none; }
   li .tag { flex: none; padding: 0 var(--space-2); border: 1px solid var(--track); border-radius: var(--r-pill); color: var(--ink2); letter-spacing: .06em; }

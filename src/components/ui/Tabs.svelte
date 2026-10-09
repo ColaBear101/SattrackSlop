@@ -51,5 +51,5 @@
   .underline button { border-radius: 0; padding: 0 var(--space-1); margin-right: var(--space-3); box-shadow: inset 0 -2px 0 transparent; }
   .underline button[aria-selected='true'] { box-shadow: inset 0 -2px 0 var(--ink); }
   .pill button[aria-selected='true'] { background: var(--sel-bg); color: var(--sel-ink); }
-  @media (pointer: coarse) { button { min-height: var(--tap); } }
+  @media (pointer: coarse) { button { min-height: var(--tap); min-width: var(--tap); } }
 </style>

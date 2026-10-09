@@ -18,4 +18,5 @@
   dt { font-size: var(--fs-0); letter-spacing: .08em; }
   dd { margin: 2px 0 0; font-size: var(--fs-2); }
   .more { margin-top: var(--space-4); font-size: var(--fs-1); }
+  @media (pointer: coarse) { .more a { display: inline-flex; align-items: center; min-height: var(--tap); } }
 </style>

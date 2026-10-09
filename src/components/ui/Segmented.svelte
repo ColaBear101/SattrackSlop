@@ -48,5 +48,6 @@
   .space button { color: #DCE8EE; border-left-color: rgba(180, 200, 212, .28); }
   .space button:hover { background: rgba(180, 200, 212, .16); }
   .space button[aria-pressed='true'] { background: #E8EFF2; color: #0A1116; }
-  @media (pointer: coarse) { button { min-height: var(--tap); } }
+  /* `.sm button` is more specific than `button`: the coarse rule names both, or the small rows stayed 28 px tall under a finger */
+  @media (pointer: coarse) { button, .sm button { min-height: var(--tap); min-width: var(--tap); } }
 </style>

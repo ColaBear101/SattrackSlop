@@ -38,7 +38,7 @@
                onchange={v => globe.setTrail(v as TrailKey)} />
   </div>
   <div class="row layerseg">
-    <Popover bind:open label="Scene layers" align="end" width={260} keepMounted>
+    <Popover bind:open label="Scene layers" align="end" width={260} keepMounted boundary=".viewport">
       {#snippet trigger(p)}
         <Button id="layerstoggle" size="sm" {...p}>Layers</Button>
       {/snippet}
@@ -73,8 +73,10 @@
   /* the Layers button over the globe: the same dark glass as the segmented rows */
   .layerseg :global(.btn) { background: rgba(10, 16, 20, .72); border-color: rgba(180, 200, 212, .28); color: #DCE8EE; backdrop-filter: blur(6px); }
   .layerseg :global(.btn:hover:not(:disabled)) { background: rgba(180, 200, 212, .16); }
-  .layerpanel { display: flex; flex-direction: column; gap: 1px; max-height: min(60dvh, 420px); overflow-y: auto; overscroll-behavior: contain; }
+  /* the panel itself scrolls (Popover's boundary: the globe's box clips it, and it is sized to the room inside the box) */
+  .layerpanel { display: flex; flex-direction: column; gap: 1px; }
   .layerpanel label { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border-radius: var(--r-1); font-size: var(--fs-1); cursor: pointer; min-height: 30px; }
+  @media (pointer: coarse) { .layerpanel label { min-height: var(--tap); } }
   .layerpanel label:hover { background: var(--hover); }
   .layerpanel input { accent-color: var(--contact); margin: 0; width: 14px; height: 14px; }
   .layerhead { margin: 2px 0 1px; padding: 0 var(--space-2); font-family: var(--font-mono); font-size: var(--fs-0); letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
@@ -92,6 +94,8 @@
     .layerseg { justify-self: end; }
     .seglabel { display: none; }
   }
+  /* the narrowest phones: five 44 px trail buttons and the Layers button are 3 px wider than the strip leaves them, so the strip takes the gutter back */
+  @media (max-width: 359px) { .controls { left: var(--space-1); right: var(--space-1); } }
   @media (max-height: 520px) { .seglabel { display: none; } }
   /* a long place name must not push the POV button off the row on a narrow screen */
   @media (max-width: 719px) { :global(#lbl-camsite) { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

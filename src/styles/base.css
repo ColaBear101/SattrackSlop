@@ -25,6 +25,8 @@ button:disabled { cursor: default; }
 
 /* the small caps-ish label used over every figure */
 abbr[title] { cursor: help; }
+/* under a finger a text field is as tall as a button: the slider, the check boxes and the radios are their own */
+@media (pointer: coarse) { input:not([type='range'], [type='checkbox'], [type='radio']), select { min-height: var(--tap); } }
 .eyebrow {
   font-family: var(--font-mono); font-size: var(--fs-0); font-weight: 500;
   letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0;

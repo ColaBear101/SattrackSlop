@@ -22,7 +22,7 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 - **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar; the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
 - **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why.
-- **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture. The picture never leaves the phone.
+- **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points. The picture never leaves the phone.
 - **Radio and eyes.** Doppler shift for the satellites that have a published downlink, and a naked-eye verdict for each pass.
 
 <p align="center">
@@ -204,6 +204,8 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                           from true north, at the observer
       skyar.ts            the AR view's maths: the phone's orientation as a camera,
                           the projection, the iPhone's compass
+      radar.ts            the AR view's radar: the sky as a polar plot with the phone's
+                          aim in blue, drawn from the pose the view already has
       arview.ts           the AR view: the motion sensors, the rear camera, and the
                           sky drawn over the picture
     places.ts           finding the observer: place search, this device, timezones
@@ -746,7 +748,9 @@ direction, where north came from, the declination applied, the clock, the target
 Held sideways, a phone's sky is 390 px tall, so the readout is a column a third of the width down
 the left, clear of the middle — half the width, the first way it was tried, covered the spacecraft
 — with only the rows that pointing needs; North and Declination are left to the phone held
-upright. The view needs no WebGL, and stays offered when the globe falls back to the flat map.
+upright. In the lower right a small radar shows all of the sky, and where the phone points in it
+(**The radar**, below). The view needs no WebGL, and stays offered when the globe falls back to the
+flat map.
 
 ##### Asking
 
@@ -872,6 +876,106 @@ sky by hand, divided by the cosine of the elevation so that the sky follows the 
 *North* line says by how much ("turned +4.0° by hand"). The turn is forgotten on every open,
 because the error changes with the place and with what metal is nearby.
 
+##### The radar
+
+The picture shows a few tens of degrees of sky, 34.6° × 68.0° on a phone held upright, and the
+spacecraft is often outside it. The pointer on the edge says which way to turn, but not how the
+rest of the sky lies round the reader. So there is a **radar**: all of the sky as a small
+polar plot, north up, the zenith at the centre and the horizon at the rim, with the spacecraft's dot
+on it and, in blue, a crosshair at the azimuth and elevation the rear camera points to. A reader who
+has turned the wrong way sees the dot on the far side of the disc from the crosshair, and turns until
+the crosshair is on it; the spacecraft is then in the middle of the picture. It is the plot the
+console draws for the selected pass (`src/components/rail/draw-sky.ts`) with the same geometry, r = R
+(90 − el) / 90 with east to the right, made smaller, so a pass reads on it as it does in the rail's
+Passes tab.
+
+What is on it: a disc of dark glass, so that it reads over a daylit sky and over a black one; rings
+at 30° and 60°, spokes every 45°, the mask as a pink dashed ring, the horizon as the rim, and N, E,
+S and W round it. The pass is the one the picture draws, the current one or the next: its line in the
+pass's colour (gold, `#E8BC5A`), the stretch already flown faint, its two ends on the mask ring
+labelled AOS and LOS, and its highest point a small ring. The spacecraft is a dot in the pass's
+colour once it has cleared the mask and cyan between the mask and the horizon, and the only solid
+dot on the plot, so that the ring is not taken for it; nothing is drawn for one below the horizon,
+where the plot has no place for it. An end of the pass that the analysis window cut off, and not the
+horizon, is starred, as the picture's own labels star it: AOS* or LOS*. A pass that is up for the
+whole of the window of a spacecraft that hardly moves has both ends at nearly one point, and the two
+labels sit on one another; that is accepted, and the console's own plot does the same. Pass and
+spacecraft are at the view's clock, so on a rehearsed pass (see **The clock and the observer**) the
+radar and the picture show the same moment. It leaves out the console's ring labels and what the
+picture has besides: the Sun, the minute marks and the pointer. The crosshair is a ring with four arms in a dark casing, drawn last, so that
+nothing covers it. It is not worked out again: it is the pose the picture has just been drawn for,
+after the declination, the hand turn and the smoothing, so the two cannot disagree. Nor is it more
+accurate than the picture: with no compass it is no more tied to north than the picture is (see
+**Which way is north**), and a 10° compass error puts it 11 px out round the rim of a 156 px radar,
+where it puts the sky 110 px out in the picture. Pointed below the horizon, it stays on the rim at
+its azimuth, at 60% strength and with a broken ring. Pointed more than 85° below it, within 5° of
+straight down, where the readout says "straight down" too, it is not drawn at all: the azimuth there
+is only the direction of a small tilt, and swings right round the rim with the tremor of a hand, so
+a crosshair would spin where the reader has nothing to follow.
+
+It is two fifths of the screen's short side, from 112 px to 200 px: 156 px on a 390 px wide phone,
+where the disc is 126 px across and a degree of elevation is 0.7 px, and 200 px on a tablet. Held
+upright it sits at the right, 12 px in from the edge, with its foot 8 px above the top of the
+readout, so it rises, at once, when the Align panel or a longer line makes the readout taller. It
+does not come down with a readout that shrinks by a line or two, which is what happens when the
+pointer's words leave the Target row or a pass's text wraps another way: a radar that dropped and
+rose with every such change would bob under the eye of a reader who is bringing the crosshair onto
+the spacecraft, so it stays at the height it had. A fall of more than 40 px, which is the Align panel
+closing, is followed, and so is any that keeping the height would cost the radar its room. Held
+sideways it sits at the foot of the screen at the right, where the Align panel is, and gives way
+while that is open.
+
+It is not drawn before the first reading, since there is no pose to show; not in the failed state,
+where there is nothing to point with and the screen is for the reason; and not where there is no
+room, which is when its top edge would come within 8 px of the foot of the title bar or of the
+status line, whichever is lower. That is measured against where the bars really end, however long
+the status line is. On a short phone with Align open, and the three or four lines of the sentence
+that says the phone is not where the observer is, the room for labels is so squeezed that they fall
+back to the whole screen; the radar is then left out, and not drawn under the status line, where
+there is least room for it. On an iPhone that is still *finding north* the camera's azimuth means
+nothing, so the radar has no crosshair then, as the picture draws only the horizon, the mask and
+the rings; the disc, the pass and the spacecraft are drawn all the same, since none of them depends
+on where the phone points, and the reader can see where to look while tipping the phone towards
+flat.
+
+It takes no touch (`pointer-events: none`): a drag across it turns the sky by hand, as a drag
+anywhere does, and a pinch across it still sets the lens. Its box is one of the places the view's
+labels keep clear of, and the pointer on the edge of the screen, which when the spacecraft is off to
+the lower right would end up under it, slides along the edge of the safe rectangle to whichever side
+of the radar is nearer and stops 8 px clear of it, still pointing the way; if neither side has room
+it stays where it was. The pointer's words, and the spacecraft's name, which are kept inside the
+safe rectangle when nothing else fits, are not kept over the radar either: they are moved off its
+box, along their own row to the left of it, else above it. Nothing else is moved for it, so with
+the radar hidden the labels are placed as they were. The **Radar** button in the readout's row,
+beside *Align*, hides and shows it, outlined in the crosshair's blue while it is on (`aria-pressed`
+says so too). The choice is kept: hiding it writes `gt.arradar` = `0` to `localStorage` and showing
+it again writes `1`, it is read at every opening, and a reader who has never pressed the button has
+nothing written and gets the radar. Where storage is refused the radar is on at every opening.
+
+Held sideways, the readout's buttons close up (a 4 px gap, 8 px of padding at each side, no letter
+spacing), so that Go live, Radar and Align are one row of the column on a 667 × 375 phone in sim
+time, when Go live is shown; wrapped, they grew the column some 46 px up over the top bar. The three
+need about 185 px of the column's width inside its padding, and that phone's column has 203 px. Held
+sideways on a notched iPhone, whose safe-area insets of about 47 px come out of that padding, they
+may still wrap to a second line in sim time: a known limit, and accepted.
+
+The blue, `#3D8BFF`, is a colour the view had not used for anything else: cyan is the spacecraft
+(`#55D1E7`), gold the pass, pink the mask. The crosshair is brought onto the dot, so when the two
+overlap each must still be told from the other: the blue differs in hue from the gold the dot has
+above the mask and is deeper and bluer than the cyan it has below it, the dot is solid where the
+crosshair is a ring and arms (and the pass's own highest point is a ring, so that the dot is the one
+solid thing on the plot), and the crosshair is drawn last.
+
+Most of each frame is not drawn again. The radar is a canvas of its own, drawn in the view's loop
+after the picture's sky, at the device pixel ratio the picture uses, capped at 2. The disc, its
+rings, spokes, mask, horizon and letters are painted once, on a layer of their own, and laid down
+with one `drawImage`, and painted again only if the size, the pixel ratio, the mask or the colours
+change. The pass is a layer too, painted again when it changes or when another of its samples has
+been flown. A frame that would come out as the last one is not drawn at all: the crosshair and the
+spacecraft are compared to a tenth of a degree, which is at most 0.11 px on the screen at the rim of
+a 156 px radar (0.15 px at 200 px), and while the phone is held still and the spacecraft has not
+moved that far the canvas is left as it is.
+
 ##### The clock and the observer
 
 There is one clock. Opened on the present at 1×, the view stays on it: the console's clock is
@@ -894,9 +998,11 @@ While the view is open the WebGL globe draws nothing and its labels are not laid
 counts no render calls in 20 frames under the view, and some within 20 frames of closing — and the
 screen is kept awake, since a phone held up to the sky is not being touched. Closing it, by
 *Close*, Escape, the phone's Back or leaving the page, stops the camera and removes every listener
-it added. The picture is never read or drawn into the canvas. The view itself keeps only the lens
-setting, in `localStorage`; *Use my location* goes through the console's own path, which saves the
-observer there as well, and which never writes it into the address bar.
+it added. The picture is never read or drawn into the sky's canvas or the radar's. The view itself
+keeps only two choices, in `localStorage`: the lens setting (`gt.arlens`) and, once the reader has
+pressed *Radar*, whether the radar is shown (`gt.arradar`); *Use my location* goes through the
+console's own path, which saves the observer there as well, and which never writes it into the
+address bar.
 
 ##### What is checked, and what is not
 
@@ -907,15 +1013,32 @@ served over http, in Chromium phone contexts with the permissions, the camera, t
 visibility and the sensors mocked, on a clock of its own (see **Running it**): the order the tap
 asks in, the marker on the spacecraft to about 1e-12 px, the pointer's words, every refusal's
 sentence, the phone held sideways, the globe paused, closing by *Close*, Escape and Back, an iPhone
-finding north, a phone in London with the observer in Bangkok, and a phone with no WebGL. It was
-run against three deliberate faults, and each was caught: the declination's sign flipped fails 10 of
-its checks, the camera asked for before the motion sensors fails the order check, and the screen's
-rotation ignored fails both sideways horizons, 220 px out of level. Its events are synthetic, so it
-proves the maths and the wiring, not a phone's sensors. What only a phone can show is left to a
-checklist: on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's Chrome, Samsung
-Internet and Firefox for Android — the first tap, a refusal and Try again, a declined camera,
-locking and unlocking, turning sideways, and pointing at the Sun and at a landmark of known
-bearing.
+finding north, the radar (below), a phone in London with the observer in Bangkok, and a phone with
+no WebGL. It was run against three deliberate faults, and each was caught: the declination's sign
+flipped fails 10 of its checks, the camera asked for before the motion sensors fails the order check,
+and the screen's rotation ignored fails both sideways horizons, 220 px out of level. Its events are
+synthetic, so it proves the maths and the wiring, not a phone's sensors. What only a phone can show
+is left to a checklist: on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's
+Chrome, Samsung Internet and Firefox for Android — the first tap, a refusal and Try again, a
+declined camera, locking and unlocking, turning sideways, pointing at the Sun and at a landmark of
+known bearing, and, for the radar, whether it can be read in sunlight and what a notched iPhone's
+safe-area insets do to the row of buttons held sideways (the suite's phones have no insets).
+
+The suite has 187 checks. The radar has a part of it to itself, 67 of them; the other 120 also run
+on the old page, which has no radar. `GT_AR_ONLY=radar` runs the maths and the radar's part alone,
+in about half the time. The radar's plot is written out in the checks
+(its side, its transform, its colours), not read from the code, and what is compared with it is the
+radar canvas's own pixels as well as where the page says it drew: the disc, the crosshair and the
+spacecraft; the crosshair on the rim below the horizon and left out within 5° of straight down; the
+highest point a ring and the spacecraft the one solid dot; AOS* and LOS* on a pass the window cut
+off at its start and at its end; where the radar is held upright and held both ways sideways, and
+that on a small phone, with Align open, and under a status of four or five lines, it is clear of
+every bar and control or is not shown; its height as the readout grows and shrinks; the pointer and
+its words off it; the *Radar* button and what it keeps; and that it never reads the camera's
+picture. Seven of its rules were each taken out of a scratch copy of the build in turn, and each was
+caught: the crosshair left out beside straight down, the starred ends, the hollow ring, the room the
+bars really leave, the height it holds, the words moved off it, and the one row of buttons held
+sideways.
 
 #### Architecture: the central body is a parameter
 
@@ -2702,7 +2825,10 @@ npm run elements     # the element labels: no overlap, nothing clipped, hover ex
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
 npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
                      # order the tap asks in, every refusal's words, the marker on the
-                     # spacecraft, the phone held sideways, the globe paused while covered
+                     # spacecraft, the phone held sideways, the globe paused while covered, and
+                     # the radar with its blue crosshair; 187 checks, about 4 minutes (120 of
+                     # them also run on the old page, which has no radar;
+                     # GT_AR_ONLY=radar runs the maths and the radar's 67, and nothing else)
 npm run layout       # the rebuilt console at twelve sizes, light and dark: nothing scrolls
                      # sideways, nothing covers a control or hangs off the screen, no text under
                      # 12 px, targets big enough to tap, and what the design promises

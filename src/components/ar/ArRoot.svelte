@@ -17,6 +17,7 @@
 <div class="arview" id="arview" role="dialog" aria-modal="true" aria-labelledby="ar-title" aria-describedby="ar-status" hidden>
   <video class="ar-video" id="ar-video" playsinline muted autoplay disablepictureinpicture aria-hidden="true"></video>
   <canvas class="ar-sky" id="ar-sky" aria-hidden="true"></canvas>
+  <canvas class="ar-radar" id="ar-radar" aria-hidden="true" hidden></canvas>
   <div class="ar-top">
     <div>
       <h2 class="ar-title" id="ar-title">Sky over <span id="ar-site">Bangkok</span></h2>
@@ -37,6 +38,7 @@
     <div class="ar-actions">
       <button class="btn" id="ar-live" type="button" hidden>Go live</button>
       <button class="btn" id="ar-retry" type="button" hidden>Try again</button>
+      <button class="btn" id="ar-radarbtn" type="button" aria-pressed="true">Radar</button>
       <button class="btn" id="ar-alignbtn" type="button" aria-expanded="false" aria-controls="ar-align">Align</button>
     </div>
     <div class="ar-align" id="ar-align" hidden>
@@ -56,7 +58,7 @@
    * The AR view covers the page. Over a camera's picture there is no light or dark theme to follow - the picture is whatever the sky
    * is - so the palette is fixed: the globe's on-screen colours, which are the ones a reader has learned (cyan the spacecraft,
    * orange in view from the site, pink the mask), cased in the HUD's dark halo so they hold up over a daylit sky. The canvas reads
-   * them from these properties, which therefore live on the view itself. */
+   * them from these properties, which therefore live on the view itself. The radar's crosshair, where the phone points, is blue. */
   :global(:root.ar-open) { overflow: hidden; }
   :global {
     .arview {
@@ -66,12 +68,15 @@
       font-variant-numeric: tabular-nums;
       --ar-ink: #EAF2F6; --ar-ink2: #AFC3CE; --ar-halo: #05090C; --ar-grid: rgba(234,242,246,.30);
       --ar-horizon: rgba(234,242,246,.85); --ar-mask: #F29CBB; --ar-pass: #E8BC5A; --ar-craft: #55D1E7;
-      --ar-sun: #FFE7A8; --ar-warn: #D69A5C;
+      --ar-sun: #FFE7A8; --ar-warn: #D69A5C; --ar-aim: #3D8BFF;
     }
     /* the author rules below set display, and would otherwise beat [hidden] */
     .arview[hidden], .arview [hidden] { display: none; }
     .ar-video, .ar-sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     .ar-video { object-fit: cover; object-position: 50% 50%; }
+    /* The radar: the whole sky as a plot, in the corner. arview.ts sets its side and its height above the foot of the view (above the
+       readout, whatever height that is). It takes no touch, so a drag across it still turns the sky. */
+    .ar-radar { position: absolute; right: calc(env(safe-area-inset-right) + 12px); width: 156px; height: 156px; pointer-events: none; }
     .ar-top {
       position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
       padding: calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 12px) 12px calc(env(safe-area-inset-left) + 12px);
@@ -114,6 +119,7 @@
     .arview .btn:hover { background: rgba(180,200,212,.16); }
     .arview .btn:focus-visible, .arview input:focus-visible { outline: 2px solid #EAF2F6; outline-offset: 2px; }
     #ar-alignbtn[aria-expanded="true"] { background: #E8EFF2; border-color: #E8EFF2; color: #0A1016; }
+    #ar-radarbtn[aria-pressed="true"] { border-color: var(--ar-aim); box-shadow: inset 0 0 0 1px var(--ar-aim); }
     /* A phone held sideways has a 390 px sky, and the whole readout across its foot would leave a band of it. Half the width, the first
        way this was tried, covered the middle, which is where the spacecraft is when the phone is on it. So the readout is a third of the
        width and keeps what pointing needs - the view, the target, the pass, and the clock while it is not the present - and North and
@@ -121,6 +127,9 @@
     @media (orientation: landscape) and (max-height: 540px) {
       .ar-read { right: auto; width: min(34%, 20em); }
       .ar-dl .ar-more { display: none; }
+      /* Go live, Radar and Align have to fit the column's 203 px on one row, on a 667 px phone: close up the buttons a little. */
+      .ar-actions { gap: 4px; }
+      .arview .ar-actions .btn { padding: 0 8px; letter-spacing: 0; }
       .arview:not([data-sim]) .ar-dl .ar-clockrow { display: none; }
       .ar-status { top: calc(env(safe-area-inset-top) + 62px); max-width: 30em; }
       /* Opened in that column, Align made it taller than the screen and pushed its own button, and Use my location under it, off the

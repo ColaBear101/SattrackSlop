@@ -29,8 +29,10 @@
  * with the permissions, the camera, the page's visibility and the sensors
  * mocked - synthetic events prove the maths and the wiring, not a phone's
  * hardware, and the README's device checklist is the rest - and once more in a
- * browser with no WebGL. Part C loads the page the way snapshot.js does, on a
- * desktop over http.
+ * browser with no WebGL. The rebuilt page's view also has a radar, a polar plot
+ * of the sky with a blue crosshair where the phone points, which has a part of
+ * its own, after the iPhone's (partRadar). Part C loads the page the way
+ * snapshot.js does, on a desktop over http.
  *
  * The page's clock is set here and not read from the day the suite runs on. A
  * window opens at "now", and what the checks need of it is not true every day:
@@ -50,6 +52,7 @@
  *
  *   node verification/verify-ar.js        (needs playwright)
  *   GT_TARGET=new GT_AR_AT=2026-10-05T00:00Z node verification/verify-ar.js
+ *   GT_AR_ONLY=radar node verification/verify-ar.js       (just the radar's part of the rebuilt page's view, after Part A)
  */
 const H = require('./lib/harness');
 const path = require('path');
@@ -440,8 +443,9 @@ function serve(){
 const AT = process.env.GT_AR_AT ? Date.parse(process.env.GT_AR_AT) : Date.UTC(2026, 8, 13, 0, 0, 0);
 if(!isFinite(AT) || AT < Date.UTC(2025, 0, 1) || AT >= Date.UTC(2030, 0, 1))
   throw new Error("GT_AR_AT must be an ISO instant inside the World Magnetic Model's life, 2025 to 2029: " + process.env.GT_AR_AT);
-/* A clock that starts at AT and runs from there. Installed on the context, so it is in place before the page's own scripts and the mocks. */
-const startClock = async ctx => { await ctx.clock.install({ time: AT }); return ctx; };
+/* A clock that starts at AT and runs from there (or at `at`, for a page that has to open in the middle of a pass: radarEnds). Installed on the
+   context, so it is in place before the page's own scripts and the mocks. */
+const startClock = async (ctx, at) => { await ctx.clock.install({ time: at === undefined ? AT : at }); return ctx; };
 /* A zone's offset from UTC at an instant, in hours, worked out here with Intl and not by the page. */
 const zoneHours = (zone, ms) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
@@ -601,9 +605,9 @@ function MOCKS(){
   };
 }
 
-async function phone(browser, port, extra){
+async function phone(browser, port, extra, at){
   const ctx = await startClock(await browser.newContext(Object.assign({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
-    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' }, extra || {})));
+    isMobile: true, hasTouch: true, permissions: ['camera'], timezoneId: 'Asia/Bangkok' }, extra || {})), at);
   await ctx.addInitScript(MOCKS);
   const page = await ctx.newPage();
   const errs = [];
@@ -1326,6 +1330,858 @@ async function partIOS(browser, port){
   return n;
 }
 
+/* ---- the radar: the whole sky as a plot in the corner of the view ---------------------------------------------------
+ * The rebuilt page's view has a small polar sky plot at the bottom right (north up, the zenith in the middle, the horizon at the rim, the
+ * current-or-next pass, the spacecraft's dot) and on it, in blue, a crosshair at the azimuth and elevation the phone's camera points to: bring
+ * the crosshair onto the dot and the spacecraft is in the middle of the picture. The old page never had it, so this part runs only against the
+ * rebuilt one (NEW).
+ *
+ * What is asserted is written out here and not read from radar.ts: the plot's transform (x = c + R (90 - el)/90 sin az, y = c - R (90 - el)/90
+ * cos az, R = side/2 - 15, the horizon at the rim), the side (two fifths of the short screen side, 112 to 200 px), the colours (#3D8BFF the
+ * crosshair, #E8BC5A the pass) and the rules for where the radar may and may not be. Where the page says where it drew something
+ * (ARView.probe.radar.draw), that is checked against the transform, and against the radar canvas's own pixels, which the checks may read: the
+ * picture census flags a read of the sky canvas (ar-sky) and nothing else, and a check that ends with an empty census says the radar read none
+ * of the camera's picture either.
+ *
+ * One tolerance is not zero. A held phone costs the radar nothing because it draws a frame again only when the pose, or the spacecraft, has
+ * moved a tenth of a degree; after the view has settled, the crosshair can therefore be up to 0.1° behind the exact pose, which is 0.07 px along
+ * the radius and 0.11 px round the rim of a 156 px plot. It is held to 0.15 px, where a wrong transform is tens of pixels out. The spacecraft's dot
+ * is held to 0.05 px, since the clock is held still.
+ */
+const RADAR_BLUE = [0x3D, 0x8B, 0xFF], RADAR_PASS = [0xE8, 0xBC, 0x5A];
+/* The side of the radar for a screen w x h: two fifths of the short side, from a thumb-sized 112 px to 200 px on a tablet. */
+const radarSide = (w, h) => Math.round(Math.max(112, Math.min(200, Math.min(w, h)*0.4)));
+/* Where a direction falls on the plot, in CSS px from the canvas's top left. Below the horizon it is put on the rim, at its azimuth. */
+const plotAt = (side, az, el) => {
+  const R = side/2 - 15, e = Math.max(0, Math.min(90, el)), r = R*(90 - e)/90;
+  return { x: side/2 + r*Math.sin(az*RAD), y: side/2 - r*Math.cos(az*RAD) };
+};
+const dist2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const rgbNear = (px, want, tol) => !!px && px[3] >= 240 && want.every((v, i) => Math.abs(px[i] - v) <= tol);
+/* Blue enough to be the crosshair, also where it is drawn faint (below the horizon, at 0.6 of its alpha, over the dark glass): the blue
+   channel high and well clear of both the others. The cyan of a spacecraft below the mask (#55D1E7) is not it. */
+const blueish = px => !!px && px[3] >= 100 && px[2] >= 120 && px[2] - px[0] >= 100 && px[2] - px[1] >= 50;
+const boxesMeet = (a, b) => a.x < b.x + b.w - 0.01 && a.x + a.w > b.x + 0.01 && a.y < b.y + b.h - 0.01 && a.y + a.h > b.y + 0.01;
+const inBox = (p, b, m) => p.x >= b.x - m && p.x <= b.x + b.w + m && p.y >= b.y - m && p.y <= b.y + b.h + m;
+const onSafeEdge = (p, s) => p.x >= s.left - 0.5 && p.x <= s.right + 0.5 && p.y >= s.top - 0.5 && p.y <= s.bottom + 0.5
+  && (near(p.x, s.left, 0.5) || near(p.x, s.right, 0.5) || near(p.y, s.top, 0.5) || near(p.y, s.bottom, 0.5));
+const n2 = v => v.toFixed(2);
+
+/* The radar canvas's pixels at points given in CSS px from its top left, each [r, g, b, a] (null off the canvas). */
+const radarPx = (page, pts) => page.evaluate(pts => {
+  const cv = document.getElementById('ar-radar'), c = cv.getContext('2d'), k = cv.width/cv.getBoundingClientRect().width;
+  return pts.map(p => {
+    const x = Math.floor(p.x*k), y = Math.floor(p.y*k);
+    return x < 0 || y < 0 || x >= cv.width || y >= cv.height ? null : Array.from(c.getImageData(x, y, 1, 1).data);
+  });
+}, pts);
+/* Every opaque pixel on the radar that is the crosshair's blue: how many, and where their centre is, in CSS px. */
+const radarBlue = (page, side) => page.evaluate(side => {
+  const cv = document.getElementById('ar-radar'), c = cv.getContext('2d'), w = cv.width, k = w/side, d = c.getImageData(0, 0, w, cv.height).data;
+  let n = 0, sx = 0, sy = 0;
+  for(let i = 0; i < d.length; i += 4){
+    if(d[i + 3] >= 240 && Math.abs(d[i] - 61) <= 14 && Math.abs(d[i + 1] - 139) <= 14 && Math.abs(d[i + 2] - 255) <= 14){
+      const p = i/4; n++; sx += (p % w + 0.5)/k; sy += (Math.floor(p/w) + 0.5)/k;
+    }
+  }
+  return { n, x: n ? sx/n : null, y: n ? sy/n : null };
+}, side);
+/* How many pixels on the radar are blue enough to be the crosshair, drawn faint too (blueish, in the page): none, when nothing of it is drawn. The
+   strict count above wants a full-strength pixel, and the crosshair on the rim (below the horizon) is drawn at 0.6 of its alpha, half of it off the glass. */
+const radarBlueish = page => page.evaluate(() => {
+  const cv = document.getElementById('ar-radar'), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  let n = 0;
+  for(let i = 0; i < d.length; i += 4) if(d[i + 3] >= 100 && d[i + 2] >= 120 && d[i + 2] - d[i] >= 100 && d[i + 2] - d[i + 1] >= 50) n++;
+  return n;
+});
+/* The radar's box and everything it must keep clear of, read from the page as a person sees it. */
+const radarLayout = page => page.evaluate(() => {
+  const cv = document.getElementById('ar-radar'), q = ARView.probe, r = cv.getBoundingClientRect(), s = document.getElementById('ar-status');
+  const rect = e => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
+  const hit = r.width ? document.elementFromPoint(r.left + r.width/2, r.top + r.height/2) : null;
+  const btn = document.getElementById('ar-radarbtn');
+  return { hidden: cv.hidden, display: getComputedStyle(cv).display, aria: cv.getAttribute('aria-hidden'), pe: getComputedStyle(cv).pointerEvents,
+    box: rect(cv), probeBox: q.radar.box, on: q.radar.on, draw: q.radar.draw, bw: cv.width, bh: cv.height,
+    dpr: Math.min(window.devicePixelRatio || 1, 2), W: q.W, H: q.H, state: q.state,
+    /* the view's own controls that cross it: the page's, under the view and inert, are in the document too and are not what is asked */
+    over: r.width ? [...document.querySelectorAll('#arview button, #arview a[href], #arview input, #arview select, #arview textarea')].filter(e => {
+      const q = e.getBoundingClientRect();
+      return q.width && q.height && getComputedStyle(e).visibility !== 'hidden'
+        && q.left < r.right - 0.01 && q.right > r.left + 0.01 && q.top < r.bottom - 0.01 && q.bottom > r.top + 0.01;
+    }).map(e => e.id || e.tagName) : [], hit: hit ? hit.id : null,
+    top: rect(document.querySelector('.ar-top')), read: rect(document.querySelector('.ar-read')),
+    status: s.getBoundingClientRect().height ? rect(s) : null, close: rect(document.getElementById('ar-close')),
+    pressed: btn.getAttribute('aria-pressed'), key: localStorage.getItem('gt.arradar') };
+});
+const radarClear = L => !boxesMeet(L.box, L.top) && !boxesMeet(L.box, L.read) && !(L.status && boxesMeet(L.box, L.status))
+  && !boxesMeet(L.box, L.close) && !L.over.length;
+const radarInView = L => L.box.x >= 0 && L.box.y >= 0 && L.box.x + L.box.w <= L.W + 0.01 && L.box.y + L.box.h <= L.H + 0.01;
+/* The middle of the sky, and 20 px round it (the spacecraft's marker reaches 18), is where the spacecraft is when the phone is on it: the radar
+   must not be over it. */
+const radarMid = L => !boxesMeet(L.box, { x: L.W/2 - 20, y: L.H/2 - 20, w: 40, h: 40 });
+const radarWhy = L => (L.over.length ? 'crosses ' + L.over.join(', ') + '; ' : '')
+  + ['top', 'read', 'status', 'close'].filter(k => L[k] && boxesMeet(L.box, L[k])).map(k => 'meets .ar-' + k).join(', ');
+/* The view is open with a pose and the radar drawn. */
+const radarReady = page => until(page, () => { const q = ARView.probe; return q.state === 'running' && q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 20000);
+/* The phone pointed at (az, el), the picture level, the way the checks above point it (held upright, or at the screen rotation th: 90 or 270 when
+   the page is set sideways); resolves once the view has got there and stopped (null if
+   it never did, and the check then reads what is there and fails on it). Two frames after, so that the radar has had a frame to see it. */
+const onAim = async (page, az, el, th) => {
+  await page.evaluate(([az, el, th]) => { const q = ARView.probe;
+    __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(az, el, th, q.decl || 0))); }, [az, el, th || 0]);
+  await settle(page);
+  const got = await until(page, ([az, el]) => {
+    const v = ARView.probe.view; if(!v) return false;
+    const R = Math.PI/180, u = (a, e) => [Math.cos(e*R)*Math.sin(a*R), Math.cos(e*R)*Math.cos(a*R), Math.sin(e*R)], a = u(v.az, v.el), b = u(az, el);
+    const off = Math.acos(Math.max(-1, Math.min(1, a[0]*b[0] + a[1]*b[1] + a[2]*b[2])))/R;
+    return off < 0.05 ? { off } : false;
+  }, [az, el], 10000);
+  await frames2(page);
+  return got;
+};
+const satNow = page => page.evaluate(() => { const q = ARView.probe; return __gt.stateAt(__gt.D.track, q.ms); });
+
+async function partRadar(browser, port){
+  console.log('\nPart B — the radar in the view\n');
+  let n = 0;
+  n += await radarPhone(browser, port);
+  n += await radarIOS(browser, port);
+  n += await radarKept(browser, port);
+  /* What a review of the radar found, each pinned where it shows: radarPhone has the crosshair straight down and the pass's top ring, and
+     these four the rest - a pass the window cut off, a readout that shrinks, a status of four lines, a phone held sideways. */
+  n += await radarEnds(browser, port);
+  n += await radarHold(browser, port);
+  n += await radarLondon(browser, port);
+  n += await radarSideways(browser, port);
+  return n;
+}
+
+/* The radar on an Android-style phone (a compass of its own): where it is, what it draws, where the blue crosshair is, and when it gives way. */
+async function radarPhone(browser, port){
+  const { ctx, page, errs } = await phone(browser, port);
+  /* The camera is a canvas stream, as in the sideways checks: the radar needs none of its picture, and a fake device is one thing less to wait for. */
+  await page.evaluate(() => { __ar.camera = 'canvas'; });
+  const best = await atBestPass(page);
+  chk('precondition: the window has a pass to draw on the radar', !!best, best ? best.name + ', pass ' + best.k + ' at ' + best.maxEl.toFixed(1) + '°' : 'none');
+  if(!best){ await ctx.close(); return errs.length; }
+  /* The clock held still, with the spacecraft well up its pass and not at the zenith (see downTo): its dot then stays where it is. */
+  await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click(); });
+  await downTo(page, best.k, 35);
+  const keys0 = await page.evaluate(() => Object.keys(localStorage));
+  await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, 0))));
+  await tapAR(page);
+  await radarReady(page);
+  await camLive(page);
+
+  /* Where it is, how big, and that it takes no touch. */
+  const side = radarSide(390, 844);
+  const L = await radarLayout(page);
+  chk('the radar is shown on a 390x844 phone, aria-hidden, a square of radarSize(390, 844) = ' + side + ' px with a backing store for the screen\'s pixel ratio',
+      !L.hidden && L.display !== 'none' && L.aria === 'true' && near(L.box.w, side, 0.01) && near(L.box.h, side, 0.01)
+      && L.bw === Math.round(side*L.dpr) && L.bh === L.bw && !!L.probeBox && near(L.probeBox.x, L.box.x, 0.01) && near(L.probeBox.y, L.box.y, 0.01)
+      && near(L.probeBox.w, L.box.w, 0.01),
+      'box ' + [L.box.x, L.box.y, L.box.w, L.box.h].map(n2).join(' ') + ', canvas ' + L.bw + 'x' + L.bh + ', aria-hidden ' + L.aria + ', probe box ' + (L.probeBox ? 'agrees' : 'none'));
+  chk('...inside the screen, on the right, above the readout, clear of the title bar, the status line, the readout (Align and the rest) and the Close button, and off the middle of the sky',
+      radarInView(L) && radarClear(L) && radarMid(L) && L.box.x >= L.W/2 && L.box.y + L.box.h <= L.read.y,
+      'box ends ' + n2(L.W - L.box.x - L.box.w) + ' px from the right and ' + n2(L.read.y - L.box.y - L.box.h) + ' px above the readout; ' + (radarWhy(L) || 'nothing under it'));
+  chk('...takes no touch: pointer-events none, and a tap at its centre reaches the sky under it, not the radar',
+      L.pe === 'none' && L.hit === 'ar-sky', 'pointer-events ' + L.pe + ', element at its centre: ' + L.hit);
+  chk('...and opening the view wrote nothing to storage: gt.arradar is written only when the reader presses the button', L.key === null, 'gt.arradar ' + JSON.stringify(L.key));
+  /* The disc, from the pixels: the horizon ring at the radius R, glass inside it, nothing outside, away from the letters, the spokes and the rings. */
+  const Rr = side/2 - 15, cc = side/2, spots = [20, 110, 200, 290].map(a => {
+    const p = (r, d) => ({ x: cc + r*Math.sin((a + d)*RAD), y: cc - r*Math.cos((a + d)*RAD) });
+    return { ring: p(Rr, 0), glass: p(Rr - 8, 0), out: p(Rr + 5, 0) };
+  });
+  const dpx = await radarPx(page, [].concat(...spots.map(s => [s.ring, s.glass, s.out])));
+  const ringOk = spots.filter((s, i) => dpx[3*i] && dpx[3*i][0] >= 190 && dpx[3*i][1] >= 190 && dpx[3*i][2] >= 190 && dpx[3*i][3] >= 150).length;
+  const glassOk = spots.filter((s, i) => dpx[3*i + 1] && dpx[3*i + 1][3] >= 140 && dpx[3*i + 1][3] <= 175).length;
+  const outOk = spots.filter((s, i) => dpx[3*i + 2] && dpx[3*i + 2][3] <= 10).length;
+  chk('...the disc is where the plot says: the horizon ring at R = side/2 - 15 = ' + Rr + ' px, dark glass just inside it, clear canvas just outside',
+      ringOk === 4 && glassOk >= 3 && outOk === 4, 'at four bearings off the axes: ring ' + ringOk + '/4, glass ' + glassOk + '/4, outside ' + outOk + '/4');
+
+  /* The blue crosshair, where the phone points. */
+  const sat0 = await satNow(page);
+  const cases = [[0, 40], [90, 20], [200, 60], [350, 10], [45, 89]].map(([az, el]) => ({ name: az + '° az, ' + el + '° up', az, el }))
+    .concat([{ name: 'the spacecraft itself (' + n2(sat0.az) + '°, ' + n2(sat0.el) + '° up)', az: sat0.az, el: sat0.el }]);
+  for(const c of cases){
+    const got = await onAim(page, c.az, c.el);
+    const q = await probe(page), d = q.radar.draw;
+    if(!(d && d.aim && q.view)){ chk('the blue crosshair is at the plot\'s transform of where the phone points: ' + c.name, false, d ? 'no crosshair drawn' : 'nothing drawn'); continue; }
+    const want = plotAt(d.size, q.view.az, q.view.el), cmd = plotAt(d.size, c.az, c.el);
+    const a = (c.az + 180)*RAD, opp = { x: d.size/2 + 0.6*d.R*Math.sin(a), y: d.size/2 - 0.6*d.R*Math.cos(a) };
+    const px = await radarPx(page, [{ x: want.x + 9, y: want.y }, opp]), blue = await radarBlue(page, d.size);
+    const e1 = dist2(d.aim, want), e2 = dist2(d.aim, cmd), eC = blue.n ? dist2(blue, want) : Infinity;
+    chk('the blue crosshair is at the plot\'s transform of where the phone points: ' + c.name,
+        !!got && !d.aim.clamped && e1 <= 0.15 && e2 <= 0.3 && rgbNear(px[0], RADAR_BLUE, 12) && !blueish(px[1]) && blue.n >= 60 && eC <= 0.4,
+        (got ? '' : 'the view never got there (view ' + n2(q.view.az) + '/' + n2(q.view.el) + '); ') + 'drawn ' + n2(d.aim.x) + ',' + n2(d.aim.y) + ' vs ' + n2(want.x) + ',' + n2(want.y)
+        + ' (off ' + n2(e1) + ' px, ' + n2(e2) + ' px from the commanded aim); arm pixel ' + JSON.stringify(px[0]) + ', opposite side ' + JSON.stringify(px[1])
+        + '; ' + blue.n + ' blue pixels centred ' + n2(eC) + ' px off');
+  }
+
+  /* The spacecraft's dot, and the whole point: aimed at it, the crosshair is on it. At two elevations of the pass. */
+  const coin = [];
+  for(const el of [35, 12]){
+    await downTo(page, best.k, el);
+    const st = await satNow(page);
+    await onAim(page, st.az, st.el);
+    const q = await probe(page), d = q.radar.draw;
+    if(!(d && d.aim && d.craft && q.marker)){ coin.push({ el, bad: 'aim ' + !!(d && d.aim) + ', craft ' + !!(d && d.craft) + ', marker ' + !!q.marker }); continue; }
+    const w1 = plotAt(d.size, q.marker.az, q.marker.el), w2 = plotAt(d.size, st.az, st.el);
+    const px = await radarPx(page, [d.craft]), blue = await radarBlue(page, d.size);
+    coin.push({ el: st.el, craftErr: dist2(d.craft, w1), stErr: dist2(d.craft, w2), apart: dist2(d.aim, d.craft), centre: dist2(q.marker, { x: q.cx, y: q.cy }),
+                dot: px[0], blue: blue.n, blueErr: blue.n ? dist2(blue, d.craft) : Infinity });
+  }
+  chk('the spacecraft\'s dot is at the plot\'s transform of its own azimuth and elevation, in the pass colour once it is above the mask',
+      coin.length === 2 && coin.every(c => !c.bad && c.craftErr <= 0.05 && c.stErr <= 0.1 && rgbNear(c.dot, RADAR_PASS, 12)),
+      coin.map(c => c.bad ? c.el + '°: ' + c.bad : n2(c.el) + '° up: dot ' + n2(c.craftErr) + ' px off the marker\'s, ' + n2(c.stErr) + ' off the track\'s, centre pixel ' + JSON.stringify(c.dot)).join('; '));
+  chk('...and with the phone aimed at the spacecraft the blue crosshair and the dot coincide (within 0.5 px), and the spacecraft is in the middle of the picture',
+      coin.length === 2 && coin.every(c => !c.bad && c.apart <= 0.5 && c.centre < 1.5 && c.blue >= 60 && c.blueErr <= 0.5),
+      coin.map(c => c.bad ? c.el + '°: ' + c.bad : n2(c.el) + '° up: crosshair ' + n2(c.apart) + ' px from the dot, the marker ' + n2(c.centre) + ' px from the screen\'s centre, blue pixels ' + n2(c.blueErr) + ' px from the dot').join('; '));
+  await downTo(page, best.k, 35);
+
+  /* The edges of the plot: below the horizon the crosshair is on the rim and says so; straight up it is in the middle. */
+  const got4 = await onAim(page, 120, -25);
+  const q4 = await probe(page), d4 = q4.radar.draw;
+  if(d4 && d4.aim){
+    const R4 = d4.size/2 - 15, want4 = plotAt(d4.size, q4.view.az, 0);
+    const px = await radarPx(page, [{ x: d4.aim.x + 9, y: d4.aim.y }]);
+    chk('phone pointed below the horizon (25° down): the crosshair is on the rim, at the phone\'s azimuth, drawn as clamped, and still blue',
+        !!got4 && d4.aim.clamped && near(dist2(d4.aim, { x: d4.cx, y: d4.cy }), R4, 0.05) && dist2(d4.aim, want4) <= 0.15 && blueish(px[0]) && near(q4.view.el, -25, 0.05),
+        'view ' + n2(q4.view.az) + '°/' + n2(q4.view.el) + '°, crosshair ' + n2(dist2(d4.aim, { x: d4.cx, y: d4.cy })) + ' px from the centre (R ' + R4 + '), clamped ' + d4.aim.clamped + ', arm pixel ' + JSON.stringify(px[0]));
+  } else chk('phone pointed below the horizon (25° down): the crosshair is on the rim, at the phone\'s azimuth, drawn as clamped, and still blue', false, 'no crosshair drawn');
+  const got4b = await onAim(page, 300, 89.9);
+  const q4b = await probe(page), d4b = q4b.radar.draw;
+  chk('...phone pointed straight up (89.9°): the crosshair is at the centre, within 1 px, and not clamped',
+      !!got4b && !!d4b && !!d4b.aim && !d4b.aim.clamped && dist2(d4b.aim, { x: d4b.cx, y: d4b.cy }) <= 1,
+      d4b && d4b.aim ? n2(dist2(d4b.aim, { x: d4b.cx, y: d4b.cy })) + ' px from the centre' : 'no crosshair drawn');
+  /* And straight down. Within 5° of it the azimuth is the direction of a tilt of a few degrees, and swings right round the rim with the tremor
+     of a hand: there is no crosshair at all (the readout says "straight down" from 85° too). From 5° out it is on the rim again, clamped. */
+  const nadir = [];
+  for(const el of [-80, -84, -86, -88, -90]){
+    const got = await onAim(page, 120, el);
+    const q = await probe(page), d = q.radar.draw;
+    nadir.push({ el, got: !!got, view: q.view, d, blue: await radarBlueish(page) });
+  }
+  const rimAt = (d, v) => d && d.aim && d.aim.clamped && near(dist2(d.aim, { x: d.cx, y: d.cy }), d.size/2 - 15, 0.05) && dist2(d.aim, plotAt(d.size, v.az, 0)) <= 0.15;
+  const sayNadir = k => (k.view ? n2(k.view.el) : '?') + '° (commanded ' + k.el + '°): ' + (k.d ? (k.d.aim ? 'crosshair on the plot' + (k.d.aim.clamped ? ' (clamped)' : '') : 'no crosshair') : 'nothing drawn') + ', ' + k.blue + ' blue pixels';
+  chk('phone pointed within 5° of straight down (86°, 88°, 90° down): no crosshair is drawn, in the probe or on the canvas, not one blue pixel',
+      nadir.filter(k => k.el <= -86).every(k => k.got && k.view && k.view.el < -85 && !!k.d && k.d.aim === null && k.blue === 0),
+      nadir.filter(k => k.el <= -86).map(sayNadir).join('; '));
+  chk('...and from 5° out (84° and 80° down) it is drawn again, on the rim at the phone\'s azimuth, clamped, and blue',
+      nadir.filter(k => k.el > -86).every(k => k.got && k.view && rimAt(k.d, k.view) && k.blue >= 30),
+      nadir.filter(k => k.el > -86).map(sayNadir).join('; '));
+
+  /* The pass, drawn on the plot at the transform of its own samples: its highest point and a few samples of the part still to fly. The phone
+     is aimed away from it, at the opposite bearing, so that nothing of the crosshair is near. */
+  const PS = await page.evaluate(k => { const p = __gt.D.passes[k];
+    return { arc: p.arc.map(s => [s.az, s.el]), maxAz: p.maxAz, maxEl: p.maxEl, t0: p.t0ms, t1: p.t1ms }; }, best.k);
+  await onAim(page, (PS.maxAz + 180) % 360, 20);
+  const q5 = await probe(page), d5 = q5.radar.draw;
+  if(d5 && d5.pass){
+    const nA = PS.arc.length - 1, kFlown = Math.max(0, Math.min(nA, Math.floor((q5.ms - PS.t0)/(PS.t1 - PS.t0)*nA)));
+    const top = plotAt(d5.size, PS.maxAz, PS.maxEl);
+    const far = p => (!d5.craft || dist2(p, d5.craft) >= 14) && (!d5.aim || dist2(p, d5.aim) >= 14) && dist2(p, top) >= 10;
+    const samples = [0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75].map(f => Math.round(nA*f)).filter(i => i > kFlown + 1)
+      .map(i => ({ i, p: plotAt(d5.size, PS.arc[i][0], PS.arc[i][1]) })).filter(s => far(s.p));
+    const px = await radarPx(page, [top].concat(samples.map(s => s.p)));
+    chk('the pass is drawn in the pass colour: its highest point at the plot\'s transform of its own azimuth and elevation, and the samples still to fly along its arc',
+        rgbNear(px[0], RADAR_PASS, 12) && samples.length >= 3 && px.slice(1).every(p => rgbNear(p, RADAR_PASS, 12)),
+        'top (' + n2(PS.maxAz) + '°, ' + n2(PS.maxEl) + '°) pixel ' + JSON.stringify(px[0]) + '; ' + samples.length + ' arc samples (flown to ' + kFlown + ' of ' + nA + ') '
+        + samples.map((s, j) => s.i + ':' + JSON.stringify(px[j + 1])).join(' '));
+  } else chk('the pass is drawn in the pass colour: its highest point at the plot\'s transform of its own azimuth and elevation, and the samples still to fly along its arc', false, 'the radar says it drew no pass');
+
+  /* The pass's highest point is a small ring, so that the spacecraft's dot is the one solid dot on the plot and is not taken for it. The
+     spacecraft is put well away from the top (12° up on the way up, or 7° where that is still near it) and the phone aimed away from both. The
+     ring is read at 16 bearings: on it, 3.5 px from the top, it is the pass colour; inside it, 2 px from the top, it is not. (Its centre cannot say:
+     the arc's own line runs through the top, and a solid dot would only make the inside the pass colour all round.) The dot, the spacecraft's,
+     is the pass colour at its centre and 3.5 px round it. */
+  let hollow = null;
+  for(const el of [12, 7]){
+    await downTo(page, best.k, el);
+    await onAim(page, (PS.maxAz + 180) % 360, 20);
+    const q = await probe(page), d = q.radar.draw;
+    if(!(d && d.pass && d.craft)){ hollow = { el, bad: 'pass ' + !!(d && d.pass) + ', spacecraft ' + !!(d && d.craft) }; continue; }
+    const top = plotAt(d.size, PS.maxAz, PS.maxEl), away = dist2(d.craft, top);
+    if(away < 14 || (d.aim && (dist2(d.aim, top) < 16 || dist2(d.aim, d.craft) < 16))){
+      hollow = { el, bad: 'the spacecraft is ' + n2(away) + ' px from the top, the crosshair ' + (d.aim ? n2(dist2(d.aim, top)) + ' px from the top and ' + n2(dist2(d.aim, d.craft)) + ' from the spacecraft' : 'nowhere') };
+      continue;
+    }
+    const at = (c, r, k) => ({ x: c.x + r*Math.sin(k*RAD), y: c.y - r*Math.cos(k*RAD) });
+    const bearings = [...Array(16).keys()].map(i => i*22.5), eight = [...Array(8).keys()].map(i => i*45);
+    const px = await radarPx(page, bearings.map(k => at(top, 3.5, k)).concat(bearings.map(k => at(top, 2, k)), [d.craft], eight.map(k => at(d.craft, 3.5, k))));
+    hollow = { el, away, onRing: px.slice(0, 16).filter(p => rgbNear(p, RADAR_PASS, 12)).length, inside: px.slice(16, 32).filter(p => rgbNear(p, RADAR_PASS, 12)).length,
+               dot: px.slice(32).filter(p => rgbNear(p, RADAR_PASS, 12)).length };
+    break;
+  }
+  chk('the pass\'s highest point is a small hollow ring, and the spacecraft\'s dot the one solid dot: the pass colour round the ring (at least 14 of 16 bearings), not inside it (at most 2 of 16), and at the dot\'s centre and 3.5 px round it (all 9)',
+      !!hollow && !hollow.bad && hollow.onRing >= 14 && hollow.inside <= 2 && hollow.dot === 9,
+      !hollow ? 'no case' : hollow.bad ? hollow.el + '° up: ' + hollow.bad
+        : 'spacecraft ' + hollow.el + '° up, ' + n2(hollow.away) + ' px from the top: ring ' + hollow.onRing + '/16, inside ' + hollow.inside + '/16, dot ' + hollow.dot + '/9');
+  await downTo(page, best.k, 35);
+
+  /* The view's own text keeps off the radar. Every piece of text drawn on the sky canvas is caught at fillText (the picture census does not mind
+     text), in poses that put the spacecraft's label, the pass's time ticks and ends, and the pointer's words where the radar is. A pose is the
+     spacecraft's offset from where the phone points: (0, 0) is aimed at it, and a negative azimuth offset puts it to the right, a positive
+     elevation offset below. The radar's box is in the labels' keep-out list, so the labels are held to the box; the pointer's own words are the one
+     label kept on the screen where nothing fits, and what they must not do is lie over what the radar draws (its glass disc and compass letters),
+     which they are held to. */
+  await page.evaluate(() => {
+    const C = CanvasRenderingContext2D.prototype, fill = C.fillText;
+    window.__labels = [];
+    C.fillText = function(t, x, y){ if(this.canvas.id === 'ar-sky') window.__labels.push({ t, x, y, w: this.measureText(t).width }); return fill.apply(this, arguments); };
+  });
+  const stL = await satNow(page);
+  const labelsAt = async (da, de, th, st) => {
+    await onAim(page, (st || stL).az + da, (st || stL).el + de, th);
+    await page.evaluate(() => { __labels.length = 0; });
+    await frames2(page);
+    const r = await page.evaluate(() => { const q = ARView.probe, p = q.pointer;
+      return { box: q.radar.box, pointer: p ? [p.title, p.text].filter(Boolean) : [], labels: __labels.slice() }; });
+    // every frame since the clear drew all of them again, a hair apart as the view settles: each once
+    const key = l => l.t + '|' + Math.round(l.x/4) + '|' + Math.round(l.y/4), all = r.labels;
+    r.labels = all.filter((l, i) => all.findIndex(m => key(m) === key(l)) === i).map(l => ({ t: l.t, x0: l.x - 2, x1: l.x + l.w + 2, y0: l.y - 7.5, y1: l.y + 7.5 }));
+    return r;
+  };
+  const inRadarBox = (l, b) => l.x0 < b.x + b.w - 0.5 && l.x1 > b.x + 0.5 && l.y0 < b.y + b.h - 0.5 && l.y1 > b.y + 0.5;
+  /* How far a label's box reaches into what the radar draws: into the disc and its ring (R + 1.5 px) and over a compass letter. Negative: clear. */
+  const intoRadarArt = (l, b) => {
+    const R = b.w/2 - 15, c = { x: b.x + b.w/2, y: b.y + b.h/2 };
+    const nx = Math.max(l.x0, Math.min(c.x, l.x1)), ny = Math.max(l.y0, Math.min(c.y, l.y1));
+    let into = R + 1.5 - Math.hypot(nx - c.x, ny - c.y);
+    for(const [ux, uy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]){
+      const lx = c.x + ux*(R + 8), ly = c.y + uy*(R + 8);
+      if(l.x0 < lx + 5.5 && l.x1 > lx - 5.5 && l.y0 < ly + 6.5 && l.y1 > ly - 6.5) into = Math.max(into, 1);
+    }
+    return into;
+  };
+  const labelPoses = [];
+  for(const [da, de] of [[0, 0], [-20, 15], [-30, 30]]) labelPoses.push({ da, de, r: await labelsAt(da, de) });
+  const ownText = (r, l) => r.pointer.includes(l.t);
+  const sayL = l => l.t + ' at ' + l.x0.toFixed(0) + '..' + l.x1.toFixed(0) + ',' + l.y0.toFixed(0);
+  chk('the view\'s own labels (the spacecraft\'s, the pass\'s ends, ticks and top, the compass letters) keep off the radar: in three poses with them near it, none is under its box',
+      labelPoses.every(p => p.r.labels.length >= 4 && !p.r.labels.filter(l => !ownText(p.r, l) && inRadarBox(l, p.r.box)).length),
+      labelPoses.map(p => '(' + p.da + ',' + p.de + '): ' + p.r.labels.length + ' pieces of text, ' + (p.r.labels.filter(l => !ownText(p.r, l) && inRadarBox(l, p.r.box)).map(sayL).join(' | ') || 'none under the box')).join('; '));
+  const pointerPoses = [];
+  for(const [da, de] of [[-20, 30], [-10, 30], [-20, 40]]) pointerPoses.push({ da, de, r: await labelsAt(da, de) });
+  const ptrInto = p => p.r.labels.filter(l => ownText(p.r, l)).map(l => ({ l, into: intoRadarArt(l, p.r.box) }));
+  chk('...and the pointer\'s own words, with the arrow slid out from under the radar, do not lie over what the radar draws: its disc, its ring and its compass letters',
+      pointerPoses.every(p => ptrInto(p).length >= 1 && ptrInto(p).every(k => k.into <= 0.5)),
+      pointerPoses.map(p => '(' + p.da + ',' + p.de + '): ' + (ptrInto(p).map(k => sayL(k.l) + (k.into > 0.5 ? ' reaches ' + k.into.toFixed(1) + ' px into the radar' : ' clear')).join(' | ') || 'no pointer text')).join('; '));
+
+  /* The off-screen pointer. Where it would sit under the radar it slides along the safe rectangle's edge to the radar's nearer side, and never
+     sits under it; where it would not, the radar changes nothing. The place it would be is worked out here, from the spacecraft's projection with
+     the view's own pose and the page's safe rectangle (the page's own pointer is what is read). The arrow's tip, and with it its two base
+     corners, are checked against the radar's box. A direction is the spacecraft's offset from where the phone points, in azimuth and elevation:
+     the first four put it below and to the right, towards the radar, and the last three leave it where the radar is not. */
+  const stP = await satNow(page);
+  const dirs = [[-40, 25], [-25, 30], [-12, 38], [-55, 12], [-35, 0], [40, 0], [0, -35]];
+  const ptr = [];
+  for(const [da, de] of dirs){
+    const got = await onAim(page, stP.az + da, stP.el + de);
+    const q = await probe(page), pj = await page.evaluate(([az, el]) => ARView.project(az, el), [stP.az, stP.el]);
+    const box = q.radar.box, pr = q.pointer;
+    if(!(pr && box && pj && pj.front)){ ptr.push({ da, de, bad: 'pointer ' + !!pr + ', box ' + !!box + ', in front ' + !!(pj && pj.front) }); continue; }
+    let dx = pj.x - q.cx, dy = pj.y - q.cy; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+    const un = S.edgePoint(q.cx, q.cy, dx, dy, q.safe), slides = inBox(un, box, 8);
+    const tri = [pr, { x: pr.x - dx*14 - dy*8, y: pr.y - dy*14 + dx*8 }, { x: pr.x - dx*14 + dy*8, y: pr.y - dy*14 - dx*8 }];
+    /* The tip is clear of the box itself, as asked. The corners of the arrow's base reach 14 px back and 8 px aside, and a tilted arrow's can
+       cross a corner of the box by a pixel or so (the slide leaves 8 px) where the radar draws nothing: the corners of its square are empty,
+       and what it draws is inside the circle of half its side. So the whole arrow is held clear of that circle, which is where it could be hidden. */
+    const mid = { x: box.x + box.w/2, y: box.y + box.h/2 };
+    const turn = Math.abs(S.wrap180(Math.atan2(pr.x - q.cx, -(pr.y - q.cy))*DEG - Math.atan2(un.x - q.cx, -(un.y - q.cy))*DEG));
+    ptr.push({ da, de, got: !!got, pr, un, slides, outside: !inBox(pr, box, 0) && tri.every(v => dist2(v, mid) > box.w/2), edge: onSafeEdge(pr, q.safe),
+               same: slides ? (near(pr.x, un.x, 0.5) || near(pr.y, un.y, 0.5)) && turn <= 60 : dist2(pr, un) <= 1, turn });
+  }
+  const slid = ptr.filter(p => p.slides).length, left = ptr.filter(p => !p.bad && !p.slides).length;
+  chk('the off-screen pointer is never under the radar: where it would be, it slides along the safe rectangle\'s edge to the radar\'s side, its tip outside the box and its base outside what the radar draws; elsewhere it is where it always was',
+      ptr.length === dirs.length && ptr.every(p => !p.bad && p.got && p.outside && p.edge && p.same) && slid >= 2 && left >= 2,
+      ptr.map(p => p.bad ? '(' + p.da + ',' + p.de + ') ' + p.bad : '(' + p.da + ',' + p.de + ') ' + (p.slides ? 'slid from ' + p.un.x.toFixed(0) + ',' + p.un.y.toFixed(0) + ' to ' : 'at ')
+        + p.pr.x.toFixed(0) + ',' + p.pr.y.toFixed(0) + (p.outside && p.edge && p.same ? '' : ' WRONG')).join('; ') + ' - ' + slid + ' slid, ' + left + ' left alone');
+  /* The slide is the radar's doing and nothing else: with the radar hidden the pointer is where it always was, in each direction it had slid in. */
+  await page.tap('#ar-radarbtn'); await frames2(page);
+  const away = [];
+  for(const p of ptr.filter(p => p.slides)){
+    await onAim(page, stP.az + p.da, stP.el + p.de);
+    const q = await probe(page);
+    away.push({ da: p.da, de: p.de, pr: q.pointer, box: q.radar.box, off: q.pointer ? dist2(q.pointer, p.un) : null });
+  }
+  await page.tap('#ar-radarbtn');
+  await until(page, () => { const q = ARView.probe; return q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 5000);
+  chk('...and with the radar hidden the pointer is back where it always was, in each of the directions it had slid in',
+      away.length >= 2 && away.every(a => a.pr && a.box === null && a.off <= 1),
+      away.map(a => '(' + a.da + ',' + a.de + ') ' + (a.pr ? a.off.toFixed(2) + ' px from the edge point' : 'no pointer')).join('; '));
+
+  /* A drag across the radar turns the sky, since the radar takes no touch: the trim is what is read, as in the hand-turn check. */
+  await onAim(page, stP.az, 20);
+  const r0 = await probe(page), rb = r0.radar.box;
+  const hx = rb.x + 30, hy = rb.y + rb.h/2;
+  await page.mouse.move(hx, hy); await page.mouse.down();
+  for(let i = 1; i <= 10; i++) await page.mouse.move(hx + i*10, hy);
+  await page.mouse.up();
+  await frames2(page);
+  const r1 = await probe(page);
+  const wantTrim = r0.trim - (100/r0.F)*DEG/Math.max(Math.cos(r0.view.el*RAD), 0.3);
+  chk('...and a drag across the radar still turns the sky: the trim moves as it does for a drag anywhere else on the screen',
+      near(r1.trim, wantTrim, 0.05) && Math.abs(r1.trim - r0.trim) > 1, 'trim ' + n2(r0.trim) + '° to ' + n2(r1.trim) + '° (want ' + n2(wantTrim) + '°)');
+  /* The crosshair follows the pose the view draws, hand turn included. */
+  await settle(page); await frames2(page);
+  const q6 = await probe(page), d6 = q6.radar.draw;
+  const w6 = d6 && d6.aim ? plotAt(d6.size, q6.view.az, q6.view.el) : null;
+  chk('...and the crosshair follows the pose the view shows, a hand turn included: it is at the transform of the view, which is no longer where the phone points',
+      !!w6 && dist2(d6.aim, w6) <= 0.15 && Math.abs(S.wrap180(q6.view.az - stP.az)) > 0.5,
+      w6 ? 'view ' + n2(q6.view.az) + '° for a phone at ' + n2(stP.az) + '°, crosshair ' + n2(dist2(d6.aim, w6)) + ' px from the transform of the view' : 'no crosshair');
+
+  /* With Align open: the readout gets taller and the radar is lifted over it. */
+  await page.click('#ar-alignbtn'); await frames2(page);
+  const LA = await radarLayout(page);
+  chk('with the Align panel open the readout is taller, and the radar is lifted clear of it: still inside the screen, still under no control',
+      !!LA.probeBox && radarInView(LA) && radarClear(LA) && LA.read.h > L.read.h, 'readout ' + n2(L.read.h) + ' → ' + n2(LA.read.h) + ' px tall; radar bottom ' + n2(LA.box.y + LA.box.h)
+      + ' vs readout top ' + n2(LA.read.y) + '; ' + (radarWhy(LA) || 'nothing under it'));
+  await page.click('#ar-alignbtn');
+
+  /* The Radar button, and what it keeps. */
+  const T0 = await page.evaluate(() => { const b = document.getElementById('ar-radarbtn');
+    return { label: b.textContent.trim(), pressed: b.getAttribute('aria-pressed'), row: !!b.closest('.ar-actions') && !!b.closest('.ar-read') }; });
+  chk('the Radar button is in the readout\'s row of buttons, and pressed while the radar is shown',
+      T0.label === 'Radar' && T0.pressed === 'true' && T0.row, JSON.stringify(T0));
+  await page.tap('#ar-radarbtn'); await frames2(page);
+  const T1 = await radarLayout(page);
+  chk('...tapped, it hides the radar (the canvas, the probe\'s box and what it drew), is no longer pressed, and keeps "0" in gt.arradar',
+      T1.hidden && T1.display === 'none' && T1.probeBox === null && T1.draw === null && !T1.on && T1.pressed === 'false' && T1.key === '0', JSON.stringify({ hidden: T1.hidden, box: T1.probeBox, on: T1.on, pressed: T1.pressed, key: T1.key }));
+  await page.tap('#ar-radarbtn');
+  await until(page, () => { const q = ARView.probe; return q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 5000);
+  const T2 = await radarLayout(page), blue2 = T2.draw ? await radarBlue(page, T2.draw.size) : { n: 0 };
+  chk('...tapped again it shows it, with the crosshair on it, pressed, and keeps "1"',
+      !T2.hidden && !!T2.probeBox && T2.on && T2.pressed === 'true' && T2.key === '1' && blue2.n >= 60,
+      JSON.stringify({ hidden: T2.hidden, box: !!T2.probeBox, on: T2.on, pressed: T2.pressed, key: T2.key, blue: blue2.n }));
+  await page.tap('#ar-radarbtn'); await frames2(page);
+  await closeAR(page); await tapAR(page);
+  await until(page, () => ARView.probe.state === 'running', null, 20000); await frames2(page);
+  const T3 = await radarLayout(page);
+  chk('hidden, then the view closed and opened again: the radar is still hidden, and the button says so',
+      T3.state === 'running' && T3.hidden && T3.probeBox === null && !T3.on && T3.pressed === 'false' && T3.key === '0', JSON.stringify({ state: T3.state, hidden: T3.hidden, on: T3.on, pressed: T3.pressed, key: T3.key }));
+  await page.tap('#ar-radarbtn');
+  await until(page, () => { const q = ARView.probe; return q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 5000);
+  const T4 = await radarLayout(page);
+  chk('...and shown again for the rest of the checks', !T4.hidden && !!T4.probeBox && T4.on && T4.key === '1');
+
+  /* Before there is a pose, and when the view fails, there is nothing to point with: no radar. */
+  await closeAR(page);
+  await page.evaluate(() => __feed(null));
+  await tapAR(page);
+  const NP = await radarLayout(page);
+  chk('opened with no reading from the sensors yet, the radar is not there (nothing to point with); the readings come and it is',
+      (NP.state === 'asking' || NP.state === 'waiting') && NP.hidden && NP.probeBox === null && NP.draw === null, NP.state + ', hidden ' + NP.hidden + ', box ' + JSON.stringify(NP.probeBox));
+  await page.evaluate(() => { const q = ARView.probe; __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, q.decl || 0))); });
+  await radarReady(page);
+  const NP2 = await radarLayout(page);
+  chk('...and with the reading in, the radar is there', !NP2.hidden && !!NP2.probeBox && !!NP2.draw && NP2.draw.aim !== null, 'state ' + NP2.state);
+  await closeAR(page);
+  await page.evaluate(() => { __feed(null); __ar.noOri = true; });
+  await tapAR(page);
+  await until(page, () => ARView.state === 'failed', null, 10000);
+  const FL = await radarLayout(page);
+  chk('a view that has failed (a browser with no motion sensors) has no radar, whatever the reader chose',
+      FL.state === 'failed' && FL.hidden && FL.probeBox === null && FL.on, FL.state + ', hidden ' + FL.hidden + ', chosen on ' + FL.on);
+  await page.evaluate(() => { __ar.noOri = false; ARView.close(); });
+  await page.waitForTimeout(100);
+
+  /* The spacecraft below the horizon is not drawn; the next pass is. */
+  const pre = await page.evaluate(() => {
+    const D = __gt.D, P = D.passes, q = ARView.probe;
+    let k = P.findIndex(p => p.t0ms > q.ms + 10*60000);
+    if(k < 0) k = P.findIndex(p => p.t1ms < q.ms - 10*60000 && p.t0ms - 5*60000 >= D.start.getTime());
+    if(k < 0) return null;
+    const t = P[k].t0ms - 5*60000, idx = Math.round((t - D.start.getTime())/1000/D.step);
+    const r = document.getElementById('time'); r.value = idx; r.dispatchEvent(new Event('input', { bubbles: true }));
+    return { k };
+  });
+  await frames2(page);
+  await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, 0))));
+  await tapAR(page);
+  await radarReady(page);
+  const q7 = await probe(page), d7 = q7.radar.draw, st7 = await satNow(page);
+  const pp = await page.evaluate(ms => { const p = __gt.D.passes.find(p => p.t1ms >= ms); return p ? { maxAz: p.maxAz, maxEl: p.maxEl, t0: p.t0ms } : null; }, q7.ms);
+  const top7 = pp && d7 ? plotAt(d7.size, pp.maxAz, pp.maxEl) : null, px7 = top7 ? await radarPx(page, [top7]) : [null];
+  chk('five minutes before a pass the spacecraft is below the horizon and has no dot on the radar, and the pass it is about to fly is drawn',
+      !!pre && st7.el < 0 && !!d7 && d7.craft === null && d7.pass === true && !!pp && pp.t0 > q7.ms && rgbNear(px7[0], RADAR_PASS, 12),
+      pre ? 'spacecraft at ' + n2(st7.el) + '°, dot ' + JSON.stringify(d7 && d7.craft) + ', pass drawn ' + (d7 && d7.pass) + ', its top pixel ' + JSON.stringify(px7[0]) : 'the window has no second pass to look before');
+  await closeAR(page);
+  await downTo(page, best.k, 35);
+
+  /* Held sideways, and on a small phone. */
+  for(const th of [90, 270]){
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.evaluate(t => { __ar.orient = t === 270 ? -90 : 90; }, th);
+    const sL = await page.evaluate(t => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms);
+      __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(st.az, 0, t, q.decl || 0))); return st; }, th);
+    await tapAR(page);
+    await radarReady(page);
+    await settle(page);
+    const LS = await radarLayout(page), sideS = radarSide(844, 390);
+    chk('held sideways (θ ' + th + ') the radar is a square of ' + sideS + ' px at the foot of the screen on the right, clear of the readout column, the Close button and the bars',
+        !!LS.probeBox && near(LS.box.w, sideS, 0.01) && radarInView(LS) && radarClear(LS) && radarMid(LS) && near(LS.W - LS.box.x - LS.box.w, 12, 1.5) && near(LS.H - LS.box.y - LS.box.h, 12, 1.5),
+        'box ' + [LS.box.x, LS.box.y, LS.box.w, LS.box.h].map(n2).join(' ') + ' on ' + LS.W + 'x' + LS.H + ', readout ends at x ' + n2(LS.read.x + LS.read.w) + '; ' + (radarWhy(LS) || 'nothing under it'));
+    /* The crosshair is where the camera's axis points, whichever way up the phone is held: level, at the spacecraft's bearing, which is on the rim. */
+    const wantL = plotAt(sideS, sL.az, 0), dL = LS.draw && LS.draw.aim ? dist2(LS.draw.aim, wantL) : Infinity;
+    chk('...and its crosshair is where the camera points whichever way up the phone is held: level (0°) at the spacecraft\'s bearing, so on the rim there',
+        dL <= 0.3, LS.draw && LS.draw.aim ? 'crosshair ' + n2(LS.draw.aim.x) + ',' + n2(LS.draw.aim.y) + ' vs ' + n2(wantL.x) + ',' + n2(wantL.y) : 'no crosshair drawn');
+    /* The pointer's own words, held sideways: the radar is in the corner at the foot on the right, and a spacecraft off the screen towards that
+       corner has its arrow slid along the edge to the radar's side and its words held off the radar, as upright. The poses are the spacecraft's
+       offset from where the phone points (a negative azimuth offset to the right, a positive elevation offset below); the check is the same as
+       the upright one's, and asks that the words came near the radar's box in some pose, so that it is not passed by keeping away from it. */
+    const lp = [];
+    for(const [da, de] of [[-50, 30], [-70, 30], [-90, 40], [-40, 45], [-50, 45], [-60, 45]]){
+      const r = await labelsAt(da, de, th, sL), own = r.labels.filter(l => ownText(r, l));
+      lp.push({ da, de, r, own, into: r.box ? own.map(l => intoRadarArt(l, r.box)) : [] });
+    }
+    const nearBox = (l, b) => l.x0 < b.x + b.w + 6 && l.x1 > b.x - 6 && l.y0 < b.y + b.h + 6 && l.y1 > b.y - 6;
+    chk('...and its pointer\'s own words, with the spacecraft off the screen towards the radar\'s corner, are off the radar\'s box and do not lie over what it draws (θ ' + th + '), in any of six poses, and in some they come within 6 px of its box',
+        lp.every(p => !!p.r.box && p.own.length >= 1 && p.into.every(k => k <= 0.5) && !p.own.some(l => inRadarBox(l, p.r.box))) && lp.filter(p => p.own.some(l => nearBox(l, p.r.box))).length >= 1,
+        lp.map(p => '(' + p.da + ',' + p.de + '): ' + (p.own.map(l => sayL(l) + (p.r.box ? (inRadarBox(l, p.r.box) ? ' is in the radar\'s box' : p.into[p.own.indexOf(l)] > 0.5 ? ' reaches ' + p.into[p.own.indexOf(l)].toFixed(1) + ' px into the radar' : nearBox(l, p.r.box) ? ' clear, near' : ' clear') : ' no radar')).join(' | ') || 'no pointer text')).join('; '));
+    await page.click('#ar-alignbtn'); await frames2(page);
+    const LS2 = await radarLayout(page);
+    await page.click('#ar-alignbtn');
+    await until(page, () => ARView.probe.radar.box ? { ok: true } : false, null, 5000);
+    const LS3 = await radarLayout(page);
+    chk('...with the Align panel open (it takes that corner) the radar gives way and the choice is untouched; closed again it returns',
+        LS2.hidden && LS2.probeBox === null && LS2.on && LS2.key === '1' && !LS3.hidden && !!LS3.probeBox && radarClear(LS3),
+        'open: hidden ' + LS2.hidden + ', box ' + JSON.stringify(LS2.probeBox) + '; closed: box ' + (LS3.probeBox ? 'back' : 'none'));
+    await closeAR(page);
+  }
+  /* Small phones, held upright: it is left out where there is no room for it between the bars and the readout, and where it is shown it is under
+     no control. Which of the two a phone gets is not asserted (it follows the readout's wrapping); that it is never both is. */
+  await page.evaluate(() => { __ar.orient = 0; });
+  const smalls = [];
+  for(const [w, h] of [[320, 568], [375, 667]]){
+    await page.setViewportSize({ width: w, height: h });
+    await page.evaluate(() => { const q = ARView.probe; __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, q.decl || 0))); });
+    await tapAR(page);
+    await until(page, () => ARView.probe.state === 'running', null, 20000); await frames2(page);
+    const A = await radarLayout(page);
+    await page.click('#ar-alignbtn'); await frames2(page);
+    const B = await radarLayout(page);
+    await page.click('#ar-alignbtn');
+    smalls.push({ w, h, A, B });
+    await closeAR(page);
+  }
+  const okSm = (L, w, h) => (L.probeBox ? !L.hidden && radarInView(L) && radarClear(L) && radarMid(L) && near(L.box.w, radarSide(w, h), 0.01) : L.hidden && L.draw === null);
+  const saySm = L => L.probeBox ? 'shown, ' + (radarWhy(L) || 'clear') : 'hidden (no room)';
+  chk('on small phones (320x568, 375x667) the radar is either clear of every control and bar and off the middle of the sky, or not shown at all, never over one; with Align open too',
+      smalls.every(s => okSm(s.A, s.w, s.h) && okSm(s.B, s.w, s.h)),
+      smalls.map(s => s.w + 'x' + s.h + ' (radar ' + radarSide(s.w, s.h) + ' px): ' + saySm(s.A) + '; Align open: ' + saySm(s.B)).join(' | '));
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  /* Nothing the radar did read the camera's picture, and the browser keeps only the reader's choice. */
+  const pics = await page.evaluate(() => __ar.pictures.slice());
+  chk('the radar never touched the camera\'s picture: the census of draws, reads and captures of it is empty after all of the above (the radar canvas\'s own pixels were read, which is not flagged)',
+      pics.length === 0, pics.length ? [...new Set(pics)].join(', ') : 'nothing in the census');
+  const keys1 = await page.evaluate(() => Object.keys(localStorage));
+  const wrote = keys1.filter(k => !keys0.includes(k));
+  chk('...and the only thing it left in the browser is gt.arradar, the reader\'s choice', wrote.length === 1 && wrote[0] === 'gt.arradar', 'written: ' + (wrote.join(', ') || 'nothing'));
+  console.log('\n  page errors (radar): ' + (errs.length ? errs.join(' | ') : 'none'));
+  const nErr = errs.length;
+  await ctx.close();
+  return nErr;
+}
+
+/* An iPhone before it has found north: its azimuth means nothing, so the radar has the pass and the spacecraft and no crosshair; it comes with the
+   bearing, and goes again when the page is left and the bearing is lost. */
+async function radarIOS(browser, port){
+  const { ctx, page, errs } = await phone(browser, port);
+  await atBestPass(page);
+  await tapAR(page);
+  const C = 137;
+  await page.evaluate(c => { const a = __aimAt(0, 10, 0, 0); __feed({ type: 'deviceorientation', a: (a.a + c) % 360, b: a.b, g: a.g, h: 0, acc: 10 }); }, C);
+  await until(page, () => { const q = ARView.probe; return q.state === 'finding' && q.drawn.horizon && q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 20000);
+  const f0 = await probe(page), d0 = f0.radar.draw, st0 = await satNow(page);
+  if(d0){
+    const top = await page.evaluate(() => { const p = __gt.D.passes.find(p => p.t1ms >= ARView.probe.ms); return { az: p.maxAz, el: p.maxEl }; });
+    const px = await radarPx(page, [plotAt(d0.size, top.az, top.el), plotAt(d0.size, st0.az, st0.el)]), blue = await radarBlue(page, d0.size);
+    chk('an iPhone that has not found north: the radar is there with the pass and the spacecraft, and no crosshair (its azimuth means nothing yet)',
+        f0.state === 'finding' && f0.radar.on && !!f0.radar.box && d0.aim === null && d0.pass === true && d0.craft !== null && dist2(d0.craft, plotAt(d0.size, st0.az, st0.el)) <= 0.05
+        && rgbNear(px[0], RADAR_PASS, 12) && rgbNear(px[1], RADAR_PASS, 12) && blue.n === 0,
+        f0.state + ', crosshair ' + JSON.stringify(d0.aim) + ', pass ' + d0.pass + ', dot ' + JSON.stringify(d0.craft) + ', pass top pixel ' + JSON.stringify(px[0]) + ', dot pixel ' + JSON.stringify(px[1]) + ', ' + blue.n + ' blue pixels');
+  } else chk('an iPhone that has not found north: the radar is there with the pass and the spacecraft, and no crosshair (its azimuth means nothing yet)', false, f0.state + ', nothing drawn');
+  await page.evaluate(c => __feed({ type: 'deviceorientation', a: (330 + c) % 360, b: 30, g: 0, h: 30, acc: 10 }), C);
+  await until(page, () => ARView.probe.settled && ARView.state === 'running', null, 20000);
+  await page.evaluate(c => { const q = ARView.probe, st = __gt.stateAt(__gt.D.track, q.ms), a = __aimAt(st.az, st.el, 0, q.decl || 0);
+    __feed({ type: 'deviceorientation', a: (a.a + c) % 360, b: a.b, g: a.g, h: 200, acc: 10 }); }, C);
+  await until(page, () => { const q = ARView.probe; return q.marker && Math.hypot(q.marker.x - q.cx, q.marker.y - q.cy) < 1 ? { ok: true } : false; }, null, 10000);
+  await settle(page); await frames2(page);
+  const f1 = await probe(page), d1 = f1.radar.draw;
+  if(d1 && d1.aim && d1.craft){
+    const w1 = plotAt(d1.size, f1.view.az, f1.view.el), blue = await radarBlue(page, d1.size);
+    chk('...with the bearing taken the crosshair comes, at the transform of the view, and held up at the spacecraft it is on the dot',
+        f1.state === 'running' && dist2(d1.aim, w1) <= 0.15 && dist2(d1.aim, d1.craft) <= 0.5 && blue.n >= 60 && dist2(blue, d1.aim) <= 0.4,
+        f1.state + ', crosshair ' + n2(dist2(d1.aim, w1)) + ' px from the transform of the view, ' + n2(dist2(d1.aim, d1.craft)) + ' px from the dot, ' + blue.n + ' blue pixels');
+  } else chk('...with the bearing taken the crosshair comes, at the transform of the view, and held up at the spacecraft it is on the dot', false, f1.state + ', crosshair ' + JSON.stringify(d1 && d1.aim));
+  await page.evaluate(() => { __ar.vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => { __ar.vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+  await until(page, () => /^Finding north again/.test(ARView.probe.message), null, 2500);
+  await frames2(page);
+  const f2q = await probe(page), d2 = f2q.radar.draw;
+  chk('...and coming back to the page, the bearing lost, the crosshair goes again while the pass and the spacecraft stay',
+      /^Finding north again/.test(f2q.message) && !!f2q.radar.box && !!d2 && d2.aim === null && d2.pass === true && d2.craft !== null,
+      '"' + f2q.message.slice(0, 30) + '…", crosshair ' + JSON.stringify(d2 && d2.aim) + ', pass ' + (d2 && d2.pass));
+  const key = await page.evaluate(() => localStorage.getItem('gt.arradar'));
+  chk('...and opening and using an iPhone\'s view wrote no gt.arradar', key === null, 'gt.arradar ' + JSON.stringify(key));
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  console.log('\n  page errors (radar, iPhone): ' + (errs.length ? errs.join(' | ') : 'none'));
+  const nErr = errs.length;
+  await ctx.close();
+  return nErr;
+}
+
+/* A reader who had hidden the radar on an earlier visit: the choice is read from storage, and anything but "0" means shown. */
+async function radarKept(browser, port){
+  const { ctx, page, errs } = await phone(browser, port);
+  await page.evaluate(() => { __ar.camera = 'canvas'; localStorage.setItem('gt.arradar', '0'); });
+  await atBestPass(page);
+  await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, 0))));
+  await tapAR(page);
+  await until(page, () => ARView.probe.state === 'running', null, 20000); await frames2(page);
+  const K0 = await radarLayout(page);
+  chk('a phone whose storage holds gt.arradar = "0" starts with the radar hidden, and the button says so',
+      K0.state === 'running' && K0.hidden && K0.probeBox === null && !K0.on && K0.pressed === 'false' && K0.key === '0', JSON.stringify({ state: K0.state, hidden: K0.hidden, on: K0.on, pressed: K0.pressed, key: K0.key }));
+  await page.tap('#ar-radarbtn');
+  await until(page, () => { const q = ARView.probe; return q.radar.box && q.radar.draw ? { ok: true } : false; }, null, 5000);
+  const K1 = await radarLayout(page);
+  chk('...and the button brings it, and the choice is kept as "1"', !K1.hidden && !!K1.probeBox && K1.on && K1.pressed === 'true' && K1.key === '1', JSON.stringify({ hidden: K1.hidden, on: K1.on, pressed: K1.pressed, key: K1.key }));
+  await closeAR(page);
+  await page.evaluate(() => localStorage.setItem('gt.arradar', 'no'));
+  await tapAR(page);
+  await radarReady(page);
+  const K2 = await radarLayout(page);
+  chk('...a stored value that is not "0" is not a choice to hide it: the radar is shown', !K2.hidden && !!K2.probeBox && K2.on && K2.pressed === 'true', JSON.stringify({ hidden: K2.hidden, on: K2.on, pressed: K2.pressed }));
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  console.log('\n  page errors (radar, kept): ' + (errs.length ? errs.join(' | ') : 'none'));
+  const nErr = errs.length;
+  await ctx.close();
+  return nErr;
+}
+
+/* The radar's AOS and LOS: starred (AOS*, LOS*) at an end that the analysis window, and not the horizon, cut off, as the main view stars its own.
+   The labels are drawn with fillText on the radar's cached layer canvases, which have no id, so they are caught there: by a hook of this part's
+   own, on a page of its own (the main view's labels are on #ar-sky and carry times). A pass is cut off at its start when the page opens in the middle
+   of it, since the window opens at "now": the clock of that page starts a third of the way into the longest pass of the day. It is cut off at its
+   end when the window closes in the middle of it: the window is 24 h, and the clock of that page starts 24 h before the same pass's middle. The
+   time slider then takes the view to that pass, the last of the window. */
+async function radarEnds(browser, port){
+  const first = await phone(browser, port);
+  const known = await first.page.evaluate(() => { const D = __gt.D;
+    return { name: D.entry.name, win: D.end.getTime() - D.start.getTime(), passes: D.passes.map(p => ({ t0: p.t0ms, t1: p.t1ms })) }; });
+  await first.ctx.close();
+  let nErr = first.errs.length;
+  if(!known.passes.length){
+    chk('precondition: the window has a pass for the radar to star the ends of', false, 'the window has none');
+    return nErr;
+  }
+  const long = known.passes.reduce((a, p) => p.t1 - p.t0 > a.t1 - a.t0 ? p : a), dur = long.t1 - long.t0;
+  const opened = async (at, slide) => {
+    const { ctx, page, errs } = await phone(browser, port, undefined, at);
+    await page.evaluate(() => {
+      __ar.camera = 'canvas';
+      const C = CanvasRenderingContext2D.prototype, fill = C.fillText;
+      window.__ends = [];
+      C.fillText = function(t){ if(this.canvas.id !== 'ar-sky' && /^(AOS|LOS)\*?$/.test(t)) window.__ends.push(t); return fill.apply(this, arguments); };
+    });
+    const D = await page.evaluate(slide => {
+      const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click();
+      const D = __gt.D, P = D.passes, a = P[0], z = P[P.length - 1];
+      if(slide){
+        const t = z.t0ms + 0.25*(z.t1ms - z.t0ms), r = document.getElementById('time');
+        r.value = Math.round((t - D.start.getTime())/1000/D.step); r.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      return { name: D.entry.name, n: P.length, a: { t0: a.t0ms, t1: a.t1ms, clipA: a.clipA, clipL: a.clipL }, z: { t0: z.t0ms, t1: z.t1ms, clipA: z.clipA, clipL: z.clipL } };
+    }, slide);
+    await frames2(page);
+    await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, 0))));
+    await tapAR(page);
+    await radarReady(page);
+    await frames2(page);
+    const got = await page.evaluate(() => ({ labels: [...new Set(__ends)], pass: !!(ARView.probe.radar.draw && ARView.probe.radar.draw.pass) }));
+    await page.evaluate(() => { __feed(null); ARView.close(); });
+    nErr += errs.length;
+    await ctx.close();
+    return Object.assign(D, got);
+  };
+  const A = await opened(long.t0 + 0.3*dur, false), Z = await opened(long.t0 + 0.5*dur - known.win, true);
+  const say = (c, k) => c.name + ', ' + c.n + ' passes, ' + (k === 'a' ? 'first' : 'last') + ' ' + (c[k].clipA ? 'cut at its start' : 'whole at its start') + ', ' + (c[k].clipL ? 'cut at its end' : 'whole at its end');
+  chk('precondition: opened in the middle of a pass, the window\'s first pass is cut off at its start only, and the radar draws a pass',
+      A.name === known.name && A.a.clipA && !A.a.clipL && near(A.a.t1, long.t1, 5000) && A.pass, say(A, 'a') + '; the radar ' + (A.pass ? 'draws a pass' : 'draws none'));
+  chk('a pass the window opened in the middle of has its start starred on the radar, AOS*, and its end, at the horizon, plain: LOS',
+      A.labels.includes('AOS*') && A.labels.includes('LOS') && !A.labels.includes('AOS') && !A.labels.includes('LOS*'), 'drawn: ' + (A.labels.join(' ') || 'nothing'));
+  chk('precondition: opened a day before the same pass, the window closes in the middle of it: the last pass is cut off at its end only',
+      Z.name === known.name && Z.z.clipL && !Z.z.clipA && near(Z.z.t0, long.t0, 5000) && Z.pass, say(Z, 'z') + '; the radar ' + (Z.pass ? 'draws a pass' : 'draws none'));
+  chk('...and a pass the window closed in the middle of has its end starred on the radar, LOS*, and its start, at the horizon, plain: AOS',
+      Z.labels.includes('LOS*') && Z.labels.includes('AOS') && !Z.labels.includes('LOS') && !Z.labels.includes('AOS*'), 'drawn: ' + (Z.labels.join(' ') || 'nothing'));
+  console.log('\n  page errors (radar, ends of a pass): ' + (nErr ? nErr : 'none'));
+  return nErr;
+}
+
+/* The radar's height above the readout does not bob. The readout's lines re-wrap: at 375 px the Target row is a line longer when the pointer's
+   words are on it, which they are while the spacecraft is off the screen, and a line shorter when it is back. The radar rises with the readout's top
+   at once, so that it never covers the text, and does not drop back when the readout shrinks by a line or two (40 px at most): it would bob under
+   the eye of the reader who is bringing the crosshair onto the spacecraft. A drop of more than that, the Align panel closing, it follows. The phone
+   is swept from aimed at the spacecraft to turned right round from it and back, and the radar's box and the readout's top are read at each step. */
+async function radarHold(browser, port){
+  const { ctx, page, errs } = await phone(browser, port);
+  await page.evaluate(() => { __ar.camera = 'canvas'; });
+  const best = await atBestPass(page);
+  await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click(); });
+  await downTo(page, best.k, 12);
+  await page.setViewportSize({ width: 375, height: 667 });
+  const st = await satNow(page);
+  await page.evaluate(([az, el]) => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(az, el, 0, 0))), [st.az, st.el]);
+  await tapAR(page);
+  await radarReady(page);
+  await camLive(page);
+  /* Resolves once the Target row has the pointer's words that the view says it is showing, or has lost the ones it had. */
+  const targetFollows = prev => until(page, ([prev]) => { const q = ARView.probe, t = document.getElementById('ar-target').textContent;
+    return (q.pointer && q.pointer.text ? t.endsWith(q.pointer.text) : !prev || !t.includes(prev)) ? { ok: true } : false; }, [prev], 5000);
+  const gap = L => L.read.y - (L.box.y + L.box.h);
+  const sweep = [];
+  let words = '';
+  for(const da of [0, 30, 60, 90, 120, 60, 30, 0]){
+    await onAim(page, st.az + da, st.el);
+    await targetFollows(words);
+    await frames2(page);
+    const L = await radarLayout(page), q = await probe(page);
+    words = q.pointer && q.pointer.text || '';
+    sweep.push({ da, L, read: L.read, box: L.probeBox ? L.box : null, words });
+  }
+  const steps = sweep.slice(1).map((s, i) => ({ from: sweep[i].da, to: s.da, dTop: s.read.y - sweep[i].read.y, dBox: s.box && sweep[i].box ? s.box.y - sweep[i].box.y : null }));
+  const grew = steps.filter(k => k.dTop < -5), shrank = steps.filter(k => k.dTop > 5);
+  chk('precondition: swept off the spacecraft and back, the readout grows (the Target row wraps round the pointer\'s words) and shrinks, and the radar is there throughout',
+      grew.length >= 1 && shrank.length >= 1 && sweep.every(s => s.box), 'readout top by step: ' + sweep.map(s => s.da + '° ' + n2(s.read.y)).join(', ')
+      + '; grew at ' + grew.map(k => k.from + '→' + k.to).join(' ') + ', shrank at ' + shrank.map(k => k.from + '→' + k.to).join(' '));
+  chk('...a readout that shrinks by a line does not let the radar down: each time it did, the radar\'s box has not moved down at all (never by less than 41 px)',
+      shrank.length >= 1 && shrank.every(k => k.dTop <= 40 && k.dBox !== null && !(k.dBox > 0.5 && k.dBox < 41)),
+      shrank.map(k => k.from + '→' + k.to + ': readout down ' + n2(k.dTop) + ' px, radar ' + (k.dBox === null ? 'gone' : n2(k.dBox) + ' px down')).join('; '));
+  chk('...a readout that grows lifts it at once, so that it is never over the text: the first time, by as much as the readout rose, and at every step 8 px or more above the readout and under no control',
+      grew.length >= 1 && grew[0].dBox !== null && grew[0].dBox <= grew[0].dTop + 1.5 && sweep.every(s => s.box && gap(s.L) >= 7 && radarClear(s.L) && radarInView(s.L)),
+      'first rise: readout up ' + (grew.length ? n2(-grew[0].dTop) : '-') + ' px, radar ' + (grew.length && grew[0].dBox !== null ? n2(-grew[0].dBox) : '-') + ' px up; gap to the readout ' + sweep.map(s => s.box ? n2(gap(s.L)) : 'none').join(', '));
+  /* The Align panel opened and shut: the readout falls by far more than 40 px, and the radar goes down with it. At 375x667 it gives way while
+     Align is open (there is no room), and at 390x844 it stays and is lifted. */
+  const cycle = async () => {
+    const a = await radarLayout(page);
+    await page.click('#ar-alignbtn'); await frames2(page);
+    const b = await radarLayout(page);
+    await page.click('#ar-alignbtn');
+    await until(page, () => ARView.probe.radar.box ? { ok: true } : false, null, 5000);
+    await frames2(page);
+    return { a, b, c: await radarLayout(page) };
+  };
+  const sizes = [{ w: 375, h: 667, cy: await cycle() }];
+  await closeAR(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await tapAR(page);
+  await radarReady(page);
+  await frames2(page);
+  sizes.push({ w: 390, h: 844, cy: await cycle() });
+  chk('...and when Align is opened and shut the radar follows the readout down again: it is back within 8 + 40 px above it, at 375x667 and at 390x844',
+      sizes.every(s => s.cy.b.read.h > s.cy.a.read.h + 100 && !!s.cy.c.probeBox && gap(s.cy.c) >= 7 && gap(s.cy.c) <= 48),
+      sizes.map(s => s.w + 'x' + s.h + ': readout ' + n2(s.cy.a.read.h) + ' → ' + n2(s.cy.b.read.h) + ' → ' + n2(s.cy.c.read.h) + ' px tall, radar open: '
+        + (s.cy.b.probeBox ? 'shown' : 'hidden') + ', shut again: ' + (s.cy.c.probeBox ? n2(gap(s.cy.c)) + ' px above the readout' : 'not shown')).join('; '));
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  console.log('\n  page errors (radar, holding its height): ' + (errs.length ? errs.join(' | ') : 'none'));
+  const nErr = errs.length;
+  await ctx.close();
+  return nErr;
+}
+
+/* A phone on London time under Bangkok's sky says so on a status line of four or five lines at 375 px, and with Align open on a short phone the
+   readout leaves almost no sky between the bars and itself. The radar had been left out only where it had no room above the readout, counted from the
+   foot of the status box; on a squeezed view the page widens the safe rectangle to the whole screen, and the radar was counted from the top of it
+   and drawn under the status box, exactly where there was least room. Now it is left out there. Which of hidden and shown a phone gets is the
+   page's to say, within this: shown, it is clear of every bar and control; hidden, there was no room. */
+async function radarLondon(browser, port){
+  const rows = [];
+  let nErr = 0;
+  for(const [w, h] of [[375, 667], [360, 640]]){
+    const { ctx, page, errs } = await phone(browser, port, { timezoneId: 'Europe/London' });
+    await page.evaluate(() => { __ar.camera = 'canvas'; });
+    const best = await atBestPass(page);
+    await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click(); });
+    await downTo(page, best.k, 12);
+    await page.setViewportSize({ width: w, height: h });
+    await page.evaluate(() => __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(90, 30, 0, 0))));
+    await tapAR(page);
+    await until(page, () => ARView.probe.state === 'running' && /^The sky is drawn from Bangkok/.test(ARView.probe.message), null, 20000);
+    await radarReady(page);
+    await frames2(page);
+    const A = await radarLayout(page);
+    await page.click('#ar-alignbtn'); await frames2(page);
+    const B = await radarLayout(page);
+    await page.click('#ar-alignbtn');
+    rows.push({ w, h, A, B });
+    await page.evaluate(() => { __feed(null); ARView.close(); });
+    nErr += errs.length;
+    await ctx.close();
+  }
+  /* The radar's top edge if it were drawn, where the page puts it: its foot 8 px above the readout. And the foot of the bars. */
+  const wouldBe = (L, w, h) => L.read.y - 8 - radarSide(w, h);
+  const barsFoot = L => Math.max(L.top.y + L.top.h, L.status ? L.status.y + L.status.h : 0) + 8;
+  const okSm = (L, w, h) => !!L.status && L.status.h >= 70 && (L.probeBox
+    ? !L.hidden && radarInView(L) && radarClear(L) && near(L.box.w, radarSide(w, h), 0.01)
+    : L.hidden && L.draw === null && wouldBe(L, w, h) < barsFoot(L) + 1.5);
+  const saySm = (L, w, h) => 'status ' + (L.status ? n2(L.status.y) + '..' + n2(L.status.y + L.status.h) + ' (' + Math.round((L.status.h - 18)/18.75) + ' lines)' : 'none') + ', readout top ' + n2(L.read.y) + ': '
+    + (L.probeBox ? 'radar shown at ' + n2(L.box.y) + '..' + n2(L.box.y + L.box.h) + ', ' + (radarWhy(L) || 'clear of every bar and control')
+      : 'radar hidden (it would have been at ' + n2(wouldBe(L, w, h)) + ', the bars end at ' + n2(barsFoot(L)) + ')');
+  chk('a phone on London time under Bangkok\'s sky (a status of four or five lines), at 375x667 and 360x640: the radar is never under the status box or any bar or control; hidden where there is no room, clear of them all where it is shown',
+      rows.every(r => okSm(r.A, r.w, r.h)), rows.map(r => r.w + 'x' + r.h + ': ' + saySm(r.A, r.w, r.h)).join(' | '));
+  chk('...and with Align open, which takes almost all the sky between the bars and the readout, just the same',
+      rows.every(r => okSm(r.B, r.w, r.h) && r.B.read.h > r.A.read.h + 100), rows.map(r => r.w + 'x' + r.h + ', Align open (readout ' + n2(r.B.read.h) + ' px tall): ' + saySm(r.B, r.w, r.h)).join(' | '));
+  console.log('\n  page errors (radar, London time): ' + (nErr ? nErr : 'none'));
+  return nErr;
+}
+
+/* A phone held sideways, on a 667x375 screen in sim time (the clock off the present, so that Go live shows): Go live, Radar and Align are three
+   buttons in a column of 203 px. They had wrapped onto two rows, and the column grew some 46 px up over the top bar. The landscape rule now closes
+   the buttons up (a 4 px gap, 8 px of padding at the sides, no letter spacing) so that they fit one row, each still 40 px or more high. A phone of
+   844x390 with Go live and Try again as well is not held to one row: it wraps, by design. */
+async function radarSideways(browser, port){
+  const { ctx, page, errs } = await phone(browser, port);
+  await page.evaluate(() => { __ar.camera = 'canvas'; });
+  const best = await atBestPass(page);
+  await page.evaluate(() => { const b = document.getElementById('tpplay'); if(b.getAttribute('aria-label') === 'Pause') b.click(); });
+  await downTo(page, best.k, 12);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.evaluate(() => { __ar.orient = 90; });
+  const st = await satNow(page);
+  await page.evaluate(([az]) => { const q = ARView.probe; __feed(Object.assign({ type: 'deviceorientationabsolute' }, __aimAt(az, 0, 90, q.decl || 0))); }, [st.az]);
+  await tapAR(page);
+  await radarReady(page);
+  await settle(page); await frames2(page);
+  const R = await page.evaluate(() => {
+    const rc = e => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
+    const id = i => document.getElementById(i);
+    return { live: rc(id('ar-live')), radar: rc(id('ar-radarbtn')), align: rc(id('ar-alignbtn')), col: rc(document.querySelector('.ar-read')), dl: rc(document.querySelector('.ar-dl')),
+      liveShown: !id('ar-live').hidden && id('ar-live').getBoundingClientRect().width > 0, sim: id('arview').hasAttribute('data-sim'),
+      topFoot: Math.max(...[...document.querySelector('.ar-top').children].map(c => c.getBoundingClientRect().bottom)), W: ARView.probe.W, H: ARView.probe.H };
+  });
+  const row = [R.live, R.radar, R.align];
+  chk('precondition: held sideways on a 667x375 screen in sim time, the readout is a column and Go live is shown, with Radar and Align',
+      R.W === 667 && R.H === 375 && R.sim && R.liveShown && R.col.w < R.W*0.5 && R.radar.w > 0 && R.align.w > 0,
+      'screen ' + R.W + 'x' + R.H + ', sim ' + R.sim + ', Go live ' + (R.liveShown ? 'shown' : 'hidden') + ', column ' + n2(R.col.w) + ' px wide');
+  chk('held sideways on 667x375 in sim time, Go live, Radar and Align are one row of the column: the same top within 1 px, in that order, inside the column, each button 40 px high or more',
+      near(R.live.y, R.radar.y, 1) && near(R.radar.y, R.align.y, 1) && R.live.x < R.radar.x && R.radar.x < R.align.x
+      && row.every(b => b.h >= 39.99 && b.x >= R.col.x - 0.5 && b.x + b.w <= R.col.x + R.col.w + 0.5),
+      row.map((b, i) => ['Go live', 'Radar', 'Align'][i] + ' ' + n2(b.x) + ',' + n2(b.y) + ' ' + n2(b.w) + 'x' + n2(b.h)).join('; ') + '; column ' + n2(R.col.x) + '..' + n2(R.col.x + R.col.w));
+  /* The column's top is its box, and that has 12 px of padding above its first line, so that a long Clock row, which is three lines in this column,
+     can put the box a few px above the lowest thing in the top bar and still leave the text clear. A second row of buttons put it some 46 px higher. */
+  chk('...and the column has not grown up over the top bar: its box begins within 24 px of the lowest thing in the bar and its first line below it (a second row of buttons would put it 44 px higher)',
+      R.col.y >= R.topFoot - 24 && R.dl.y >= R.topFoot - 10,
+      'column top ' + n2(R.col.y) + ', first line ' + n2(R.dl.y) + ', the top bar\'s lowest child ends at ' + n2(R.topFoot) + (R.col.y < R.topFoot ? ' (the column\'s box reaches ' + n2(R.topFoot - R.col.y) + ' px into the bar\'s own padding: a long Clock row)' : ''));
+  await page.evaluate(() => { __feed(null); ARView.close(); });
+  console.log('\n  page errors (radar, held sideways): ' + (errs.length ? errs.join(' | ') : 'none'));
+  const nErr = errs.length;
+  await ctx.close();
+  return nErr;
+}
+
 /* ---- a phone in London, with the observer still in Bangkok ----------------- */
 async function partLondon(browser, port){
   console.log('\nPart B — a phone that is not where the observer is\n');
@@ -1509,11 +2365,19 @@ async function partC(browser){
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   let errs = 0;
   try {
-    errs += await partB(browser, port);
-    errs += await partIOS(browser, port);
-    errs += await partLondon(browser, port);
-    errs += await partNoGL(port);
-    errs += await partC(browser);
+    /* GT_AR_ONLY=radar runs the radar's part alone, in about half the time of the whole suite: for working on it. A full run is the one that counts. */
+    const only = process.env.GT_AR_ONLY;
+    if(only && (only !== 'radar' || !NEW)) throw new Error('GT_AR_ONLY can only be "radar", and only for the rebuilt page (GT_TARGET=new), not "' + only + '"');
+    if(!only){
+      errs += await partB(browser, port);
+      errs += await partIOS(browser, port);
+    }
+    if(NEW && (!only || only === 'radar')) errs += await partRadar(browser, port);
+    if(!only){
+      errs += await partLondon(browser, port);
+      errs += await partNoGL(port);
+      errs += await partC(browser);
+    }
   } finally {
     await browser.close(); srv.close();
   }

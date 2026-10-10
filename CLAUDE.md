@@ -1,6 +1,6 @@
 # SattrackSlop
 
-An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L44 and the numbered rows).
+An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L45 and the numbered rows).
 
 ## The one rule
 

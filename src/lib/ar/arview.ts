@@ -44,7 +44,14 @@
  * gives it what it reached for as globals (SkyAR, WMM, and the window's own members) and that returns it. It still creates no DOM and
  * touches none until init() and open(): the Node suite loads it with no document. The one added line is the late-bound WMM below, which
  * stands in for the bare global the old code read (CHANGED: it was `WMM.field(...)` against a script-tag global).
+ *
+ * Added since the move, each at a line marked "CHANGED (radar)": the radar (src/lib/ar/radar.ts), a polar plot of the whole sky in the
+ * corner of the view, with the spacecraft, its pass and the phone's aim as a blue crosshair. It reads the pose and the pass this file is
+ * already drawing, and changes nothing the old code did, except that the off-screen pointer and the words kept on the screen (the
+ * spacecraft's name, the pointer's guidance) keep off the radar's box.
  */
+import { drawRadar, radarSize } from './radar';
+
 export function makeARView(global) {
 const WMM = { field: (...a) => global.WMM.field(...a), decimalYear: (...a) => global.WMM.decimalYear(...a) };
 
@@ -104,6 +111,7 @@ const MSG = {
 const SLOTS = ['fatal', 'camera', 'here', 'elsewhere', 'compass', 'phase', 'hint'];
 
 const LENS = { def: 68, min: 45, max: 80, key: 'gt.arlens' };
+const RADAR_KEY = 'gt.arradar';       // CHANGED (radar): '0' once the reader has hidden the radar; shown otherwise
 const FIRST_READING_MS = 3000;       // armed once both prompts have been answered
 const REL_GRACE_MS = 600;            // Chrome's relative stream starts before its absolute one
 const MINUS = '−';
@@ -126,6 +134,8 @@ let slots = {}, compassNote = null, siteSeen = '';
 let pal = {}, safe = { left: 0, top: 0, right: 0, bottom: 0 }, keepOut = [];
 let ptrs = new Map(), pinch = null, pinched = false;
 let probeDraw = {};
+let radarCtx = null, radarOn = true, radarBox = null, radarSeen = null;   // CHANGED (radar): see radar.ts
+const radarCache = { make: (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, layers: {}, last: null };
 const tickCache = new WeakMap();
 
 const now = () => performance.now();
@@ -136,7 +146,8 @@ const named = n => { const e = new Error(n); e.name = n; return e; };
 
 /* ---- init ------------------------------------------------------------------------ */
 const IDS = ['video', 'sky', 'site', 'pos', 'here', 'close', 'status', 'view', 'north', 'decl', 'clock',
-             'target', 'pass', 'live', 'retry', 'alignbtn', 'align', 'left', 'right', 'trim0', 'lensv', 'fov', 'fov0'];
+             'target', 'pass', 'live', 'retry', 'alignbtn', 'align', 'left', 'right', 'trim0', 'lensv', 'fov', 'fov0',
+             'radar', 'radarbtn'];                // CHANGED (radar): the two added ids
 function init(o){
   try {
     S = global.SkyAR; P = o && o.provider; root = o && o.root; opener = o && o.opener;
@@ -144,6 +155,8 @@ function init(o){
     for(const k of IDS){ E[k] = $('ar-' + k); if(!E[k]) return false; }
     ctx = E.sky.getContext('2d');
     if(!ctx) return false;
+    radarCtx = E.radar.getContext('2d');             // CHANGED (radar)
+    if(!radarCtx) return false;
     fusion = S.compassFusion(); smooth = S.smoother();
     E.close.addEventListener('click', () => close());
     E.retry.addEventListener('click', retry);
@@ -158,6 +171,7 @@ function init(o){
     E.trim0.addEventListener('click', () => { trim = 0; });
     E.fov.addEventListener('input', () => setLens(+E.fov.value));
     E.fov0.addEventListener('click', () => setLens(LENS.def));
+    E.radarbtn.addEventListener('click', () => setRadar(!radarOn));     // CHANGED (radar)
     E.sky.addEventListener('pointerdown', pDown);
     E.sky.addEventListener('pointermove', pMove);
     E.sky.addEventListener('pointerup', pUp);
@@ -404,12 +418,18 @@ function show(){
   pal = { ink: tok('--ar-ink', '#EAF2F6'), ink2: tok('--ar-ink2', '#AFC3CE'), halo: tok('--ar-halo', '#05090C'),
           grid: tok('--ar-grid', 'rgba(234,242,246,.30)'), horizon: tok('--ar-horizon', 'rgba(234,242,246,.85)'),
           mask: tok('--ar-mask', '#F29CBB'), pass: tok('--ar-pass', '#E8BC5A'), craft: tok('--ar-craft', '#55D1E7'),
-          sun: tok('--ar-sun', '#FFE7A8'), warn: tok('--ar-warn', '#D69A5C') };
+          sun: tok('--ar-sun', '#FFE7A8'), warn: tok('--ar-warn', '#D69A5C'),
+          aim: tok('--ar-aim', '#3D8BFF') };     // CHANGED (radar): the phone's crosshair
   let stored = null;
   try { stored = parseFloat(localStorage.getItem(LENS.key)); } catch(e){}
   fov = isFinite(stored) ? S.clamp(LENS.min, LENS.max, stored) : LENS.def;
   fovSet = fov !== LENS.def;
   E.fov.value = String(fov);
+  let hidden = null;                                  // CHANGED (radar): the reader's choice from the last time
+  try { hidden = localStorage.getItem(RADAR_KEY); } catch(e){}
+  radarOn = hidden !== '0'; radarBox = null; radarSeen = null; radarCache.last = null; radarUp = 0;
+  E.radarbtn.setAttribute('aria-pressed', String(radarOn));
+  E.radar.hidden = true;
   trim = 0; fusion.reset(); smooth.reset(); cam = view = null;
   absR = relR = null; absSeen = iosSeen = nullSeen = tiltOnly = false; firstRelAt = null; source = null;
   hinted = false; firstRunning = false; foundAgain = false;
@@ -454,6 +474,7 @@ function close(){
   if(pushed && history.state && history.state.ar){ pushed = false; try { history.back(); } catch(e){} }
   pushed = false;
   fusion.reset(); smooth.reset(); trim = 0; ptrs.clear(); pinch = null; pinched = false;
+  radarBox = null; radarSeen = null;                   // CHANGED (radar)
   state = 'closed'; camState = 'off';
   if(opener) opener.focus();
 }
@@ -489,6 +510,7 @@ function fail(key, extra){
              : key === 'tilt' ? MSG.tilt : MSG.noReading, 'warn');
   if(ctx){ ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, E.sky.width, E.sky.height); }
   cam = view = null;
+  radarBox = null; radarSeen = null; E.radar.hidden = true;     // CHANGED (radar): nothing to point with
   retryShown();
 }
 
@@ -609,12 +631,85 @@ function measure(){
      the readout's own box instead. */
   const beside = read.width < W*0.75;
   safe = { left: 16, top: t + 8, right: W - 16, bottom: (beside ? H : read.top) - 8 };
+  const barsBottom = safe.top;            // CHANGED (radar): the bars' real foot, before the squeezed-view fallback below overwrites it
   if(safe.bottom - safe.top < 60){ safe.top = 16; safe.bottom = H - 16; }
   keepOut = beside ? [{ x: read.left, y: read.top, w: read.width, h: read.height }] : [];
   if(!E.align.hidden){                                 // sideways it is a panel of its own, on the right
     const al = E.align.getBoundingClientRect();
     if(al.width && al.left > read.right - 1) keepOut.push({ x: al.left, y: al.top, w: al.width, h: al.height });
   }
+  layoutRadar(read, beside, barsBottom);
+}
+/* CHANGED (radar): where the radar sits and whether it is there. Above the readout at the right, whatever height the readout has
+   (the Align panel makes it taller); held sideways, the foot of the screen at the right, which is where the Align panel is, so the
+   radar gives way to it. It is also left out when there is no room between it and the bars, before there is a pose to show, and when
+   the reader has hidden it. The box it takes is kept clear of by the labels and by the off-screen pointer. */
+let radarCss = '', radarUp = 0;
+function layoutRadar(read, beside, barsBottom){
+  const s = radarSize(W, H);
+  /* `up` is the height of the radar's bottom edge above the foot of the view. In portrait it follows the readout's top: a readout that
+     grows lifts it at once, so it never covers the text; one that shrinks by a line or two (the pointer's words leaving the Target row,
+     a pass text wrapping another way) does not let it drop, since it would bob under the reader's eye just as they bring the crosshair
+     onto the spacecraft. A fall of more than 40 px (the Align panel closing) is followed. */
+  const want = Math.round(H - read.top + 8);
+  let up = 12;
+  if(!beside){
+    up = radarUp - want > 40 ? want : Math.max(want, radarUp);
+    if(H - up - s < barsBottom) up = want;                      // a height held for steadiness must not cost it its room
+  }
+  radarUp = beside ? 0 : up;
+  const show = !!cam && radarOn && state !== 'failed' && state !== 'closed'
+            && !(beside && !E.align.hidden) && H - up - s >= barsBottom;
+  if(E.radar.hidden === show) E.radar.hidden = !show;
+  if(!show){ radarBox = null; return; }
+  const css = s + 'px ' + (beside ? 'calc(env(safe-area-inset-bottom) + 12px)' : up + 'px');
+  if(css !== radarCss){
+    radarCss = css;
+    E.radar.style.width = E.radar.style.height = s + 'px';
+    E.radar.style.bottom = beside ? 'calc(env(safe-area-inset-bottom) + 12px)' : up + 'px';
+  }
+  const r = E.radar.getBoundingClientRect();
+  radarBox = { x: r.left, y: r.top, w: r.width, h: r.height };
+  keepOut.push(radarBox);
+}
+function setRadar(on){
+  radarOn = on;
+  try { localStorage.setItem(RADAR_KEY, on ? '1' : '0'); } catch(e){}
+  E.radarbtn.setAttribute('aria-pressed', String(on));
+  measure();
+}
+/* The radar's own frame: the pose and the pass this file has just drawn, handed to radar.ts as they are. An iPhone still finding
+   north has an azimuth that means nothing, so it has no crosshair, as the main view draws no meridians then. */
+function drawRadarFrame(){
+  radarSeen = null;
+  if(!radarBox) return;
+  const s = radarSize(W, H), bw = Math.round(s*dpr);
+  if(E.radar.width !== bw || E.radar.height !== bw){ E.radar.width = bw; E.radar.height = bw; }
+  const ms = P.now(), st = P.target() ? P.at(ms) : null, p = P.pass(ms);
+  const finding = source === 'ios' && fusion.offset === null;
+  radarSeen = drawRadar(radarCtx, {
+    size: s, dpr, mask: P.mask, ms,
+    pass: p && p.arc && p.arc.length > 1 ? p : null,
+    craft: st ? { az: st.az, el: st.el } : null,
+    aim: view && !finding ? { az: view.az, el: view.el } : null
+  }, pal, radarCache);
+}
+/* The off-screen pointer sits on the edge of the safe rectangle; where that is under the radar it slides along the edge to the nearer
+   side of it, so that it is never hidden and still points the way. */
+function awayFromRadar(e){
+  const b = radarBox, m = 8;
+  if(!b || e.x < b.x - m || e.x > b.x + b.w + m || e.y < b.y - m || e.y > b.y + b.h + m) return e;
+  const out = [];
+  if(Math.abs(e.x - safe.right) < 1 || Math.abs(e.x - safe.left) < 1){
+    out.push({ x: e.x, y: b.y - m }, { x: e.x, y: b.y + b.h + m });
+  }
+  if(Math.abs(e.y - safe.bottom) < 1 || Math.abs(e.y - safe.top) < 1){
+    out.push({ x: b.x - m, y: e.y }, { x: b.x + b.w + m, y: e.y });
+  }
+  const ok = out.filter(q => q.x >= safe.left && q.x <= safe.right && q.y >= safe.top && q.y <= safe.bottom);
+  if(!ok.length) return e;
+  ok.sort((p, q) => Math.hypot(p.x - e.x, p.y - e.y) - Math.hypot(q.x - e.x, q.y - e.y));
+  return ok[0];
 }
 function loop(ts){
   raf = requestAnimationFrame(loop);
@@ -650,6 +745,7 @@ function loop(ts){
     }
   }
   draw();
+  drawRadarFrame();                                    // CHANGED (radar)
   if(changed) readout();
 }
 
@@ -891,7 +987,7 @@ function drawPointer(a, aim, name, ms, label){
   else if(Math.hypot(a.xc, a.yc) > 1e-6){ dx = a.xc; dy = -a.yc; }
   else { dx = S.wrap180(aim.az - view.az) >= 0 ? 1 : -1; dy = 0; }
   const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
-  const e = S.edgePoint(cx, cy, dx, dy, safe);
+  const e = awayFromRadar(S.edgePoint(cx, cy, dx, dy, safe));      // CHANGED (radar): it was S.edgePoint(...) alone
   const col = aim.kind === 'aos' ? pal.pass : pal.craft;
   ctx.beginPath();
   ctx.moveTo(e.x, e.y);
@@ -937,6 +1033,14 @@ function placeLabels(list){
       const c = cands[0];
       at = { x: S.clamp(safe.left, Math.max(safe.left, safe.right - w), c.x),
              y: S.clamp(safe.top, Math.max(safe.top, safe.bottom - h), c.y), w, h };
+      /* CHANGED (radar): a label kept on the screen because nothing else fits (the spacecraft's name, the pointer's words) is not kept
+         over the radar: along the same row to its left, else above it. Nothing else is moved, so with the radar hidden this is the old
+         code. */
+      const rb = radarBox;
+      if(rb && at.x < rb.x + rb.w && at.x + at.w > rb.x && at.y < rb.y + rb.h && at.y + at.h > rb.y){
+        const left = { x: rb.x - 4 - w, y: at.y, w, h }, above = { x: at.x, y: rb.y - 4 - h, w, h };
+        if(fits(left) && !hit(left)) at = left; else if(fits(above) && !hit(above)) at = above;
+      }
     }
     if(!at) continue;
     boxes.push(at);
@@ -1065,7 +1169,8 @@ const ARView = {
       settled: fusion ? fusion.offset !== null : false, offset: fusion ? fusion.offset : null,
       decl: decl.ok ? decl.D : null, declZone: decl.zone, trim, fov, theta, F, W, H, cx, cy,
       safe: Object.assign({}, safe), lag: smooth ? smooth.lag : null, ms: P ? P.now() : null, follow,
-      view: view ? { az: view.az, el: view.el } : null, frames, stream: camStream, listening
+      view: view ? { az: view.az, el: view.el } : null, frames, stream: camStream, listening,
+      radar: { on: radarOn, box: radarBox ? Object.assign({}, radarBox) : null, draw: radarSeen }     // CHANGED (radar)
     }, probeDraw);
   }
 };

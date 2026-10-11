@@ -25,8 +25,8 @@ type Any = any;
 
 /** What the controller exposes (arview.ts is moved verbatim and carries no types of its own). */
 export interface ArViewApi {
-  init(o: { provider: unknown; root: HTMLElement; opener: HTMLElement }): boolean;
-  open(): void;
+  init(o: { provider: unknown; root: HTMLElement; opener: HTMLElement; radarOpener?: HTMLElement | null }): boolean;
+  open(o?: { mode?: 'ar' | 'radar' }): void;
   close(): void;
   project(az: number, el: number): { x: number; y: number; on: boolean; front: boolean } | null;
   readonly isOpen: boolean;
@@ -132,10 +132,10 @@ class ArSession {
       await app.ready;
       this.chunk = chunk;
       mount(chunk.ArRoot, { target: document.body });
-      const root = document.getElementById('arview'), opener = document.getElementById('arbtn');
+      const root = document.getElementById('arview'), opener = document.getElementById('arbtn'), radarOpener = document.getElementById('radarbtn');
       if (!root || !opener) return false;
       const ui = chunk.makeARView(globalFor(chunk)) as ArViewApi;
-      if (!ui.init({ root, opener, provider: provider(chunk) })) return false;
+      if (!ui.init({ root, opener, radarOpener, provider: provider(chunk) })) return false;
       this.ui = ui;
       this.ready = true;
       return true;
@@ -149,6 +149,11 @@ class ArSession {
   /** The tap. Nothing before open(): on an iPhone the motion request must be made inside it, so this runs synchronously. */
   open(): void {
     try { this.ui?.open(); } catch (e) { console.error(e); }
+  }
+
+  /** The radar view: the same tap, the same sensors, and no camera asked for (the controller is told, and never calls getUserMedia). */
+  openRadar(): void {
+    try { this.ui?.open({ mode: 'radar' }); } catch (e) { console.error(e); }
   }
 
   /** Follow the pointer type, and bring the view up when there is a finger to use it with. */

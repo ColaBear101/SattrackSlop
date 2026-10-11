@@ -1,4 +1,4 @@
-/* perf-server.js - the server verification/perf.js measures both pages through.
+/* perf-server.js - the server verification/suites/perf.js measures both pages through.
  *
  * Why not lib/harness.js's server: it is plain HTTP/1.1, sends nothing compressed, and the harness answers the old page's CDN scripts with
  * route.fulfill(). Chromium's network throttling (Network.emulateNetworkConditions, the "slow 4G" of the budget) does NOT apply to a response
@@ -43,7 +43,7 @@ const CDN_HOST = 'cdnjs.cloudflare.com', FONT_CSS_HOST = 'fonts.googleapis.com',
 const MOCK_HOSTS = [CDN_HOST, FONT_CSS_HOST, FONT_FILE_HOST];
 const REFUSED_HOSTS = ['celestrak.org', '*.celestrak.org', '*.ivanstanojevic.me', 'gibs.earthdata.nasa.gov', '*.open-meteo.com'];
 const CDN_FILES = {
-  '/ajax/libs/satellite.js/6.0.1/satellite.min.js': path.join(ROOT, 'verification', 'satellite.min.js'),
+  '/ajax/libs/satellite.js/6.0.1/satellite.min.js': path.join(ROOT, 'verification', 'reference', 'satellite.min.js'),
   '/ajax/libs/three.js/r128/three.min.js': path.join(ROOT, 'node_modules', 'three', 'build', 'three.min.js')
 };
 /* Fontsource carries the fonts the old page asks Google for: IBM Plex Mono and Sans 400/500/600 and Archivo (variable). */

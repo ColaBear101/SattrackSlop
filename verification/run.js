@@ -27,44 +27,44 @@ const LOGS = path.join(DIR, '.logs');
 
 /* kind: 'numbers' stops the run on failure; alone = timing-sensitive, never overlapped */
 const STAGES = [
-  { name: 'verify',      script: 'verify.js',            kind: 'numbers', fast: true },
-  { name: 'evec',        script: 'verify-evec.js',       kind: 'numbers', fast: true },
-  { name: 'planner',     script: 'verify-planner.js',    kind: 'numbers', fast: true },
-  { name: 'gate',        script: 'regress.js',           kind: 'numbers', fast: true },
-  { name: 'slice',       script: 'verify-slice.js',      kind: 'numbers', fast: true, target: 'new' },
-  { name: 'advisor',     script: 'verify-advisor.js',    alone: true, fast: true },
+  { name: 'verify',      script: 'suites/verify.js',              kind: 'numbers', fast: true },
+  { name: 'evec',        script: 'suites/verify-evec.js',         kind: 'numbers', fast: true },
+  { name: 'planner',     script: 'suites/verify-planner.js',      kind: 'numbers', fast: true },
+  { name: 'gate',        script: 'gate/regress.js',               kind: 'numbers', fast: true },
+  { name: 'slice',       script: 'suites/verify-slice.js',        kind: 'numbers', fast: true, target: 'new' },
+  { name: 'advisor',     script: 'suites/verify-advisor.js',      alone: true, fast: true },
   /* the report's words against the old page's: five spacecraft that differ in kind, from one site, for a day; the whole matrix
      (38 x 2 spans x 3 sites, ten minutes) is the stage after it */
-  { name: 'golden-lite', script: 'golden.js',          fast: true, target: 'new', args: ['--sats', 'KNACKSAT-2;ISS (ZARYA);CLUSTER II-FM8;INTELSAT 10-02;TEN-KOH', '--sites', 'svalbard', '--spans', '24'] },
-  { name: 'golden',      script: 'golden.js',           alone: true, target: 'new' },
+  { name: 'golden-lite', script: 'gate/golden.js',                fast: true, target: 'new', args: ['--sats', 'KNACKSAT-2;ISS (ZARYA);CLUSTER II-FM8;INTELSAT 10-02;TEN-KOH', '--sites', 'svalbard', '--spans', '24'] },
+  { name: 'golden',      script: 'gate/golden.js',                alone: true, target: 'new' },
   /* the 3D scene against the old page's: pixels and the scene graph, in 16 states (three of them here, the whole set after it) */
-  { name: 'ab3d-lite',   script: 'ab3d.js',             alone: true, fast: true, target: 'new', args: ['--target', 'new', '--fit', '--only', 'default,elements,pov'] },
-  { name: 'ab3d',        script: 'ab3d.js',             alone: true, target: 'new', args: ['--target', 'new', '--fit'] },
-  { name: 'frames',      script: 'verify-frames.js',    alone: true, target: 'new' },
-  { name: 'refresh',     script: 'verify-refresh.js',    alone: true },
-  { name: 'refresh-api', script: 'verify-refresh.js',    alone: true, env: { GT_API: 'up' }, target: 'new' },
-  { name: 'pov',         script: 'verify-pov.js' },
-  { name: 'doppler',     script: 'verify-doppler.js' },
-  { name: 'optical',     script: 'verify-optical.js' },
-  { name: 'site',        script: 'verify-site.js' },
-  { name: 'export',      script: 'verify-export.js' },
-  { name: 'catalogue',   script: 'verify-catalogue.js' },
-  { name: 'custom',      script: 'verify-custom.js',     alone: true },
-  { name: 'timeline',    script: 'verify-timeline.js' },
-  { name: 'elements',    script: 'verify-elements.js' },
-  { name: 'lifetime',    script: 'verify-lifetime.js' },
-  { name: 'ar',          script: 'verify-ar.js',         alone: true },
+  { name: 'ab3d-lite',   script: 'gate/ab3d.js',                  alone: true, fast: true, target: 'new', args: ['--target', 'new', '--fit', '--only', 'default,elements,pov'] },
+  { name: 'ab3d',        script: 'gate/ab3d.js',                  alone: true, target: 'new', args: ['--target', 'new', '--fit'] },
+  { name: 'frames',      script: 'suites/verify-frames.js',       alone: true, target: 'new' },
+  { name: 'refresh',     script: 'suites/verify-refresh.js',      alone: true },
+  { name: 'refresh-api', script: 'suites/verify-refresh.js',      alone: true, env: { GT_API: 'up' }, target: 'new' },
+  { name: 'pov',         script: 'suites/verify-pov.js' },
+  { name: 'doppler',     script: 'suites/verify-doppler.js' },
+  { name: 'optical',     script: 'suites/verify-optical.js' },
+  { name: 'site',        script: 'suites/verify-site.js' },
+  { name: 'export',      script: 'suites/verify-export.js' },
+  { name: 'catalogue',   script: 'suites/verify-catalogue.js' },
+  { name: 'custom',      script: 'suites/verify-custom.js',       alone: true },
+  { name: 'timeline',    script: 'suites/verify-timeline.js' },
+  { name: 'elements',    script: 'suites/verify-elements.js' },
+  { name: 'lifetime',    script: 'suites/verify-lifetime.js' },
+  { name: 'ar',          script: 'suites/verify-ar.js',           alone: true },
   /* the Snap button of the AR and radar views: the picture's file and pixels, its caption, the share sheet, and that the camera's picture is
      drawn exactly once, for the press. About 30 s on an idle machine (a minute and more while other browsers run), so in the fast set too;
      rebuilt page only: the old page had no Snap */
-  { name: 'ar-snap',     script: 'verify-ar-snap.js',    alone: true, fast: true, target: 'new' },
-  { name: 'layout',      script: 'verify-layout.js',     alone: true, target: 'new' },
-  { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true },
+  { name: 'ar-snap',     script: 'suites/verify-ar-snap.js',      alone: true, fast: true, target: 'new' },
+  { name: 'layout',      script: 'suites/verify-layout.js',       alone: true, target: 'new' },
+  { name: 'planner-ui',  script: 'suites/verify-planner-ui.js',   alone: true },
   /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits
      (the test surface brings both up eagerly). Rebuilt page only: the old page had no chunks to arrive. */
-  { name: 'visitor',     script: 'verify-visitor.js',    alone: true, target: 'new' },
+  { name: 'visitor',     script: 'suites/verify-visitor.js',      alone: true, target: 'new' },
   /* the accessibility rules, at five viewports in both colour schemes, in the states that change what is on screen (the planner among them) */
-  { name: 'axe',         script: 'axe.js',               alone: true, target: 'new', args: ['--strict'] }
+  { name: 'axe',         script: 'suites/axe.js',                 alone: true, target: 'new', args: ['--strict'] }
 ];
 
 const argv = process.argv.slice(2);

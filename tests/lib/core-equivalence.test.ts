@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
    one's own satellite.js build, and demands the same bits - on constants, on frame maths, and on tracks
    for every element set in the catalogue. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const umd: any = require(path.join(ROOT, 'verification', 'satellite.min.js'));
+const umd: any = require(path.join(ROOT, 'verification', 'reference', 'satellite.min.js'));
 /* The sandbox is handed this realm's Date: satellite.js tells a Date from numeric arguments with
    `instanceof Date`, which a Date made inside another vm realm would fail. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -3,7 +3,7 @@ import { writeUrl } from '../../src/state/url';
 
 /* writeUrl runs after every analysis, and the AR view keeps a history entry of its own while it is open: {ar: 1} in history.state, which Close
    goes back past (history.back()) only if it is still there. An address-bar update that replaced the state with null would leave that entry
-   behind, and the Back button would then land on the view's page with the view shut. verification/verify-ar.js checks the entry is gone
+   behind, and the Back button would then land on the view's page with the view shut. verification/suites/verify-ar.js checks the entry is gone
    after every way of closing, and rewrites the address under the open view once, in a browser: from an observer that is in the address bar,
    Use my location takes the site out of it. This is the same guard on the line itself, without one. */
 describe('writeUrl', () => {

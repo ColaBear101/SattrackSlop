@@ -270,11 +270,18 @@ scripts/            extract-data (the data files, from what the old page carried
 tests/              Vitest, a folder to a layer: lib, state, components, scene, net, shared,
                     server; and data, build (what the bundle holds) and moon (the Moon
                     pages are unchanged)
-verification/       an independent second implementation, and the regression gate
-                    (regress.js against baseline.json). Also the browser suites, which
-                    serve the build over http through lib/harness.js; run.js, which runs
-                    every stage and prints one table; and, made from the old page, what the
-                    rebuilt one is held to: golden.json (its prose) and ab3d/ (its 3D scene)
+verification/       run.js, which runs every stage and prints one table, and:
+  gate/             the regression gate (regress.js against baseline.json, measured by
+                    snapshot.js) and, made from the old page, what the rebuilt one is held
+                    to: golden.json (its prose) and ab3d/ (its 3D scene)
+  suites/           verify.js and the browser suites (verify-*.js, axe, perf, screens),
+                    which serve the build over http through lib/harness.js
+  reference/        the independent second implementation (core.js, propagate.js) and the
+                    pinned satellite.min.js the old page loaded
+  fixtures/         the inputs the suites read: catalog.txt, WMM.COF and NOAA's test values,
+                    resource.txt, the behaviour and mutant lists
+  tools/            not stages: the data fetchers, the mutation runners, check-behaviours
+  lib/              the harness, the layout probe, the perf server, advisor-copy-checks
 
 vercel.json         frontend-only: the build, immutable /assets, nosniff, no-referrer, a
                     Permissions-Policy, and a report-only CSP that names the page's one
@@ -283,7 +290,7 @@ vercel.json         frontend-only: the build, immutable /assets, nosniff, no-ref
 legacy/             deleted at the cutover. The old page lives in git at the tag
                     `legacy-earth-console` (main@4eadd7a). To run a suite against it:
                     `git worktree add legacy legacy-earth-console`, then
-                    `GT_TARGET=legacy node verification/<suite>.js`. Three of the scripts
+                    `GT_TARGET=legacy node verification/suites/<suite>.js`. Three of the scripts
                     above (extract-data, legacy-manifest, compare-planner-markup) read it too.
 ```
 
@@ -321,7 +328,7 @@ designator is the giveaway: `1998-067` is the ISS, so KNACKSAT-2 was deployed fr
 and shares its 51.63° orbit at roughly 360 km, not a sun-synchronous one.
 
 **KNACKSAT-2 is outside the brief.** It is not in CelesTrak's Earth Resources group:
-`verification/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
+`verification/fixtures/resource.txt`, a copy of that group's 167 element sets, has no entry for it, and it
 came into this catalogue from SatNOGS rather than from a CelesTrak group (see **Data
 provenance**). The figures in (a) to (c) are correct for KNACKSAT-2, but they are not an answer
 from the group the brief names. KNACKSAT-2 stays the page's default. The page no longer says so
@@ -349,7 +356,7 @@ The observer has to be Bangkok too: a site you moved to is remembered, so press 
 in the observer's panel (the chip in the header) first if you did. KNACKSAT-2 then reads
 899.7 s over 2 passes ("15 min 00 s in view over 24 h from 2026-09-12 14:29 UTC+7 … Element set
 epoch 2026-09-12 07:29Z, embedded").
-`verification/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
+`verification/suites/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
 
 The picker is the page's title, at the top left: press the name and it opens a search over **2,158
 spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. Everything on the page
@@ -511,7 +518,7 @@ this one:
   un-Kozai step from Spacetrack Report #3 on WGS-72 and compares it with the value
   `src/lib/core/propagator.ts` hands the page (the harness reaches it through the library bundle
   that `npm run build:shims` makes): they agree to 2.7e-16 relative across all 167 element sets
-  in `verification/resource.txt`. Until that check existed, nothing independent looked at the
+  in `verification/fixtures/resource.txt`. Until that check existed, nothing independent looked at the
   number on the card — the naive-against-naive comparison above passed whatever SGP4 did.
 - Topocentric elevation agrees with `satellite.js` look angles to 2.6e-10 degrees over 200
   samples across the day, and with a from-scratch WGS-84 topocentric implementation to 1.1e-9
@@ -522,13 +529,13 @@ this one:
   - KNACKSAT-2: **899 s in 2 runs** vs this program's **899.7 s in 2 passes**
 
   The gap is the expected quantisation of a 1 s counter against millisecond-precise AOS/LOS.
-- Both sides run the same SGP4 bytes. The harness propagates with `verification/satellite.min.js`,
+- Both sides run the same SGP4 bytes. The harness propagates with `verification/reference/satellite.min.js`,
   the `satellite.js` 6.0.1 file the old page loaded from cdnjs under an integrity hash. The
   rebuilt page loads nothing from a CDN: it bundles `satellite.js` 6.0.1 from npm, and the harness
   requires `package.json` and `package-lock.json` to name exactly that version and the sha512 of
-  its tarball recorded in `verification/verify.js` (check 5a; three.js r128, which the globe's
+  its tarball recorded in `verification/suites/verify.js` (check 5a; three.js r128, which the globe's
   palette is tuned to, is pinned the same way). `tests/lib/satellite-parity.test.ts` proves that
-  the npm build and `verification/satellite.min.js` give the same bits, on every element set in the
+  the npm build and `verification/reference/satellite.min.js` give the same bits, on every element set in the
   catalogue and a spread of instants. A bumped version or a swapped tarball fails the check, and a
   build that gave other bits would fail the parity test, so the second implementation cannot drift
   onto a different build from the page it is checking. The gate, which loads the built page, would
@@ -537,7 +544,7 @@ this one:
   the hash of the bytes npm ships for it (check 5b).
 
 Run it yourself, on the rebuilt page: `npm run build:shims` once, then
-`GT_TARGET=new node verification/verify.js`.
+`GT_TARGET=new node verification/suites/verify.js`.
 
 #### The view from the spacecraft
 
@@ -587,7 +594,7 @@ Four things were not obvious until the view existed:
 `cam0` — the free camera's bearing and distance — is never written while POV is on, so leaving the
 mode restores the previous camera exactly rather than stranding it wherever the spacecraft was.
 
-`verification/verify-pov.js` measures the camera rather than the picture, because a camera at 0.9999
+`verification/suites/verify-pov.js` measures the camera rather than the picture, because a camera at 0.9999
 of the right place still renders a plausible one: position against the propagated state vector
 (exact, 0.00 km), view direction against the along-track direction and screen-up against the zenith
 (both to 1e-6), a full downward drag landing within the one-degree clamp of nadir, then the real
@@ -1181,7 +1188,7 @@ The caption carries the observer's name and coordinates, and the UTC instant, in
 reader keeps: after *Use my location* the coordinates are the phone's own, to a hundredth of a
 degree, and Snap then puts them in every picture.
 
-These claims are kept by `verification/verify-ar-snap.js`, with a census of the ways a picture can
+These claims are kept by `verification/suites/verify-ar-snap.js`, with a census of the ways a picture can
 be used (**What is checked**, below), and `tests/lib/snap.test.ts` (17 tests) holds the file's
 name, the cover rectangle, the order things are drawn in, where the strip goes, the 72%, the three
 ways of handing over, and the aim vector.
@@ -1371,7 +1378,7 @@ actually had were invisible ones. The Kozai semi-major-axis error was 512 m. The
 hit 15 satellites out of 309. Neither would survive contact with a screenshot, and both would pass
 a "looks the same to me".
 
-`verification/snapshot.js` drives the **real page in a browser** rather than a re-implementation —
+`verification/gate/snapshot.js` drives the **real page in a browser** rather than a re-implementation —
 since the rebuild, the production bundle that `npm run build` makes, served over http — and reads
 full-precision values through a `window.__gt` test surface instead of scraping rounded text. The
 surface is `src/testing/surface.ts`, a lazy chunk the page fetches only when `window.__GT_TEST__` is
@@ -1383,7 +1390,7 @@ totals, and 100 fixed sample probes each.
 **67,488 values, bit-identical**, across `index.html`, `earth/orbit3d.js` and `earth/orbitviz.js`
 when the central body became a parameter, and again, against the same baseline, across the rebuilt
 console. `npm run gate` builds the production bundle, takes the measurements again in a real
-browser, compares them with `verification/baseline.json` with `===` and prints `BIT-IDENTICAL`.
+browser, compares them with `verification/gate/baseline.json` with `===` and prints `BIT-IDENTICAL`.
 `npm run gate:lib` takes the same measurements of the library bundle alone, in a blank Chromium
 page with no app and no server, in seconds. It is Chromium and not Node because the baseline was
 made in Chromium: the same bundle in Node 23.5 differs from it in 364 values by up to 1e-14, V8's
@@ -1409,7 +1416,7 @@ re-taken only after confirming no numeric value had moved.
 ```
 npm run gate        # build the production bundle, measure it, assert bit-identical
 npm run gate:lib    # the same measurements of the library bundle alone, in a blank Chromium page
-GT_TARGET=legacy node verification/snapshot.js --write-baseline    # only ever from the old page
+GT_TARGET=legacy node verification/gate/snapshot.js --write-baseline    # only ever from the old page
 ```
 
 #### Orbital decay and remaining life
@@ -1949,7 +1956,7 @@ back to the live element sets.
 The checks are the repository's usual kind: a second implementation, SGP4 itself, or a count of what
 the page does, and a fault put in on purpose to see which check dies.
 
-**In node.** `verification/verify-planner.js` (`GT_TARGET=new npm run planner`; 665 checks, about
+**In node.** `verification/suites/verify-planner.js` (`GT_TARGET=new npm run planner`; 665 checks, about
 8 s) holds the planner to `satellite.js`, an independent regex checksum and real element sets. The
 counts in this section are the rebuilt page's, which `GT_TARGET=new` names; run against the old page
 (`GT_TARGET=legacy`) the suites count a few more or fewer. The node suites load the TypeScript
@@ -1979,7 +1986,7 @@ in a module the atmosphere is an import, and cannot be absent.
   rounding order, the textbook B*, `BODY.omega`, `mu = 398600.4418`, no 120 km clamp …): every one
   failed a check.
 
-`verification/verify-advisor.js` (`GT_TARGET=new npm run advisor`; 392 checks, about 80 s, and
+`verification/suites/verify-advisor.js` (`GT_TARGET=new npm run advisor`; 392 checks, about 80 s, and
 three more skipped out loud: two ask whether a script is an IIFE over `window` and one whether it
 attaches itself to `window`, which a module is not) holds the Professor to SGP4 and to real element
 sets. It runs the checks of `advisor-copy-checks.js` (87 on their own under `GT_TARGET=new`, under a
@@ -2009,7 +2016,7 @@ second) again against the real dictionary:
   survivor is an equivalent mutant (a condition on one button that the item's own condition implies).
   The mutation scripts, like the planner's, are not in the repository.
 
-**In the page.** `verification/verify-custom.js` (`GT_TARGET=new npm run custom`; 208 checks in 24
+**In the page.** `verification/suites/verify-custom.js` (`GT_TARGET=new npm run custom`; 208 checks in 24
 groups, about three to four minutes): zero requests, to any host and the page's own cache API
 included; the differential above; the eleven poisoned stores; blocked storage; the thirteenth Add;
 the counter; two tabs; an Add SGP4 cannot load, refused with the console's note untouched; the page
@@ -2018,19 +2025,19 @@ opening cleanly with any one of the planner's six chunks refused, with a stored 
 serves the page over http through `verification/lib/harness.js`, and one file runs against either
 build (`GT_TARGET=new` or `legacy`).
 
-`verification/verify-planner-ui.js` (`npm run planner-ui`) drives the planner's own screen the way a
+`verification/suites/verify-planner-ui.js` (`npm run planner-ui`) drives the planner's own screen the way a
 student does: the form, the notes, the fixes, the saved list, twelve viewport sizes in both colour
 schemes, and the Professor’s section on catalogue spacecraft (eight real ones, eleven awkward sets
 through the picker, and the section hidden for a designed orbit, with the planner off, in the
-snapshot and when its build throws). `verification/behaviours.json` traces each of the seventy
-behaviours it holds to the checks that prove it, and `node verification/check-behaviours.js` keeps
+snapshot and when its build throws). `verification/fixtures/behaviours.json` traces each of the seventy
+behaviours it holds to the checks that prove it, and `node verification/tools/check-behaviours.js` keeps
 that map honest. `npm run gate` (it builds the page first, then compares) still reads
 `BIT-IDENTICAL` on all 67,488 values with the planner loaded: none of this touches `compute()` or
 `elements()`.
 
 **The way in.** Every group of those two suites runs on the test-surface path: the harness sets
 `window.__GT_TEST__`, and the page then brings the planner up eagerly, before it publishes
-`window.__gt`. That is not how a visitor meets it, so `verification/verify-visitor.js`
+`window.__gt`. That is not how a visitor meets it, so `verification/suites/verify-visitor.js`
 (`npm run visitor`) opens the page without the flag and says what was fetched and when: the first
 answer on screen before any of the planner's five own chunks is asked for, the pill from the first
 paint, each of the five once within seconds of the answer and none of them under `?tle=embedded`
@@ -2039,20 +2046,20 @@ whichever asks first), a chunk that cannot be fetched taking the pill away and l
 the picker and the saved record as they were, and the pill pressed at first paint opening a planner
 that was started once.
 
-**Guards taken away.** `verification/verify-custom-mutants.js` takes 79 guards out of a copy of the
+**Guards taken away.** `verification/tools/verify-custom-mutants.js` takes 79 guards out of a copy of the
 old page's `index.html` one at a time and each is caught by a named check; 3 more, second layers
 behind a tested first one, survive as listed (25 to 35 minutes; not in `npm run test:all`). It edits
 that page's text, so it cannot be pointed at a bundle, and runs only with the old page checked out
 as `legacy/` (`git worktree add legacy legacy-earth-console`). For the rebuilt page there is
-`npm run mutate` (`verification/mutate-new.js`; 36 minutes at one job, about 20 at two): each of the
-85 mutants in `verification/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
+`npm run mutate` (`verification/tools/mutate-new.js`; 36 minutes at one job, about 20 at two): each of the
+85 mutants in `verification/fixtures/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
 scratch copy that is built and run through `verify-custom.js` on the groups meant to catch it, and 3
 of them are equivalents that must survive. Its first full run caught 81 of the other 82 and let one
 through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
 either build; group 13 has the check now. `--list` checks that every edit's anchor still matches
-exactly once. `verification/behaviours-custom.json` maps each of the 79 old mutants, the 3
+exactly once. `verification/fixtures/behaviours-custom.json` maps each of the 79 old mutants, the 3
 equivalents and the 24 groups to the check, or the Vitest test, that guards the same behaviour here,
-and `node verification/check-behaviours-custom.js` keeps that map honest.
+and `node verification/tools/check-behaviours-custom.js` keeps that map honest.
 
 **Beside the suites.** Vitest (`npm run test:unit`) holds the pure halves of this:
 `tests/lib/custom.test.ts` (what an entry is, what is stored and read back, which names and numbers
@@ -2507,8 +2514,8 @@ order 12, valid to 2030.0, and in the public domain. Its coefficient file, `WMM.
 `data/WMM.COF`, which `src/lib/ar/wmm.ts` imports as text. It is NOAA's file verbatim: on the old
 page it was a literal in `earth/wmm.js`, copied in by script from `WMM2025COF.zip`
 (https://www.ncei.noaa.gov/sites/default/files/2024-12/WMM2025COF.zip, 42,887 bytes), and the
-bytes are the same now. `verification/WMM.COF` is the same file committed as a second copy. The
-same zip's `WMM2025_TestValues.txt` is `verification/WMM2025_TestValues.txt`, and is what the model
+bytes are the same now. `verification/fixtures/WMM.COF` is the same file committed as a second copy. The
+same zip's `WMM2025_TestValues.txt` is `verification/fixtures/WMM2025_TestValues.txt`, and is what the model
 is checked against. The zip's README offers test values of its own; they are the previous model's.
 
 **Orbits you design are not in this catalogue.** One made in the planner is built in the page from
@@ -2550,7 +2557,7 @@ last confirmed it current if one has, or the source a newer set was fetched from
 last check found no current set at CelesTrak, or a newer one SGP4 cannot propagate — in practice an
 object that has come down — that is appended with its time, as the page says it under the element
 set. The site is already in `site`, `site_lat_deg` and `site_lon_deg`.
-`verification/verify-export.js` moves the observer away, applies the site from those columns and
+`verification/suites/verify-export.js` moves the observer away, applies the site from those columns and
 `site_alt_km`, hands the two lines and the window from the file back to the propagator, and gets
 the same passes: AOS, LOS and peak elevation.
 
@@ -2569,7 +2576,7 @@ output on screen:
   octets — and Google Calendar and Outlook reject an over-long line outright rather than wrapping
   it. The fold iterates by code point now, which also keeps surrogate pairs whole.
 
-`verification/verify-export.js` drives the real buttons, intercepts the download, and re-parses the
+`verification/suites/verify-export.js` drives the real buttons, intercepts the download, and re-parses the
 result: a strict quoted-field CSV parser checking the column count on every row, and an unfolder
 checking every line's octet length, the event count, the UTC stamps and the ordering.
 
@@ -2595,7 +2602,7 @@ Two things make that safe rather than merely possible:
   for the current site each time it needs it and keeps no reference to an old one; the pin is
   rebuilt and the site camera re-aimed when the site changes. The check is the same one: it reads
   the pin's own geometry back out of the scene and compares it against the new coordinates.
-- **Bangkok stays the default.** `verification/baseline.json` records `obs = Bangkok` in its meta,
+- **Bangkok stays the default.** `verification/gate/baseline.json` records `obs = Bangkok` in its meta,
   and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
   cannot leak into it. Reset restores the assignment's own total to the bit.
 
@@ -2711,7 +2718,7 @@ magnitudes fainter than 5.0 and a binocular object at best, so its "yes" passes 
 the label is the only thing on screen that says so.
 
 What the estimate does get right is the dependence on range and phase, and that is what separates
-the cases above. Over the week from 2026-09-15, as `verification/verify-optical.js` computes it:
+the cases above. Over the week from 2026-09-15, as `verification/suites/verify-optical.js` computes it:
 
 | | Standard magnitude | Brightest estimate, lit against a dark sky | Verdicts |
 |---|---|---|---|
@@ -2846,7 +2853,7 @@ telemetry. Over its 68.1° pass at 18:12Z on 14 September, in the regression bas
 window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 
 ```
-node verification/fetch-transmitters.js   # re-bake data/transmitters.json
+node verification/tools/fetch-transmitters.js   # re-bake data/transmitters.json
 ```
 
 #### Staying current
@@ -2928,7 +2935,7 @@ Five details that matter more than the fetch itself:
 The embedded catalogue remains the offline fallback and what the first answer is computed from, and
 the other 2,157 objects in the 3D catalogue cloud are still drawn from it — they are context, not
 analysis. To refresh that baseline, rebuild the catalogue and replace `data/catalogue.txt` (and
-`data/catalogue.meta.json`) with it, together with `verification/catalog.txt`, its independent
+`data/catalogue.meta.json`) with it, together with `verification/fixtures/catalog.txt`, its independent
 copy, which a unit test holds equal to it.
 
 ##### When the object is no longer there
@@ -2981,7 +2988,7 @@ The live refresh has three answers of its own that are not a fresher set:
 
 These objects stay in the embedded catalogue for now. Dropping them belongs to the next rebuild;
 doing it by hand would change the catalogue count the regression gate compares.
-`verification/verify-catalogue.js` drives both SGP4 cases through the picker, the window and span
+`verification/suites/verify-catalogue.js` drives both SGP4 cases through the picker, the window and span
 buttons, the transport and the export buttons, in a fixed window — which objects are decayed
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
 The default's fallback is not in the suite: exercising it needs a doctored catalogue.
@@ -3126,9 +3133,9 @@ npm run mutate       # takes one guard at a time out of a scratch copy of src/ a
 ```
 
 `baseline.json` is the old page's answer and is written only from it
-(`GT_TARGET=legacy node verification/snapshot.js --write-baseline`, which refuses anything else);
+(`GT_TARGET=legacy node verification/gate/snapshot.js --write-baseline`, which refuses anything else);
 `npm run snapshot -- --out FILE` takes the same measurements of the page under test into a file.
-`golden.json` and `verification/ab3d/` are the old page's too, and `golden:write` and `ab3d:write`
+`golden.json` and `verification/gate/ab3d/` are the old page's too, and `golden:write` and `ab3d:write`
 capture only that.
 
 **The old page** is no longer in the tree. It is in git at the tag `legacy-earth-console`, which is
@@ -3137,7 +3144,7 @@ harness looks:
 
 ```
 git worktree add legacy legacy-earth-console
-GT_TARGET=legacy node verification/verify-site.js
+GT_TARGET=legacy node verification/suites/verify-site.js
 ```
 
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is

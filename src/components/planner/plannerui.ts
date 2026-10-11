@@ -1558,7 +1558,7 @@ function closePlanner(){
    returned and the frame is drawn, so nothing the console computes or paints waits for it, and
    the gate (which compares what compute() and elements() return) cannot see it. And the WHOLE
    callback is inside a try: it runs after load()'s own try/catch has returned, so an exception in
-   it would be an uncaught page error, which every browser suite and verification/snapshot.js
+   it would be an uncaught page error, which every browser suite and verification/gate/snapshot.js
    count as a failure. A failure says so on the console and hides the section: a panel left over
    from the previous spacecraft, under this one's name, would be worse than none. */
 const RO_MS = 1000;           // the longest an idle callback may wait: a page that is never idle still gets its notes

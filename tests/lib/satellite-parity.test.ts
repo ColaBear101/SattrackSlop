@@ -8,12 +8,12 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const require = createRequire(import.meta.url);
 
 /* The regression baseline was produced with satellite.js 6.0.1 loaded from cdnjs (UMD, minified);
-   verification/satellite.min.js is that exact file (its sha512 is what the old page pinned). The
+   verification/reference/satellite.min.js is that exact file (its sha512 is what the old page pinned). The
    rewrite bundles the npm package's ES build instead. Same source, same arithmetic - this test
    proves it rather than assuming it, on every element set and a spread of instants. */
 type Num = number | undefined;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const umd: any = require(path.join(ROOT, 'verification', 'satellite.min.js'));
+const umd: any = require(path.join(ROOT, 'verification', 'reference', 'satellite.min.js'));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const esm: any = await import(pathToFileURL(path.join(ROOT, 'node_modules', 'satellite.js', 'dist', 'satellite.es.js')).href);
 

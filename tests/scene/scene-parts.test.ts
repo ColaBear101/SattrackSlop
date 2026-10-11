@@ -6,7 +6,7 @@ import { CONST_JSON, STAR_DATA } from '../../src/scene/sky-data';
 
 /* The scene is the old orbit3d, orbitviz and globetex moved as they were (src/scene). These are the cheap guards around the
    parts that are not them: the list of three.js members they are given, and the sky's data tables. The scene itself is held to
-   the old page by verification/ab3d.js (pixels and the scene graph) and by the verify-pov, verify-elements and verify-globe suites. */
+   the old page by verification/gate/ab3d.js (pixels and the scene graph) and by the verify-pov, verify-elements and verify-globe suites. */
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 

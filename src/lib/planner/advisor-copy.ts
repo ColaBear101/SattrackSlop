@@ -28,7 +28,7 @@
  *     wordings, is a separate placeholder ({passes:txt}, {plonger}) or a separate
  *     record, never an `if` inside a string. `when(c)` is the single place where
  *     a record's situation is written down, and it reads only `c`.
- *   - Every record is checked as data (verification/advisor-copy-checks.js): the
+ *   - Every record is checked as data (verification/lib/advisor-copy-checks.js): the
  *     voice rules below, the keys a template reads, the keys a fix writes.
  *
  * Placeholders are {key} or {key:format}. A placeholder renders as one bold

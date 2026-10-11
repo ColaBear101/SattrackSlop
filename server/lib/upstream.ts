@@ -160,7 +160,7 @@ export function historyUrl(cfg: Pick<Config, 'celestrakBase'>, norad: string): s
   return cfg.celestrakBase + '/NORAD/elements/graph-orbit-data.php?CATNR=' + digits(norad);
 }
 
-/** The history of `norad` (canonical) from CelesTrak, in the page's own terms (verification/verify-lifetime.js):
+/** The history of `norad` (canonical) from CelesTrak, in the page's own terms (verification/suites/verify-lifetime.js):
  *  rows -> ok; a page with no rows or only rows outside the bounds -> none (`empty` / `outside`, which are answers);
  *  anything else -> failed, with the outcome named as the page names it (http, unreachable, timeout, unreadable). */
 export async function fetchHistory(deps: Deps, cfg: Config, norad: string): Promise<HistoryFetch> {

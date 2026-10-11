@@ -50,7 +50,7 @@ export function mirrorJson(name: string, t: MakeTle, id: number | string): strin
     satelliteId: Number(id), name, date: '2026-09-12T04:59:21+00:00', line1: t.l1, line2: t.l2 });
 }
 
-/* ---- the decay-history page (the shapes verification/verify-lifetime.js builds) ----------------------- */
+/* ---- the decay-history page (the shapes verification/suites/verify-lifetime.js builds) ----------------------- */
 
 const DAY = 86400000;
 export interface PlotRowSpec { t: number; sma: number; ecc: number | null }

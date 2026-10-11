@@ -7,7 +7,7 @@ import {
 } from '../../src/lib/planner/custom';
 
 /* The pure half of the reader's own orbits: what an entry is, what is stored and what comes back, which names and ids are free, and the
-   words said when it cannot be made. (The list and the screen are state/custom.svelte.ts, driven by verification/verify-custom.js.) */
+   words said when it cannot be made. (The list and the screen are state/custom.svelte.ts, driven by verification/suites/verify-custom.js.) */
 const P = Planner as unknown as PlannerCore;
 const sat = satellite as never;
 const SITE = { lat: 13.7563, lon: 100.5018, altKm: 0.002, name: 'Bangkok', tz: 7 };

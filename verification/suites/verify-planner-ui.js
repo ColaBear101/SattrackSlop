@@ -1813,7 +1813,7 @@ const PRISTINE_HEADER = () => {
       let st = null;
       try { st = require('child_process').execFileSync('git', ['status', '--porcelain', '--', 'verification/gate/baseline.json'], { cwd: ROOT, encoding: 'utf8', timeout: 30000 }); } catch (e) { st = null; }
       if (st === null) skipPart(47, 'git is not available here: verification/gate/baseline.json was not compared with HEAD');
-      else chk('47 verification/gate/baseline.json is exactly as committed (git status says nothing about it) and is present', st.trim() === '' && fs.existsSync(path.join(ROOT, 'verification', 'baseline.json')), JSON.stringify(st));
+      else chk('47 verification/gate/baseline.json is exactly as committed (git status says nothing about it) and is present', st.trim() === '' && fs.existsSync(path.join(ROOT, 'verification', 'gate', 'baseline.json')), JSON.stringify(st));
       chk('47 no page error', off.errs.length === 0 && on.errs.length === 0, off.errs.concat(on.errs).join(' | ') || 'none');
       await off.ctx.close(); await on.ctx.close();
     }

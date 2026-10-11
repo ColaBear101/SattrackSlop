@@ -53,6 +53,7 @@
     "elements": "node verification/verify-elements.js",
     "lifetime": "node verification/verify-lifetime.js",
     "ar": "node verification/verify-ar.js",
+    "ar-snap": "node verification/verify-ar-snap.js",
     "layout": "node verification/verify-layout.js",
     "axe": "node verification/axe.js",
     "perf": "node verification/perf.js",

@@ -22,7 +22,7 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 - **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar; the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
 - **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why.
-- **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points. The picture never leaves the phone.
+- **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
 - **Radio and eyes.** Doppler shift for the satellites that have a published downlink, and a naked-eye verdict for each pass.
 
 <p align="center">
@@ -65,7 +65,7 @@ The page takes a satellite's Two-Line Element set, works out its orbit, and runs
 
 ## Can you trust the numbers?
 
-This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 27 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
+This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 28 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
 
 ## Data and privacy
 
@@ -78,7 +78,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
-The camera, motion sensors and your location are used only when you tap the button that needs them, and they are never sent anywhere.
+The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
 ## Where things are
 
@@ -148,9 +148,13 @@ pages. What they fetch, and what happens without it:
   and the city lights (`citylights-2048.jpg`, the VIIRS 2012 night-lights mosaic, saved once from
   GIBS on 2026-10-08) ship with the page. On a phone or tablet, the AR view asks the device, not a
   server, for its rear camera, its motion sensors and — if *Use my location* is pressed — its
-  position. The picture is drawn over on the phone and goes nowhere, and the sensor readings are
-  neither kept nor sent; a position taken with *Use my location* becomes the observer, saved in
-  this browser the way the console's own *Use my location* saves it.
+  position; the radar view asks for the motion sensors alone. The camera's picture is shown under
+  the sky by the browser, is drawn into none of the view's own canvases and goes nowhere, until
+  *Snap* is pressed: then it is drawn once, into the picture that button makes, which the page
+  hands to the phone's share sheet or to a download and sends nowhere itself (see **Snap**, in
+  *The sky through the phone*). The sensor readings are neither kept nor sent; a position taken
+  with *Use my location* becomes the observer, saved in this browser the way the console's own
+  *Use my location* saves it.
 
 #### What's here
 
@@ -204,10 +208,16 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                           from true north, at the observer
       skyar.ts            the AR view's maths: the phone's orientation as a camera,
                           the projection, the iPhone's compass
-      radar.ts            the AR view's radar: the sky as a polar plot with the phone's
-                          aim in blue, drawn from the pose the view already has
-      arview.ts           the AR view: the motion sensors, the rear camera, and the
-                          sky drawn over the picture
+      radar.ts            the radar: the sky as a polar plot with the phone's aim in
+                          blue (the camera's, or the phone's head), drawn from the pose
+                          the view already has; a corner of the AR view, or all of the
+                          radar view
+      snap.ts             Snap: one picture of what the screen shows, made when the
+                          reader presses the button and handed to the share sheet or
+                          to a download
+      arview.ts           the AR view and the radar view: the motion sensors, the rear
+                          camera (not in the radar view), and the sky drawn over the
+                          picture
     places.ts           finding the observer: place search, this device, timezones
     observer.ts         where the observer is, and how that is remembered
     gt.ts               the DOM-free half of the test surface, which the gate measures
@@ -731,7 +741,8 @@ the stage's row of tabs has one more button, **AR**, which does it for them: the
 picture, full screen, with the sky drawn over it where the phone points. It is offered where the
 primary pointer is a finger, `(pointer: coarse)`, and not under a mouse, so the desktop console is
 unchanged. It is not a camera position of the globe, and sits at the right of the row of tabs
-rather than among the camera buttons, so it is there on the Map tab too.
+rather than among the camera buttons, so it is there on the Map tab too. Beside it a second
+button, **Radar**, opens the same view with no camera (**The radar view**, below).
 
 Drawn over the picture, back to front: the ground below the horizon, lightly shaded; elevation
 rings every 15° and meridians every 30°; the horizon with a tick every 10°; the 5° mask, dashed;
@@ -749,19 +760,21 @@ Held sideways, a phone's sky is 390 px tall, so the readout is a column a third 
 the left, clear of the middle — half the width, the first way it was tried, covered the spacecraft
 — with only the rows that pointing needs; North and Declination are left to the phone held
 upright. In the lower right a small radar shows all of the sky, and where the phone points in it
-(**The radar**, below). The view needs no WebGL, and stays offered when the globe falls back to the
+(**The radar**, below). Four tools, **Snap**, **Aim**, **Radar** and **Align**, are buttons in the
+readout's row, which held sideways on a wide enough screen move up into the top bar (**The radar**
+says where, and why). The view needs no WebGL, and stays offered when the globe falls back to the
 flat map.
 
 ##### Asking
 
-Two permissions, the motion sensors and the camera, from one tap, and the order is not free. On
-an iPhone `DeviceOrientationEvent.requestPermission()` asks only while the tap is still the current
-user gesture, and WebKit carries that across an `await` only for a few kinds of work, of which
-`getUserMedia` is not one: asking for the camera first and then for motion loses the motion
-prompt. So the tap asks for motion first and the camera second, in the same task, and only then
-waits for either — as WebKit's own engineers advise for two capture requests. Starting the camera
-inside the tap has a second use: in WebKit that is what lets a camera declined earlier be asked
-for again.
+Two permissions, the motion sensors and the camera, from one tap (the radar view asks for the first
+alone), and the order is not free. On an iPhone `DeviceOrientationEvent.requestPermission()` asks
+only while the tap is still the current user gesture, and WebKit carries that across an `await`
+only for a few kinds of work, of which `getUserMedia` is not one: asking for the camera first and
+then for motion loses the motion prompt. So the tap asks for motion first and the camera second, in
+the same task, and only then waits for either — as WebKit's own engineers advise for two capture
+requests. Starting the camera inside the tap has a second use: in WebKit that is what lets a camera
+declined earlier be asked for again.
 
 `requestPermission` existing does not mean iOS. Chrome 152 has it too, and answers "granted"
 there while the motion-sensor setting stays at its default of Allow. Firefox and Samsung Internet
@@ -882,7 +895,8 @@ The picture shows a few tens of degrees of sky, 34.6° × 68.0° on a phone held
 spacecraft is often outside it. The pointer on the edge says which way to turn, but not how the
 rest of the sky lies round the reader. So there is a **radar**: all of the sky as a small
 polar plot, north up, the zenith at the centre and the horizon at the rim, with the spacecraft's dot
-on it and, in blue, a crosshair at the azimuth and elevation the rear camera points to. A reader who
+on it and, in blue, a crosshair at the azimuth and elevation the rear camera points to (or the
+phone's top edge, by *Aim*, below). A reader who
 has turned the wrong way sees the dot on the far side of the disc from the crosshair, and turns until
 the crosshair is on it; the spacecraft is then in the middle of the picture. It is the plot the
 console draws for the selected pass (`src/components/rail/draw-sky.ts`) with the same geometry, r = R
@@ -946,18 +960,28 @@ of the radar is nearer and stops 8 px clear of it, still pointing the way; if ne
 it stays where it was. The pointer's words, and the spacecraft's name, which are kept inside the
 safe rectangle when nothing else fits, are not kept over the radar either: they are moved off its
 box, along their own row to the left of it, else above it. Nothing else is moved for it, so with
-the radar hidden the labels are placed as they were. The **Radar** button in the readout's row,
-beside *Align*, hides and shows it, outlined in the crosshair's blue while it is on (`aria-pressed`
+the radar hidden the labels are placed as they were. The **Radar** button, one of the view's four
+tools (below), hides and shows it, outlined in the crosshair's blue while it is on (`aria-pressed`
 says so too). The choice is kept: hiding it writes `gt.arradar` = `0` to `localStorage` and showing
 it again writes `1`, it is read at every opening, and a reader who has never pressed the button has
 nothing written and gets the radar. Where storage is refused the radar is on at every opening.
 
-Held sideways, the readout's buttons close up (a 4 px gap, 8 px of padding at each side, no letter
-spacing), so that Go live, Radar and Align are one row of the column on a 667 × 375 phone in sim
-time, when Go live is shown; wrapped, they grew the column some 46 px up over the top bar. The three
-need about 185 px of the column's width inside its padding, and that phone's column has 203 px. Held
-sideways on a notched iPhone, whose safe-area insets of about 47 px come out of that padding, they
-may still wrap to a second line in sim time: a known limit, and accepted.
+The four tools are **Snap**, **Aim**, **Radar** and **Align**, in that order (the next three
+subsections are about the first two and the radar view), and with *Go live*, when that is shown,
+they are the readout's row of buttons. Held sideways, a column a third of the width has no room for
+four, as it had for three, so on a screen 640 px wide or more, and under 541 px tall, they stand in
+a row in the top bar, in the middle between the title block and *Close*, where nothing else is;
+*Go live* stays in the column. The title block's width is held to 100% − 350 px to leave them
+theirs, so that a long site name wraps its second line, the position and *Use my location*, and
+does not go under them (the checks use a 24-character name). Under 640 px wide the tools stay in
+the column, which cannot then also hold the whole readout: it is held below the title block, its
+text scrolls under a cap, and the buttons stay where they are, closed up (a 4 px gap, 8 px of
+padding at each side, no letter spacing) as the three were. In the radar view the Radar button is
+not there, since that is the view, and there are three tools. Two limits are known and accepted.
+The band the tools need in the top bar is sized for the default text size, and a large system font
+can make them reach the title block. And in the radar view the plot can change size when a status
+line comes or goes: it is never put under the status line, and the room it has is measured against
+where the bars really end.
 
 The blue, `#3D8BFF`, is a colour the view had not used for anything else: cyan is the spacecraft
 (`#55D1E7`), gold the pass, pink the mask. The crosshair is brought onto the dot, so when the two
@@ -973,8 +997,194 @@ with one `drawImage`, and painted again only if the size, the pixel ratio, the m
 change. The pass is a layer too, painted again when it changes or when another of its samples has
 been flown. A frame that would come out as the last one is not drawn at all: the crosshair and the
 spacecraft are compared to a tenth of a degree, which is at most 0.11 px on the screen at the rim of
-a 156 px radar (0.15 px at 200 px), and while the phone is held still and the spacecraft has not
+a 156 px radar (0.14 px at 200 px), and while the phone is held still and the spacecraft has not
 moved that far the canvas is left as it is.
+
+##### The radar view
+
+The radar answers *which way do I turn*, and for that it needs the phone's pose and the
+spacecraft's, not the camera's picture. So the view can be opened without the camera: a **Radar**
+button, to the left of AR in the stage's row of tabs, offered on the same terms (a finger for the
+primary pointer, the view's chunk brought in before the button is). It opens the same full-screen
+view in a second mode. Only the motion sensors are asked for; the camera is not, by the tap or by
+*Try again*, no stream is ever opened, and the video is not shown. Nothing is drawn over a picture:
+the sky's canvas stays in the page, because the controller measures the screen by its box, and
+stays empty. The title says *Radar over Bangkok*.
+
+The radar is the page here, and not a corner of it. It takes the room between the foot of the top
+bar and the top of the readout (beside the readout's column when the phone is held sideways, and
+beside the Align panel while that is open), centred in it, and as large as the room allows up to
+420 px: 366 px on a 390 × 844 phone, 351 on a 375 × 667, 190 on a 320 × 568. It is drawn in a unit
+`u`, the side over 156 held between 1 and 2.2, which scales its lettering, lines and marks, and the
+horizon is at R = side/2 − 15u: 150 px from the centre of the 366 px plot, where the corner inset's
+is 63. (The inset is drawn in the same unit, so 1 from 112 to 156 px and 1.28 at a tablet's 200.) It
+is there from the moment the view opens, with the pass and the spacecraft and no crosshair, since
+neither needs the phone's pose; it is left out only when the view has failed or there are not 96 px
+for it.
+
+What is gone is what only a picture needs: the lens (no slider, no *Reset lens*), the drag that
+turns the sky by hand and the pinch that fits the lens, and the hint that says so. The readout's
+first row, which the AR view calls *View* and ends with the lens, is *Aim*, and says where the phone
+is aimed and by what ("249° WSW · 20° up · camera"); the Target row ends with the words that steer,
+"turn right 30° · up 12°", "turn round", and "on target" within 2° of the spacecraft in azimuth and
+in elevation (2° of angle, looking steeply up). They are
+what the AR view's pointer on the edge of the screen says, said about the aim, since there is no
+edge to put an arrow on (with the spacecraft below the horizon and a pass coming they point at
+where it will rise, and say nothing at that point itself). Align stays, for a compass that is off;
+its pair of buttons, which move the drawn sky a degree in the AR view, turn the crosshair a degree
+about the plot's centre, ↻ 1° clockwise and 1° ↺ anticlockwise, since there is no sky to move.
+A phone held upright and no more than 700 px tall drops the North and Declination rows, as it does
+held sideways, so that the plot has the room.
+
+Where the AR view's sentences would be wrong here, the radar view has its own. A page that is not
+secure says *The radar needs a secure page* and gives the https address; a device with no motion
+sensor says the radar needs a phone or a tablet; a request that throws says to tap Radar again;
+with no compass, or near a magnetic pole, it says to open Align and turn the crosshair until it is
+on something whose bearing is known, where the AR view says to drag the drawn Sun onto the real
+one. No sentence of a failed radar view sends the reader to the AR view, the AR button or the
+camera, which are not what they opened.
+
+**Why a mode of the same view, and not a second one.** Everything that makes the radar right is in
+the controller: which of three streams of orientation to believe, the iPhone's compass and the
+places its offset is sampled, the declination, the hand turn, the smoothing, the page's clock and
+observer, the history entry that makes Back close the view, the inert page behind it, the globe
+left undrawn, the screen kept awake. A second controller would carry a second copy of each, and a
+difference between two copies is a fault that nobody sees until a phone is in a reader's hand. So
+the radar view is `open({ mode: 'radar' })`: a `data-mode` on the view's root, which the style
+sheet reads to hide the video, the lens and the corner inset's switch, and some two dozen lines of
+`arview.ts` marked `CHANGED (radar view)`. Closing it puts the focus back on the Radar button, and
+the checks open and close each of the two views between the other's to see that neither leaks
+into it.
+
+**The permission is still asked inside the tap.** One permission in place of two does not change
+the iPhone's rule (**Asking**): `requestPermission()` is answered only while the tap is the current
+user gesture. So the chunk is there, and the controller initialised, before the button is shown;
+the tap only calls `open`; and the one request the radar view makes is made in the click itself,
+synchronously, before anything is awaited; the check finds it in the log before `click()` has
+returned. *Try
+again* after a declined prompt asks again inside its own tap, and a browser with nothing to ask
+for (Firefox, Samsung Internet) is asked for nothing and the view runs.
+
+The Radar button is 44 px high and about 50 wide. Under `(pointer: coarse)` the stage's *Report ↓*
+link gives up 60 px of its right to make room for it (56, with less padding, at 340 px and
+narrower), so that at 320, 360, 390 and 768 px the link, the two buttons and the tabs cross
+nothing and the page is no wider than the screen.
+
+##### Aim: the camera or the head
+
+The crosshair shows where the rear camera points. That is right for a phone held up to the sky and
+no use to one laid flat, which looks at the ground, where below −85° the crosshair is left out. A
+phone held like a compass, or laid on a table, has another end that points somewhere useful: its
+top edge. So there is a switch among the tools, **Aim: camera** or **Aim: head**, in the AR view
+and the radar view alike, and the radar's crosshair follows what it says. In the radar view the
+first row and the words that steer follow it too. In the AR view the picture and the sky drawn over
+it stay the camera's, as they must, and the View row adds where the head points ("… · head 302°
+WNW · 59° up").
+
+The head is the phone's own top edge, the device's +y axis, whichever way the screen has turned,
+and not the screen's up. Held upright the head points at the zenith and the camera at the horizon;
+laid flat, face up, the head points along the horizon, at 360° − α, since α grows
+counter-clockwise (α = 40 is a head at 320°, north-west), as a compass needle does. The screen's up
+is a different edge of the phone each time the system turns the picture, which it does at a moment
+of its own choosing, so a crosshair that followed it would jump by 90° with the phone where it was.
+The head is the phone's, the same in all four rotations of the screen: the check takes one pose with
+the screen turned through 0°, 90°, 180° and 270°, and wants the same head each time to 0.01°. The
+floor of 85° below the horizon applies to the head as it does to the camera: a phone upside down,
+its top edge at the ground, draws no crosshair, and the row says *straight down*. Near the zenith
+the head has no azimuth, and the crosshair sits at the plot's centre (a phone held upright says
+*straight up*), which is accepted.
+
+The choice is kept in `gt.araim`, as `head` when the reader has chosen it and `camera` when they
+have chosen it back; it is written on the press and by nothing else (opening, using and closing
+the views writes nothing), and anything else found there is the camera. The button keeps the width
+of its longer label, so that its neighbours do not move under a finger when it changes.
+
+**The head has a smoother of its own.** The view smooths the pose before it draws it: the camera's
+axis and the picture's up are blended, with a time constant that follows the speed of the vector
+being held, 0.12 s below 20°/s and 0.03 s from 90°/s up, so that a still phone is steady and a
+sweeping one does not lag. Taking the head out of that smoothed pose is wrong exactly where the
+head matters: a phone laid flat and spun barely moves the camera's axis, which goes on pointing at
+the ground, so the smoother takes the phone for still and uses its slowest constant while the head
+sweeps the horizon. Measured in a model (the page's own smoother, stepped at 60 Hz, a phone laid
+flat and turned about the vertical at 180°/s) the head taken from the camera's smoothed pose
+trailed its true direction by about 20° and the camera's axis by nothing. So the head is smoothed on
+its own, by a second smoother that holds the head, with the camera's axis (square to the head) for
+its up, and takes its time constant from the head's own speed; in the same model it trails by about
+4° at 180°/s. Both are snapped when the screen turns and reset wherever the pose is reset. The
+suite settles each pose before it reads it and does not time a spin, so that figure is the
+model's, not a check's. A phone laid flat and spun with Aim: head sweeps the crosshair round the
+rim like a compass needle, and that is what it is for.
+
+##### Snap
+
+**Snap**, the first of the tools, takes one picture of what the screen shows, without the buttons,
+and hands it to the reader. It is in the AR view and in the radar view, and is dimmed until the
+first reading arrives, since before it there is nothing to take a picture of; it is dimmed again
+after a failure, and while a picture is being made, which includes the time the share sheet is
+open, so that a double tap makes one file.
+
+**What is in it.** With the camera live it is a JPEG, quality 0.92, of the screen's size at the
+view's pixel ratio, which is the device's up to 2 (780 × 1688 on a 390 × 844 screen at a ratio of 2,
+and the same at 3): the camera's picture laid as
+`object-fit: cover` lays it, cropped to the screen's shape and not letterboxed, the sky over it and
+the radar at its box. Without a camera picture (the radar view, or a camera that is declined or in
+use) it is a PNG of the sky, where it is drawn, and the radar on the dark ground `#05090C`. A strip
+of three lines of light text on a dark band goes along the foot: the spacecraft and where it was
+("KNACKSAT-2 · 122° ESE · 30.7° up · 670 km", or how far below the horizon); the observer's name,
+coordinates and the view's instant in UTC ("Bangkok · 13.75° N 100.52° E · 09-13 08:00:40Z · sim
+time", or *live*); and where the phone is aimed, by which aim ("Camera 122° ESE · 31° up", "Head
+302° WNW · 59° up"). With no compass the aim line ends "· no compass": the status line that says
+north is a guess is not in the picture, and the bearing would read as a fact. A line too wide for
+the picture is set smaller, down to 72% of its size, and squeezed only after that. Held sideways
+the radar stands 12 px up from the foot, where the strip would cover the plot, so the strip goes
+along the top when the radar reaches into the foot and there is room above.
+
+The file is `sattrack-sky-<site>-<yyyymmddThhmmssZ>.jpg`, or `sattrack-radar-<site>-….png` for the
+radar view. The instant is the moment the picture is made, by the browser's clock (the caption's
+is the view's own, which on a rehearsed pass is the pass's), and the site's name is cut down to what
+a file name can hold: ASCII, lower case, single hyphens, 24 characters at most, *site* if nothing
+is left, so that nothing a reader types into the observer's form can make a path
+(`../../Etc/Passwd` is `etc-passwd`).
+
+**JPEG or PNG.** A camera's picture is a photograph, which is what JPEG is for. The sky, the radar
+and the words are thin lines and letters on a flat ground, which JPEG rings round and PNG keeps
+exactly (the suite's pictures of that kind are about 130 KB at 780 × 1688). So the type follows
+what the picture holds: a JPEG when there is a camera's picture in it, with the lines drawn over it
+at its quality, and a PNG when there is not.
+
+**Where it goes.** Where the browser has a share sheet that takes files (`navigator.share`, with
+`canShare` saying yes to this file) the picture is handed to it, and what is chosen there, Save
+Image, a message, a cloud drive, is the reader's: the page does not see it. A reader who closes the
+sheet has cancelled, which is not an error and is not said. Where there is none, or the browser
+refuses (a share that throws anything but a cancel, `canShare` saying no, or no `canShare`), the
+picture is a download into the phone's own storage: a link made inside the view, since the rest of
+the page is inert while the view is open, clicked and removed at once, and its address let go after
+30 s. The status line says which, "Picture shared.", "Picture saved as <the name> — look in this
+phone's downloads." or "The picture could not be made (why).", in a place of its own above the
+camera's standing message and *Use my location*'s answer, which a save must not hide behind. A
+picture being made when the view is closed is dropped: nothing is handed over, and nothing is said
+when the view is opened again. The focus comes back to the button afterwards, if it was on the
+button when the picture was asked for, nothing has taken it since and the view is still open (a
+disabled button drops it to the page, where Escape no longer reaches the view).
+
+**What the page now says about the picture.** The view used to say that the camera's picture is
+never drawn into a canvas, read back or captured. That is no longer true, and what is true is this.
+The picture is drawn once, when the reader presses Snap, by one `drawImage` of the video into a
+canvas that `snap.ts` makes for the purpose, which is never put in the page and is let go once the
+picture is encoded. The view's own canvases, the sky's and the radar's, which are drawn every frame,
+never hold it. Until Snap is pressed nothing draws, reads back or captures the picture, as before.
+The page sends the file nowhere: it makes no request in the press (no fetch, XHR, beacon or socket)
+and stores nothing (not in `localStorage`, session storage or a database), and the file is in the
+page only as the blob it hands over and, for a download, the address of that blob, which is let go
+after 30 s. What happens after that is the reader's choice, the share sheet's where there is one.
+The caption carries the observer's name and coordinates, and the UTC instant, into the file the
+reader keeps: after *Use my location* the coordinates are the phone's own, to a hundredth of a
+degree, and Snap then puts them in every picture.
+
+These claims are kept by `verification/verify-ar-snap.js`, with a census of the ways a picture can
+be used (**What is checked**, below), and `tests/lib/snap.test.ts` (17 tests) holds the file's
+name, the cover rectangle, the order things are drawn in, where the strip goes, the 72%, the three
+ways of handing over, and the aim vector.
 
 ##### The clock and the observer
 
@@ -998,11 +1208,13 @@ While the view is open the WebGL globe draws nothing and its labels are not laid
 counts no render calls in 20 frames under the view, and some within 20 frames of closing — and the
 screen is kept awake, since a phone held up to the sky is not being touched. Closing it, by
 *Close*, Escape, the phone's Back or leaving the page, stops the camera and removes every listener
-it added. The picture is never read or drawn into the sky's canvas or the radar's. The view itself
-keeps only two choices, in `localStorage`: the lens setting (`gt.arlens`) and, once the reader has
-pressed *Radar*, whether the radar is shown (`gt.arradar`); *Use my location* goes through the
-console's own path, which saves the observer there as well, and which never writes it into the
-address bar.
+it added. The view never draws the camera's picture into the sky's canvas or the radar's, reads it
+back or captures it; **Snap** draws it, once, for the one picture the reader asks for, into a
+canvas of its own. The view keeps up to three choices in `localStorage`, each written only when the
+reader makes it: the lens (`gt.arlens`, by a pinch, the slider or *Reset lens*), whether the radar
+is shown (`gt.arradar`, by *Radar*) and what its crosshair follows (`gt.araim`, by *Aim*); *Use my
+location* goes through the console's own path, which saves the observer there as well, and which
+never writes it into the address bar.
 
 ##### What is checked, and what is not
 
@@ -1013,32 +1225,88 @@ served over http, in Chromium phone contexts with the permissions, the camera, t
 visibility and the sensors mocked, on a clock of its own (see **Running it**): the order the tap
 asks in, the marker on the spacecraft to about 1e-12 px, the pointer's words, every refusal's
 sentence, the phone held sideways, the globe paused, closing by *Close*, Escape and Back, an iPhone
-finding north, the radar (below), a phone in London with the observer in Bangkok, and a phone with
-no WebGL. It was run against three deliberate faults, and each was caught: the declination's sign
+finding north, the radar, the radar view with its aim switch and its four tools (below), a phone in
+London with the observer in Bangkok, and a phone with no WebGL. Snap has a suite of its own, after
+these. It was run against three deliberate faults, and each was caught: the declination's sign
 flipped fails 10 of its checks, the camera asked for before the motion sensors fails the order check,
 and the screen's rotation ignored fails both sideways horizons, 220 px out of level. Its events are
 synthetic, so it proves the maths and the wiring, not a phone's sensors. What only a phone can show
 is left to a checklist: on iPhone Safari, an iPhone home-screen app, Chrome for iOS, a Pixel's
 Chrome, Samsung Internet and Firefox for Android — the first tap, a refusal and Try again, a
 declined camera, locking and unlocking, turning sideways, pointing at the Sun and at a landmark of
-known bearing, and, for the radar, whether it can be read in sunlight and what a notched iPhone's
-safe-area insets do to the row of buttons held sideways (the suite's phones have no insets).
+known bearing, and, for the radar, whether it can be read in sunlight; for *Aim: head*, whether a
+phone laid flat and turned follows a real compass's needle; for Snap, what each phone's own share
+sheet offers for a file (the suite's is a stand-in that records the call, and its camera is one
+colour); and what a notched iPhone's safe-area insets do to the tools held sideways (the suite's
+phones have no insets).
 
-The suite has 187 checks. The radar has a part of it to itself, 67 of them; the other 120 also run
-on the old page, which has no radar. `GT_AR_ONLY=radar` runs the maths and the radar's part alone,
-in about half the time. The radar's plot is written out in the checks
-(its side, its transform, its colours), not read from the code, and what is compared with it is the
-radar canvas's own pixels as well as where the page says it drew: the disc, the crosshair and the
-spacecraft; the crosshair on the rim below the horizon and left out within 5° of straight down; the
-highest point a ring and the spacecraft the one solid dot; AOS* and LOS* on a pass the window cut
-off at its start and at its end; where the radar is held upright and held both ways sideways, and
-that on a small phone, with Align open, and under a status of four or five lines, it is clear of
-every bar and control or is not shown; its height as the readout grows and shrinks; the pointer and
-its words off it; the *Radar* button and what it keeps; and that it never reads the camera's
-picture. Seven of its rules were each taken out of a scratch copy of the build in turn, and each was
-caught: the crosshair left out beside straight down, the starred ends, the hollow ring, the room the
-bars really leave, the height it holds, the words moved off it, and the one row of buttons held
-sideways.
+The suite has 278 checks and takes about five minutes (5 min 21 s in its last run on its own, nearly
+eight in one run of the whole set). 120 of them also run on the old page, which
+has no radar: the maths in node (46), the phone (55), the iPhone (5), a phone in London (10), no
+WebGL (2) and the desktop (2). The other 158 run on the rebuilt page alone, the radar's part (67)
+and the radar view's (91). `GT_AR_ONLY=radar` runs the maths and the radar's part alone, in about
+half the time, and `GT_AR_ONLY=radarview` the maths and the radar view's part. The radar's plot is
+written out in the checks (its side, its transform, its colours), not read from the code, and what
+is compared with it is the radar canvas's own pixels as well as where the page says it drew: the
+disc, the crosshair and the spacecraft; the crosshair on the rim below the horizon and left out
+within 5° of straight down; the highest point a ring and the spacecraft the one solid dot; AOS* and
+LOS* on a pass the window cut off at its start and at its end; where the radar is held upright and
+held both ways sideways, and that on a small phone, with Align open, and under a status of four or
+five lines, it is clear of every bar and control or is not shown; its height as the readout grows
+and shrinks; the pointer and its words off it; the *Radar* button and what it keeps; and that the
+radar never reads the camera's picture. Seven of its rules were each taken out of a scratch copy of
+the build in turn, and each was caught: the crosshair left out beside straight down, the starred
+ends, the hollow ring, the room the bars really leave, the height it holds, the words moved off it,
+and the one row of buttons held sideways (when the three buttons were the column's; the same rule
+for the four is one of the fifteen below).
+
+The radar view's part (the button; the camera never asked for; the radar as the page; its states
+and failures; the words; the aim; an iPhone; the four tools held sideways) is worked out in the
+suite as well, and above all the head's direction, from the W3C angles themselves: the device's +y
+axis for Rz(α)·Rx(β)·Ry(γ) is [−sin α cos β, cos α cos β, sin β], and the camera's is minus the
+device's z. Those are compared with what the page aims along for eight poses (upright, laid flat at
+two headings, tipped back 30° and 60° and forward 45°, rolled, and rolled the other way up),
+and, for one pose, through the four turns of the screen; for a flat phone with a hand turn; and on an
+iPhone before and after it has found north. The part holds that one tap on Radar asks for the motion sensors and never for the camera
+(the call log, the streams, the video's source, every pixel of the sky's canvas, and a census of the
+usual ways of using a picture, which stays empty), that opening, using, failing, retrying and
+closing the radar view write nothing to storage, and that the AR view beside it is as it was. The tools are measured on the
+screen: held sideways at 667 × 375, 844 × 390, 932 × 430 and 640 × 360 the four are one row in the
+top bar between the title block and *Close*, each 40 px high or more and reachable, with *Go live*
+in the column and the column neither grown up over the bar nor under a control; at 568 × 320 they
+stay in the column. Fifteen faults were taken, one at a time, into a scratch copy of the build (the
+head ignoring the screen's turn, the camera asked for in the radar view, the plot not scaled by its
+unit, or filling 60% of the room, a drag taken, the focus sent back to AR, the hint said, the
+opening writing `gt.araim`, the tools never going up into the top bar, the first row labelled
+*View*, the words following the camera and not the aim, "on target" never said, the sky drawn in
+the radar view, the head taken at a screen turn of 0, the radar's room ignoring Align), and each
+was caught.
+
+`npm run ar-snap` has 79 checks, takes about a minute (53 s in its last run on its own, 120 s in one
+run of the whole set) and runs alone, and is the stage `ar-snap` of
+`run.js` (in the quick set, for the rebuilt page only, since the old page has no Snap). It presses
+Snap in the AR view with a live camera (A), with the camera declined and on an iPhone before it has
+found north (B), in the radar view (C), and for the names, the live time, quick taps and closing
+while a picture is being made (D); part E presses nothing, and wants a failed view's button dimmed.
+It decodes each file in a blank page of its own, so that reading a picture's pixels is not
+something the phone's page does, and what it asserts is written out and not read from `snap.ts`: the
+name, the type and the first bytes (FF D8 FF, or 89 50 4E 47), the size in pixels, the colour at 197
+points of the frame (the stream's, to every edge, or the dark ground), the blue crosshair at the
+plot's own point for the aim, the gold of the pass on the sky and on the radar, three lines of light
+text in the strip and none above it, and the words, caught at `fillText`. **The census** is what
+holds the privacy statement above to what it says. It wraps the usual ways of using a picture:
+drawing the video, reading the sky's canvas back, an ImageBitmap, ImageCapture, MediaRecorder, a
+WebGL texture, an OffscreenCanvas, a VideoFrame, a callback for every frame, a track's frames. It
+wants one press to be exactly one `drawImage` of the video and nothing else, a second press one
+more, and a session that never presses Snap (the AR view with a live camera, the switches, Align,
+the radar view, a failed view) to have an empty census, no download and no object URL. It wants the
+page to make no request, to store no image and make no database, and the object URL of a download
+to be made once and let go after 30 s. Nineteen faults were put into a scratch copy of the build in
+turn (the video not drawn, the sky's canvas read back, the picture posted to a server, a wrong name,
+the cover lost, the address revoked at once, the button never dimmed, a refused share dropped or a
+cancel not taken for one, the sky or the radar left out of the picture, the aim ignored, ...) and
+each was caught. It is a list of the usual ways, which a browser can add to, and not a proof; and
+what it cannot show is what a phone does with the file.
 
 #### Architecture: the central body is a parameter
 
@@ -2825,10 +3093,15 @@ npm run elements     # the element labels: no overlap, nothing clipped, hover ex
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
 npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
                      # order the tap asks in, every refusal's words, the marker on the
-                     # spacecraft, the phone held sideways, the globe paused while covered, and
-                     # the radar with its blue crosshair; 187 checks, about 4 minutes (120 of
-                     # them also run on the old page, which has no radar;
-                     # GT_AR_ONLY=radar runs the maths and the radar's 67, and nothing else)
+                     # spacecraft, the phone held sideways, the globe paused while covered, the
+                     # radar with its blue crosshair, and the radar view with its aim switch and
+                     # its four tools; 278 checks, about 5 minutes (120 of them also run on the
+                     # old page, which has no radar; GT_AR_ONLY=radar runs the maths and the
+                     # radar's 67, GT_AR_ONLY=radarview the maths and the radar view's 91, and
+                     # nothing else)
+npm run ar-snap      # Snap, the rebuilt page only: the file, its pixels, its caption, the share
+                     # sheet, and that the camera's picture is drawn once, for the press; 79
+                     # checks, about a minute; the stage `ar-snap` of run.js, in test:fast
 npm run layout       # the rebuilt console at twelve sizes, light and dark: nothing scrolls
                      # sideways, nothing covers a control or hangs off the screen, no text under
                      # 12 px, targets big enough to tap, and what the design promises
@@ -2869,8 +3142,8 @@ GT_TARGET=legacy node verification/verify-site.js
 
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
 `new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
-files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe` and `layout` are about
-the rebuilt page alone. `npm run extract-data`, which made `data/` from the old page's files, reads
+files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout` and `ar-snap`
+are about the rebuilt page alone. `npm run extract-data`, which made `data/` from the old page's files, reads
 that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
 
 Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in
@@ -2894,7 +3167,9 @@ clock, which runs on from there and moves `Date`, the timers, `requestAnimationF
 `performance.now` together; `GT_AR_AT=<an ISO instant in 2025-2029>` starts it somewhere else. Those
 checks also make the geometry they need, so they do not depend on the day: they move the clock along
 the pass to where the spacecraft is about 35° up, and the London check works out the phone's own offset
-for the day.
+for the day. `npm run ar-snap` takes the phone's mocks out of this file as they are and starts its
+pages at the same instant, 2026-09-13T00:00Z, on Playwright's clock, so that it does not depend on
+the day it is run on; it has no `GT_AR_AT`.
 
 A few checks measure wall-clock time, so on a machine busy with something else one can fail while
 nothing is wrong: the advisor suite's budget of 120 ms at the 95th percentile for a whole advisor

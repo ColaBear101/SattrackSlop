@@ -20,7 +20,7 @@
   <canvas class="ar-radar" id="ar-radar" aria-hidden="true" hidden></canvas>
   <div class="ar-top">
     <div>
-      <h2 class="ar-title" id="ar-title">Sky over <span id="ar-site">Bangkok</span></h2>
+      <h2 class="ar-title" id="ar-title"><span id="ar-kind">Sky</span> over <span id="ar-site">Bangkok</span></h2>
       <p class="ar-sub"><span id="ar-pos">—</span>{' '}<button class="btn" id="ar-here" type="button">Use my location</button></p>
     </div>
     <button class="btn" id="ar-close" type="button">Close</button>
@@ -38,8 +38,13 @@
     <div class="ar-actions">
       <button class="btn" id="ar-live" type="button" hidden>Go live</button>
       <button class="btn" id="ar-retry" type="button" hidden>Try again</button>
-      <button class="btn" id="ar-radarbtn" type="button" aria-pressed="true">Radar</button>
-      <button class="btn" id="ar-alignbtn" type="button" aria-expanded="false" aria-controls="ar-align">Align</button>
+      <!-- the tools: in the row with Go live where the screen is upright; in the top bar's free middle where it is held sideways -->
+      <div class="ar-tools">
+        <button class="btn" id="ar-snap" type="button" title="Save a picture of what this view shows" disabled>Snap</button>
+        <button class="btn" id="ar-aimbtn" type="button" aria-label="Aim: camera — the crosshair follows the camera on the back of the phone; press to follow the phone’s head, its top edge, instead">Aim: camera</button>
+        <button class="btn" id="ar-radarbtn" type="button" aria-pressed="true">Radar</button>
+        <button class="btn" id="ar-alignbtn" type="button" aria-expanded="false" aria-controls="ar-align">Align</button>
+      </div>
     </div>
     <div class="ar-align" id="ar-align" hidden>
       <button class="btn" id="ar-left" type="button" aria-label="Move the drawn sky one degree left">◂ 1°</button>
@@ -105,6 +110,7 @@
     .ar-dl dd { margin: 0; color: #DCE8EE; overflow-wrap: anywhere; }
     .ar-dl abbr[title] { pointer-events: auto; }
     .ar-actions, .ar-align { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+    .ar-tools { display: contents; }
     .ar-align {
       padding: 8px; background: rgba(10,16,20,.86); border: 1px solid rgba(180,200,212,.28); border-radius: 3px;
       backdrop-filter: blur(6px); font-size: 11.5px; color: #C6D6DE; pointer-events: auto;
@@ -116,10 +122,22 @@
       min-height: 40px; pointer-events: auto; padding: 0 12px; border: 1px solid rgba(180,200,212,.28); border-radius: 3px;
       background: rgba(10,16,20,.72); color: #DCE8EE; backdrop-filter: blur(6px); font: 500 12px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .02em;
     }
-    .arview .btn:hover { background: rgba(180,200,212,.16); }
+    .arview .btn:hover:not(:disabled) { background: rgba(180,200,212,.16); }
+    .arview .btn:disabled { opacity: .5; }
+    /* the Aim switch keeps the width of its longer label (11 characters), so the buttons beside it do not move under a finger */
+    #ar-aimbtn { min-width: calc(11 * (1ch + .02em) + 26px); }
     .arview .btn:focus-visible, .arview input:focus-visible { outline: 2px solid #EAF2F6; outline-offset: 2px; }
     #ar-alignbtn[aria-expanded="true"] { background: #E8EFF2; border-color: #E8EFF2; color: #0A1016; }
     #ar-radarbtn[aria-pressed="true"] { border-color: var(--ar-aim); box-shadow: inset 0 0 0 1px var(--ar-aim); }
+    /* The radar view: the same page with no camera. The radar is the content (arview.ts sizes and places it), the picture and the sky drawn
+       over it are not there, and what only they need - the lens, the inset's switch - is gone. The sky's canvas keeps its box, which the
+       controller measures the screen by, and is not drawn on. */
+    .arview[data-mode="radar"] .ar-video { display: none; }
+    .arview[data-mode="radar"] .ar-sky { visibility: hidden; }
+    .arview[data-mode="radar"] .ar-lens, .arview[data-mode="radar"] #ar-fov0, .arview[data-mode="radar"] #ar-radarbtn { display: none; }
+    /* On a short phone held upright the radar is what the screen is for, so the readout gives up its two rows about the compass (North,
+       Declination), as it does held sideways, and the plot gets the room. */
+    @media (orientation: portrait) and (max-height: 700px) { .arview[data-mode="radar"] .ar-dl .ar-more { display: none; } }
     /* A phone held sideways has a 390 px sky, and the whole readout across its foot would leave a band of it. Half the width, the first
        way this was tried, covered the middle, which is where the spacecraft is when the phone is on it. So the readout is a third of the
        width and keeps what pointing needs - the view, the target, the pass, and the clock while it is not the present - and North and
@@ -127,9 +145,11 @@
     @media (orientation: landscape) and (max-height: 540px) {
       .ar-read { right: auto; width: min(34%, 20em); }
       .ar-dl .ar-more { display: none; }
-      /* Go live, Radar and Align have to fit the column's 203 px on one row, on a 667 px phone: close up the buttons a little. */
+      /* The buttons are closed up a little: Go live, and the four tools where they stay in the column, have to fit its 203 px on a 667 px phone. */
       .ar-actions { gap: 4px; }
       .arview .ar-actions .btn { padding: 0 8px; letter-spacing: 0; }
+      #ar-aimbtn { min-width: calc(11ch + 18px); }
+      .ar-dl { line-height: 1.3; }
       .arview:not([data-sim]) .ar-dl .ar-clockrow { display: none; }
       .ar-status { top: calc(env(safe-area-inset-top) + 62px); max-width: 30em; }
       /* Opened in that column, Align made it taller than the screen and pushed its own button, and Use my location under it, off the
@@ -138,6 +158,21 @@
         position: fixed; right: calc(env(safe-area-inset-right) + 12px); bottom: calc(env(safe-area-inset-bottom) + 12px);
         width: min(46%, 26em); max-height: calc(100% - 96px); overflow-y: auto;
       }
+      /* In the radar view the panel holds three buttons and no lens row: it is as wide as they are, and the radar keeps the room beside it. */
+      .arview[data-mode="radar"] .ar-align { width: auto; }
+    }
+    /* Held sideways on a screen wide enough, the tools go up into the middle of the top bar, between the title and Close, which is empty;
+       the column keeps Go live and the readout. Narrower, they stay in the column. */
+    @media (orientation: landscape) and (max-height: 540px) and (min-width: 640px) {
+      .ar-tools { position: fixed; top: calc(env(safe-area-inset-top) + 10px); right: calc(env(safe-area-inset-right) + 12px + 76px); display: flex; gap: 4px; }
+      /* the title leaves them their width, wrapping its second line (the position, Use my location) when the site's name is long */
+      .ar-top > div { max-width: calc(100% - 350px); }
+    }
+    /* Held sideways on a screen under 640 px wide the tools stay in the column, which cannot then hold the whole readout: it is held below the
+       title block and its text scrolls, the buttons staying where they are. */
+    @media (orientation: landscape) and (max-height: 540px) and (max-width: 639px) {
+      .ar-read { max-height: calc(100% - env(safe-area-inset-top) - 78px); }
+      .ar-dl { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; pointer-events: auto; }
     }
   }
 </style>

@@ -54,6 +54,10 @@ const STAGES = [
   { name: 'elements',    script: 'verify-elements.js' },
   { name: 'lifetime',    script: 'verify-lifetime.js' },
   { name: 'ar',          script: 'verify-ar.js',         alone: true },
+  /* the Snap button of the AR and radar views: the picture's file and pixels, its caption, the share sheet, and that the camera's picture is
+     drawn exactly once, for the press. About 30 s on an idle machine (a minute and more while other browsers run), so in the fast set too;
+     rebuilt page only: the old page had no Snap */
+  { name: 'ar-snap',     script: 'verify-ar-snap.js',    alone: true, fast: true, target: 'new' },
   { name: 'layout',      script: 'verify-layout.js',     alone: true, target: 'new' },
   { name: 'planner-ui',  script: 'verify-planner-ui.js', alone: true },
   /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits

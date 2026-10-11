@@ -1,6 +1,6 @@
 # SattrackSlop
 
-An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L45 and the numbered rows).
+An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L48 and the numbered rows).
 
 ## The one rule
 
@@ -17,11 +17,11 @@ An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two
 
 ## Commands
 
-`npm run dev` (Vite + API), `npm run build`, `npm run preview`. `npm run test:fast` (types, layers, unit, fast browser stages), `npm run test:all` (every stage, one table). Single suites: `npm run gate`, `visitor`, `custom`, `planner-ui`, `ar`, `ab3d`, `golden`, `layout`, `axe`, `perf` (see README, "Running it"). `GT_TARGET=new|legacy` picks which page a suite drives (default `new`; the old page is in git at the tag `legacy-earth-console` and is checked out for a suite with `git worktree add legacy legacy-earth-console`); `GT_DIST=<folder>` picks the build folder.
+`npm run dev` (Vite + API), `npm run build`, `npm run preview`. `npm run test:fast` (types, layers, unit, fast browser stages), `npm run test:all` (every stage, one table). Single suites: `npm run gate`, `visitor`, `custom`, `planner-ui`, `ar`, `ar-snap`, `ab3d`, `golden`, `layout`, `axe`, `perf` (see README, "Running it"). `GT_TARGET=new|legacy` picks which page a suite drives (default `new`; the old page is in git at the tag `legacy-earth-console` and is checked out for a suite with `git worktree add legacy legacy-earth-console`); `GT_DIST=<folder>` picks the build folder.
 
 ## Working rules learned the hard way
 
-- Never run other browsers while a full run is going: pov, ab3d, planner-ui and the AR suite are timing-sensitive. A failure that passes alone is a load flake only after you have run it alone.
+- Never run other browsers while a full run is going: pov, ab3d, planner-ui, the AR suite and ar-snap are timing-sensitive. A failure that passes alone is a load flake only after you have run it alone.
 - A new fact the page states goes into `src/lib/text`, a difference from the old page goes into the ledger the same commit, and a suite that asserted the old behaviour is changed in that commit with the reason.
 - Verbatim ports (`plannerui.ts`, `arview.ts`, `globetex.ts`, `orbit3d.ts`, ...) keep the old arithmetic order and comments; edit them only at marked `CHANGED` lines.
 - Do not push, deploy, merge, or install system software without being asked. Stage specific paths, never `git add -A`.

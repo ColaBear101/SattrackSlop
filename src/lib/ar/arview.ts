@@ -34,10 +34,11 @@
  *   have been answered, and no alarm for silence after that: the last pose is
  *   held.
  *
- * The camera's picture is never read, drawn into the canvas or sent anywhere:
- * it is a <video> element under a transparent canvas. The one thing this file
- * keeps is the lens setting, in localStorage; Use my location goes through the
- * page's own path, which saves the observer.
+ * The camera's picture is never read or drawn by this file, and the view's own canvases (the sky's, the radar's) never hold it: it is a
+ * <video> element under a transparent canvas. CHANGED (snap): it is drawn once, into a canvas of snap.ts's own, only when the reader presses
+ * Snap; nothing here sends it anywhere, and the share sheet, where there is one, is the reader's to choose from. CHANGED (radar, aim): this
+ * file keeps three choices in localStorage, each written only when the reader makes it - the lens (gt.arlens), whether the radar is shown
+ * (gt.arradar) and what its crosshair follows (gt.araim); Use my location goes through the page's own path, which saves the observer.
  */
 /* ---- Moved from legacy/earth/arview.js (main@4eadd7a), lines 42-1065.
  * The wrapper is the only change: the old file was an IIFE over `global` that attached `ARView`; this is a factory over an object that
@@ -49,8 +50,14 @@
  * corner of the view, with the spacecraft, its pass and the phone's aim as a blue crosshair. It reads the pose and the pass this file is
  * already drawing, and changes nothing the old code did, except that the off-screen pointer and the words kept on the screen (the
  * spacecraft's name, the pointer's guidance) keep off the radar's box.
+ *
+ * Three things more, each at lines marked "CHANGED (radar view)", "CHANGED (aim)" or "CHANGED (snap)": the radar view (open({ mode: 'radar' }),
+ * the same controller with no camera and no sky drawn over it: the radar fills the screen, and the camera is never asked for); the aim, which the
+ * radar's crosshair takes from the camera (out of the back) or the phone's head (out of its top edge); and Snap, one picture of what is on the
+ * screen (src/lib/ar/snap.ts).
  */
-import { drawRadar, radarSize } from './radar';
+import { aimVector, drawRadar, radarSize } from './radar';
+import { composeSnap, deliverSnap, snapName } from './snap';
 
 export function makeARView(global) {
 const WMM = { field: (...a) => global.WMM.field(...a), decimalYear: (...a) => global.WMM.decimalYear(...a) };
@@ -104,13 +111,30 @@ const MSG = {
   hereOk:     acc => 'Sky set from this device' + (acc ? ', accurate to about ' + Math.round(acc) + ' m.' : '.'),
   hereFail:   (why, name) => why + ' — the sky is still drawn from ' + name + '.',
 
-  hint:       'Drag sideways to line the sky up, pinch to fit the lens.'
+  hint:       'Drag sideways to line the sky up, pinch to fit the lens.',
+
+  // CHANGED (radar view, snap): the radar view's own words, where the AR view's would be wrong, and Snap's
+  askRadar:      'Asking for the motion sensors…',
+  insecureRadar: p => 'The radar needs a secure page, and this one was opened over ' + p + '// — browsers give ' +
+                      'the motion sensors only to https pages and local files. Open ' +
+                      'https://sattrackslop.vercel.app on this phone.',
+  noSensorRadar: 'This device reports no motion sensor, so the radar cannot follow it — the radar needs a phone ' +
+                 'or a tablet.',
+  oriErrorRadar: n => 'The browser would not ask for motion access (' + n + ') — close this and tap Radar again.',
+  poleRadar:     'This close to the magnetic pole a compass is no guide to north — open Align and turn it by hand until the ' +
+                 'crosshair is on something whose bearing you know.',
+  relRadar:      'No compass reading — the radar turns with the phone but is not tied to north. Open Align and turn ' +
+                 'it by hand until the crosshair is on something whose bearing you know.',
+  snapSaved:     n => 'Picture saved as ' + n + ' — look in this phone’s downloads.',
+  snapShared:    'Picture shared.',
+  snapFail:      why => 'The picture could not be made (' + why + ').'
 };
 /* Which message wins the one line: a failure over a camera problem over the
    answer to Use my location, and so on down to the gesture hint. */
-const SLOTS = ['fatal', 'camera', 'here', 'elsewhere', 'compass', 'phase', 'hint'];
+const SLOTS = ['fatal', 'snap', 'camera', 'here', 'elsewhere', 'compass', 'phase', 'hint'];     // CHANGED (snap): 'snap' added, above the camera's and Use my location's answers, which a save or a failure must not hide behind
 
 const LENS = { def: 68, min: 45, max: 80, key: 'gt.arlens' };
+const AIM_KEY = 'gt.araim';          // CHANGED (aim): 'head' once the reader has chosen the phone's head; the camera otherwise
 const RADAR_KEY = 'gt.arradar';       // CHANGED (radar): '0' once the reader has hidden the radar; shown otherwise
 const FIRST_READING_MS = 3000;       // armed once both prompts have been answered
 const REL_GRACE_MS = 600;            // Chrome's relative stream starts before its absolute one
@@ -125,6 +149,7 @@ let motionOK = false, camState = 'off', camStream = null;
 let absR = null, relR = null, absSeen = false, iosSeen = false, nullSeen = false, tiltOnly = false;
 let firstRelAt = null, source = null, lastIosAcc = null, foundAgain = false;
 let fusion = null, smooth = null, cam = null, view = null, theta = 0;
+let headSm = null;                                    // CHANGED (aim): the head's own smoother, reset wherever smooth is
 let trim = 0, fov = LENS.def, fovSet = false;
 let decl = { ok: false, D: 0, zone: 'ok', expired: false }, declKey = '';
 let follow = false, hinted = false, firstRunning = false;
@@ -135,6 +160,7 @@ let pal = {}, safe = { left: 0, top: 0, right: 0, bottom: 0 }, keepOut = [];
 let ptrs = new Map(), pinch = null, pinched = false;
 let probeDraw = {};
 let radarCtx = null, radarOn = true, radarBox = null, radarSeen = null;   // CHANGED (radar): see radar.ts
+let mode = 'ar', radarOpener = null, aimSrc = 'camera', snapping = false;   // CHANGED (radar view, aim, snap)
 const radarCache = { make: (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, layers: {}, last: null };
 const tickCache = new WeakMap();
 
@@ -147,17 +173,19 @@ const named = n => { const e = new Error(n); e.name = n; return e; };
 /* ---- init ------------------------------------------------------------------------ */
 const IDS = ['video', 'sky', 'site', 'pos', 'here', 'close', 'status', 'view', 'north', 'decl', 'clock',
              'target', 'pass', 'live', 'retry', 'alignbtn', 'align', 'left', 'right', 'trim0', 'lensv', 'fov', 'fov0',
-             'radar', 'radarbtn'];                // CHANGED (radar): the two added ids
+             'radar', 'radarbtn',                 // CHANGED (radar): the two added ids
+             'kind', 'aimbtn', 'snap'];           // CHANGED (radar view, aim, snap): the title's first word, the aim switch, the Snap button
 function init(o){
   try {
     S = global.SkyAR; P = o && o.provider; root = o && o.root; opener = o && o.opener;
+    radarOpener = (o && o.radarOpener) || opener;                      // CHANGED (radar view): where the focus goes back to
     if(!S || !P || !root) return false;
     for(const k of IDS){ E[k] = $('ar-' + k); if(!E[k]) return false; }
     ctx = E.sky.getContext('2d');
     if(!ctx) return false;
     radarCtx = E.radar.getContext('2d');             // CHANGED (radar)
     if(!radarCtx) return false;
-    fusion = S.compassFusion(); smooth = S.smoother();
+    fusion = S.compassFusion(); smooth = S.smoother(); headSm = S.smoother();     // CHANGED (aim)
     E.close.addEventListener('click', () => close());
     E.retry.addEventListener('click', retry);
     E.live.addEventListener('click', () => { P.goLive(); follow = true; readout(); });
@@ -172,6 +200,8 @@ function init(o){
     E.fov.addEventListener('input', () => setLens(+E.fov.value));
     E.fov0.addEventListener('click', () => setLens(LENS.def));
     E.radarbtn.addEventListener('click', () => setRadar(!radarOn));     // CHANGED (radar)
+    E.aimbtn.addEventListener('click', () => setAim(aimSrc === 'head' ? 'camera' : 'head'));     // CHANGED (aim)
+    E.snap.addEventListener('click', snap);                                                      // CHANGED (snap)
     E.sky.addEventListener('pointerdown', pDown);
     E.sky.addEventListener('pointermove', pMove);
     E.sky.addEventListener('pointerup', pUp);
@@ -184,9 +214,10 @@ function init(o){
 }
 
 /* ---- opening: both requests inside the tap ---------------------------------------- */
-function open(){
+function open(o){
   if(state !== 'closed') return;                 // a double tap
   gen++; const g = gen;
+  mode = o && o.mode === 'radar' ? 'radar' : 'ar';     // CHANGED (radar view): the radar view never asks for the camera
   motionOK = false; camState = 'off'; reason = null;   // before the requests, which set them
   const secure = global.isSecureContext === true;
   const DOE = global.DeviceOrientationEvent;
@@ -197,14 +228,14 @@ function open(){
   if(!why){
     motion = askMotion(DOE);
     // 2. the camera, second, in the same task - so still inside the gesture
-    camera = askCamera();
+    camera = mode === 'radar' ? null : askCamera();      // CHANGED (radar view): it was askCamera() alone
     // 3. listeners before the answer: once it is granted, they start receiving
     addOri();
   }
   show();
   if(why){ fail(why); return; }
   setState('asking');
-  say('phase', MSG.ask, 'info');
+  say('phase', mode === 'radar' ? MSG.askRadar : MSG.ask, 'info');     // CHANGED (radar view)
   settle(g, motion, camera);
 }
 function askMotion(DOE){
@@ -303,10 +334,10 @@ function retry(){
   const onMotion = state === 'failed' && (reason === 'motion-denied' || reason === 'motion-tap');
   // the same order as open(), and again nothing before either call
   if(onMotion && typeof DOE === 'function') motion = askMotion(DOE);
-  if(camState !== 'live' && camState !== 'asking') camera = askCamera();
+  if(mode !== 'radar' && camState !== 'live' && camState !== 'asking') camera = askCamera();     // CHANGED (radar view): no camera there
   if(onMotion){
     say('fatal', null); reason = null;
-    addOri(); setState('asking'); say('phase', MSG.ask, 'info');
+    addOri(); setState('asking'); say('phase', mode === 'radar' ? MSG.askRadar : MSG.ask, 'info');
     settle(g, motion, camera);
   } else if(camera){
     say('camera', null);
@@ -354,7 +385,7 @@ function pickSource(t){
   if(s !== source){
     if(source === 'rel' && s === 'abs'){ trim = 0; compassNote = { text: MSG.absCame, until: Date.now() + 6000 }; }
     source = s;
-    smooth.reset();
+    smooth.reset(); headSm.reset();
     return true;
   }
   return false;
@@ -403,6 +434,13 @@ function declNow(){
 /* ---- showing and closing ---------------------------------------------------------------------- */
 function show(){
   root.hidden = false; root.dataset.state = '';
+  root.dataset.mode = mode;                            // CHANGED (radar view): the style sheet lays the two views out from this
+  setText(E.kind, mode === 'radar' ? 'Radar' : 'Sky');
+  setText(E.view.previousElementSibling, mode === 'radar' ? 'Aim' : 'View');
+  // with no picture there is no drawn sky to move: Align's pair turns the crosshair about the plot's centre (a left press adds 1 to the trim, which adds 1 to the azimuth: clockwise)
+  setText(E.left, mode === 'radar' ? '↻ 1°' : '◂ 1°'); setText(E.right, mode === 'radar' ? '1° ↺' : '1° ▸');
+  E.left.setAttribute('aria-label', mode === 'radar' ? 'Turn the crosshair one degree clockwise' : 'Move the drawn sky one degree left');
+  E.right.setAttribute('aria-label', mode === 'radar' ? 'Turn the crosshair one degree anticlockwise' : 'Move the drawn sky one degree right');
   document.documentElement.classList.add('ar-open');
   inerted = [];
   for(const el of document.body.children){
@@ -427,10 +465,15 @@ function show(){
   E.fov.value = String(fov);
   let hidden = null;                                  // CHANGED (radar): the reader's choice from the last time
   try { hidden = localStorage.getItem(RADAR_KEY); } catch(e){}
-  radarOn = hidden !== '0'; radarBox = null; radarSeen = null; radarCache.last = null; radarUp = 0;
+  radarOn = hidden !== '0'; radarBox = null; radarSeen = null; radarCache.last = null; radarUp = 0; radarCss = '';
   E.radarbtn.setAttribute('aria-pressed', String(radarOn));
-  E.radar.hidden = true;
-  trim = 0; fusion.reset(); smooth.reset(); cam = view = null;
+  E.radar.hidden = true; E.radar.removeAttribute('style');
+  let aimStored = null;                                // CHANGED (aim): the reader's choice from the last time
+  try { aimStored = localStorage.getItem(AIM_KEY); } catch(e){}
+  aimSrc = aimStored === 'head' ? 'head' : 'camera';
+  aimLabel();
+  snapping = false; E.snap.disabled = true;            // CHANGED (snap): until the first reading (setState)
+  trim = 0; fusion.reset(); smooth.reset(); headSm.reset(); cam = view = null;
   absR = relR = null; absSeen = iosSeen = nullSeen = tiltOnly = false; firstRelAt = null; source = null;
   hinted = false; firstRunning = false; foundAgain = false;
   slots = {}; compassNote = null; siteSeen = ''; probeDraw = {};
@@ -473,10 +516,11 @@ function close(){
   P.onClose && P.onClose();
   if(pushed && history.state && history.state.ar){ pushed = false; try { history.back(); } catch(e){} }
   pushed = false;
-  fusion.reset(); smooth.reset(); trim = 0; ptrs.clear(); pinch = null; pinched = false;
+  fusion.reset(); smooth.reset(); headSm.reset(); trim = 0; ptrs.clear(); pinch = null; pinched = false;
   radarBox = null; radarSeen = null;                   // CHANGED (radar)
   state = 'closed'; camState = 'off';
-  if(opener) opener.focus();
+  const back = mode === 'radar' ? radarOpener : opener;     // CHANGED (radar view): the focus goes back to the button that opened it
+  if(back) back.focus();
 }
 function onPop(){ pushed = false; close(); }
 function onHide(){ close(); }
@@ -488,11 +532,14 @@ function onVis(){
   requestWake();
   // Core Motion re-zeros alpha when its updates restart, which a trip away can do
   if(source === 'ios'){ fusion.reset(); foundAgain = true; }
-  smooth.reset();
+  smooth.reset(); headSm.reset();
   if(follow) P.goLive();
   if(!raf){ lastTs = 0; raf = requestAnimationFrame(loop); }
 }
-function setState(s){ state = s; if(root) root.dataset.state = s; }
+function setState(s){
+  state = s; if(root) root.dataset.state = s;
+  if(E.snap) E.snap.disabled = snapping || !(s === 'running' || s === 'finding');     // CHANGED (snap): there is nothing to take a picture of before the first reading
+}
 function fail(key, extra){
   setState('failed'); reason = key;
   clearTimeout(firstTimer);
@@ -501,12 +548,12 @@ function fail(key, extra){
   camState = 'off';
   removeOri();
   say('phase', null); say('hint', null);
-  say('fatal', key === 'insecure' ? MSG.insecure(location.protocol)
+  say('fatal', key === 'insecure' ? (mode === 'radar' ? MSG.insecureRadar(location.protocol) : MSG.insecure(location.protocol))
              : key === 'no-orientation' ? MSG.noOri
              : key === 'motion-denied' ? MSG.oriDenied
              : key === 'motion-tap' ? MSG.oriTap
-             : key === 'motion-error' ? MSG.oriError(extra)
-             : key === 'no-sensor' ? MSG.noSensor
+             : key === 'motion-error' ? (mode === 'radar' ? MSG.oriErrorRadar(extra) : MSG.oriError(extra))     // CHANGED (radar view)
+             : key === 'no-sensor' ? (mode === 'radar' ? MSG.noSensorRadar : MSG.noSensor)
              : key === 'tilt' ? MSG.tilt : MSG.noReading, 'warn');
   if(ctx){ ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, E.sky.width, E.sky.height); }
   cam = view = null;
@@ -531,7 +578,7 @@ function compassMessage(){
   const t = Date.now();
   if(compassNote && compassNote.until > t) return { text: compassNote.text, kind: 'info' };
   if(state !== 'running' && state !== 'finding') return null;
-  if(source !== 'rel' && decl.ok && decl.zone === 'blackout') return { text: MSG.pole, kind: 'warn' };
+  if(source !== 'rel' && decl.ok && decl.zone === 'blackout') return { text: mode === 'radar' ? MSG.poleRadar : MSG.pole, kind: 'warn' };     // CHANGED (radar view)
   if(source === 'ios'){
     const n = now();
     if(fusion.uncalSince !== null && n - fusion.uncalSince >= 3000) return { text: MSG.uncal, kind: 'warn' };
@@ -539,7 +586,7 @@ function compassMessage(){
       return { text: MSG.poor(Math.round(lastIosAcc)), kind: 'warn' };
     if(fusion.offset === null) return { text: foundAgain ? MSG.findingAgain : MSG.finding, kind: 'info' };
   }
-  if(source === 'rel') return { text: MSG.rel, kind: 'warn' };
+  if(source === 'rel') return { text: mode === 'radar' ? MSG.relRadar : MSG.rel, kind: 'warn' };     // CHANGED (radar view)
   return null;
 }
 /* Whether the phone looks to be somewhere other than the observer. Checked
@@ -583,6 +630,7 @@ function setLens(v){
   handUsed();
 }
 function pDown(e){
+  if(mode === 'radar') return;                         // CHANGED (radar view): there is no picture to turn or lens to fit
   try { E.sky.setPointerCapture(e.pointerId); } catch(_){}
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if(ptrs.size === 2){
@@ -592,6 +640,7 @@ function pDown(e){
   }
 }
 function pMove(e){
+  if(mode === 'radar') return;                         // CHANGED (radar view)
   const p = ptrs.get(e.pointerId);
   if(!p) return;
   const dx = e.clientX - p.x;
@@ -646,6 +695,7 @@ function measure(){
    the reader has hidden it. The box it takes is kept clear of by the labels and by the off-screen pointer. */
 let radarCss = '', radarUp = 0;
 function layoutRadar(read, beside, barsBottom){
+  if(mode === 'radar'){ layoutRadarView(read, beside, barsBottom); return; }     // CHANGED (radar view)
   const s = radarSize(W, H);
   /* `up` is the height of the radar's bottom edge above the foot of the view. In portrait it follows the readout's top: a readout that
      grows lifts it at once, so it never covers the text; one that shrinks by a line or two (the pointer's words leaving the Target row,
@@ -667,10 +717,100 @@ function layoutRadar(read, beside, barsBottom){
     radarCss = css;
     E.radar.style.width = E.radar.style.height = s + 'px';
     E.radar.style.bottom = beside ? 'calc(env(safe-area-inset-bottom) + 12px)' : up + 'px';
+    E.radar.style.left = E.radar.style.top = E.radar.style.right = '';     // CHANGED (radar view): the style sheet's corner
   }
   const r = E.radar.getBoundingClientRect();
   radarBox = { x: r.left, y: r.top, w: r.width, h: r.height };
   keepOut.push(radarBox);
+}
+/* CHANGED (radar view): in the radar view the radar is the page: as large as the room between the bars and the readout allows (beside the
+   readout when held sideways, and beside the Align panel when that is open), centred in that room, up to 420 px. It is there whether or not
+   there is a pose yet - the pass and the spacecraft need none - and goes only when the view has failed or there is not 96 px of room. */
+function layoutRadarView(read, beside, barsBottom){
+  const gap = 12;
+  const left = beside ? read.right + gap : gap, top = barsBottom, bottom = beside ? H - gap : read.top - 8;
+  let right = W - gap;
+  if(!E.align.hidden){
+    const al = E.align.getBoundingClientRect();
+    if(al.width && al.left > read.right - 1) right = Math.min(right, al.left - gap);
+  }
+  const side = Math.floor(Math.min(right - left, bottom - top, 420));
+  const show = state !== 'failed' && state !== 'closed' && side >= 96;
+  if(E.radar.hidden === show) E.radar.hidden = !show;
+  if(!show){ radarBox = null; return; }
+  const x = Math.round(left + (right - left - side)/2), y = Math.round(top + (bottom - top - side)/2);
+  const css = 'v' + side + ',' + x + ',' + y;
+  if(css !== radarCss){
+    radarCss = css;
+    const st = E.radar.style;
+    st.width = st.height = side + 'px'; st.left = x + 'px'; st.top = y + 'px'; st.right = st.bottom = 'auto';
+  }
+  const r = E.radar.getBoundingClientRect();
+  radarBox = { x: r.left, y: r.top, w: r.width, h: r.height };
+  keepOut.push(radarBox);
+}
+/* CHANGED (aim): where the phone is aimed - along the camera's view axis, or along its head, the top edge (radar.ts aimVector). The picture
+   is always drawn for the camera; only the radar's crosshair, and the words about where the phone points, follow this. */
+function aimNow(){
+  if(!cam) return null;
+  if(aimSrc !== 'head') return view;
+  return S.azEl(headSm && headSm.ready ? headSm.fwd : aimVector(cam, theta, 'head'));
+}
+function aimLabel(){
+  setText(E.aimbtn, aimSrc === 'head' ? 'Aim: head' : 'Aim: camera');
+  E.aimbtn.setAttribute('aria-label', aimSrc === 'head'
+    ? 'Aim: head — the crosshair follows the phone’s head, its top edge; press to follow the camera on the back instead'
+    : 'Aim: camera — the crosshair follows the camera on the back of the phone; press to follow the phone’s head, its top edge, instead');
+}
+function setAim(v){
+  aimSrc = v === 'head' ? 'head' : 'camera';
+  try { localStorage.setItem(AIM_KEY, aimSrc); } catch(e){}
+  aimLabel();
+  readout();
+}
+/* The direction in words, as the View row says it. */
+function dirText(a, finding){
+  if(Math.abs(a.el) > 85) return '— · straight ' + (a.el > 0 ? 'up' : 'down');
+  return (finding ? '— (finding north)' : Math.round(a.az) % 360 + '° ' + P.fmt.compass(a.az)) + ' · ' +
+         Math.round(Math.abs(a.el)) + '° ' + (a.el >= 0 ? 'up' : 'down');
+}
+/* CHANGED (snap): one picture of what is on the screen, made when the reader presses Snap and handed to them (snap.ts). The camera's picture
+   is drawn into a canvas of snap.ts's own, once, for this press; the view's own canvases never hold it. */
+function snap(){
+  if(snapping || (state !== 'running' && state !== 'finding')) return;
+  const held = document.activeElement === E.snap;      // a disabled button drops the focus to <body>, where Escape no longer reaches the view
+  snapping = true; E.snap.disabled = true;
+  const g = gen, ms = P.now(), o = P.site(), f = P.fmt, tgt = P.target(), st = tgt ? P.at(ms) : null;
+  const live = mode === 'ar' && camState === 'live' && E.video.videoWidth > 0 && E.video.videoHeight > 0;
+  const a = aimNow(), finding = source === 'ios' && fusion.offset === null;
+  const lines = [
+    !tgt ? 'No spacecraft' : !st ? tgt.name + ' · no position at this instant'
+      : tgt.name + ' · ' + Math.round(st.az) % 360 + '° ' + f.compass(st.az) + ' · ' +
+        (st.el >= 0 ? st.el.toFixed(1) + '° up · ' + Math.round(st.rng).toLocaleString('en-US') + ' km' : Math.abs(st.el).toFixed(1) + '° below the horizon'),
+    o.name + ' · ' + f.lat(o.lat) + ' ' + f.lon(o.lon) + ' · ' + f.whenZ(ms) + (P.live() ? ' · live' : ' · sim time')
+  ];
+  // with no compass the bearing is a guess, and the status line that says so is not in the picture
+  if(a) lines.push((aimSrc === 'head' ? 'Head ' : 'Camera ') + dirText(a, finding) + (source === 'rel' ? ' · no compass' : ''));
+  const sc = dpr;
+  composeSnap(document, {
+    width: Math.round(W*sc), height: Math.round(H*sc), scale: sc,
+    video: live ? { el: E.video, vw: E.video.videoWidth, vh: E.video.videoHeight } : null,
+    overlay: mode === 'ar' ? E.sky : null,
+    radar: radarBox ? { cv: E.radar, x: radarBox.x, y: radarBox.y, w: radarBox.w, h: radarBox.h } : null,
+    caption: lines
+  }).then(blob => {
+    if(g !== gen) return null;                         // the view was closed while the picture was made: nothing is handed over
+    const name = snapName(mode === 'radar' ? 'radar' : 'sky', o.name, Date.now(), live ? 'jpg' : 'png');
+    return deliverSnap(navigator, document, root, blob, name).then(r => [r, name]);
+  }).then(res => {
+    if(res && g === gen) say('snap', res[0] === 'cancelled' ? null : res[0] === 'shared' ? MSG.snapShared : MSG.snapSaved(res[1]), 'info', 6000);
+  }, err => {
+    if(g === gen) say('snap', MSG.snapFail(String((err && err.message) || 'the browser said no')), 'warn', 8000);
+  }).then(() => {
+    snapping = false; E.snap.disabled = !(state === 'running' || state === 'finding');
+    // the focus comes back to Snap, unless the view has closed or reopened or the reader has moved it on
+    if(held && g === gen && !E.snap.disabled && (!document.activeElement || document.activeElement === document.body)) E.snap.focus();
+  });
 }
 function setRadar(on){
   radarOn = on;
@@ -683,7 +823,7 @@ function setRadar(on){
 function drawRadarFrame(){
   radarSeen = null;
   if(!radarBox) return;
-  const s = radarSize(W, H), bw = Math.round(s*dpr);
+  const s = Math.round(radarBox.w) || radarSize(W, H), bw = Math.round(s*dpr);     // CHANGED (radar view): the radar view's radar is not the inset's size
   if(E.radar.width !== bw || E.radar.height !== bw){ E.radar.width = bw; E.radar.height = bw; }
   const ms = P.now(), st = P.target() ? P.at(ms) : null, p = P.pass(ms);
   const finding = source === 'ios' && fusion.offset === null;
@@ -691,7 +831,7 @@ function drawRadarFrame(){
     size: s, dpr, mask: P.mask, ms,
     pass: p && p.arc && p.arc.length > 1 ? p : null,
     craft: st ? { az: st.az, el: st.el } : null,
-    aim: view && !finding ? { az: view.az, el: view.el } : null
+    aim: finding ? null : aimNow()                        // CHANGED (aim): it was the camera's view alone
   }, pal, radarCache);
 }
 /* The off-screen pointer sits on the edge of the safe rectangle; where that is under the radar it slides along the edge to the nearer
@@ -726,7 +866,11 @@ function loop(ts){
     if(state === 'asking' || state === 'waiting'){ clearTimeout(firstTimer); }
     const tp = targetPose(), th = screenTheta(tp.B);
     const target = S.camera(tp.B, th);
-    if(th !== theta){ theta = th; smooth.snap(target); } else smooth.step(target, dt);
+    /* CHANGED (aim): the head is smoothed on its own. The smoother picks its time constant from how fast the vector it holds turns, and
+       the camera's axis hardly moves when the phone is laid flat and spun, which is when the head sweeps like a compass needle. Its
+       'up' is the camera's axis, which is square to the head. */
+    const headT = { fwd: aimVector(target, th, 'head'), up: target.fwd };
+    if(th !== theta){ theta = th; smooth.snap(target); headSm.snap(headT); } else { smooth.step(target, dt); headSm.step(headT, dt); }
     cam = { fwd: smooth.fwd, right: smooth.right, up: smooth.up };
     view = S.azEl(cam.fwd);
     const finding = source === 'ios' && fusion.offset === null;
@@ -739,12 +883,13 @@ function loop(ts){
         foundAgain = false;
         if(!firstRunning){
           firstRunning = true;
-          if(!hinted){ say('hint', MSG.hint, 'info'); hintTimer = setTimeout(() => say('hint', null), 8000); }
+          if(!hinted && mode === 'ar'){ say('hint', MSG.hint, 'info'); hintTimer = setTimeout(() => say('hint', null), 8000); }     // CHANGED (radar view): no sky to drag there
         }
       }
     }
   }
-  draw();
+  if(mode === 'ar') draw();                            // CHANGED (radar view): the radar view draws no sky over a picture
+  else probeDraw = { drawn: {}, marker: null, aim: null, pointer: null, sun: null, pass: null };
   drawRadarFrame();                                    // CHANGED (radar)
   if(changed) readout();
 }
@@ -1074,8 +1219,13 @@ function readout(){
     if(Math.abs(view.el) > 85) vt = '— · straight ' + (view.el > 0 ? 'up' : 'down');
     else vt = (finding ? '— (finding north)' : Math.round(view.az) % 360 + '° ' + f.compass(view.az)) + ' · ' +
               Math.round(Math.abs(view.el)) + '° ' + (view.el >= 0 ? 'up' : 'down');
-    vt += ' · ' + lensTxt;
+    if(mode === 'ar') vt += ' · ' + lensTxt;               // CHANGED (radar view): the radar view has no lens
   }
+  /* CHANGED (radar view, aim): in the radar view the row says where the phone is aimed; in the AR view, with the head chosen, it adds where the
+     head points, since the picture and the sky are still the camera's. */
+  const aimV = aimNow();
+  if(mode === 'radar') vt = aimV ? dirText(aimV, finding) + ' · ' + (aimSrc === 'head' ? 'head' : 'camera') : '—';
+  else if(aimSrc === 'head' && aimV) vt += ' · head ' + dirText(aimV, finding);
   setText(E.view, vt);
   setText(E.north, northText());
   setText(E.decl, declText());
@@ -1132,7 +1282,14 @@ function targetText(ms){
           ' · ' + Math.round(s.az) % 360 + '° ' + f.compass(s.az) +
           (s.el >= 0 ? ' · ' + Math.round(s.rng).toLocaleString('en-US') + ' km' : '');
   if(s.el >= 0 && s.el < P.mask) x += ' · under the ' + P.mask + '° mask';
-  if(probeDraw.pointer && probeDraw.pointer.text) x += ' · ' + probeDraw.pointer.text;
+  if(mode === 'radar'){                                   // CHANGED (radar view): the words the pointer would say, said about the aim
+    const a = aimNow(), at = aimAt(s, P.pass(ms), ms);
+    if(a && !(source === 'ios' && fusion.offset === null)){
+      const how = S.steer(a, at, f.compass);
+      if(how) x += ' · ' + how;
+      else if(at.kind === 'sat' && s.el >= 0) x += ' · on target';
+    }
+  } else if(probeDraw.pointer && probeDraw.pointer.text) x += ' · ' + probeDraw.pointer.text;
   if(t.reentry) x += ' · SGP4 takes it below the entry interface — these passes will not happen';
   return x;
 }
@@ -1170,7 +1327,8 @@ const ARView = {
       decl: decl.ok ? decl.D : null, declZone: decl.zone, trim, fov, theta, F, W, H, cx, cy,
       safe: Object.assign({}, safe), lag: smooth ? smooth.lag : null, ms: P ? P.now() : null, follow,
       view: view ? { az: view.az, el: view.el } : null, frames, stream: camStream, listening,
-      radar: { on: radarOn, box: radarBox ? Object.assign({}, radarBox) : null, draw: radarSeen }     // CHANGED (radar)
+      radar: { on: radarOn, box: radarBox ? Object.assign({}, radarBox) : null, draw: radarSeen },     // CHANGED (radar)
+      mode, aimSource: aimSrc, aimView: aimNow(), snapping                                              // CHANGED (radar view, aim, snap)
     }, probeDraw);
   }
 };

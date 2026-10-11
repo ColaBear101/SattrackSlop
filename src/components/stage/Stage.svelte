@@ -36,6 +36,9 @@
   <!-- the old page's first screen said that the written analysis is below ("Below ↓ Elements ... Terms"): a link to it here, in the stage's own row -->
   <a class="below" href="#report">Report ↓</a>
   <div class="ar-slot">
+    <!-- The radar on its own: the same sensors and the same plot as the AR view, with no camera asked for and no sky drawn over a picture. -->
+    <Button id="radarbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="Radar: where this phone points, with no camera"
+            onclick={() => ar.openRadar()}>Radar</Button>
     <Button id="arbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="AR: the sky through the camera"
             onclick={() => ar.open()}><abbr title="augmented reality: the sky drawn over this phone's camera, where it points">AR</abbr></Button>
   </div>
@@ -64,10 +67,11 @@
 
 <style>
   .stage { position: relative; padding: var(--space-4); min-width: 0; }
-  .ar-slot { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 3; }
+  .ar-slot { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 3; display: flex; gap: var(--space-2); }
   .below { position: absolute; top: var(--space-4); right: calc(var(--space-4) + 56px); z-index: 3; display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--space-3); border-radius: var(--r-2); color: var(--ink2); font-size: var(--fs-1); font-weight: 500; text-decoration: none; }
   .below:hover { background: var(--hover); color: var(--ink); }
-  @media (pointer: coarse) { .below { min-height: var(--tap); } }
+  /* where a finger is the pointer the Radar button is offered beside AR (src/components/ar/session.svelte.ts), and the link makes room for it */
+  @media (pointer: coarse) { .below { min-height: var(--tap); right: calc(var(--space-4) + 56px + 60px); } }
   .ar-slot :global(abbr) { text-decoration: none; cursor: inherit; }
   .ar-slot :global(.btn[hidden]) { display: none; }
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
@@ -90,6 +94,9 @@
     .stage { padding: var(--space-3); }
     .ar-slot { top: var(--space-3); right: var(--space-3); }
     .below { top: var(--space-3); right: calc(var(--space-3) + 52px); }
+    @media (pointer: coarse) { .below { right: calc(var(--space-3) + 52px + 60px); } }
+    /* on a 320 px phone the link is a little narrower and a little nearer to the buttons, to keep clear of the Map tab */
+    @media (pointer: coarse) and (max-width: 340px) { .below { padding: 0 var(--space-2); right: calc(var(--space-3) + 52px + 56px); } }
     .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: var(--space-3); gap: var(--space-3) var(--space-2); }
     .readouts .eyebrow { letter-spacing: .06em; }
   }

@@ -44,7 +44,8 @@ export interface RadarFrame {
 /** Where a direction falls on the plot, in CSS pixels from the canvas's top left. `clamped`: it was below the horizon and is on the rim. */
 export interface RadarMark { x: number; y: number; clamped: boolean }
 
-export interface RadarGeometry { R: number; cx: number; cy: number }
+/** `u` is the plot's unit: 1 at the inset's 156 px, up to 2.2 for a radar that fills the screen. Fonts, lines and marks are drawn in it. */
+export interface RadarGeometry { R: number; cx: number; cy: number; u: number }
 
 /** What a frame drew and where, for the checks. */
 export interface RadarProbe { size: number; R: number; cx: number; cy: number; aim: RadarMark | null; craft: RadarMark | null; pass: boolean }
@@ -63,13 +64,33 @@ export interface RadarCache {
 /** Below this elevation the crosshair is left out: the readout says "straight down" from 85 degrees too. */
 const AIM_FLOOR = -85;
 
+export type AimSource = 'camera' | 'head';
+
+/** The picture's three axes in East-North-Up, as the view holds them (see skyar.ts camera()). */
+export interface AimFrame { fwd: number[]; right: number[]; up: number[] }
+
+/** The unit vector the phone is aimed along: the camera's, out of the back, or the head's, out of its top edge. The head is the phone's own
+ *  top edge in its natural, upright position, whichever way the screen has turned: the picture's up turned back by the screen's rotation
+ *  theta (counter-clockwise), y = -sin(theta) right + cos(theta) up. Held upright the head points at the zenith and the camera at the horizon;
+ *  laid flat, face up, the head points along the horizon, as a compass needle does. */
+export function aimVector(cam: AimFrame, thetaDeg: number, source: AimSource): number[] {
+  if (source !== 'head') return cam.fwd;
+  const t = thetaDeg * RAD, s = Math.sin(t), c = Math.cos(t);
+  return [0, 1, 2].map(i => -s * cam.right[i]! + c * cam.up[i]!);
+}
+
 /** The side of the radar for a screen W x H: two fifths of the short side, from a thumb-sized 112 px to 200 px on a tablet. */
 export function radarSize(W: number, H: number): number {
   return Math.round(Math.max(112, Math.min(200, Math.min(W, H) * 0.4)));
 }
 
+export function radarUnit(size: number): number {
+  return Math.min(2.2, Math.max(1, size / 156));
+}
+
 export function radarGeometry(size: number): RadarGeometry {
-  return { R: size / 2 - RIM, cx: size / 2, cy: size / 2 };
+  const u = radarUnit(size);
+  return { R: size / 2 - RIM * u, cx: size / 2, cy: size / 2, u };
 }
 
 /** The plot's own transform. Elevation is clamped to 0..90: a direction below the horizon is put on the rim at its azimuth. */
@@ -79,32 +100,32 @@ export function radarPoint(g: RadarGeometry, az: number, el: number): RadarMark 
   return { x: g.cx + r * Math.sin(a), y: g.cy - r * Math.cos(a), clamped: el < 0 };
 }
 
-function label(ctx: CanvasRenderingContext2D, pal: RadarPalette, s: string, x: number, y: number, fill: string, font: string): void {
-  ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3.5; ctx.strokeStyle = pal.halo; ctx.strokeText(s, x, y);
+function label(ctx: CanvasRenderingContext2D, pal: RadarPalette, s: string, x: number, y: number, fill: string, px: number, u: number): void {
+  ctx.font = '600 ' + (px * u) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3.5 * u; ctx.strokeStyle = pal.halo; ctx.strokeText(s, x, y);
   ctx.fillStyle = fill; ctx.fillText(s, x, y);
 }
 
 /* The disc, its rings, the mask, the horizon and the compass letters: all that does not change while the view is open. */
 function paintBase(ctx: CanvasRenderingContext2D, g: RadarGeometry, mask: number, pal: RadarPalette): void {
-  const { R, cx, cy } = g;
+  const { R, cx, cy, u } = g;
   // dark glass, so the plot reads over a daylit sky and over a black one
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI);
   ctx.fillStyle = 'rgba(5,9,12,.62)'; ctx.fill();
   // elevation rings 30 and 60, and the spokes every 45 degrees
-  ctx.lineWidth = 1; ctx.strokeStyle = pal.grid;
+  ctx.lineWidth = u; ctx.strokeStyle = pal.grid;
   for (const e of [30, 60]) { ctx.beginPath(); ctx.arc(cx, cy, R * (90 - e) / 90, 0, 2 * Math.PI); ctx.stroke(); }
   ctx.beginPath();
   for (let k = 0; k < 8; k++) { const a = k * 45 * RAD; ctx.moveTo(cx, cy); ctx.lineTo(cx + R * Math.sin(a), cy - R * Math.cos(a)); }
   ctx.stroke();
   // the mask, in the globe key's pink, and the horizon
-  ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5; ctx.strokeStyle = pal.mask;
+  ctx.setLineDash([4 * u, 3 * u]); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = pal.mask;
   ctx.beginPath(); ctx.arc(cx, cy, R * (90 - mask) / 90, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
-  ctx.lineWidth = 1.5; ctx.strokeStyle = pal.horizon;
+  ctx.lineWidth = 1.5 * u; ctx.strokeStyle = pal.horizon;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke();
   ['N', 'E', 'S', 'W'].forEach((d, i) => {
     const a = i * 90 * RAD;
-    label(ctx, pal, d, cx + (R + 8) * Math.sin(a), cy - (R + 8) * Math.cos(a), pal.ink2, '600 11px ' + FONT);
+    label(ctx, pal, d, cx + (R + 8 * u) * Math.sin(a), cy - (R + 8 * u) * Math.cos(a), pal.ink2, 11, u);
   });
 }
 
@@ -117,32 +138,32 @@ function flown(p: RadarPass, ms: number): number {
 
 /* The pass: the stretch already flown faint, the rest bright, its highest point, and its two ends. */
 function paintPass(ctx: CanvasRenderingContext2D, g: RadarGeometry, p: RadarPass, k: number, pal: RadarPalette): void {
-  const { cx, cy } = g, n = p.arc.length - 1, pt = (s: RadarPoint) => radarPoint(g, s.az, s.el);
+  const { cx, cy, u } = g, n = p.arc.length - 1, pt = (s: RadarPoint) => radarPoint(g, s.az, s.el);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const seg = (from: number, to: number, alpha: number) => {
     ctx.beginPath();
     for (let i = from; i <= to; i++) { const q = pt(p.arc[i]!); if (i === from) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); }
     ctx.globalAlpha = alpha;
-    ctx.lineWidth = 5.5; ctx.strokeStyle = 'rgba(5,9,12,.55)'; ctx.stroke();
-    ctx.lineWidth = 2.5; ctx.strokeStyle = pal.pass; ctx.stroke();
+    ctx.lineWidth = 5.5 * u; ctx.strokeStyle = 'rgba(5,9,12,.55)'; ctx.stroke();
+    ctx.lineWidth = 2.5 * u; ctx.strokeStyle = pal.pass; ctx.stroke();
     ctx.globalAlpha = 1;
   };
   if (k > 0) seg(0, k, 0.45);
   seg(k, n, 1);
   // the highest point is a small ring: the spacecraft is the one solid dot on the plot, and is not to be mistaken for it
   const top = radarPoint(g, p.maxAz, p.maxEl);
-  ctx.beginPath(); ctx.arc(top.x, top.y, 3.5, 0, 2 * Math.PI);
-  ctx.lineWidth = 4.5; ctx.strokeStyle = 'rgba(5,9,12,.55)'; ctx.stroke();
-  ctx.lineWidth = 1.75; ctx.strokeStyle = pal.pass; ctx.stroke();
+  ctx.beginPath(); ctx.arc(top.x, top.y, 3.5 * u, 0, 2 * Math.PI);
+  ctx.lineWidth = 4.5 * u; ctx.strokeStyle = 'rgba(5,9,12,.55)'; ctx.stroke();
+  ctx.lineWidth = 1.75 * u; ctx.strokeStyle = pal.pass; ctx.stroke();
   // AOS and LOS sit on the mask ring: the labels are pulled in towards the centre, clear of the compass letters
   const inward = (q: RadarMark, d: number): [number, number] => {
     const vx = cx - q.x, vy = cy - q.y, m = Math.hypot(vx, vy) || 1;
     return [q.x + vx / m * d, q.y + vy / m * d];
   };
-  const a = inward(pt(p.arc[0]!), 15), l = inward(pt(p.arc[n]!), 15);
+  const a = inward(pt(p.arc[0]!), 15 * u), l = inward(pt(p.arc[n]!), 15 * u);
   // an end the window cut off, not the horizon, is starred, as the main view stars it
-  label(ctx, pal, 'AOS' + (p.clipA ? '*' : ''), a[0], a[1], pal.ink2, '600 10px ' + FONT);
-  label(ctx, pal, 'LOS' + (p.clipL ? '*' : ''), l[0], l[1], pal.ink2, '600 10px ' + FONT);
+  label(ctx, pal, 'AOS' + (p.clipA ? '*' : ''), a[0], a[1], pal.ink2, 10, u);
+  label(ctx, pal, 'LOS' + (p.clipL ? '*' : ''), l[0], l[1], pal.ink2, 10, u);
 }
 
 /** Draws one frame on `ctx`, a canvas whose backing store is size x dpr device pixels square, and says what it drew and where. */
@@ -198,26 +219,26 @@ export function drawRadar(ctx: CanvasRenderingContext2D, f: RadarFrame, pal: Rad
   // the spacecraft, where it is now: the pass's colour once it clears the mask, cyan between the mask and the horizon
   if (craft && probe.craft) {
     const q = probe.craft;
-    ctx.beginPath(); ctx.arc(q.x, q.y, 5.5, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.arc(q.x, q.y, 5.5 * g.u, 0, 2 * Math.PI);
     ctx.fillStyle = craft.el >= f.mask ? pal.pass : pal.craft; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = pal.halo; ctx.stroke();
+    ctx.lineWidth = 2 * g.u; ctx.strokeStyle = pal.halo; ctx.stroke();
   }
 
   // the phone: a blue crosshair, last, so that nothing hides it. Below the horizon it stays on the rim, fainter and with a broken ring.
   if (probe.aim) {
-    const q = probe.aim, r0 = 4.5, r1 = 12;
+    const q = probe.aim, u = g.u, r0 = 4.5 * u, r1 = 12 * u;
     const arms = () => {
       ctx.beginPath();
       for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) { ctx.moveTo(q.x + ux * r0, q.y + uy * r0); ctx.lineTo(q.x + ux * r1, q.y + uy * r1); }
     };
     ctx.save();
     if (q.clamped) ctx.globalAlpha = 0.6;
-    arms(); ctx.lineWidth = 4.5; ctx.strokeStyle = 'rgba(5,9,12,.7)'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(q.x, q.y, 7, 0, 2 * Math.PI);
-    if (q.clamped) ctx.setLineDash([3, 3]);
-    ctx.lineWidth = 4.5; ctx.strokeStyle = 'rgba(5,9,12,.7)'; ctx.stroke();
-    ctx.lineWidth = 1.75; ctx.strokeStyle = pal.aim; ctx.stroke(); ctx.setLineDash([]);
-    arms(); ctx.lineWidth = 1.75; ctx.strokeStyle = pal.aim; ctx.stroke();
+    arms(); ctx.lineWidth = 4.5 * u; ctx.strokeStyle = 'rgba(5,9,12,.7)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(q.x, q.y, 7 * u, 0, 2 * Math.PI);
+    if (q.clamped) ctx.setLineDash([3 * u, 3 * u]);
+    ctx.lineWidth = 4.5 * u; ctx.strokeStyle = 'rgba(5,9,12,.7)'; ctx.stroke();
+    ctx.lineWidth = 1.75 * u; ctx.strokeStyle = pal.aim; ctx.stroke(); ctx.setLineDash([]);
+    arms(); ctx.lineWidth = 1.75 * u; ctx.strokeStyle = pal.aim; ctx.stroke();
     ctx.restore();
   }
   if (cache) cache.last = { key, probe };

@@ -31,7 +31,7 @@
  */
 /* ---- Moved from legacy/earth/skyar.js (main@4eadd7a), lines 32-396.
  * The only changes: the IIFE wrapper and 'use strict' are gone (an ES module is already strict and scoped) and the export is
- * `export const SkyAR` instead of `global.SkyAR =`. Arithmetic, order and comments are untouched: verification/verify-ar.js (Part A)
+ * `export const SkyAR` instead of `global.SkyAR =`. Arithmetic, order and comments are untouched: verification/suites/verify-ar.js (Part A)
  * holds it to 1e-12 and 1e-9, and runs against both the old file and the bundle of this one.
  */
 

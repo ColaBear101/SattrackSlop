@@ -9,7 +9,7 @@ import { BANGKOK, byName, MASK, world } from './helpers';
 /* What the old page's verify-custom-mutants.js took away one guard at a time, for the parts of it that are pure functions: a custom
    orbit is judged by its FLAG and never by its number or its name, what it writes into the files a reader takes away says what it is,
    and a planner that throws is not taken for a bad record. (The same behaviours on the screen are verify-custom.js; the map from each
-   mutant to the check or the test that now guards it is verification/behaviours-custom.json.) */
+   mutant to the check or the test that now guards it is verification/fixtures/behaviours-custom.json.) */
 const P = Planner as unknown as PlannerCore;
 const sat = satellite as never;
 const START = Date.parse('2026-09-12T07:29:09.993Z');

@@ -107,11 +107,11 @@ const GL_ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-s
 /* ---- the network ----------------------------------------------------------------
    Every browser stage used to fetch satellite.js and three.js from cdnjs on each
    run, which made "a clean run" depend on someone else's uptime. The two files are
-   byte-identical to what the page pins by hash (verification/satellite.min.js is
+   byte-identical to what the page pins by hash (verification/reference/satellite.min.js is
    checked against the SRI by verify.js; three is checked below), so they can be
    answered locally with the CORS header a crossorigin="anonymous" tag needs. */
 const CDN = [
-  { re: /\/satellite\.js\/6\.0\.1\/satellite\.min\.js$/, file: path.join(__dirname, '..', 'satellite.min.js') },
+  { re: /\/satellite\.js\/6\.0\.1\/satellite\.min\.js$/, file: path.join(__dirname, '..', 'reference', 'satellite.min.js') },
   { re: /\/three\.js\/r128\/three\.min\.js$/, file: path.join(ROOT, 'node_modules', 'three', 'build', 'three.min.js') }
 ];
 /* Hosts whose answer would make a run depend on what they served that minute. */

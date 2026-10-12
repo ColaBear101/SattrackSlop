@@ -8,7 +8,7 @@
  *   node scripts/extract-data.mjs --check    re-extract in memory and fail if data/ differs
  *
  * The catalogue text is written exactly as the page held it, so the same 2,158 element sets
- * (and the same parse) reach the new app; verification/catalog.txt is an independent copy of
+ * (and the same parse) reach the new app; verification/fixtures/catalog.txt is an independent copy of
  * it and is compared byte for byte. Nothing here rounds, re-orders or re-serialises a number.
  * Once legacy/ is deleted at cutover the data files are the source of truth.
  */
@@ -69,7 +69,7 @@ if (objects !== +counts[1] || records !== +counts[2]) {
 const transmitters = { built: built[1], source: txSource[1], objects, records, tx: TX };
 
 /* ---- compare with the independent copy, then write or check --------------------- */
-const catalogOnDisk = fs.readFileSync(path.join(ROOT, 'verification/catalog.txt'), 'utf8');
+const catalogOnDisk = fs.readFileSync(path.join(ROOT, 'verification/fixtures/catalog.txt'), 'utf8');
 const normalise = s => s.replace(/\r\n/g, '\n').replace(/^\n/, '').replace(/\n+$/, '\n');
 const sameAsVerification = normalise(tle) === normalise(catalogOnDisk);
 
@@ -80,9 +80,9 @@ const files = {
   'data/transmitters.json': JSON.stringify(transmitters) + '\n'
 };
 
-console.log('catalogue: ' + names.length + ' element sets; identical to verification/catalog.txt: ' + sameAsVerification);
+console.log('catalogue: ' + names.length + ' element sets; identical to verification/fixtures/catalog.txt: ' + sameAsVerification);
 console.log('world: ' + polys + ' polygons; transmitters: ' + objects + ' objects, ' + records + ' records');
-if (!sameAsVerification) throw new Error('the page and verification/catalog.txt disagree');
+if (!sameAsVerification) throw new Error('the page and verification/fixtures/catalog.txt disagree');
 
 let bad = 0;
 for (const [rel, body] of Object.entries(files)) {

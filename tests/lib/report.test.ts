@@ -11,7 +11,7 @@ import { byName, world } from './helpers';
 
 /* The report's prose. The elements section and the Decay section were written, sentence by sentence, in the old page;
    they are moved into data (src/lib/analysis/elements-report.ts, src/lib/text/life-words.ts) with the sentences untouched.
-   verification/golden.js compares them with the old page's own output across 38 spacecraft; these are the fast checks
+   verification/gate/golden.js compares them with the old page's own output across 38 spacecraft; these are the fast checks
    that sit beside it: the strings below are what the OLD page printed for LANDSAT 9 at 2026-09-13T00:00Z from Bangkok. */
 
 describe('markup() reads the old page\'s inline strings into data', () => {
@@ -190,7 +190,7 @@ describe('the orbital elements section, as the old page printed it for LANDSAT 9
 describe('the elements section over the whole baseline: no hole in any sentence', () => {
   const { eng } = world();
   const report = makeElementsReporter(eng);
-  const names = Object.keys(JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', 'verification', 'baseline.json'), 'utf8')).sats);
+  const names = Object.keys(JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', 'verification', 'gate', 'baseline.json'), 'utf8')).sats);
   it('has 38 spacecraft to look at', () => { expect(names.length).toBe(38); });
 
   it('every card, row and note is whole, whichever kind of orbit it is (LEO, GEO, Molniya, near-equatorial)', { timeout: 120_000 }, () => {

@@ -10,7 +10,7 @@
  *                        clicks must not queue several)
  *                     5. the API; then the direct fetch (75 s) when the API is absent or cannot help
  *
- * `why` keeps the names the decay page speaks in (verification/verify-lifetime.js): null for a history, otherwise
+ * `why` keeps the names the decay page speaks in (verification/suites/verify-lifetime.js): null for a history, otherwise
  * timeout, unreachable, http (with status), unreadable, empty, outside (with rows). The first four are failures a
  * reader may retry; the last two are answers.
  *

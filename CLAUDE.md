@@ -4,7 +4,7 @@ An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two
 
 ## The one rule
 
-**The computed numbers must not move.** `npm run gate` builds the production bundle and compares 67,488 values against `verification/baseline.json` with `===`; it must print `BIT-IDENTICAL`. Never use `--tol`, never regenerate `baseline.json`, `verification/golden.json` or the `verification/ab3d/` references from the new code: they are written from the old page only (`GT_TARGET=legacy`, `--write`). If the gate moves, the code is wrong.
+**The computed numbers must not move.** `npm run gate` builds the production bundle and compares 67,488 values against `verification/gate/baseline.json` with `===`; it must print `BIT-IDENTICAL`. Never use `--tol`, never regenerate `baseline.json`, `verification/gate/golden.json` or the `verification/gate/ab3d/` references from the new code: they are written from the old page only (`GT_TARGET=legacy`, `--write`). If the gate moves, the code is wrong.
 
 ## Layout
 
@@ -12,6 +12,7 @@ An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two
 - `src/state` rune stores (`app`, `clock`, `custom`, `live`, `life`, `prefs`, `report`), then `src/components` and `src/scene` (three r128, imperative). Dependency direction is `lib <- state <- components`; `npm run check:deps` enforces it.
 - `server/` + `shared/` Elysia cache API (`serve.ts`); the client falls back to direct fetches when it is absent.
 - `data/` catalogue, world, transmitters, WMM; `public/` the Moon pages, verbatim.
+- `verification/` (CommonJS): `run.js` runs every stage; `gate/` (regress, snapshot, golden, ab3d and their frozen references), `suites/` (verify-*.js, axe, perf, screens), `reference/` (independent core.js/propagate.js, pinned satellite.min.js), `fixtures/` (catalog.txt, WMM, behaviour and mutant lists), `tools/` (fetchers, mutation runners), `lib/` (harness). Outputs (`.build/`, `.logs/`, `screens/`, `.ab3d-out/`, `perf-last.json`, `last-run.json`) stay at the `verification/` root.
 - Lazy chunks: planner, AR, report, Eden client, scene, sky data, transmitters, export. The entry the page cannot start without is ~83 KB gzipped (budget 90, held by `verify-visitor.js`).
 - The test facade (`window.__gt`, `Orbit3D`, ...) is a lazy chunk installed only when `window.__GT_TEST__` is set; the entry chunk must not contain it.
 

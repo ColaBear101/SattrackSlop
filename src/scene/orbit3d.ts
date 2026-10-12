@@ -18,7 +18,7 @@
  *   3. tick(): a `pace` (setPace) the host sets, the least time between drawn frames. 0, the default, draws every animation
  *      frame as before.
  * Nothing else is touched: the geometry, the shaders, the palette and every figure are the old file's, which is what the pixel and
- * scene-inventory comparison against the old page (verification/ab3d.js) holds to.
+ * scene-inventory comparison against the old page (verification/gate/ab3d.js) holds to.
  */
 export function makeOrbit3D(global) {
 

@@ -27,7 +27,7 @@ import { Lifetime } from './lifetime';
  * semi-major axis read off a state vector differs from the mean one by up to about 9 km.
  *
  * The traps this file exists to step around (measured, not guessed; the numbers are in
- * verification/verify-planner.js, which compares everything here against satellite.js):
+ * verification/suites/verify-planner.js, which compares everything here against satellite.js):
  *
  *   - A TLE carries the KOZAI mean motion; SGP4 turns it into the BROUWER semi-major
  *     axis (satrec.a, which the page prints as "a"). They are not (mu/n^2)^(1/3):

@@ -22,7 +22,7 @@ export const SRC_CELESTRAK = 'CelesTrak';
 export const SRC_MIRROR = 'TLE API';
 
 /** How one upstream attempt ended, when it did not produce an answer. The first five are the names the decay
- *  page has always used for "why there is no history" (verification/verify-lifetime.js):
+ *  page has always used for "why there is no history" (verification/suites/verify-lifetime.js):
  *    unreachable  the request itself failed: offline, refused, a redirect (refused on purpose), TLS
  *    timeout      no answer inside the deadline
  *    http         an error status (in `status`)

@@ -1,4 +1,4 @@
-/* Downlink frequencies, baked from SatNOGS DB (data/transmitters.json, written by verification/fetch-transmitters.js).
+/* Downlink frequencies, baked from SatNOGS DB (data/transmitters.json, written by verification/tools/fetch-transmitters.js).
  *
  * The table was a 122 KB script of object literals the page always loaded; it is a JSON file now, fetched as its own
  * chunk the first time a downlink is wanted, so the first paint does not carry it. The lookups are the old

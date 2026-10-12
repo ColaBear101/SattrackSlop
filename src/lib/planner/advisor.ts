@@ -22,7 +22,7 @@ import { AdvisorCopy } from './advisor-copy';
  * needs new maths only when it needs a new key, and a new kernel stays invisible until
  * some record reads its key. advise() joins the two.
  *
- * Every kernel answers to a second implementation (verification/verify-advisor.js compares
+ * Every kernel answers to a second implementation (verification/suites/verify-advisor.js compares
  * them with SGP4 in satellite.js, with Meeus's Sun, and with real catalogue TLEs). The
  * traps it exists to step around, all measured, are in Planner's header and in SPEC 3.1;
  * the ones that bite here:

@@ -10,8 +10,8 @@ describe('data/ extracted from the pre-rewrite page', () => {
   const catalogue = read('data/catalogue.txt');
   const lines = catalogue.split(/\r?\n/).filter(Boolean);
 
-  it('is byte-for-byte verification/catalog.txt, the independent copy', () => {
-    expect(catalogue.replace(/\r\n/g, '\n')).toBe(read('verification/catalog.txt').replace(/\r\n/g, '\n'));
+  it('is byte-for-byte verification/fixtures/catalog.txt, the independent copy', () => {
+    expect(catalogue.replace(/\r\n/g, '\n')).toBe(read('verification/fixtures/catalog.txt').replace(/\r\n/g, '\n'));
   });
 
   it('holds 2,158 three-line element sets with valid shapes', () => {

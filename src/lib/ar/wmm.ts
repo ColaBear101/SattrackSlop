@@ -36,10 +36,10 @@ import COF_RAW from '../../../data/WMM.COF?raw';
  *
  * The coefficients are NOAA's WMM.COF from that zip, embedded below verbatim.
  * A script copied them in from the file; no digit of them was typed by hand,
- * so none can have been typed wrong. verification/WMM.COF is the same file,
+ * so none can have been typed wrong. verification/fixtures/WMM.COF is the same file,
  * committed byte for byte as a second copy, and the check compares the string
  * here against it before running all 100 rows of NOAA's own test values
- * (verification/WMM2025_TestValues.txt, from the same zip) through field().
+ * (verification/fixtures/WMM2025_TestValues.txt, from the same zip) through field().
  * D and I agree with every row to the 0.01 degree they are printed to, and
  * each field component to within 0.001 nT.
  *
@@ -66,7 +66,7 @@ import COF_RAW from '../../../data/WMM.COF?raw';
 /* ---- Moved from legacy/earth/wmm.js (main@4eadd7a), lines 65-328.
  * The changes: the IIFE wrapper and 'use strict' are gone, the export is `export const WMM` instead of `global.WMM =`, and the
  * coefficient text is data/WMM.COF imported as a string (byte for byte the literal that stood here: NOAA's file) instead of a template
- * literal in the source. verification/WMM.COF is the second, independent copy the suite compares it with. Everything else is untouched.
+ * literal in the source. verification/fixtures/WMM.COF is the second, independent copy the suite compares it with. Everything else is untouched.
  */
 
 /* NOAA's WMM.COF, verbatim. The first line is the epoch, the model's name and

@@ -2972,21 +2972,29 @@ running added, because a paused clock stays within 5 s for five more seconds and
 not repainted. At any other instant — scrubbed, paused, sped up, or left behind while the tab was
 hidden and the browser stopped the frame loop — it is worked out for the clock's instant and says
 which, *Tune at sim time 10-14 19:57:53Z*, beside a **Go live** button that runs the clock at
-real time from now, as the AR view does (a window that does not hold now is opened at it). While
+real time from now, as the AR view does (a window that does not hold now is opened at it). The
+button goes once the line is live; a press that had the focus leaves it on the caption, which now
+says *Tune now*, so it does not fall to the page, and the next Tab goes on to the Uplink box. While
 the spacecraft is under the 5° mask the passes are found with, the line adds *below the 5° mask*.
 It is repainted on the clock's tick, ten times a second while the clock plays and never while it is
 paused.
 
 The uplink is held in memory for the spacecraft it was typed for: another spacecraft shows an empty
-box, and a reload forgets it. It is not stored and not sent anywhere.
+box, and a reload forgets it. It is not stored and not sent anywhere. A screen reader names the box
+with its unit, *Uplink frequency in MHz*, as it names the downlink box beside it.
 
 `verify-doppler.js` scrubs 30 % of the way into a pass, where the range rate is several km/s, and
 works the line's figures out again from the test surface's range rate at the instant the line
 names, with the law written out: for the downlink chosen from the table, for 437.100 MHz typed in,
-and for a 145.900 MHz uplink, which must come back to 145.900 MHz on board. It checks that the
-paused line is not repainted; that after Go live it says now, is within a second of the wall
-clock, is still right and moves with the clock; and that another spacecraft has an empty uplink
-box.
+and for a 145.900 MHz uplink, which must come back to 145.900 MHz on board. That a paused line
+does no work cannot be read off its text, which would come out the same, so the suite counts it:
+the test surface hands out the engine (`__gt.eng`), and while the clock stands still for 0.7 s the
+line must not call its `stateAt` once, then must call it at once when the clock is moved a step;
+the paused line must also stay on the clock's instant. It checks that after Go live, pressed with
+Enter, the line says now, keeps the focus on its caption, is within a second of the wall clock, is
+still right and moves with the clock; and that another spacecraft has an empty uplink box. The old
+page has no such line, so with `GT_TARGET=legacy` the suite runs its range-rate checks and says
+the line is not checked.
 
 #### Staying current
 
@@ -3220,7 +3228,8 @@ npm run refresh      # the live TLE refresh, against mocked sources, and the sna
                      # (run.js runs it again as refresh-api, with a mock cache API answering)
 npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range; the live line
-                     # under the downlink box, against the law written out
+                     # under the downlink box, against the law written out (the rebuilt page
+                     # only: the old page has no such line)
 npm run optical      # shadow cone geometry, brightness, and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
@@ -3284,7 +3293,7 @@ GT_TARGET=legacy node verification/suites/verify-site.js
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
 `new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
 files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout` and `ar-snap`
-are about the rebuilt page alone. `npm run extract-data`, which made `data/` from the old page's files, reads
+are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
 that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
 
 Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in

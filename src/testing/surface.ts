@@ -94,6 +94,9 @@ export async function install(): Promise<void> {
     get lifeReq() { return life.seq; },
 
     get C_KMS() { return e().C_KMS; },
+    /** the current engine itself, the live object the app calls (never a copy): a suite counts the calls made to one of its
+     *  members by wrapping it for a moment (verify-doppler.js, the live line's work while the clock is paused) */
+    get eng() { return e(); },
     get OBS() { return getObs(); },
     MASK,
     get RE() { return e().RE; },

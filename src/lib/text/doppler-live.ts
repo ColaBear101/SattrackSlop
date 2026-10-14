@@ -19,6 +19,9 @@ export const GO_LIVE = 'Go live';
 export const RX = 'Receive';
 export const TX = 'Transmit';
 export const UPLINK = 'Uplink';
+/** The uplink box's accessible name, with its unit, as the downlink box beside it has ("Downlink frequency in MHz"): the
+ *  visible "MHz" after it is a separate element a screen reader does not tie to the box. */
+export const UPLINK_NAME = 'Uplink frequency in MHz';
 
 /** The shift from the frequency it was worked out from, to the hertz: +3.312 kHz, −0.040 kHz. */
 export const shiftKHz = (hz: number): string => {

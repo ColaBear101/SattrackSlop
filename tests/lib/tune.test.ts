@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isLive, LIVE_MS, rxHz, txHz, tuneAt } from '../../src/lib/analysis/tune';
 import { dopRows } from '../../src/lib/analysis/doppler';
 import { freqGrouped } from '../../src/lib/text/fmt';
-import { belowMask, shiftKHz, TUNE_NOW, tuneAtSim } from '../../src/lib/text/doppler-live';
+import { belowMask, shiftKHz, TUNE_NOW, tuneAtSim, UPLINK, UPLINK_NAME } from '../../src/lib/text/doppler-live';
 import { byName, world } from './helpers';
 
 /* The live Doppler line under the downlink box (CHANGES-FROM-LEGACY.md, L52): the frequency to receive on and the one to send on at
@@ -111,5 +111,9 @@ describe('the words', () => {
     expect(TUNE_NOW).toBe('Tune now');
     expect(tuneAtSim(Date.parse('2026-09-14T18:12:07.400Z'))).toBe('Tune at sim time 09-14 18:12:07Z');
     expect(belowMask(5)).toBe(' · below the 5° mask');
+  });
+  it('name the uplink box with its unit, as the downlink box is named, and begin with the label a reader sees beside it', () => {
+    expect(UPLINK_NAME).toBe('Uplink frequency in MHz');
+    expect(UPLINK_NAME.startsWith(UPLINK + ' ')).toBe(true);
   });
 });

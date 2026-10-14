@@ -26,6 +26,20 @@
   const c = $derived(siteClock(app.site));
   const cd = $derived(a ? countdown(a, ms, Date.now(), MASK, c, () => app.passAfterWindow()) : null);
 
+  /* Under these, the spacecraft at the same instant (sunlight, range rate, speed, the grid square below it): a chunk of its
+     own, NowState.svelte, asked for when its place here is first in view (a phone's sheet may never be opened); one that
+     fails is asked for again the next time the place comes into view. */
+  let NowState = $state.raw<typeof import('./NowState.svelte').default | null>(null);
+  let slot: HTMLElement | undefined = $state();
+  $effect(() => {
+    if (!slot || NowState) return;
+    const io = new IntersectionObserver(es => {
+      if (es.some(x => x.isIntersecting)) import('./NowState.svelte').then(m => { NowState = m.default; }, () => {});
+    });
+    io.observe(slot);
+    return () => io.disconnect();
+  });
+
   const mine = $derived(!!app.current && isCustom(app.current));
   const reentry = $derived(a ? reentryNote(a, getEngine().REENTRY_KM) : null);
 
@@ -56,6 +70,7 @@
         <p class="mono val" class:hot={!!cd?.live} id="cdvalue">{cd?.value ?? '—'}</p>
         <p class="mono when" id="cdwhen">{#if cd}<Rich value={cd.when} />{/if}</p>
       </div>
+      <div class="st" bind:this={slot}>{#if NowState}<NowState />{/if}</div>
     </section>
 
     <Tabs tabs={[{ id: 'passes', label: 'Passes' }, { id: 'orbit', label: 'Orbit' }, { id: 'source', label: 'Source' }]}
@@ -100,6 +115,9 @@
   .sub { color: var(--muted); font-size: var(--fs-1); }
   .exact { color: var(--ink2); font-size: var(--fs-0); }
   .now { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); padding: var(--space-4) 0; border-block: 1px solid var(--rule); }
+  .st { grid-column: 1 / -1; }
+  /* the block's own height, kept while its chunk is on the way, so that what is under it does not jump when it comes */
+  .st:empty { min-height: 130px; }
   .val { margin: 2px 0 0; font-size: var(--fs-4); font-weight: 500; }
   .val.hot { color: var(--contact); }
   .when { margin: 0; color: var(--muted); font-size: var(--fs-0); }

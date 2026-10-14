@@ -41,11 +41,22 @@
  *    and nothing else; the pairing survives a refresh that moves one of them
  *    a day on, and the entries of one station agree pass by pass.
  *
+ * Last, the rail's "now" section (#nowstate, CHANGES-FROM-LEGACY.md L53, the
+ * rebuilt page's alone): the clock is put in the middle of the longest umbra
+ * in the window, of the longest sunlit stretch and of a penumbra crossing, and
+ * each time the block must name the state opticalAt gives at that instant, in
+ * its words; its range rate, speed and grid square are worked out again from
+ * the test surface (the grid square by a Maidenhead encoder written here). The
+ * shadow test is counted: none while the clock is paused, and no more than one
+ * a second of the clock while it plays at real time, while the figures follow
+ * every tick.
+ *
  *   node verification/suites/verify-optical.js
  */
 const H = require('../lib/harness');
 const path = require('path');
 const { chromium } = H.playwright();
+const NEW = H.targetName() === 'new';   // the "now" section's state of the spacecraft is the rebuilt page's alone (L53)
 
 let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 
@@ -448,6 +459,126 @@ const chk = (name, ok, detail) => {
   chk('...and was there to be excluded',
       all.reduce((s, v) => s + v.penSeen, 0) > 0,
       all.reduce((s, v) => s + v.penSeen, 0) + ' penumbral samples against a dark sky');
+
+  /* ---- the spacecraft now, in the rail (CHANGES-FROM-LEGACY.md, L53) ---------------------------------------------------
+     #nowstate, under the elevation and the countdown, says whether sunlight reaches the spacecraft at the clock's instant,
+     with its range rate, speed and the grid square below it. The page reads the shadow with the optics' sunlitState on the
+     state it propagates once for all four (lib/analysis/live-state.ts); here the state is opticalAt's at the instant the
+     block says it tested (data-lit-ms), which a seek of a second or more makes the clock's own (data-ms). The clock is put,
+     to the millisecond (the test surface's seek, which stops it there as a scrub does), in the middle of the longest umbra
+     in the window, of the longest sunlit stretch, and of a penumbra crossing, found here at 10 s and then 0.25 s steps. */
+  if (NEW) {
+    console.log('\n  the spacecraft now, in the rail\'s "now" section');
+    await page.waitForSelector('#nowstate', { timeout: 15000 });
+    const spots = await page.evaluate(() => {
+      const gt = window.__gt, D = gt.D, t0 = D.start.getTime(), t1 = D.end.getTime();
+      const lit = ms => { const o = gt.opticalAt(D.track, ms); return o ? o.lit : null; };
+      const runsOf = (a, b, step) => {
+        const runs = []; let cur = null;
+        for (let ms = a; ms <= b; ms += step) {
+          const s = lit(ms);
+          if (cur && cur.lit === s) cur.end = ms; else { cur = { lit: s, start: ms, end: ms }; runs.push(cur); }
+        }
+        return runs;
+      };
+      const longest = (runs, s) => runs.filter(r => r.lit === s).sort((x, y) => (y.end - y.start) - (x.end - x.start))[0] || null;
+      const mid = r => (r ? Math.round((r.start + r.end) / 2) : null);
+      const coarse = runsOf(t0 + 60000, t1 - 60000, 10000);
+      const umbra = longest(coarse, 'umbra'), sun = longest(coarse, 'sun');
+      /* the penumbra: at the first edge of the longest umbra, scanned at 0.25 s over 30 s either side */
+      const fine = umbra ? runsOf(umbra.start - 30000, umbra.start + 30000, 250) : [];
+      const pen = longest(fine, 'penumbra');
+      return { umbra: mid(umbra), sun: mid(sun), pen: mid(pen), penS: pen ? (pen.end - pen.start) / 1000 : null,
+               umbraMin: umbra ? (umbra.end - umbra.start) / 60000 : null, sunMin: sun ? (sun.end - sun.start) / 60000 : null };
+    });
+    console.log('   longest umbra ' + (spots.umbraMin === null ? '-' : spots.umbraMin.toFixed(1) + ' min')
+      + ', longest sunlit ' + (spots.sunMin === null ? '-' : spots.sunMin.toFixed(1) + ' min')
+      + ', penumbra on the way in ' + (spots.penS === null ? '-' : spots.penS.toFixed(2) + ' s'));
+    chk('the window holds an umbra, a sunlit stretch and a penumbra crossing to put the clock in',
+        spots.umbra !== null && spots.sun !== null && spots.pen !== null && spots.penS >= 4,
+        JSON.stringify(spots));
+
+    /* a Maidenhead locator from the IARU definition, written here: field A-R of 20 deg by 10 deg from 180 W and 90 S, square
+       0-9 of 2 deg by 1 deg, subsquare a-x of 5' by 2.5', longitude first in each pair */
+    const locator = (lat, lon) => {
+      let x = lon + 180, y = lat + 90;
+      const f = [Math.floor(x / 20), Math.floor(y / 10)]; x -= f[0] * 20; y -= f[1] * 10;
+      const s = [Math.floor(x / 2), Math.floor(y)]; x -= s[0] * 2; y -= s[1];
+      const u = [Math.floor(x * 12), Math.floor(y * 24)];
+      return String.fromCharCode(65 + f[0], 65 + f[1]) + s[0] + s[1] + String.fromCharCode(97 + u[0], 97 + u[1]);
+    };
+    /* the page's way of writing a latitude and a longitude (the equator has no hemisphere) */
+    const latS = v => Math.abs(v).toFixed(2) + '°' + (Math.abs(v) < 0.005 ? '' : v > 0 ? ' N' : ' S');
+    const lonS = v => Math.abs(v).toFixed(2) + '° ' + (v >= 0 ? 'E' : 'W');
+    const kms = v => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(3) + ' km/s';
+    const WORDS = { umbra: ['Eclipsed', 'in the Earth\'s shadow'], sun: ['Sunlit', 'the whole Sun in view'], penumbra: ['Penumbra', 'part of the Sun hidden'] };
+
+    const readAt = async ms => {
+      await page.evaluate(t => window.__gt.seek(t), ms);
+      await page.waitForFunction(t => { const e = document.getElementById('nowstate'); return !!e && +e.dataset.ms === t; }, ms, { timeout: 5000 });
+      return page.evaluate(() => {
+        const gt = window.__gt, el = document.getElementById('nowstate'), ms = +el.dataset.ms, litMs = +el.dataset.litMs;
+        const t = id => document.getElementById(id).textContent, note = id => document.getElementById(id).nextElementSibling.textContent;
+        const st = gt.D.track.at(ms), p = gt.sampleMs(gt.D.track, ms), o = gt.opticalAt(gt.D.track, litMs);
+        return { ms, litMs, lit: el.dataset.lit, words: [t('now-lit'), note('now-lit')], rr: [t('now-rr'), note('now-rr')], v: [t('now-v'), note('now-v')],
+                 grid: [t('now-grid'), note('now-grid')], want: { lit: o ? o.lit : null, rr: gt.rangeRateMs(gt.D.track, ms),
+                 speed: Math.hypot(st.v.x, st.v.y, st.v.z), lat: p.lat, lon: p.lon } };
+      });
+    };
+    const shown = [];
+    for (const [state, ms] of [['umbra', spots.umbra], ['sun', spots.sun], ['penumbra', spots.pen]]) {
+      if (ms === null) continue;
+      const b = await readAt(ms);
+      shown.push(b);
+      chk('the clock put in the middle of ' + (state === 'sun' ? 'the longest sunlit stretch' : state === 'umbra' ? 'the longest umbra' : 'the penumbra')
+          + ' (' + new Date(ms).toISOString().slice(11, 19) + 'Z): the block says "' + WORDS[state].join(', ') + '", the state opticalAt gives there',
+          b.lit === state && b.want.lit === state && b.words[0] === WORDS[state][0] && b.words[1] === WORDS[state][1],
+          JSON.stringify({ lit: b.lit, opticalAt: b.want.lit, words: b.words }));
+      chk('...tested at the clock\'s own instant: a seek of a second or more tests it again at once',
+          b.litMs === b.ms, 'data-ms ' + b.ms + ', data-lit-ms ' + b.litMs);
+    }
+    const bad = shown.filter(b => b.rr[0] !== kms(b.want.rr) || b.rr[1] !== (b.want.rr < 0 ? 'approaching' : 'receding'));
+    chk('its range rate is the engine\'s at that instant, to the metre a second, + receding and − approaching',
+        shown.length === 3 && !bad.length, shown.map(b => b.rr.join(' ')).join(' | '));
+    chk('...its speed the length of the SGP4 velocity there, to the metre a second, said to be relative to the stars',
+        shown.length === 3 && shown.every(b => b.v[0] === b.want.speed.toFixed(3) + ' km/s' && b.v[1] === 'relative to the stars' && b.want.speed > 7 && b.want.speed < 8),
+        shown.map(b => b.v[0]).join(' | '));
+    chk('...and the grid square below it the one the IARU definition gives for the sub-satellite point, with its latitude and longitude',
+        shown.length === 3 && shown.every(b => b.grid[0] === locator(b.want.lat, b.want.lon)
+          && b.grid[1] === latS(b.want.lat) + ' ' + lonS(b.want.lon)),
+        shown.map(b => b.grid.join(' ')).join(' | '));
+    const place = await page.evaluate(() => {
+      const el = document.getElementById('nowstate');
+      return { inNow: !!el.closest('section.now'), inReadouts: !!el.closest('.readout, .readouts'),
+               ids: ['now-lit', 'now-rr', 'now-v', 'now-grid'].map(id => document.querySelectorAll('#' + id).length) };
+    });
+    chk('the block is in the rail\'s "now" section, outside the map\'s readouts, and each of its ids is in the page once',
+        place.inNow && !place.inReadouts && place.ids.every(n => n === 1), JSON.stringify(place));
+
+    /* The shadow test is counted through the optics the page calls (the test surface hands out the live object), the
+       one way the block reaches it: nothing at all while the clock stands still, and no more than one a second of the
+       clock while it plays at real time, while the figures beside it follow the clock's ticks (ten a second). */
+    const work = await page.evaluate(async () => {
+      const opt = window.__gt.optics, own = opt.sunlitState, el = document.getElementById('nowstate');
+      let calls = 0;
+      opt.sunlitState = function (...a) { calls++; return own.apply(this, a); };
+      const watch = async ms => { const seen = new Set(), t0 = performance.now(); while (performance.now() - t0 < ms) { seen.add(el.dataset.ms); await new Promise(f => setTimeout(f, 40)); } return seen.size; };
+      try {
+        const pausedTicks = await watch(700), paused = calls;
+        calls = 0;
+        const rate = document.getElementById('tpratev').textContent, ms0 = +el.dataset.ms;
+        document.getElementById('tpplay').click();
+        const ticks = await watch(3000), playing = calls, moved = +el.dataset.ms - ms0;
+        document.getElementById('tpplay').click();
+        return { paused, pausedTicks, playing, ticks, moved, rate };
+      } finally { opt.sunlitState = own; }
+    });
+    chk('paused for 0.7 s, the block tests the shadow not once and its instant stays where it is', work.paused === 0 && work.pausedTicks === 1,
+        work.paused + ' tests, ' + work.pausedTicks + ' instant(s) shown');
+    chk('playing at ' + work.rate + ' for 3 s, the figures follow the clock\'s ticks while the shadow is tested no more than once a second of the clock',
+        /^1\.0/.test(work.rate) && work.ticks >= 10 && work.playing >= 1 && work.playing <= Math.floor(work.moved / 1000) + 1,
+        work.ticks + ' instants shown, ' + work.playing + ' shadow tests as the clock moved ' + (work.moved / 1000).toFixed(2) + ' s');
+  } else console.log('\n  not checked: the rail\'s "now" section is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L53); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

@@ -2676,10 +2676,11 @@ Four ways in, because the observer used to be five numbers you had to already kn
   square, whichever way the site was set (Bangkok is OK03gs), on a line of its own under the
   coordinates; a site picked as a square, while it is still that square's centre, is named by the
   square as it was given (OK03, whose centre is the corner of four subsquares and would otherwise
-  be named OK03mm, one of them). The code and its words (`src/lib/text/grid.ts`, which carries
-  `maidenhead.ts`) are a chunk of their own, about 1.5 KB gzipped, fetched from the page's own
-  origin when the form first opens; the first screen does not carry them. The entry carries only
-  a locator's shape (`src/lib/gridshape.ts`, two patterns), so that text with that shape waits
+  be named OK03mm, one of them). The code and its words (`src/lib/text/grid.ts`, and
+  `maidenhead.ts`, a chunk of its own that the rail's state now shares, below under "Sunlit or
+  eclipsed now") are two chunks, about 1.7 KB gzipped together, fetched from the page's own origin
+  when the form first opens (the locator's code may be there already, brought by the rail). The
+  entry carries only a locator's shape (`src/lib/gridshape.ts`, two patterns), so that text with that shape waits
   for the chunk instead of going to the geocoder, and if the chunk cannot be fetched at all (a
   tab left open across a new release asks for one the server no longer has) it is held back
   under a note that says so, a four-character postcode district with it, until the page is
@@ -2842,6 +2843,57 @@ rather than dark.
 
 The same code has to produce both extremes, which is the check worth having: a 51.6° LEO orbit is
 sunlit **60.5 %** of the day, a sun-synchronous METOP-B **71.4 %**.
+
+##### Sunlit or eclipsed now
+
+The pass facts give the shadow at mid-pass. The answer rail gives it at any instant: under
+*Elevation at Bangkok now* and the countdown, the rail's "now" section has a block of four figures
+at the clock's instant (`#nowstate`, `src/components/rail/NowState.svelte`), each with a word on
+what it is:
+
+- **Sunlight**: *Sunlit*, the whole Sun in view; *Penumbra*, part of the Sun hidden; or
+  *Eclipsed*, in the Earth's shadow. This is what explains a spacecraft that fades in the middle
+  of a pass and is gone before it sets: it has gone into the umbra.
+- **Range rate**: how fast the distance from the observer is growing, *+3.982 km/s receding*, or
+  shrinking, *−0.188 km/s approaching*. It is the figure the Doppler shift is worked out from.
+- **Speed**: the length of the velocity SGP4 gives, in its own inertial frame (TEME), *7.700 km/s
+  relative to the stars*: the figure the globe's orbital elements layer draws as v, which a reader
+  without WebGL now has too. It is not the speed relative to the turning Earth, which is lower for a prograde
+  orbit and higher for a retrograde one by up to the frame's own speed there, ωr, 0.49 km/s at
+  400 km over the equator.
+- **Below it**: the Maidenhead grid square of the sub-satellite point, six characters, with its
+  latitude and longitude (*CI53rl, 6.51° S 128.55° W*).
+
+Nothing in it is new arithmetic (`src/lib/analysis/live-state.ts`). The engine propagates once,
+with `fix`, and every figure is read from that state by code the page already runs: the
+sub-satellite point by the engine's `subPoint` (what `sampleMs` does after the same `fix`), the
+range rate by its `rangeRateAt` (what `rangeRateMs` does), the grid square by the observer form's
+`toLocator`, and the shadow by the optical code's `sunlitState`, which is what `opticalAt` asks of
+the same state. The shadow is tested at most once a second of the clock: at real time, once a
+second, while the figures beside it follow every tick. A LEO spacecraft takes 8 s or more to cross
+the penumbra (the Sun is half a degree across, and the orbit turns about 0.065° a second), so a
+second is finer than the state changes; a seek of a second or more, or another spacecraft, tests it
+again at once. Like the elevation beside it, the block is repainted on the clock's tick, ten times a
+second while the clock plays and never while it is paused.
+
+The block, its words (`src/lib/text/now-state.ts`) and its code are a chunk of their own, 1.1 KB
+gzipped with 0.2 KB of stylesheet, which shares the grid square's code (`maidenhead.ts`, 0.7 KB)
+with the observer form. It is asked for when its place in the rail first comes into view: at once
+on a desktop, when the sheet is first opened on a phone. Its height is kept while it is on its
+way, so nothing under it moves when it comes. The entry grew by under 0.2 KB gzipped, for the place
+and the request.
+
+`verify-optical.js` puts the clock, to the millisecond, in the middle of the longest umbra in the
+window, of the longest sunlit stretch and of a penumbra crossing (found at 10 s and then 0.25 s
+steps; the test surface's `seek`), and the block must name the state `opticalAt` gives there, in
+its words, tested at the clock's own instant. Its range rate and speed are worked out again from the
+test surface at that instant, and its grid square by a Maidenhead encoder written in the suite. The
+shadow test is counted through the optics the page calls (the test surface hands out the live
+object, `__gt.optics`): none while the clock is paused, and no more than one a second of the clock
+while it plays at real time, with the figures following the ticks. The block's own code is not on
+the test surface: imported there as well, it would be split into a chunk of its own, one more
+request for every visitor. `tests/lib/live-state.test.ts` holds it to the engine's and the optics'
+own calls instead.
 
 ##### One bug this found, which was not hypothetical
 
@@ -3230,7 +3282,8 @@ npm run pov          # the POV camera, measured against the propagated state
 npm run doppler      # range rate, against a numerical derivative of the range; the live line
                      # under the downlink box, against the law written out (the rebuilt page
                      # only: the old page has no such line)
-npm run optical      # shadow cone geometry, brightness, and naked-eye passes
+npm run optical      # shadow cone geometry, brightness, and naked-eye passes; the rail's state
+                     # now, in an umbra, in sunlight and in a penumbra (the rebuilt page only)
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports

@@ -1,6 +1,6 @@
 # SattrackSlop
 
-An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L52 and the numbered rows).
+An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two Moon pages (plain scripts, served from `public/`). Everything is computed in the browser; the Elysia server in `server/` is only a cache for element sets and decay histories, and the page works without it. `README.md` is the project's long account; `CHANGES-FROM-LEGACY.md` is the ledger of every intentional difference from the old static page (rows L1-L53 and the numbered rows).
 
 ## The one rule
 
@@ -13,7 +13,7 @@ An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two
 - `server/` + `shared/` Elysia cache API (`serve.ts`); the client falls back to direct fetches when it is absent.
 - `data/` catalogue, world, transmitters, WMM; `public/` the Moon pages, verbatim.
 - `verification/` (CommonJS): `run.js` runs every stage; `gate/` (regress, snapshot, golden, ab3d and their frozen references), `suites/` (verify-*.js, axe, perf, screens), `reference/` (independent core.js/propagate.js, pinned satellite.min.js), `fixtures/` (catalog.txt, WMM, behaviour and mutant lists), `tools/` (fetchers, mutation runners), `lib/` (harness). Outputs (`.build/`, `.logs/`, `screens/`, `.ab3d-out/`, `perf-last.json`, `last-run.json`) stay at the `verification/` root.
-- Lazy chunks: planner, AR, report, Eden client, scene, sky data, transmitters, export, grid square. The entry the page cannot start without is ~83 KB gzipped (budget 90, held by `verify-visitor.js`).
+- Lazy chunks: planner, AR, report, Eden client, scene, sky data, transmitters, export, grid square, the rail's state now (`NowState`, sharing the `maidenhead` chunk with the grid square). The entry the page cannot start without is ~83 KB gzipped (budget 90, held by `verify-visitor.js`).
 - The test facade (`window.__gt`, `Orbit3D`, ...) is a lazy chunk installed only when `window.__GT_TEST__` is set; the entry chunk must not contain it.
 
 ## Commands

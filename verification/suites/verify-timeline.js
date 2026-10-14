@@ -18,10 +18,21 @@
  * window counted down to the window's first pass as though the day repeated.
  * Parked at the end of the bar, it is checked against the real next pass, and
  * the pass table against the UTC calendar date of every pass.
+ *
+ * Last, the pass sky plot while its pass is being flown (CHANGES-FROM-LEGACY.md
+ * L54, the rebuilt page's alone): with the clock stopped inside the selected
+ * pass, the rail's plot has a dot in ink where the engine puts the spacecraft
+ * at that instant and the stretch already flown faint, read off the canvas's
+ * pixels; nothing else on it differs from the plot outside the pass, which it
+ * is again, pixel for pixel, once the clock leaves. Paused, nothing is drawn;
+ * playing at real time, each tick lays the kept picture down and draws only the
+ * dot, the plot itself being drawn again only as the flown stretch grows; the
+ * report's copy is not drawn while it is out of view, and is when it comes in.
  */
 'use strict';
 const H = require('../lib/harness');
 const path = require('path');
+const NEW = H.targetName() === 'new';   // the live sky plot is the rebuilt page's alone (L54)
 
 let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
 let fails = 0;
@@ -160,6 +171,182 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
       '  ->  ' + after.passes + ' from ' + (after.aos.trim() || '—'));
   chk('playback is still running', await page.evaluate(() =>
       document.getElementById('tpplay').getAttribute('aria-label') === 'Pause'));
+
+  /* ---- the pass sky plot while its pass is flown (CHANGES-FROM-LEGACY.md, L54) ----------------------------------------
+     With the clock inside the selected pass, the plot shows the spacecraft as a dot in ink where the engine puts it at that
+     instant (app.exactAt, which is the test surface's sampleMs), and the stretch of the pass already flown faint. Read off
+     the canvas's own pixels, at the points the plot's transform gives (written again here: R = S/2 - 22, r = R (90 - el)/90,
+     north up, east right, in CSS pixels times the device pixel ratio, at most 2), against the plot drawn with the clock
+     outside the pass. The count of the flown samples is the AR radar's, written again here too. */
+  if (NEW) {
+    console.log('\n  the pass sky plot while its pass is flown');
+    // the clock is running at the top rate, and the window would roll on under the checks: stop it
+    await page.evaluate(() => { const b = document.getElementById('tpplay'); if (b.getAttribute('aria-label') === 'Pause') b.click(); });
+    await page.waitForTimeout(300);
+    /* the highest pass of the window, which crosses the plot the furthest */
+    const P = await page.evaluate(() => {
+      const D = window.__gt.D; let b = -1;
+      D.passes.forEach((p, i) => { if (p.arc.length === 91 && !p.clipA && !p.clipL && (b < 0 || p.maxEl > D.passes[b].maxEl)) b = i; });
+      if (b < 0) return null;
+      const p = D.passes[b];
+      return { i: b, t0: p.t0ms, t1: p.t1ms, maxEl: p.maxEl, n: p.arc.length - 1, wt0: D.start.getTime(), wt1: D.end.getTime() };
+    });
+    chk('the window holds a whole pass to put the clock in', !!P, P ? 'pass ' + (P.i + 1) + ', peak ' + P.maxEl.toFixed(1) + '°' : 'none');
+    if (P) {
+      /* the rail's list selects it, and takes the clock to its culmination, stopped there */
+      await page.click('#passlist .passrow[data-i="' + P.i + '"]');
+      await page.evaluate(() => { window.scrollTo(0, 0); document.getElementById('sky').scrollIntoView({ block: 'center' }); });
+      await page.evaluate(() => {
+        const hex = h => { h = h.trim().replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+        const cs = getComputedStyle(document.documentElement);
+        window.__skyT = {
+          ink: hex(cs.getPropertyValue('--ink')), contact: hex(cs.getPropertyValue('--contact')), snaps: {},
+          snap(id, name) { const c = document.getElementById(id); this.snaps[name] = c.getContext('2d').getImageData(0, 0, c.width, c.height); },
+          geo(id) { const c = document.getElementById(id); return { S: Math.round(c.getBoundingClientRect().width) || 268, dpr: Math.min(devicePixelRatio || 1, 2), w: c.width }; },
+          /* where a look lands, in the canvas's device pixels */
+          at(id, az, el) { const { S, dpr } = this.geo(id), R = S / 2 - 22, r = R * (90 - el) / 90, a = az * Math.PI / 180; return [(S / 2 + r * Math.sin(a)) * dpr, (S / 2 - r * Math.cos(a)) * dpr]; },
+          px(img, x, y) { const i = (Math.floor(y) * img.width + Math.floor(x)) * 4; return [img.data[i], img.data[i + 1], img.data[i + 2]]; },
+          off(a, b) { return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])); },
+          inView(id) { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; }
+        };
+      });
+      const seek = ms => page.evaluate(t => window.__gt.seek(t), ms);
+      const outside = P.t1 + 120000 <= P.wt1 ? P.t1 + 120000 : P.t0 - 120000;
+
+      /* the plot with the clock outside the pass: drawSky's, as the old page drew it */
+      await seek(outside);
+      await page.waitForTimeout(400);
+      const ref = await page.evaluate(() => { const T = window.__skyT; T.snap('sky', 'ref'); return { live: document.getElementById('sky').dataset.live, sky: T.inView('sky'), sky2: T.inView('sky2'), geo: T.geo('sky') }; });
+      chk('with the clock outside the selected pass the rail\'s plot carries no instant of its own (no data-live)', ref.live === undefined, String(ref.live));
+
+      /* the clock stopped at 60 % of the pass: half way between two of the arc's samples, so that a second of play does not
+         cross into the next at once */
+      const t = Math.round(P.t0 + (Math.floor(0.6 * P.n) + 0.5) * (P.t1 - P.t0) / P.n);
+      await seek(t);
+      const drew = await page.waitForFunction(v => document.getElementById('sky').dataset.live === String(v), t, { timeout: 10000 }).then(() => true, () => false);
+      chk('stopped inside it, at 60 % of the pass, the plot is drawn for that instant (data-live)', drew,
+          await page.evaluate(() => document.getElementById('sky').dataset.live) + ' for ' + t);
+      const L = await page.evaluate(({ t, P }) => {
+        const T = window.__skyT, gt = window.__gt, D = gt.D, p = D.passes[P.i], { dpr } = T.geo('sky');
+        T.snap('sky', 'live');
+        const ref = T.snaps.ref, live = T.snaps.live, n = P.n;
+        const look = gt.sampleMs(D.track, t), dot = T.at('sky', look.az, look.el);
+        /* the AR radar's count of the flown samples (radar.ts flown()), written again */
+        const k = Math.max(0, Math.min(n, Math.floor((t - p.t0ms) / (p.t1ms - p.t0ms) * n)));
+        const pts = p.arc.map(s => T.at('sky', s.az, s.el));
+        const S = T.geo('sky').S, c = S / 2 * dpr;
+        const inward = (q, d) => { const vx = c - q[0], vy = c - q[1], m = Math.hypot(vx, vy) || 1; return [q[0] + vx / m * d, q[1] + vy / m * d]; };
+        const marks = [dot, inward(pts[0], 19 * dpr), inward(pts[n], 19 * dpr), T.at('sky', p.maxAz, p.maxEl)];
+        const clear = q => Math.min(...marks.map(m => Math.hypot(m[0] - q[0], m[1] - q[1])));
+        /* a sample of each stretch as far as can be from the dot, the highest point and the AOS/LOS labels */
+        const best = (a, b) => { let i = -1; for (let j = a; j <= b; j++) if (i < 0 || clear(pts[j]) > clear(pts[i])) i = j; return i; };
+        const fi = best(3, k - 3), ui = best(k + 3, n - 3);
+        const at = (img, q) => T.px(img, q[0], q[1]);
+        /* every pixel that differs from the plot outside the pass must be the dot's (within 12 px of it) or on the flown
+           stretch (within 3 px of it: the line is 3 px wide, with round caps) */
+        const segD = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l)); return Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy); };
+        let diff = 0, stray = 0, strayAt = null;
+        for (let y = 0; y < live.height; y++) for (let x = 0; x < live.width; x++) {
+          const i = (y * live.width + x) * 4;
+          if (Math.max(Math.abs(live.data[i] - ref.data[i]), Math.abs(live.data[i + 1] - ref.data[i + 1]), Math.abs(live.data[i + 2] - ref.data[i + 2]), Math.abs(live.data[i + 3] - ref.data[i + 3])) <= 2) continue;
+          diff++;
+          const cx = x + 0.5, cy = y + 0.5;
+          if (Math.hypot(cx - dot[0], cy - dot[1]) <= 12 * dpr) continue;
+          let near = false;
+          for (let j = 0; j < k && !near; j++) near = segD(cx, cy, pts[j], pts[j + 1]) <= 3 * dpr;
+          if (!near) { stray++; strayAt = strayAt || [x, y]; }
+        }
+        return {
+          k, n, look: { az: look.az, el: look.el }, dot: dot.map(v => +v.toFixed(1)), dpr, w: live.width, sameSize: live.width === ref.width && live.height === ref.height,
+          dotPx: at(live, dot), dotRef: at(ref, dot), ink: T.ink, contact: T.contact,
+          fi, fClear: clear(pts[fi]) / dpr, fLive: at(live, pts[fi]), fRef: at(ref, pts[fi]),
+          ui, uClear: clear(pts[ui]) / dpr, uLive: at(live, pts[ui]), uRef: at(ref, pts[ui]),
+          diff, stray, strayAt
+        };
+      }, { t, P });
+      const T = { off: (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) };
+      console.log('   pass ' + (P.i + 1) + ', ' + L.k + ' of ' + L.n + ' samples flown; the spacecraft at az ' + L.look.az.toFixed(1) + '° el ' + L.look.el.toFixed(1)
+        + '°, on the canvas at ' + L.dot.join(', ') + ' (device px, ratio ' + L.dpr + '); ' + L.diff + ' pixels differ from the plot outside the pass');
+      chk('...at the backing-store size drawSky gives it (CSS width x device pixel ratio), unchanged', L.sameSize && L.w === Math.round(ref.geo.S * ref.geo.dpr), L.w + ' for ' + ref.geo.S + ' x ' + ref.geo.dpr);
+      chk('the spacecraft is a dot in ink where the engine puts it at that instant, where the plot outside the pass has none',
+          T.off(L.dotPx, L.ink) <= 3 && T.off(L.dotRef, L.ink) > 60, 'there ' + L.dotPx.join(',') + ' (ink ' + L.ink.join(',') + '), outside the pass ' + L.dotRef.join(','));
+      chk('the stretch already flown is faint: at its sample ' + L.fi + ' the arc is no longer its own colour',
+          L.fClear >= 14 && T.off(L.fRef, L.contact) <= 3 && T.off(L.fLive, L.contact) > 40,
+          'outside the pass ' + L.fRef.join(',') + ' (contact ' + L.contact.join(',') + '), now ' + L.fLive.join(',') + '; ' + L.fClear.toFixed(0) + ' px clear of the marks');
+      chk('...and the stretch still to come is as it was: at its sample ' + L.ui + ' the arc is unchanged',
+          L.uClear >= 14 && T.off(L.uRef, L.contact) <= 3 && T.off(L.uLive, L.uRef) <= 2,
+          'outside the pass ' + L.uRef.join(',') + ', now ' + L.uLive.join(',') + '; ' + L.uClear.toFixed(0) + ' px clear of the marks');
+      chk('nothing else on the plot differs from the plot outside the pass: every changed pixel is the dot\'s or on the flown stretch',
+          L.diff > 0 && L.stray === 0, L.diff + ' changed, ' + L.stray + ' elsewhere' + (L.strayAt ? ' (first at ' + L.strayAt.join(',') + ')' : ''));
+
+      /* the work: none paused; playing at real time, every tick lays the kept picture down and draws the dot, and drawSky runs
+         again only when another sample of the arc is flown. Counted on the canvas's own context calls: a blit (drawImage), a
+         whole plot (its "N"), a dot (its 9 px ring). The report's copy is below the fold the while, and must not be drawn. */
+      const W = await page.evaluate(async () => {
+        const C = CanvasRenderingContext2D.prototype, own = { drawImage: C.drawImage, fillText: C.fillText, arc: C.arc };
+        const zero = () => ({ blit: 0, plot: 0, dot: 0 });
+        const n = { sky: zero(), sky2: zero() }, of = ctx => n[ctx.canvas && ctx.canvas.id];
+        C.drawImage = function (...a) { const c = of(this); if (c) c.blit++; return own.drawImage.apply(this, a); };
+        C.fillText = function (...a) { const c = of(this); if (c && a[0] === 'N') c.plot++; return own.fillText.apply(this, a); };
+        C.arc = function (...a) { const c = of(this); if (c && a[2] === 9) c.dot++; return own.arc.apply(this, a); };
+        const sky = document.getElementById('sky'), sky2 = document.getElementById('sky2');
+        const watch = async ms => { const seen = new Set(), t0 = performance.now(); while (performance.now() - t0 < ms) { seen.add(sky.dataset.live); await new Promise(f => setTimeout(f, 40)); } return seen.size; };
+        const take = () => { const r = JSON.parse(JSON.stringify(n)); n.sky = zero(); n.sky2 = zero(); return r; };
+        try {
+          const sky2Hidden = !window.__skyT.inView('sky2');
+          const pausedSeen = await watch(1000), paused = take();
+          const r = document.getElementById('tprate'); r.value = 0; r.dispatchEvent(new Event('input'));
+          const rate = document.getElementById('tpratev').textContent, ms0 = +sky.dataset.live, sky2Before = sky2.dataset.live;
+          take();
+          document.getElementById('tpplay').click();
+          const playingSeen = await watch(2000);
+          const playing = take(), moved = +sky.dataset.live - ms0, sky2After = sky2.dataset.live;
+          document.getElementById('tpplay').click();
+          await new Promise(f => setTimeout(f, 200));
+          return { paused, pausedSeen, playing, playingSeen, moved, rate, sky2Hidden, sky2Before, sky2After };
+        } finally { Object.assign(C, own); }
+      });
+      const per = (P.t1 - P.t0) / P.n;   // ms of clock per sample of the arc
+      chk('paused for 1 s, neither plot draws anything and the instant shown stays where it is',
+          W.pausedSeen === 1 && Object.values(W.paused.sky).every(v => v === 0) && Object.values(W.paused.sky2).every(v => v === 0),
+          JSON.stringify(W.paused) + ', ' + W.pausedSeen + ' instant(s) shown');
+      chk('playing at ' + W.rate + ' for 2 s, the dot follows the clock\'s ticks, each a kept picture laid down with the dot over it',
+          /^1\.0/.test(W.rate) && W.playingSeen >= 10 && W.playing.sky.dot >= 10 && W.playing.sky.dot === W.playing.sky.blit + W.playing.sky.plot,
+          W.playingSeen + ' instants shown; ' + JSON.stringify(W.playing.sky));
+      chk('...and the plot itself is drawn again only as the flown stretch grows (a sample every ' + (per / 1000).toFixed(1) + ' s of clock)',
+          W.playing.sky.plot <= Math.floor(W.moved / per) + 1, W.playing.sky.plot + ' whole plots as the clock moved ' + (W.moved / 1000).toFixed(2) + ' s');
+      if (W.sky2Hidden) {
+        chk('the report\'s copy, out of view the while, was not drawn at all', Object.values(W.playing.sky2).every(v => v === 0) && W.sky2Before === W.sky2After,
+            JSON.stringify(W.playing.sky2) + ', data-live ' + W.sky2Before + ' -> ' + W.sky2After);
+      } else console.log('   (the report\'s copy is in view at this window size: its not being drawn out of view is not checked)');
+
+      /* the report's copy, brought into view with the clock stopped, is drawn then, for the same instant, with its own dot */
+      const cur = await page.evaluate(() => { document.getElementById('sky2').scrollIntoView({ block: 'center' }); return document.getElementById('sky').dataset.live; });
+      const came = await page.waitForFunction(v => document.getElementById('sky2').dataset.live === v, cur, { timeout: 5000 }).then(() => true, () => false);
+      const R2 = await page.evaluate(ms => {
+        const T = window.__skyT, gt = window.__gt, s = gt.sampleMs(gt.D.track, ms);
+        T.snap('sky2', 'live2');
+        const q = T.at('sky2', s.az, s.el);
+        return { px: T.px(T.snaps.live2, q[0], q[1]), ink: T.ink, live: document.getElementById('sky2').dataset.live };
+      }, +cur);
+      chk('brought into view, the report\'s copy is drawn for the instant the clock stopped at, its dot where the engine puts the spacecraft',
+          came && T.off(R2.px, R2.ink) <= 3, 'data-live ' + R2.live + ' (the rail\'s ' + cur + '), ' + R2.px.join(','));
+
+      /* out of the pass again: the plot is drawSky's, pixel for pixel the one before */
+      await seek(outside);
+      const left = await page.waitForFunction(() => !('live' in document.getElementById('sky').dataset) && !('live' in document.getElementById('sky2').dataset), null, { timeout: 5000 }).then(() => true, () => false);
+      const back = await page.evaluate(() => {
+        const T = window.__skyT; T.snap('sky', 'back');
+        const a = T.snaps.ref.data, b = T.snaps.back.data; let d = 0;
+        if (a.length !== b.length) return -1;
+        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+        return d;
+      });
+      chk('once the clock leaves the pass, both plots drop their instant, and the rail\'s is the plot from before, pixel for pixel',
+          left && back === 0, (left ? 'no data-live' : 'data-live left behind') + ', ' + back + ' bytes differ');
+      await page.evaluate(() => window.scrollTo(0, 0));
+    }
+  } else console.log('\n  not checked: the live sky plot is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L54); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.slice(0, 3).join(' | ') : 'none'));
   /* The 3D scene is not in the rebuilt app until milestone M6; its trail switch is checked then, unchanged. Said out loud

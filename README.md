@@ -504,6 +504,30 @@ beyond the window for the real next pass. It used to count down to the window's 
 the ground track repeated every window, which in the case that found it was 66.6 minutes late and
 promised 74.2° for a 19.7° pass.
 
+The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table
+in the report: a polar plot, north up, the zenith at the centre and the horizon at the rim, with the
+arc from AOS to LOS and a dot at its highest point. While the clock is inside that pass the plot
+also shows where the spacecraft is, a dot in ink ringed as the map rings it, and draws the stretch
+already flown faint, as the AR view's radar does. Press a pass in the list, which stops the clock at
+its culmination, or scrub into one, and the dot is there; play the clock and it moves along the
+arc. The dot is where the engine puts the spacecraft at the clock's instant: propagated to that
+instant, as the "Elevation at … now" figure is, not read off the stored samples, which near the top
+of a pass are degrees apart. The flown stretch is counted in the arc's 91 samples, so it grows a
+ninetieth of the pass at a time, about every 5 s for a seven-minute pass at real time. Outside the
+pass the plot is the old page's, pixel for pixel. Nothing is drawn that does not change: the plot is
+drawn once and kept, and each tick of the clock (ten a second while it plays) lays it down again and
+draws only the dot; it is drawn afresh only when the flown stretch grows by a sample. A plot out of
+view, the report's copy below the fold or the rail's in a closed sheet or behind another tab, is not
+drawn until it comes into view, and while the clock is paused nothing is drawn at all. The code is a
+chunk of its own, under 1 KB gzipped, which the page fetches the first time the clock is inside the
+pass on screen. `verify-timeline.js` stops the clock 60 % of the way through a pass and reads the
+canvas: the dot's pixel in ink where the plot's projection puts the engine's azimuth and elevation,
+the flown stretch no longer in the arc's colour, the stretch still to come unchanged, and no other
+pixel different from the plot outside the pass, which it is again once the clock leaves. It counts
+the drawing calls too: none in a second paused, and playing at real time one laid-down picture and
+one dot a tick, with the plot itself drawn only as the stretch grows and the report's copy, out of
+view, not drawn at all. The old page drew the arc alone.
+
 Geometry only — no refraction, terrain or link budget, and no daylight/eclipse condition (this is
 radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 5° it is about
 9.9 arcminutes, which adds roughly **8.4 s (+0.93 %)** to the total and moves each horizon crossing
@@ -3294,7 +3318,8 @@ npm run export       # CSV and calendar, parsed back rather than eyeballed
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run custom       # what the console does with an orbit that is not in the catalogue: zero
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)
-npm run timeline     # the window rolling forward past its end, and the next pass beyond it
+npm run timeline     # the window rolling forward past its end, and the next pass beyond it; the
+                     # sky plot's dot and flown stretch, read off its pixels (the rebuilt page only)
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history

@@ -5,7 +5,8 @@
   import { HOME } from '../../state/engine';
   import { latStr, lonStr, siteKey, tzLabel } from '../../lib/observer';
   import { credit, here, search, tzAt, tzLabelAt, type Place } from '../../lib/places';
-  import { siteNote } from '../../lib/text/site';
+  import { siteNote, SEARCH_TITLE } from '../../lib/text/site';
+  import type { GridCell } from '../../lib/maidenhead';
   import Popover from '../ui/Popover.svelte';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -22,6 +23,10 @@
   let open = $state(false);
   let fSearch: HTMLInputElement | undefined;
   let hits = $state.raw<Place[]>([]);
+  /* a grid square typed into the search: the one result, worked out here (CHANGES-FROM-LEGACY.md, L51) */
+  let grid = $state.raw<GridCell | null>(null);
+  /* ...and the text it was read from, which the button under a four-character square sends if pressed */
+  let gridTyped = $state('');
   let msg = $state<{ text: string; warn: boolean } | null>(null);
   let locating = $state(false);
   /* the five fields are plain inputs, written by paintSite() and read when Apply is pressed (as the old form's were), so
@@ -54,18 +59,51 @@
   const note = $derived(siteNote({ site: app.site, home: HOME, pinned: PINNED, tzLabel: tzLabelAt(app.site, clock.tick.ms) }));
   const say = (text: string, warn = false) => { msg = { text, warn }; };
 
-  function closeHits() { hits = []; }
+  /* The grid square's code and words are not needed for the first screen, so they are a chunk of their own
+     (lib/text/grid.ts), asked for when the form first opens; one that fails is asked for again next time. */
+  type GridKit = typeof import('../../lib/text/grid');
+  let kit = $state.raw<GridKit | null>(null);
+  let kitLoad: Promise<GridKit> | null = null;
+  const loadKit = (): Promise<GridKit> =>
+    (kitLoad ??= import('../../lib/text/grid').then(m => (kit = m), e => { kitLoad = null; throw e; }));
+  $effect(() => { if (open) loadKit().catch(() => {}); });
+  /* the site's own grid square, six characters, at the head of the form */
+  const siteGrid = $derived(kit ? kit.toLocator(app.site.lat, app.site.lon) : null);
+
+  function closeHits() { hits = []; grid = null; }
   function picked(site: Place) {
     if (!app.applySite(site, { persist: true, remember: true, where: site.where })) return;
     if (fSearch) fSearch.value = ''; closeHits(); paintSite();
   }
+  /* A grid square has no height and no zone: sea level, and the offset a bare coordinate gets (applySite's solar time). */
+  function pickGrid(g: GridKit, c: GridCell) {
+    picked({ name: c.locator, where: g.GRID_WHERE, lat: c.lat, lon: c.lon, altKm: 0, zone: null });
+  }
 
   /* Debounced rather than per-keystroke: someone typing "Ulaanbaatar" would otherwise send eleven requests to a free
      service to answer the last one. */
+  let runs = 0;
   function run() {
-    const text = (fSearch?.value ?? '').trim();
+    const text = (fSearch?.value ?? '').trim(), n = ++runs;
     if (text.length < 2) { closeHits(); return; }
+    ctl?.abort(); ctl = null;
+    /* A Maidenhead locator (OK03gs) is read here, before the place search, and asks nobody: the square is the one
+       result. One caught half way through its last pair (OK03g) is nothing yet, and is not sent either. A search still
+       in flight for what was typed before it has just been called off. The code that reads a square is normally here
+       since the form opened; if it cannot be loaded at all, the text goes to the place search as any text did before. */
+    loadKit().then(g => {
+      if (n !== runs) return;                              // typed over while the code came
+      const cell = g.fromLocator(text);
+      if (cell) { hits = []; grid = cell; gridTyped = text; say(g.gridOffer(cell)); return; }
+      if (g.locatorPart(text)) { closeHits(); say(g.gridPartial(text)); return; }
+      places(text);
+    }, () => { if (n === runs) places(text); });
+  }
+  /* The place search proper: what run() does with anything that is not a grid square, and what the button under a
+     four-character square does when pressed (a postcode district such as BN11 has the same shape). */
+  function places(text: string) {
     ctl?.abort();
+    grid = null;
     ctl = new AbortController();
     search(text, 6, ctl.signal).then(list => {
       if (!list.length) { closeHits(); say('No place matched “' + text + '”.'); return; }
@@ -80,7 +118,7 @@
   function typing() { clearTimeout(timer); timer = setTimeout(run, 250); }
   function searchKey(e: KeyboardEvent) {
     if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); run(); }
-    if (e.key === 'Escape' && hits.length) { e.stopPropagation(); closeHits(); }
+    if (e.key === 'Escape' && (hits.length || grid)) { e.stopPropagation(); closeHits(); }
   }
 
   function useHere() {
@@ -135,15 +173,23 @@
   {/snippet}
 
   <div class="form" id="siteform">
-    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}</p>
+    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}{#if kit && siteGrid}<span class="grid" id="s-grid" title={kit.GRID_TITLE}>{kit.GRID_LABEL} <span class="loc">{siteGrid}</span></span>{/if}</p>
 
     <div class="find">
       <input id="s-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search a town or city"
-             aria-label="Search for a place" aria-controls="s-hits"
+             aria-label="Search for a place" aria-controls="s-hits" title={SEARCH_TITLE}
              bind:this={fSearch} oninputcapture={typing} onkeydown={searchKey}>
       <Button id="s-here" size="sm" disabled={locating} onclick={useHere}>Use my location</Button>
     </div>
-    <ul class="hits" id="s-hits" aria-label="Search results" hidden={!hits.length}>
+    <ul class="hits" id="s-hits" aria-label="Search results" hidden={!hits.length && !(grid && kit)}>
+      {#if grid && kit}
+        {@const c = grid}
+        {@const g = kit}
+        <li><button type="button" id="s-gridhit" onclick={() => pickGrid(g, c)}>{c.locator}<span class="hw">{g.gridHitLine(c)}</span></button></li>
+        {#if c.locator.length === 4}
+          <li><button type="button" id="s-gridplaces" onclick={() => { fSearch?.focus(); places(gridTyped); }}>{g.gridPlacesLabel(gridTyped)}<span class="hw">{g.GRID_PLACES_HINT}</span></button></li>
+        {/if}
+      {/if}
       {#each hits as site (site.id ?? site.name + site.lat)}
         <li><button type="button" onclick={() => picked(site)}>{site.name}<span class="hw">{[site.where, latStr(site.lat) + ' ' + lonStr(site.lon), Math.round(site.altKm * 1000) + ' m'].filter(Boolean).join(' · ')}</span></button></li>
       {/each}
@@ -185,6 +231,10 @@
   .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14ch; }
   .tz { color: var(--muted); font-size: var(--fs-0); }
   .form { display: grid; gap: var(--space-3); }
+  /* the site's square is the eyebrow's second line (beside the coordinates it broke them at 380 px); the locator keeps its
+     case (field upper, subsquare lower) under the eyebrow's capitals */
+  .grid { display: block; }
+  .loc { text-transform: none; letter-spacing: .04em; }
   .find { display: flex; gap: var(--space-2); align-items: center; }
   .find input { flex: 1; min-width: 0; }
   input {

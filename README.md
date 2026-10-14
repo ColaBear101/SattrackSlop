@@ -78,6 +78,8 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
+A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked.
+
 What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
@@ -145,7 +147,8 @@ pages. What they fetch, and what happens without it:
 - **Only when asked:** an object's element-set history for the decay forecast, from the page's own
   cache API, `/api/history/<n>`, if one answers as itself (see **Staying current**), and
   otherwise from CelesTrak's `graph-orbit-data.php`; a place-name search from Open-Meteo's
-  geocoder; and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
+  geocoder (a Maidenhead grid square typed into the same box is read on the page and asks
+  nobody); and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
   (the drawn coastlines otherwise). The default globe asks nobody for anything: the Blue Marble
   and the city lights (`citylights-2048.jpg`, the VIIRS 2012 night-lights mosaic, saved once from
   GIBS on 2026-10-08) ship with the page. On a phone or tablet, the AR view asks the device, not a
@@ -2649,12 +2652,32 @@ Two things make that safe rather than merely possible:
   and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
   cannot leak into it. Reset restores the assignment's own total to the bit.
 
-Three ways in, because the observer used to be five numbers you had to already know:
+Four ways in, because the observer used to be five numbers you had to already know:
 
 - **Search a place name.** One request to Open-Meteo's geocoder — no key, CORS open — returns the
   position, the *ground elevation*, and a real IANA timezone. Results carry their coordinates
   because two places share a name more often than not; searching "Chiang Mai" offers the city, the
   airport, and a village of the same name in Chiang Rai.
+- **Type a grid square.** A Maidenhead locator, the square radio amateurs give for where a station
+  stands, typed into the same box (`OK03gs`, in either case) is read on the page and asks nobody:
+  `src/lib/maidenhead.ts`, written from the IARU's definition of the system (field A–R of 20° of
+  longitude by 10° of latitude, square 0–9 of 2° by 1°, subsquare a–x of 5′ by 2.5′, extended
+  square 0–9 of 0.5′ by 0.25′, longitude first in each pair). It takes 4, 6 or 8 characters and
+  offers the square as the one result, with its size and the centre that will stand for it; the
+  note says how far a station in a corner can be from that centre (5.1 km for a six-character
+  square at Bangkok's latitude, 122 km for a four-character one). Picked, the centre is the site,
+  at sea level, with the solar-time offset a bare coordinate gets; the height and the offset can be
+  corrected under *Enter coordinates*. A locator half typed (`OK03g`) is sent nowhere either. A
+  four-character square has the shape of a British postcode district (BN11), so under it the list
+  offers *Search places for “BN11” instead*, which asks the geocoder only when pressed. The head of
+  the form names the current site's own six-character square, whichever way the site was set
+  (Bangkok is OK03gs), on a line of its own under the coordinates. The code and its words
+  (`src/lib/text/grid.ts`, which carries `maidenhead.ts`) are a chunk of their own, about 1.4 KB
+  gzipped, fetched from the page's own origin when the form first opens; the first screen does not
+  carry them. A position is turned into a whole number of extended squares once, with one
+  floor, and the characters are its digits, so a point on a cell's edge cannot fall in on one
+  level and out on the next; 90° of latitude and 180° of longitude are counted in the last cell
+  (R, 9, x, 9), since there is no nineteenth field.
 - **Use my location.** The browser's own coordinates and accuracy, with the zone the device is set
   to — which for the device in your hand is the right answer and needs no request.
 - **Coordinates.** Folded away behind a disclosure, and kept: an arbitrary point on the Earth

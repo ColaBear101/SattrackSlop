@@ -22,6 +22,8 @@
  *    a coordinate typed in kept the previous site's UTC offset under a note
  *    calling it solar time. The window-start field was in the browser's zone,
  *    unlabelled, while every other local time is the observer's.
+ *  - A Maidenhead grid square typed into the place search is found on the page
+ *    and must never reach the geocoder (new in the rebuild, L51).
  *
  *   node verification/suites/verify-site.js          (needs playwright)
  */
@@ -419,6 +421,67 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('...and one click goes back to it',
       Math.abs(wasTokyo.obs.lat - 35.6895) < 1e-6 && wasTokyo.obs.zone === 'Asia/Tokyo',
       wasTokyo.obs.name + ' ' + wasTokyo.obs.lat);
+
+  // ---- a grid square ---------------------------------------------------------
+  /* A Maidenhead locator typed where a place name goes is read on the page (src/lib/maidenhead.ts;
+     CHANGES-FROM-LEGACY.md, L51): the square is the one result and the geocoder is never asked, so
+     the count of requests the route above has answered must not move while one is typed and
+     picked. Only the button under a four-character square, which a postcode district such as BN11
+     can look like, sends anything, and only when pressed. The squares are worked by hand from the
+     IARU definition: Tokyo, where the recents left the site, is PM95uq; OK03gs is centred on
+     13° 46.25' N, 100° 32.5' E. */
+  const searchFor = async text => {
+    await openForm();
+    await page.fill('#s-search', text);
+    await page.waitForTimeout(700);    // past the 250 ms debounce: a request meant to go has gone
+    return page.evaluate(() => ({
+      hits: [...document.querySelectorAll('#s-hits button')].map(b => b.textContent),
+      listHidden: document.getElementById('s-hits').hidden,
+      note: document.getElementById('sitenote').textContent.trim() }));
+  };
+  /* the square at the head of the form comes with a chunk the form asks for when it first opens */
+  const gridShown = async () => {
+    await page.waitForSelector('#s-grid', { timeout: 8000 }).catch(() => {});
+    return page.evaluate(() => ((document.getElementById('s-grid') || {}).textContent || '').trim());
+  };
+  await openForm();
+  const tokyoGrid = await gridShown();
+  chk('the form names the site\'s grid square', /^Grid square PM95uq$/.test(tokyoGrid), tokyoGrid || 'none');
+  const calls0 = geocodeCalls;
+  const half = await searchFor('OK03g');
+  chk('a grid square half typed is nothing yet, and is not sent to the place search',
+      half.listHidden && /start of a Maidenhead grid square/.test(half.note) && geocodeCalls === calls0,
+      half.note + ' · requests ' + (geocodeCalls - calls0));
+  const four = await searchFor('OK03');
+  chk('a four-character square is offered, with the place search one press away and not asked yet',
+      four.hits.length === 2 && /^OK03Maidenhead grid square, 216 km × 111 km/.test(four.hits[0])
+      && /Search places for “OK03” instead/.test(four.hits[1]) && geocodeCalls === calls0,
+      four.hits.join(' | ') + ' · requests ' + (geocodeCalls - calls0));
+  await page.click('#s-gridplaces');
+  await page.waitForFunction(() => /No place matched/.test(document.getElementById('sitenote').textContent),
+    null, { timeout: 8000 }).catch(() => {});
+  const asked = await page.evaluate(() => document.getElementById('sitenote').textContent.trim());
+  chk('...and pressing that asks it, once', geocodeCalls === calls0 + 1 && /No place matched “OK03”/.test(asked),
+      asked + ' · requests ' + (geocodeCalls - calls0));
+  const calls1 = geocodeCalls;
+  const six = await searchFor('OK03gs');
+  chk('typing a grid square offers it as the one result',
+      six.hits.length === 1 && /^OK03gsMaidenhead grid square, 9\.0 km × 4\.6 km · 13\.77° N 100\.54° E$/.test(six.hits[0]),
+      six.hits.join(' | '));
+  chk('...found on the page, and the note says so', /found on this page with no request/.test(six.note), six.note);
+  await page.click('#s-gridhit');
+  await page.waitForTimeout(2000);
+  const sq = await state();
+  chk('picking it puts the observer at the square\'s centre, at sea level, on solar time',
+      sq.obs.name === 'OK03gs' && Math.abs(sq.obs.lat - (13 + 46.25 / 60)) < 1e-9
+      && Math.abs(sq.obs.lon - (100 + 32.5 / 60)) < 1e-9 && sq.obs.altKm === 0 && sq.obs.zone === null
+      && sq.obs.tz === 7 && sq.tz === 'UTC+7', JSON.stringify(sq.obs));
+  chk('...and the page renamed itself', /OK03gs/.test(sq.heading), sq.heading);
+  await openForm();
+  const sqGrid = await gridShown();
+  chk('...and the form names its square', /^Grid square OK03gs$/.test(sqGrid), sqGrid || 'none');
+  chk('typing and picking the square made no request to the place search', geocodeCalls === calls1,
+      (geocodeCalls - calls1) + ' request(s) to geocoding-api.open-meteo.com');
 
   // ---- no network ----------------------------------------------------------
   /* Search is a convenience over typing numbers in, so losing it has to cost

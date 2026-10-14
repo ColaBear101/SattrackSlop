@@ -183,6 +183,12 @@ function statesFor(page, size, assertPlanner) {
   S.push({ id: 'observer', overlay: POP('Observer'), enter: async () => {
     await page.click('#siteopen'); await shownSel('#s-search');
     await page.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });   // the coordinate fields: the form at its tallest
+    /* ...with the site's grid square at its head and a four-character square in the list, with the button to the place search under it
+       (CHANGES-FROM-LEGACY.md, L51): typed and found on the page, no request. The field gives up the focus, so that Escape closes the form
+       (in the field, with the list open, Escape closes the list and stops there). */
+    await page.fill('#s-search', 'OK03'); await page.press('#s-search', 'Enter');
+    await shownSel('#s-gridplaces'); await shownSel('#s-grid');
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await raf2(page);
   }, exit: () => esc('#s-search') });
   S.push({ id: 'window', overlay: POP('Analysis window'), enter: async () => { await page.click('#winOpen'); await shownSel('#winStartIn'); await raf2(page); }, exit: () => esc('#winStartIn') });

@@ -58,6 +58,19 @@ const VIEWS = [
         ['map', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim() === 'Map').click()); await page.waitForTimeout(400); }],
         ['window', async () => { await page.evaluate(() => document.getElementById('winOpen').click()); await page.waitForTimeout(250); }],
         ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }],
+        /* the observer form, with a four-character grid square typed: the square and the button to the place search are listed, found on the page
+           with no request (CHANGES-FROM-LEGACY.md, L51). The field is left without the focus, so that the next state's Escape closes the form
+           (in the field, with the list open, Escape closes the list and stops there). */
+        ['observer', async () => {
+          await page.keyboard.press('Escape');
+          await page.evaluate(() => document.getElementById('siteopen').click());
+          await page.waitForSelector('#s-search', { state: 'visible', timeout: 5000 });
+          await page.fill('#s-search', 'OK03');
+          await page.press('#s-search', 'Enter');
+          await page.waitForSelector('#s-gridplaces', { state: 'visible', timeout: 5000 });
+          await page.evaluate(() => document.activeElement && document.activeElement.blur());
+          await page.waitForTimeout(250);
+        }],
         /* the orbit planner: the pill brings its chunk in and opens it (the three presentations - flow, drawer, sheet - are what the viewports are for) */
         ['planner', async () => {
           await page.keyboard.press('Escape');

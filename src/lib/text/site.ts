@@ -39,3 +39,7 @@ export function siteNote({ site, home, pinned, tzLabel }: SiteNoteIn): Inline {
       ' reproduces them. The live set and your own window give different numbers. '];
   return [lead, zone];
 }
+
+/** The search field's title (CHANGES-FROM-LEGACY.md, L51): it takes a Maidenhead grid square as well as a place name. The
+ *  words about a square itself are text/grid.ts, a chunk the form loads when it first opens. */
+export const SEARCH_TITLE = 'A town or city, or a Maidenhead grid square of 4, 6 or 8 characters such as OK03gs';

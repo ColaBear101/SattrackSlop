@@ -12,3 +12,9 @@ const NOTHING: KeyValue & { removeItem(k: string): void } = {
 export function localStore(): KeyValue & { removeItem(k: string): void } {
   try { return window.localStorage; } catch { return NOTHING; }
 }
+
+/** The browser's own store, to be walked as well as read (forgetting what the page stored, lib/forget.ts), or null where the browser
+ *  refuses it: there, nothing was ever stored. */
+export function browserStore(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
+}

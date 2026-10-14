@@ -3,6 +3,7 @@
   import { iso, spanLabel } from '../../lib/text/fmt';
   import { creditLine } from '../../lib/text/credits';
   import Rich from '../ui/Rich.svelte';
+  import ForgetData from './ForgetData.svelte';
 
   /* The line at the foot of the page that says which element set and which window everything above was computed from. From
      the footer of legacy/index.html (main@4eadd7a) and `#footepoch` in load(). */
@@ -19,6 +20,7 @@
   <span>Element sets degrade with age; re-fetch before quoting pass times far from epoch.</span>
   <span>Moon, in testing: <a href="moon-track.html">Lunar track</a> · <a href="moon.html">Earth–Moon</a></span>
   <p id="footcredit"><Rich value={credit} /></p>
+  <ForgetData />
 </footer>
 
 <style>

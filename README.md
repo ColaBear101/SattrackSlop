@@ -78,6 +78,8 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and for a few hours the element sets and decay histories it fetched. *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
 ## Where things are
@@ -734,6 +736,32 @@ the build writes in (`__APP_VERSION__`, defined in `vite.config.ts`), so the lin
 that does and is never edited by hand. The links are only links: the page asks nothing of those
 hosts. Why the data has a licence of its own is under *The frequency is the one thing that cannot
 be derived*. The old page said none of this.
+
+Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
+the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB or a service
+worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the saved site and the
+last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
+`gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
+read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`); and two caches,
+an object's element set for three hours (`tle:<n>`) and its history of element sets for twelve
+(`hist:<n>`). The first press reads the store, writes nothing, and says what the second will
+forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
+places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
+be brought back.* The button then reads *Forget and reload*; Escape, the focus leaving it or a
+press anywhere else stands it down. The second press removes every key in those four namespaces,
+and no other key the origin holds, and opens the page again, so that nothing held in memory from
+what was stored (the site, the orbits, the theme) outlives it. It opens the same address without
+`site` and `tab`: the first is the observer's position, which the page writes into the address
+itself, and a page opened with the second saves it as a choice at once. With nothing stored the
+press says so and arms nothing, and where the browser refuses site data it says there is nothing
+to forget. Two limits: a live visit keeps the element set it fetches for the spacecraft on screen,
+so the page that opens afterwards keeps one again as soon as it has fetched it (not under
+`?tle=embedded`, which fetches nothing); and another tab of the page that is still open keeps what
+it holds in memory, and stores it again when something is changed there.
+`tests/lib/forget.test.ts` scans the source for every key handed to `getItem`, `setItem` and
+`removeItem` and fails on one that `src/lib/forget.ts` does not cover, or on a key it lists that
+the code no longer uses; `verify-visitor.js` (group 10) forgets a store holding one key of every
+kind and one of somebody else's. The old page had no such button.
 
 `npm run layout` checks all of this on the production build, in light and in dark, at 1440×900 and
 1280×720, at 1100 and 1099 px wide (the one-row header's narrowest and the panel's widest), at
@@ -3135,8 +3163,9 @@ npm run layout       # the rebuilt console at twelve sizes, light and dark: noth
 npm run planner-ui   # the planner's own screen, driven as a student drives it: the form, the
                      # Professor's panel, the fixes, the saved list, the layouts, the details
 npm run visitor      # the page with no test flag, as a visitor gets it: how the planner and the
-                     # AR view arrive, what the first screen weighs, and a page that is refused
-                     # what it asks for (site data, the element sets, a chunk)
+                     # AR view arrive, what the first screen weighs, a page that is refused
+                     # what it asks for (site data, the element sets, a chunk), and forgetting
+                     # what the page stored
 npm run axe          # axe-core at five viewports in both colour schemes, in the states that change
                      # what is on screen; --strict fails on anything not listed with its reason
 npm run golden       # the report's words against the old page's, word for word (white space is

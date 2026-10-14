@@ -28,6 +28,10 @@
  *   8  a slow catalogue (kept back 3 s), on a desktop and on a phone: no planner chunk, and no AR chunk, is requested before the first
  *      answer. With the catalogue at hand the answer and the browser's first idle moment are milliseconds apart and that claim is a race;
  *      here the browser is idle at once and for 3 s, so a chunk that waited only for the browser is requested at once and seen
+ *  10  forgetting what the page stored (L50): on an empty store the button's press says so and writes nothing; with one key of every kind the
+ *      page keeps, the first press says what will go and writes nothing, Escape, a blur and a press elsewhere stand it down, and the second
+ *      press leaves no gt.* / obs-* / tle:* / hist:* key (somebody else's key stays) and opens a page that writes nothing, without the site
+ *      and the tab in its address; with site data blocked it says there is nothing to forget
  *
  * Nothing here compares with the old page (the old page had no chunks): the rebuilt page only, on the folder in GT_DIST (or dist/). GT_TARGET
  * unset means the rebuilt page; GT_TARGET=legacy is refused (exit 2), so that nothing here can "pass" having checked nothing.
@@ -90,6 +94,14 @@ const SNAPSHOT_SENTENCE = 'The orbit planner is off in the assignment snapshot (
    one on an earlier visit. The epoch is fixed, so nothing here depends on the day. */
 const ORBIT = { a: 6978.135, e: 0.001, i: 97.8, raan: 120.5, argp: 90, M: 0, epoch: Date.UTC(2026, 9, 1), am: 0.0043 };
 const SEED = JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'Saved earlier', made: 1, el: ORBIT }] });
+/* group 10: one key of every kind the page keeps (lib/forget.ts), and one of somebody else's on the same origin */
+const LONDON = { lat: 51.5, lon: -0.12, altKm: 0.02, name: 'London', tz: 0, zone: 'Europe/London', where: 'England' };
+const SEED_ALL = {
+  'obs-site': JSON.stringify(LONDON), 'obs-recent': JSON.stringify([LONDON]), 'gt.prefs': JSON.stringify({ theme: 'dark', tab: 'map' }), 'gt.surface': 'vector',
+  'gt.custom': SEED, 'gt.arlens': '60', 'gt.araim': 'head', 'gt.arradar': '0',
+  'tle:25544': JSON.stringify({ l1: '', l2: '', src: 'celestrak', at: 0 }), 'hist:25544': JSON.stringify({ at: 0, P: [] }), 'someone-else': 'keep me'
+};
+const PAGE_KEY = /^(gt\.|obs-|tle:|hist:)/;
 
 /* The chunk a URL is, by name: assets/<name>-<8 character hash>.js */
 function chunkOf(url) {
@@ -179,6 +191,8 @@ async function visit(browser, o) {
   o = o || {};
   const ctx = await browser.newContext(o.device || DESKTOP);
   if (o.seed) await ctx.addInitScript(s => { try { localStorage.setItem('gt.custom', s); } catch (e) { /* no storage: the seed is the check's, and it will say so */ } }, o.seed);
+  /* a store with one key of every kind the page keeps (group 10), written once for the tab, so that the reload after forgetting does not bring it back */
+  if (o.seedAll) await ctx.addInitScript(all => { try { if (sessionStorage.getItem('__seeded')) return; for (const k of Object.keys(all)) localStorage.setItem(k, all[k]); sessionStorage.setItem('__seeded', '1'); } catch (e) { /* the check says so */ } }, o.seedAll);
   if (o.laptop) await ctx.addInitScript(TOUCH_LAPTOP);
   await ctx.addInitScript(RECORDER, { hold: !!o.hold });
   opened.add(ctx);
@@ -759,6 +773,106 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       });
       chk('[' + label + '] the Source tab does not widen the rail or the page (the raw lines scroll in their own box)' + (sat ? ', and the name stays clear of the theme toggle' : ''),
         m.aside <= 0 && m.page <= 0 && m.preScrolls && (!sat || m.titleRight <= m.themeLeft), JSON.stringify(m));
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+  });
+
+  /* ---- 10. forgetting what the page stored ----------------------------------------------------------------------------------------------- */
+  if (want(10)) await group(10, async () => {
+    console.log('\n10. Forgetting what the page stored: the button at the foot of the report (L50)');
+    const LABEL = 'Forget what this page stored', ARMED = 'Forget and reload';
+    const state = page => page.evaluate(() => {
+      const b = document.getElementById('forgetbtn'), s = document.getElementById('forgetsay');
+      return b ? { label: b.textContent.trim(), said: s ? s.textContent.trim() : null, inFooter: !!b.closest('#report footer'), focus: document.activeElement === b } : null;
+    });
+    const labelIs = (page, l) => until(page, x => { const b = document.getElementById('forgetbtn'); return !!b && b.textContent.trim() === x; }, l);
+    /* An empty store: the press says so, and does nothing else. The footer is in the page here, so this is also a plain visit with it. */
+    {
+      const w = await visit(browser);
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      await answerOn(w);
+      const there = await until(w.page, () => !!document.getElementById('forgetbtn'));
+      const s0 = await state(w.page);
+      const spans = await w.page.evaluate(() => document.querySelectorAll('#report footer span').length);
+      chk('the report\'s footer ends with a button, "' + LABEL + '", with nothing said beside it and no span in it (the footer\'s four spans are still four)',
+        there && !!s0 && s0.inFooter && s0.label === LABEL && s0.said === '' && spans === 4, JSON.stringify(s0) + ', footer spans ' + spans);
+      await w.page.evaluate(() => { window.__stay = 1; });
+      await w.page.click('#forgetbtn');
+      await until(w.page, () => ((document.getElementById('forgetsay') || {}).textContent || '') !== '');
+      const s1 = await state(w.page), stayed = await w.page.evaluate(() => window.__stay === 1);
+      const v = await clock(w), st = await storeNow(w.page);
+      chk('[nothing stored] a press says "This page has stored nothing in this browser." and is not armed (the label is the same); nothing is reloaded, written or removed, and storage is still empty',
+        !!s1 && s1.said === 'This page has stored nothing in this browser.' && s1.label === LABEL && stayed && v.writes.length === 0 && Array.isArray(st.keys) && st.keys.length === 0,
+        JSON.stringify(s1) + '; reloaded ' + !stayed + '; writes: ' + (v.writes.join(' ') || 'none'));
+      noErrors('group 10 [nothing stored]', w);
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* One key of every kind the page keeps, and one of somebody else's. The address asks for the map (which the page saves as a choice). */
+    {
+      const w = await visit(browser, { seedAll: SEED_ALL });
+      await w.page.goto(srv.page + '?sat=25544&tab=map', { waitUntil: 'load' });
+      await answerOn(w);
+      await until(w.page, () => !!document.getElementById('forgetbtn') && /[?&]site=/.test(location.search));
+      const before = await w.page.evaluate(() => ({ keys: Object.keys(localStorage).sort(), theme: document.documentElement.getAttribute('data-theme'), search: location.search }));
+      chk('[everything stored] the page opened on what was stored: the dark theme, the site (in the address, where the page puts it), the map, and every key in place',
+        before.theme === 'dark' && /[?&]site=/.test(before.search) && /[?&]tab=map/.test(before.search) && JSON.stringify(before.keys) === JSON.stringify(Object.keys(SEED_ALL).sort()), JSON.stringify(before));
+      const w0 = (await clock(w)).writes.length;
+      await w.page.click('#forgetbtn');
+      const armed = await labelIs(w.page, ARMED);
+      const s1 = await state(w.page);
+      const WANT = 'Press again to forget these and reload the page: your saved site, 1 recent place, your display choices, 1 orbit of your own, 1 cached element set and 1 cached decay history. Your own orbits cannot be brought back.';
+      chk('[everything stored] the first press arms it: the label becomes "' + ARMED + '" and it says what the second press will forget, counted from the store, and that orbits of your own do not come back',
+        armed && !!s1 && s1.said === WANT, JSON.stringify(s1));
+      const st1 = await storeNow(w.page);
+      chk('...and the first press writes and removes nothing', (await clock(w)).writes.length === w0 && JSON.stringify(st1.keys.slice().sort()) === JSON.stringify(Object.keys(SEED_ALL).sort()), st1.keys.length + ' keys');
+      await w.page.keyboard.press('Escape');
+      const s2 = await state(w.page);
+      chk('[everything stored] Escape stands it down: the label is "' + LABEL + '" again, nothing is said, and the focus stays on the button', !!s2 && s2.label === LABEL && s2.said === '' && s2.focus, JSON.stringify(s2));
+      await w.page.click('#forgetbtn');
+      await labelIs(w.page, ARMED);
+      await w.page.evaluate(() => document.activeElement && document.activeElement.blur());
+      const s3 = await state(w.page);
+      chk('...so does the focus leaving the button', !!s3 && s3.label === LABEL && s3.said === '' && !s3.focus, JSON.stringify(s3));
+      await w.page.click('#forgetbtn');
+      await labelIs(w.page, ARMED);
+      /* a browser that does not focus a button it clicks (Safari) never blurs it: a press anywhere else, with the focus left where it was */
+      await w.page.evaluate(() => document.getElementById('footepoch').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+      const s4 = await state(w.page);
+      chk('...and so does a press anywhere else, with the focus left on the button (a browser that does not focus a button it clicks never blurs it)', !!s4 && s4.label === LABEL && s4.said === '' && s4.focus, JSON.stringify(s4));
+      const st4 = await storeNow(w.page);
+      chk('...and none of the three forgot anything', JSON.stringify(st4.keys.slice().sort()) === JSON.stringify(Object.keys(SEED_ALL).sort()), st4.keys.length + ' keys');
+      await w.page.click('#forgetbtn');
+      await labelIs(w.page, ARMED);
+      await w.page.evaluate(() => { window.__stay = 1; });
+      const loaded = w.page.waitForEvent('load', { timeout: WAIT }).then(() => true, () => false);
+      await w.page.click('#forgetbtn');
+      const navigated = await loaded;
+      await answerOn(w);
+      const up = await plannerUp(w);              // the planner has come (and found no orbit to restore) before the page is called settled
+      await w.page.waitForTimeout(1000);
+      const after = await w.page.evaluate(() => ({ stay: window.__stay === 1, keys: Object.keys(localStorage), theme: document.documentElement.getAttribute('data-theme'), search: location.search }));
+      const v = await clock(w);
+      chk('[everything stored] the second press forgets it and opens the page again (a new page, not the one pressed): localStorage holds no key of the page\'s (gt.*, obs-*, tle:*, hist:*), only somebody else\'s',
+        navigated && !after.stay && !after.keys.some(k => PAGE_KEY.test(k)) && JSON.stringify(after.keys) === JSON.stringify(['someone-else']), JSON.stringify(after.keys) + '; a new page ' + (navigated && !after.stay));
+      chk('...the address keeps the spacecraft and drops the site and the tab (a tab in the address is saved again by the page that opens it)', /[?&]sat=25544(&|$)/.test(after.search) && !/[?&](site|tab)=/.test(after.search), after.search);
+      chk('...and the page is a first visit\'s: the theme follows the system again (light here), the site is the default (none in the address once settled), and the page, settled with its planner up, wrote nothing',
+        up && after.theme === 'light' && !/[?&]site=/.test(after.search) && v.writes.length === 0, 'planner ' + up + ', theme ' + after.theme + '; writes: ' + (v.writes.join(' ') || 'none'));
+      noErrors('group 10 [everything stored]', w);
+      await w.ctx.close(); opened.delete(w.ctx);
+    }
+    /* Site data blocked: nothing was ever stored, and the press says why there is nothing to forget. */
+    {
+      const w = await visit(browser, {});
+      await w.ctx.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); } }); });
+      await w.page.goto(srv.page, { waitUntil: 'load' });
+      await answerOn(w);
+      await until(w.page, () => !!document.getElementById('forgetbtn'));
+      await w.page.click('#forgetbtn');
+      await until(w.page, () => ((document.getElementById('forgetsay') || {}).textContent || '') !== '');
+      const s = await state(w.page);
+      chk('[site data blocked] a press says "This browser does not let the page store anything, so there is nothing to forget." and is not armed',
+        !!s && s.said === 'This browser does not let the page store anything, so there is nothing to forget.' && s.label === LABEL, JSON.stringify(s));
+      noErrors('group 10 [site data blocked]', w);
       await w.ctx.close(); opened.delete(w.ctx);
     }
   });

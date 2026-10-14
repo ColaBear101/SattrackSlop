@@ -78,7 +78,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
-A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked.
+A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
 
 What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
@@ -2667,17 +2667,28 @@ Four ways in, because the observer used to be five numbers you had to already kn
   note says how far a station in a corner can be from that centre (5.1 km for a six-character
   square at Bangkok's latitude, 122 km for a four-character one). Picked, the centre is the site,
   at sea level, with the solar-time offset a bare coordinate gets; the height and the offset can be
-  corrected under *Enter coordinates*. A locator half typed (`OK03g`) is sent nowhere either. A
-  four-character square has the shape of a British postcode district (BN11), so under it the list
-  offers *Search places for “BN11” instead*, which asks the geocoder only when pressed. The head of
-  the form names the current site's own six-character square, whichever way the site was set
-  (Bangkok is OK03gs), on a line of its own under the coordinates. The code and its words
-  (`src/lib/text/grid.ts`, which carries `maidenhead.ts`) are a chunk of their own, about 1.4 KB
-  gzipped, fetched from the page's own origin when the form first opens; the first screen does not
-  carry them. A position is turned into a whole number of extended squares once, with one
-  floor, and the characters are its digits, so a point on a cell's edge cannot fall in on one
-  level and out on the next; 90° of latitude and 180° of longitude are counted in the last cell
-  (R, 9, x, 9), since there is no nineteenth field.
+  corrected under *Enter coordinates*. A locator half typed (`OK03g`) is sent nowhere either, nor
+  is one with a fifth pair, a–x, which some loggers and GPS units give (`OK03gs01ab`, a square
+  about 40 m by 20 m, and its nine-character half): the page reads 8 characters at most, and the
+  note says to type the first eight. A four-character square has the shape of a British postcode
+  district (BN11), so under it the list offers *Search places for “BN11” instead*, which asks the
+  geocoder only when pressed. The head of the form names the current site's own six-character
+  square, whichever way the site was set (Bangkok is OK03gs), on a line of its own under the
+  coordinates; a site picked as a square, while it is still that square's centre, is named by the
+  square as it was given (OK03, whose centre is the corner of four subsquares and would otherwise
+  be named OK03mm, one of them). The code and its words (`src/lib/text/grid.ts`, which carries
+  `maidenhead.ts`) are a chunk of their own, about 1.5 KB gzipped, fetched from the page's own
+  origin when the form first opens; the first screen does not carry them. The entry carries only
+  a locator's shape (`src/lib/gridshape.ts`, two patterns), so that text with that shape waits
+  for the chunk instead of going to the geocoder, and if the chunk cannot be fetched at all (a
+  tab left open across a new release asks for one the server no longer has) it is held back
+  under a note that says so, a four-character postcode district with it, until the page is
+  reloaded. Anything else goes to the geocoder at once. A position is turned into a whole number
+  of extended squares once, with one floor, and the characters are its digits, so a point on a
+  cell's edge cannot fall in on one level and out on the next; 90° of latitude and 180° of
+  longitude are counted in the last cell (R, 9, x, 9), since there is no nineteenth field. The
+  size in the result is in whole metres under 100 m, so a square a few metres from a pole is not
+  called nought wide.
 - **Use my location.** The browser's own coordinates and accuracy, with the zone the device is set
   to — which for the device in your hand is the right answer and needs no request.
 - **Coordinates.** Folded away behind a disclosure, and kept: an arbitrary point on the Earth

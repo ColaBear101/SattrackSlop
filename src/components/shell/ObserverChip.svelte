@@ -5,7 +5,8 @@
   import { HOME } from '../../state/engine';
   import { latStr, lonStr, siteKey, tzLabel } from '../../lib/observer';
   import { credit, here, search, tzAt, tzLabelAt, type Place } from '../../lib/places';
-  import { siteNote, SEARCH_TITLE } from '../../lib/text/site';
+  import { gridUnread, siteNote, SEARCH_TITLE } from '../../lib/text/site';
+  import { gridShaped } from '../../lib/gridshape';
   import type { GridCell } from '../../lib/maidenhead';
   import Popover from '../ui/Popover.svelte';
   import Button from '../ui/Button.svelte';
@@ -60,15 +61,17 @@
   const say = (text: string, warn = false) => { msg = { text, warn }; };
 
   /* The grid square's code and words are not needed for the first screen, so they are a chunk of their own
-     (lib/text/grid.ts), asked for when the form first opens; one that fails is asked for again next time. */
+     (lib/text/grid.ts), asked for when the form first opens; one that fails is asked for again next time (a browser
+     may answer that from its memory of the failure until the page is reloaded). */
   type GridKit = typeof import('../../lib/text/grid');
   let kit = $state.raw<GridKit | null>(null);
   let kitLoad: Promise<GridKit> | null = null;
   const loadKit = (): Promise<GridKit> =>
     (kitLoad ??= import('../../lib/text/grid').then(m => (kit = m), e => { kitLoad = null; throw e; }));
   $effect(() => { if (open) loadKit().catch(() => {}); });
-  /* the site's own grid square, six characters, at the head of the form */
-  const siteGrid = $derived(kit ? kit.toLocator(app.site.lat, app.site.lon) : null);
+  /* the site's own grid square at the head of the form: six characters, or the square it was picked as while it is
+     still that square's centre (OK03's centre is on the corner of four subsquares, and naming one would be a guess) */
+  const siteGrid = $derived(kit ? kit.siteLocator(app.site) : null);
 
   function closeHits() { hits = []; grid = null; }
   function picked(site: Place) {
@@ -88,16 +91,18 @@
     if (text.length < 2) { closeHits(); return; }
     ctl?.abort(); ctl = null;
     /* A Maidenhead locator (OK03gs) is read here, before the place search, and asks nobody: the square is the one
-       result. One caught half way through its last pair (OK03g) is nothing yet, and is not sent either. A search still
-       in flight for what was typed before it has just been called off. The code that reads a square is normally here
-       since the form opened; if it cannot be loaded at all, the text goes to the place search as any text did before. */
+       result. One the page does not read - caught half way through its last pair (OK03g), or with a fifth pair
+       (OK03gs01ab) - is not sent either. A search still in flight for what was typed before it has just been called
+       off. Which text is a locator's shape is known in the entry (lib/gridshape.ts); anything else goes to the place
+       search at once. The code that reads a square is normally here since the form opened; if it cannot be loaded at
+       all, text with a locator's shape is still held back, and the note says so. */
+    if (!gridShaped(text)) { places(text); return; }
     loadKit().then(g => {
       if (n !== runs) return;                              // typed over while the code came
       const cell = g.fromLocator(text);
       if (cell) { hits = []; grid = cell; gridTyped = text; say(g.gridOffer(cell)); return; }
-      if (g.locatorPart(text)) { closeHits(); say(g.gridPartial(text)); return; }
-      places(text);
-    }, () => { if (n === runs) places(text); });
+      closeHits(); say(g.gridPartial(text));
+    }, () => { if (n === runs) { closeHits(); say(gridUnread(text), true); } });
   }
   /* The place search proper: what run() does with anything that is not a grid square, and what the button under a
      four-character square does when pressed (a postcode district such as BN11 has the same shape). */
@@ -173,7 +178,7 @@
   {/snippet}
 
   <div class="form" id="siteform">
-    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}{#if kit && siteGrid}<span class="grid" id="s-grid" title={kit.GRID_TITLE}>{kit.GRID_LABEL} <span class="loc">{siteGrid}</span></span>{/if}</p>
+    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}{#if kit && siteGrid}<span class="grid" id="s-grid" title={siteGrid.given ? kit.GRID_TITLE_GIVEN : kit.GRID_TITLE}>{kit.GRID_LABEL} <span class="loc">{siteGrid.locator}</span></span>{/if}</p>
 
     <div class="find">
       <input id="s-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search a town or city"

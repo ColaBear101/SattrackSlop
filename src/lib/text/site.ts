@@ -43,3 +43,12 @@ export function siteNote({ site, home, pinned, tzLabel }: SiteNoteIn): Inline {
 /** The search field's title (CHANGES-FROM-LEGACY.md, L51): it takes a Maidenhead grid square as well as a place name. The
  *  words about a square itself are text/grid.ts, a chunk the form loads when it first opens. */
 export const SEARCH_TITLE = 'A town or city, or a Maidenhead grid square of 4, 6 or 8 characters such as OK03gs';
+
+/** What the form says when text with a grid square's shape (lib/gridshape.ts) is typed and the code that reads a square
+ *  cannot be fetched (a tab left open across a new release asks for a chunk the server no longer has): the text is held
+ *  back from the place search all the same. The form asks for the code again each time, but a browser may answer from
+ *  its memory of the failure until the page is reloaded, so the sentence offers the reload. */
+export function gridUnread(text: string): string {
+  return text + ' has the shape of a Maidenhead grid square, but the page could not load the code that reads one, so it'
+    + ' is neither read nor sent to the place search. Reload the page, or enter coordinates instead.';
+}

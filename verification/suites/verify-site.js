@@ -483,6 +483,67 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('typing and picking the square made no request to the place search', geocodeCalls === calls1,
       (geocodeCalls - calls1) + ' request(s) to geocoding-api.open-meteo.com');
 
+  /* A ten-character locator (a fifth pair, a-x, which some loggers and GPS units give: a square about 40 m by 20 m)
+     is finer than the page reads, and it and its nine-character half went to the place search; now neither does,
+     and the note names the eight characters that are read (review of L51). */
+  const calls2 = geocodeCalls;
+  for (const t of ['OK03gs01a', 'OK03gs01ab']) {
+    const long = await searchFor(t);
+    chk('a locator of ' + t.length + ' characters is not sent to the place search, and the note says what to type',
+        long.listHidden && new RegExp('^' + t + ' has more characters than this page reads: .*Type its first 8, OK03gs01,')
+          .test(long.note) && geocodeCalls === calls2,
+        long.note + ' · requests ' + (geocodeCalls - calls2));
+  }
+  /* A four-character square's centre is the corner of four subsquares, so the head of the form names the square as it
+     was given, not the subsquare the corner rule would pick (OK03mm), which the reader never gave (review of L51). */
+  await searchFor('OK03');
+  await page.click('#s-gridhit');
+  await page.waitForTimeout(2000);
+  const sq4 = await state();
+  await openForm();
+  const sq4Grid = await gridShown();
+  const sq4Title = await page.evaluate(() => (document.getElementById('s-grid') || {}).title || '');
+  chk('a four-character square picked is named as given at the head of the form, not as one of its subsquares',
+      sq4.obs.name === 'OK03' && sq4.obs.lat === 13.5 && sq4.obs.lon === 101 && /^Grid square OK03$/.test(sq4Grid)
+      && /picked as/.test(sq4Title), sq4.obs.name + ' ' + sq4.obs.lat + ', ' + sq4.obs.lon + ' · ' + sq4Grid + ' · ' + sq4Title);
+  chk('...and none of it asked the place search', geocodeCalls === calls2,
+      (geocodeCalls - calls2) + ' request(s) to geocoding-api.open-meteo.com');
+
+  /* The code that reads a square is a chunk of its own. A tab left open across a new release asks for a chunk the
+     server no longer has, and the text typed went to the place search instead; the entry now knows a locator's shape,
+     so such text is held back and the note says why, while a place name still goes straight to the search. A page of
+     its own, in this context, with the chunk refused (review of L51). */
+  const nk = await ctx.newPage({ viewport: { width: 1400, height: 900 } });
+  nk.on('pageerror', e => errs.push('[no grid chunk] ' + e.message));
+  let nkCalls = 0, chunkAsked = 0;
+  await nk.route('**/assets/grid-*.js', r => { chunkAsked++; r.abort(); });
+  await nk.route('**geocoding-api.open-meteo.com/**', r => {
+    nkCalls++;
+    r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+                body: JSON.stringify({ results: [] }) });
+  });
+  await nk.goto(PAGE, { waitUntil: 'load' });
+  await nk.waitForSelector('#siteopen', { timeout: 30000 });
+  await nk.click('#siteopen');
+  const nkSearch = async text => {
+    await nk.fill('#s-search', text);
+    await nk.waitForTimeout(900);
+    return nk.evaluate(() => ({ note: document.getElementById('sitenote').textContent.trim(),
+                                warn: document.getElementById('sitenote').classList.contains('warn'),
+                                listHidden: document.getElementById('s-hits').hidden,
+                                grid: !!document.getElementById('s-grid') }));
+  };
+  const dead6 = await nkSearch('OK03gs');
+  const dead10 = await nkSearch('OK03gs01ab');
+  chk('with the grid chunk refused, a grid square is neither read nor sent to the place search, and the note says so',
+      chunkAsked > 0 && nkCalls === 0 && dead6.listHidden && dead6.warn && !dead6.grid
+      && /^OK03gs has the shape of a Maidenhead grid square, but the page could not load the code/.test(dead6.note)
+      && /^OK03gs01ab has the shape/.test(dead10.note),
+      dead6.note + ' · chunk asked ' + chunkAsked + ' time(s) · requests ' + nkCalls);
+  await nkSearch('Tokyo');
+  chk('...while a place name still goes to the search, once', nkCalls === 1, nkCalls + ' request(s)');
+  await nk.close();
+
   // ---- no network ----------------------------------------------------------
   /* Search is a convenience over typing numbers in, so losing it has to cost
      the convenience and nothing else. */

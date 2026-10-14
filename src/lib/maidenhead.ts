@@ -20,6 +20,11 @@
  * counted in the last cell (R, 9, x, 9) rather than in a nineteenth field that does not exist.
  *
  * Pure: no DOM, no globals. */
+import { LOCATOR, PART } from './gridshape';
+
+/* The patterns are gridshape.ts, which the entry carries so that the form can hold text with a locator's shape back
+   from the place search before this module has come (or when it cannot come). */
+export { LOCATOR };
 
 /** Units of the finest cell in one degree: an extended square is 0.5' of longitude by 0.25' of latitude. */
 const LON_UNITS = 120, LAT_UNITS = 240;
@@ -27,12 +32,6 @@ const LON_UNITS = 120, LAT_UNITS = 240;
 const SPAN = 43200;
 /** A cell's size in the finest unit at each pair (field, square, subsquare, extended square); the same for both axes. */
 const CELL = [2400, 240, 10, 1];
-/** The pattern a locator has: 4, 6 or 8 characters (a field alone is not taken: two letters are a place name as often). */
-export const LOCATOR = /^([A-Ra-r]{2})(\d{2})(?:([A-Xa-x]{2})(\d{2})?)?$/;
-/** A locator with its last pair half typed, 5 or 7 characters (OK03g, OK03gs1): no place name and no postcode looks like
- *  that, so it is nothing yet rather than something to search for. Shorter starts (OK, OK0) are not taken: they are
- *  the start of a place name or a postcode district as often. */
-const PART = /^[A-Ra-r]{2}\d{2}(?:[A-Xa-x]|[A-Xa-x]{2}\d)$/;
 
 /** A grid square, as fromLocator reads it: its centre, and half its size each way, in degrees. */
 export interface GridCell {
@@ -66,7 +65,8 @@ export function toLocator(lat: number, lon: number, pairs = 3): string | null {
 }
 
 /** The grid square a locator names, or null when it is not one. Accepts 4, 6 or 8 characters, in either case, with
- *  space round it; anything else (a field alone, a letter past R or x, a pair left half-typed) is not a locator. */
+ *  space round it; anything else (a field alone, a letter past R or x, a pair left half-typed, a fifth pair) is not
+ *  one it reads. */
 export function fromLocator(text: string): GridCell | null {
   const m = LOCATOR.exec(String(text ?? '').trim());
   if (!m) return null;
@@ -86,9 +86,22 @@ export function fromLocator(text: string): GridCell | null {
   };
 }
 
-/** Whether text is a locator caught half way through its last pair (OK03g): see PART. */
+/** Whether text has a locator's shape but is not one this page reads: caught half way through its last pair (OK03g), or
+ *  gone past the extended square into a fifth pair (OK03gs01a, OK03gs01ab). See gridshape.ts, PART. */
 export function locatorPart(text: string): boolean {
   return PART.test(String(text ?? '').trim());
+}
+
+/** The locator to name a site by, as the form's head shows it. A site picked as a grid square is that square's centre,
+ *  which lies on the corners of the smaller squares inside it (OK03's centre, 13.5 N 101 E, is the corner of OK03ll,
+ *  lm, ml and mm), so working its six characters out again would name a subsquare the reader never gave: a site that is
+ *  the centre of the locator it is named by is given that locator, as long as it was (`given`). Any other site is given
+ *  the six characters of the square it is in. Null for a position that is not one. */
+export function siteLocator(site: { name?: string; lat: number; lon: number }): { locator: string; given: boolean } | null {
+  const named = fromLocator(String(site.name ?? ''));
+  if (named && named.lat === site.lat && named.lon === site.lon) return { locator: named.locator, given: true };
+  const own = toLocator(site.lat, site.lon);
+  return own ? { locator: own, given: false } : null;
 }
 
 /** Kilometres in a degree of latitude, on a sphere of the Earth's mean radius (6,371 km): good to half a per cent, which

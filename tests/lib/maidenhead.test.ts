@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cellReachKm, fromLocator, locatorPart, toLocator, LOCATOR } from '../../src/lib/maidenhead';
+import { cellReachKm, fromLocator, locatorPart, siteLocator, toLocator, LOCATOR } from '../../src/lib/maidenhead';
+import * as shape from '../../src/lib/gridshape';
+import { gridShaped } from '../../src/lib/gridshape';
 import * as kit from '../../src/lib/text/grid';
 import { GRID_PLACES_HINT, gridHitLine, gridOffer, gridPartial, gridPlacesLabel } from '../../src/lib/text/grid';
-import { SEARCH_TITLE } from '../../src/lib/text/site';
+import { gridUnread, SEARCH_TITLE } from '../../src/lib/text/site';
 
 /* The Maidenhead locator (CHANGES-FROM-LEGACY.md, L51). The expected locators are worked by hand from the IARU definition, not
    taken from the code: field A-R of 20° of longitude by 10° of latitude counted from 180° W and 90° S, square 0-9 of 2° by 1°,
@@ -72,8 +74,8 @@ describe('fromLocator', () => {
     expect(fromLocator('io91WM05')?.locator).toBe('IO91wm05');
   });
   it('is not fooled by things that are not locators', () => {
-    for (const s of ['', ' ', 'O', 'OK', 'OK0', 'OK03g', 'OK03gs0', 'OK03gs012', 'OK03gs01a', 'SK03', 'OS03', 'OK03ys', 'OK03gy',
-      '0K03', 'OK3', 'OK 03', 'OK03 gs', 'Tokyo', 'London', '13.75,100.52', 'OK०३'])
+    for (const s of ['', ' ', 'O', 'OK', 'OK0', 'OK03g', 'OK03gs0', 'OK03gs012', 'OK03gs01a', 'OK03gs01ab', 'SK03', 'OS03',
+      'OK03ys', 'OK03gy', '0K03', 'OK3', 'OK 03', 'OK03 gs', 'Tokyo', 'London', '13.75,100.52', 'OK०३'])
       expect(fromLocator(s), JSON.stringify(s)).toBeNull();
     expect(fromLocator(undefined as unknown as string)).toBeNull();
     expect(fromLocator(null as unknown as string)).toBeNull();
@@ -113,8 +115,53 @@ describe('locatorPart', () => {
     for (const s of ['OK03g', 'ok03G', 'OK03gs0', ' OK03g ']) expect(locatorPart(s), s).toBe(true);
     for (const s of ['O', 'OK', 'OK0', 'OK03', 'OK03gs', 'OK03gs01', 'OK03y', 'Tokyo', 'BN11', 'SW1A']) expect(locatorPart(s), s).toBe(false);
   });
+  it('knows one with a fifth pair, which the page does not read, typed or half typed', () => {
+    /* a GPS or a logger can give ten characters, a square about 40 m by 20 m: it must not reach the place search */
+    for (const s of ['OK03gs01a', 'OK03gs01ab', 'ok03GS01AB', ' IO91wm05xx ']) expect(locatorPart(s), s).toBe(true);
+    for (const s of ['OK03gs01y', 'OK03gs01ay', 'OK03gs01a1', 'OK03gs01ab2', 'OK03gs01abc']) expect(locatorPart(s), s).toBe(false);
+  });
   it('and a whole locator is never also a part one', () => {
     for (const s of ['OK03', 'OK03gs', 'OK03gs01']) expect(LOCATOR.test(s) && !locatorPart(s)).toBe(true);
+  });
+});
+
+describe('gridShaped, the shape the entry knows before the code that reads a square has come', () => {
+  it('is every locator the page reads, and every one it holds back', () => {
+    for (const s of ['OK03', 'OK03gs', 'OK03gs01', 'OK03g', 'OK03gs0', 'OK03gs01a', 'OK03gs01ab', ' ok03gs ', 'BN11'])
+      expect(gridShaped(s), s).toBe(true);
+    for (const s of ['', 'OK', 'OK0', 'OK03gs01abc', 'SK03', 'Tokyo', 'SW1A', '13.75,100.52', 'OK 03'])
+      expect(gridShaped(s), s).toBe(false);
+    expect(gridShaped(undefined as unknown as string)).toBe(false);
+  });
+  it('agrees with the code that reads a square: shaped is read or held back, never sent unasked', () => {
+    const samples = ['OK03', 'OK03gs', 'OK03gs01', 'OK03g', 'OK03gs0', 'OK03gs01a', 'OK03gs01ab', 'OK03gs01abc', 'OK',
+      'Tokyo', 'BN11', 'SW1A', 'RR99xx99', 'SS00', 'AA00aa00aa'];
+    for (const s of samples) expect(gridShaped(s), s).toBe(fromLocator(s) !== null || locatorPart(s));
+  });
+  it('is one pattern, not two copies: the chunk reads with the very patterns the entry holds', () => {
+    expect(LOCATOR).toBe(shape.LOCATOR);
+  });
+});
+
+describe('siteLocator, the square at the head of the form', () => {
+  it('is the six characters of the square a site is in', () => {
+    expect(siteLocator({ name: 'Bangkok', lat: 13.75, lon: 100.52 })).toEqual({ locator: 'OK03gs', given: false });
+  });
+  it('is the square a site was picked as, as long as it was given, while the site is that square\'s centre', () => {
+    /* OK03's centre, 13.5° N 101° E, is the corner of OK03ll, lm, ml and mm: worked out again it would be OK03mm, only
+       because an edge is counted in the cell it opens, a subsquare the reader never gave */
+    expect(toLocator(13.5, 101)).toBe('OK03mm');
+    const four = fromLocator('OK03')!, eight = fromLocator('OK03gs01')!, six = fromLocator('OK03gs')!;
+    expect(siteLocator({ name: 'OK03', lat: four.lat, lon: four.lon })).toEqual({ locator: 'OK03', given: true });
+    expect(siteLocator({ name: 'OK03gs01', lat: eight.lat, lon: eight.lon })).toEqual({ locator: 'OK03gs01', given: true });
+    expect(siteLocator({ name: 'OK03gs', lat: six.lat, lon: six.lon })).toEqual({ locator: 'OK03gs', given: true });
+    expect(siteLocator({ name: 'ok03', lat: 13.5, lon: 101 })).toEqual({ locator: 'OK03', given: true });
+  });
+  it('is the six characters again once the site has moved off that centre, or is named otherwise', () => {
+    expect(siteLocator({ name: 'OK03', lat: 13.75, lon: 100.52 })).toEqual({ locator: 'OK03gs', given: false });
+    expect(siteLocator({ name: 'Somewhere', lat: 13.5, lon: 101 })).toEqual({ locator: 'OK03mm', given: false });
+    expect(siteLocator({ lat: 13.75, lon: 100.52 })).toEqual({ locator: 'OK03gs', given: false });
+    expect(siteLocator({ name: 'OK03', lat: NaN, lon: 101 })).toBeNull();
   });
 });
 
@@ -135,6 +182,14 @@ describe('what the page says about a grid square', () => {
     expect(gridHitLine(fromLocator('OK03')!)).toBe('Maidenhead grid square, 216 km × 111 km · 13.50° N 101.00° E');
     expect(gridHitLine(fromLocator('OK03gs01')!)).toBe('Maidenhead grid square, 900 m × 460 m · 13.76° N 100.50° E');
   });
+  it('a square at a pole is a few metres wide at its centre, not nought', () => {
+    /* JA00aa's centre is 1.25' from the South Pole: 9.27 km of longitude there is cos(89.979°) of it, 3.4 m */
+    expect(gridHitLine(fromLocator('JA00aa')!)).toBe('Maidenhead grid square, 3 m × 4.6 km · 89.98° S 0.04° E');
+    expect(gridHitLine(fromLocator('JR09ax')!)).toBe('Maidenhead grid square, 3 m × 4.6 km · 89.98° N 0.04° E');
+    /* ...and an eight-character square there is 3.4 cm */
+    expect(gridHitLine(fromLocator('JA00aa00')!)).toMatch(/^Maidenhead grid square, under 1 m × 460 m · /);
+    expect(gridHitLine(fromLocator('JA00ac')!)).toBe('Maidenhead grid square, 17 m × 4.6 km · 89.90° S 0.04° E');
+  });
   it('the offer says that it asked nobody, how far a corner is, and what is assumed', () => {
     /* a corner of OK03gs is 4.50 km east and 2.32 km north of its centre: 5.06 km */
     expect(gridOffer(fromLocator('OK03gs')!)).toBe('OK03gs is a Maidenhead grid square, found on this page with no request. Its centre'
@@ -152,6 +207,11 @@ describe('what the page says about a grid square', () => {
   it('a half-typed square, and the way to the place search under a four-character one', () => {
     expect(gridPartial('OK03g')).toBe('OK03g is the start of a Maidenhead grid square, which has 4, 6 or 8 characters. It is not sent to'
       + ' the place search.');
+    expect(gridPartial('ok03gs01ab')).toBe('ok03gs01ab has more characters than this page reads: a Maidenhead grid square here has 4, 6'
+      + ' or 8. Type its first 8, OK03gs01, for the square it is in. It is not sent to the place search.');
+    expect(gridPartial('OK03gs01a')).toMatch(/^OK03gs01a has more characters than this page reads: .* Type its first 8, OK03gs01,/);
+    expect(gridUnread('OK03gs')).toBe('OK03gs has the shape of a Maidenhead grid square, but the page could not load the code that'
+      + ' reads one, so it is neither read nor sent to the place search. Reload the page, or enter coordinates instead.');
     expect(gridPlacesLabel('BN11')).toBe('Search places for “BN11” instead');
     expect(GRID_PLACES_HINT).toMatch(/postcode/);
   });
@@ -162,5 +222,6 @@ describe('what the page says about a grid square', () => {
     expect(kit.fromLocator).toBe(fromLocator);
     expect(kit.locatorPart).toBe(locatorPart);
     expect(kit.toLocator).toBe(toLocator);
+    expect(kit.siteLocator).toBe(siteLocator);
   });
 });

@@ -3,9 +3,10 @@
  * New in the rebuild; the old page had no way to take back what it had stored. Everything the page keeps is in
  * localStorage (no session storage, cookie, IndexedDB, Cache Storage or service worker), under one of four
  * namespaces: the observer's two keys from the old page (`obs-site`, `obs-recent`), the page's own choices and the
- * reader's orbits (`gt.*`), and the two caches, the element set of an object for three hours (`tle:<n>`) and its
- * history of element sets for twelve (`hist:<n>`). A key of any of them is the page's; any other key on the origin
- * is somebody else's and is left alone (the page never calls `clear()`).
+ * reader's orbits (`gt.*`), and the two caches, the element set of an object (`tle:<n>`) and its history of element
+ * sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), but nothing removes an old
+ * one: it stays until that object's is fetched again, or until it is forgotten here. A key of any of them is the
+ * page's; any other key on the origin is somebody else's and is left alone (the page never calls `clear()`).
  *
  * FORGET_KEYS names every fixed key the code uses, so that the words can say what each one is; tests/lib/forget.test.ts
  * scans the source for every key handed to getItem, setItem and removeItem and fails on one this file does not cover,
@@ -81,7 +82,13 @@ export function survey(store: ForgetStore | null): ForgetSurvey | null {
   /* every other key of the page's that is not a cache is a choice: the listed ones, and a gt. key of a later version */
   const choices = keys.filter(k => !orbitKeys.includes(k) && !k.startsWith('tle:') && !k.startsWith('hist:') && k !== 'obs-site' && k !== 'obs-recent').length;
   if (choices) parts.push({ kind: 'choices', n: choices });
-  if (has('gt.custom') || has('gt.custom.bak')) parts.push({ kind: 'orbits', n: has('gt.custom') ? countIn(get('gt.custom'), 'items') : null });
+  /* gt.custom.bak is orbits this version could not read: with it there, an empty list is not "nothing to lose", so it is said without a
+     count (and with the warning) */
+  if (has('gt.custom') || has('gt.custom.bak')) {
+    let n = has('gt.custom') ? countIn(get('gt.custom'), 'items') : null;
+    if (n === 0 && has('gt.custom.bak')) n = null;
+    parts.push({ kind: 'orbits', n });
+  }
   const tle = keys.filter(k => k.startsWith('tle:')).length, hist = keys.filter(k => k.startsWith('hist:')).length;
   if (tle) parts.push({ kind: 'tle', n: tle });
   if (hist) parts.push({ kind: 'hist', n: hist });

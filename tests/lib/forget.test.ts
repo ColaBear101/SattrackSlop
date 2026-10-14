@@ -60,6 +60,16 @@ describe('survey', () => {
     expect(survey(new FakeStore({ 'gt.custom.bak': 'old' }))!.parts).toEqual([{ kind: 'orbits', n: null }]);
     expect(survey(new FakeStore({ 'gt.watch': '[]' }))!.parts).toEqual([{ kind: 'choices', n: 1 }]);
   });
+  it('does not call an empty list of orbits nothing to lose while a record this version could not read is kept beside it', () => {
+    /* restore() moves an unreadable record to .bak; an orbit made and deleted afterwards leaves {v, next:2, items:[]} (an empty list keeps
+       the counter). The second press removes the .bak, the only copy of those orbits, so the warning stays. */
+    const EMPTY = '{"v":1,"next":2,"items":[]}';
+    expect(survey(new FakeStore({ 'gt.custom': EMPTY }))!.parts).toEqual([{ kind: 'orbits', n: 0 }]);
+    const both = survey(new FakeStore({ 'gt.custom': EMPTY, 'gt.custom.bak': 'old' }))!.parts;
+    expect(both).toEqual([{ kind: 'orbits', n: null }]);
+    expect(forgetArmed(both)).toBe('Press again to forget these and reload the page: the record of your own orbits. Your own orbits cannot be brought back.');
+    expect(survey(new FakeStore({ 'gt.custom': CUSTOM, 'gt.custom.bak': 'old' }))!.parts).toEqual([{ kind: 'orbits', n: 2 }]);
+  });
 });
 
 describe('forget', () => {

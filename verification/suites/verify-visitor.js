@@ -29,7 +29,8 @@
  *      answer. With the catalogue at hand the answer and the browser's first idle moment are milliseconds apart and that claim is a race;
  *      here the browser is idle at once and for 3 s, so a chunk that waited only for the browser is requested at once and seen
  *  10  forgetting what the page stored (L50): on an empty store the button's press says so and writes nothing; with one key of every kind the
- *      page keeps, the first press says what will go and writes nothing, Escape, a blur and a press elsewhere stand it down, and the second
+ *      page keeps, the first press says what will go and writes nothing, Escape (with the focus on the button or off it), a blur and a press
+ *      elsewhere stand it down, a double-click and a held Enter only arm it, and the second
  *      press leaves no gt.* / obs-* / tle:* / hist:* key (somebody else's key stays) and opens a page that writes nothing, without the site
  *      and the tab in its address; with site data blocked it says there is nothing to forget
  *
@@ -841,8 +842,42 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       chk('...and so does a press anywhere else, with the focus left on the button (a browser that does not focus a button it clicks never blurs it)', !!s4 && s4.label === LABEL && s4.said === '' && s4.focus, JSON.stringify(s4));
       const st4 = await storeNow(w.page);
       chk('...and none of the three forgot anything', JSON.stringify(st4.keys.slice().sort()) === JSON.stringify(Object.keys(SEED_ALL).sort()), st4.keys.length + ' keys');
+      /* Safari and Firefox on macOS do not focus a button they click, so Escape goes to the page, not to the button: armed by a click that
+         leaves the focus where it was (element.click() does not focus), Escape still stands it down */
+      await w.page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getElementById('forgetbtn').click(); });
+      await labelIs(w.page, ARMED);
+      const s5 = await state(w.page);
+      await w.page.keyboard.press('Escape');
+      await labelIs(w.page, LABEL);
+      const s6 = await state(w.page);
+      chk('...and so does Escape when the button never had the focus (Safari and Firefox on macOS do not focus a button they click)',
+        !!s5 && s5.label === ARMED && !s5.focus && !!s6 && s6.label === LABEL && s6.said === '', JSON.stringify(s5) + ' -> ' + JSON.stringify(s6));
+      /* The second press is a press of its own (ForgetData.svelte, GAP_MS): the second click of a double-click, or a double tap, is not it,
+         and nor is a held Enter's repeat. Each would otherwise forget everything before the first press's words could be read. */
+      const kept = async () => { const st = await storeNow(w.page); return JSON.stringify(st.keys.slice().sort()) === JSON.stringify(Object.keys(SEED_ALL).sort()); };
+      await w.page.evaluate(() => { window.__stay = 1; });
+      await w.page.dblclick('#forgetbtn');
+      await w.page.waitForTimeout(1000);
+      const s7 = await state(w.page), stay7 = await w.page.evaluate(() => window.__stay === 1).catch(() => false), kept7 = stay7 && await kept();
+      chk('[everything stored] a double-click only arms it: the label is "' + ARMED + '", every key is still there and the page was not reloaded (its second click is not the second press)',
+        stay7 && kept7 && !!s7 && s7.label === ARMED, JSON.stringify(s7) + '; reloaded ' + !stay7 + '; keys kept ' + kept7);
+      await w.page.keyboard.press('Escape');
+      await labelIs(w.page, LABEL);
+      await w.page.focus('#forgetbtn');
+      await w.page.keyboard.down('Enter');                 // the first keydown presses: it arms
+      await labelIs(w.page, ARMED);
+      await w.page.waitForTimeout(1000);                   // past the gap, so that only the repeat is what is ignored
+      await w.page.keyboard.down('Enter');                 // a second down without an up is a repeat (KeyboardEvent.repeat)
+      await w.page.keyboard.up('Enter');
+      await w.page.waitForTimeout(1000);
+      const s8 = await state(w.page), stay8 = await w.page.evaluate(() => window.__stay === 1).catch(() => false), kept8 = stay8 && await kept();
+      chk('...and nor does Enter held down: its first keydown arms it and its repeats do not press it again',
+        stay8 && kept8 && !!s8 && s8.label === ARMED, JSON.stringify(s8) + '; reloaded ' + !stay8 + '; keys kept ' + kept8);
+      await w.page.keyboard.press('Escape');
+      await labelIs(w.page, LABEL);
       await w.page.click('#forgetbtn');
       await labelIs(w.page, ARMED);
+      await w.page.waitForTimeout(1000);                   // a reader's second press, well past the gap that turns a double-click away
       await w.page.evaluate(() => { window.__stay = 1; });
       const loaded = w.page.waitForEvent('load', { timeout: WAIT }).then(() => true, () => false);
       await w.page.click('#forgetbtn');

@@ -78,7 +78,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
-What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and for a few hours the element sets and decay histories it fetched. *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
@@ -743,12 +743,18 @@ worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the 
 last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`); and two caches,
-an object's element set for three hours (`tle:<n>`) and its history of element sets for twelve
-(`hist:<n>`). The first press reads the store, writes nothing, and says what the second will
+an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is
+used for three hours or twelve, but nothing removes an old one: it stays until that object's is
+fetched again or it is forgotten here, so the caches are also a list of the objects you looked at.
+The first press reads the store, writes nothing, and says what the second will
 forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
 places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
 be brought back.* The button then reads *Forget and reload*; Escape, the focus leaving it or a
-press anywhere else stands it down. The second press removes every key in those four namespaces,
+press anywhere else stands it down. Escape is heard wherever the focus is, since Safari and Firefox
+on macOS do not focus a button that is clicked. The second press has to be a press of its own: one
+that comes within 0.6 s of the first (the second click of a double-click, or a double tap) is
+ignored, and so are the repeats of a held Enter, so the first press's words are always on screen
+before anything goes. The second press removes every key in those four namespaces,
 and no other key the origin holds, and opens the page again, so that nothing held in memory from
 what was stored (the site, the orbits, the theme) outlives it. It opens the same address without
 `site` and `tab`: the first is the observer's position, which the page writes into the address
@@ -760,8 +766,9 @@ so the page that opens afterwards keeps one again as soon as it has fetched it (
 it holds in memory, and stores it again when something is changed there.
 `tests/lib/forget.test.ts` scans the source for every key handed to `getItem`, `setItem` and
 `removeItem` and fails on one that `src/lib/forget.ts` does not cover, or on a key it lists that
-the code no longer uses; `verify-visitor.js` (group 10) forgets a store holding one key of every
-kind and one of somebody else's. The old page had no such button.
+the code no longer uses; `verify-visitor.js` (group 10) shows that a double-click and a held Enter
+only arm the button, and forgets a store holding one key of every kind and one of somebody else's.
+The old page had no such button.
 
 `npm run layout` checks all of this on the production build, in light and in dark, at 1440×900 and
 1280×720, at 1100 and 1099 px wide (the one-row header's narrowest and the panel's widest), at

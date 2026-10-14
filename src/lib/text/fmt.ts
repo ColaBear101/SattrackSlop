@@ -64,6 +64,16 @@ export const compass = (az: number): string =>
   ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
     [Math.round(((az % 360) + 360) % 360 / 22.5) % 16]!;
 
+/** 145.828 312 MHz - a frequency in Hz, rounded to the hertz and written in MHz with its six decimals in two groups of
+ *  three (kHz, then Hz) split by a narrow no-break space, so the digit to turn the dial by is found at a glance and the
+ *  figure never breaks across lines. A frequency is positive; anything else is not one and comes back as '—'. */
+export const freqGrouped = (hz: number): string => {
+  const t = Math.round(hz);
+  if (!(t > 0 && t < Infinity)) return '—';
+  const frac = pad(t % 1e6, 6);
+  return Math.floor(t / 1e6) + '.' + frac.slice(0, 3) + ' ' + frac.slice(3) + ' MHz';
+};
+
 /** The wall-clock time at a site with a fixed UTC offset, as 2026-09-12 14:29 (no seconds, no zone letter). */
 export const localMinute = (d: Date, tzHours: number): string =>
   iso(new Date(d.getTime() + tzHours * 3_600_000)).slice(0, 16);

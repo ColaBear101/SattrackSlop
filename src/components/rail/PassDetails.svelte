@@ -6,6 +6,7 @@
   import { passFacts, siteClock } from '../../lib/text/passfacts';
   import type { Row } from '../../lib/text/rich';
   import Rich from '../ui/Rich.svelte';
+  import DopplerLive from './DopplerLive.svelte';
 
   /* The facts about the selected pass, under its sky plot: when it rises, peaks and sets, how long, whether it can be
      seen with the eye, and the Doppler shift at the downlink you have tuned to. The frequency is the one thing this
@@ -76,6 +77,8 @@
   <input id="dopfreq" type="number" step="0.001" min="0.1" max="60000" value={mhz} aria-label="Downlink frequency in MHz" onchangecapture={typed}>
   <span class="u">MHz</span>
 </div>
+
+<DopplerLive />
 
 <style>
   .facts { margin: 0; display: grid; }

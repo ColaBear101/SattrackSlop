@@ -2945,6 +2945,49 @@ window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 node verification/tools/fetch-transmitters.js   # re-bake data/transmitters.json
 ```
 
+##### Tuning while it is up
+
+The rows above give the shift at three instants. Under the downlink box a line of its own
+(`#doplive`) gives it at one instant, as the frequency to tune to: the downlink chosen in the box
+as a receiver on the ground hears it, to the hertz, and how far that is from the published figure
+— *Receive 145.827 627 MHz +2.627 kHz*. Type the frequency a spacecraft listens on into the
+**Uplink** box beside it and a second figure says what to send on: *Transmit 145.897 372 MHz
+−2.628 kHz*.
+
+Both come from the range rate and nothing else (`src/lib/analysis/tune.ts`, which only calls the
+engine, so the gate has nothing new to compare). Down is the engine's own first-order law,
+f (1 − ṙ/c), the same call the Doppler rows make, so the line and the rows agree at AOS,
+culmination and LOS. Up is f / (1 − ṙ/c). The spacecraft hears what the ground sends shifted by
+that same law, so this is the frequency it brings to exactly f on board, and the round trip
+closes. The usual first-order form, f (1 + ṙ/c), falls short of it by f (ṙ/c)²: at 7.5 km/s a
+quarter of a hertz at 435 MHz and 1.5 Hz at 2.4 GHz, the size of the second-order terms
+(relativistic among them) that a first-order law leaves out either way. The hertz digit is exact
+arithmetic, not an exact orbit. Near culmination on a high pass the shift at 435 MHz moves by more
+than 100 Hz a second, so an element set one second out along the track puts the figure that far
+out too.
+
+"Now" has to mean now. The line says **Tune now**, and is worked out for the wall clock, only
+while the page's clock is running at real time within 5 s of it: the countdown's test, with
+running added, because a paused clock stays within 5 s for five more seconds and a paused page is
+not repainted. At any other instant — scrubbed, paused, sped up, or left behind while the tab was
+hidden and the browser stopped the frame loop — it is worked out for the clock's instant and says
+which, *Tune at sim time 10-14 19:57:53Z*, beside a **Go live** button that runs the clock at
+real time from now, as the AR view does (a window that does not hold now is opened at it). While
+the spacecraft is under the 5° mask the passes are found with, the line adds *below the 5° mask*.
+It is repainted on the clock's tick, ten times a second while the clock plays and never while it is
+paused.
+
+The uplink is held in memory for the spacecraft it was typed for: another spacecraft shows an empty
+box, and a reload forgets it. It is not stored and not sent anywhere.
+
+`verify-doppler.js` scrubs 30 % of the way into a pass, where the range rate is several km/s, and
+works the line's figures out again from the test surface's range rate at the instant the line
+names, with the law written out: for the downlink chosen from the table, for 437.100 MHz typed in,
+and for a 145.900 MHz uplink, which must come back to 145.900 MHz on board. It checks that the
+paused line is not repainted; that after Go live it says now, is within a second of the wall
+clock, is still right and moves with the clock; and that another spacecraft has an empty uplink
+box.
+
 #### Staying current
 
 A TLE is a snapshot, and the embedded catalogue is a snapshot of snapshots. At 360 km with
@@ -3176,7 +3219,8 @@ npm run slice        # the page end to end as a visitor meets it: the assignment
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
                      # (run.js runs it again as refresh-api, with a mock cache API answering)
 npm run pov          # the POV camera, measured against the propagated state
-npm run doppler      # range rate, against a numerical derivative of the range
+npm run doppler      # range rate, against a numerical derivative of the range; the live line
+                     # under the downlink box, against the law written out
 npm run optical      # shadow cone geometry, brightness, and naked-eye passes
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed

@@ -49,7 +49,9 @@
  * the test surface (the grid square by a Maidenhead encoder written here). The
  * shadow test is counted: none while the clock is paused, and no more than one
  * a second of the clock while it plays at real time, while the figures follow
- * every tick.
+ * every tick. A pause pressed while it plays, and a scrub of a third of a
+ * second while it is paused, must each leave the shadow tested at the paused
+ * instant itself.
  *
  *   node verification/suites/verify-optical.js
  */
@@ -557,20 +559,29 @@ const chk = (name, ok, detail) => {
 
     /* The shadow test is counted through the optics the page calls (the test surface hands out the live object), the
        one way the block reaches it: nothing at all while the clock stands still, and no more than one a second of the
-       clock while it plays at real time, while the figures beside it follow the clock's ticks (ten a second). */
+       clock while it plays at real time, while the figures beside it follow the clock's ticks (ten a second). Then the
+       clock is paused with its own button: the tick a pause publishes falls within a second of the last test nearly
+       always, and what it shows stays on the page, so the shadow must be tested again at the paused instant itself. */
     const work = await page.evaluate(async () => {
-      const opt = window.__gt.optics, own = opt.sunlitState, el = document.getElementById('nowstate');
+      const gt = window.__gt, opt = gt.optics, own = opt.sunlitState, el = document.getElementById('nowstate');
       let calls = 0;
       opt.sunlitState = function (...a) { calls++; return own.apply(this, a); };
       const watch = async ms => { const seen = new Set(), t0 = performance.now(); while (performance.now() - t0 < ms) { seen.add(el.dataset.ms); await new Promise(f => setTimeout(f, 40)); } return seen.size; };
+      const frames = () => new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f)));
       try {
         const pausedTicks = await watch(700), paused = calls;
         calls = 0;
         const rate = document.getElementById('tpratev').textContent, ms0 = +el.dataset.ms;
         document.getElementById('tpplay').click();
-        const ticks = await watch(3000), playing = calls, moved = +el.dataset.ms - ms0;
+        const ticks = await watch(3000), playing = calls, moved = +el.dataset.ms - ms0, lastTest = +el.dataset.litMs;
+        calls = 0;
         document.getElementById('tpplay').click();
-        return { paused, pausedTicks, playing, ticks, moved, rate };
+        await frames();
+        const ms = +el.dataset.ms, pauseCalls = calls, o = gt.opticalAt(gt.D.track, ms);
+        await frames();
+        const pause = { ms, litMs: +el.dataset.litMs, lit: el.dataset.lit, want: o ? o.lit : null, calls: pauseCalls,
+                        gap: ms - lastTest, still: +el.dataset.ms === ms };
+        return { paused, pausedTicks, playing, ticks, moved, rate, pause };
       } finally { opt.sunlitState = own; }
     });
     chk('paused for 0.7 s, the block tests the shadow not once and its instant stays where it is', work.paused === 0 && work.pausedTicks === 1,
@@ -578,6 +589,16 @@ const chk = (name, ok, detail) => {
     chk('playing at ' + work.rate + ' for 3 s, the figures follow the clock\'s ticks while the shadow is tested no more than once a second of the clock',
         /^1\.0/.test(work.rate) && work.ticks >= 10 && work.playing >= 1 && work.playing <= Math.floor(work.moved / 1000) + 1,
         work.ticks + ' instants shown, ' + work.playing + ' shadow tests as the clock moved ' + (work.moved / 1000).toFixed(2) + ' s');
+    const wp = work.pause;
+    chk('paused with its own button while it plays, the block shows the shadow tested at the paused instant itself (one test at most), the state opticalAt gives there',
+        wp.still && wp.litMs === wp.ms && wp.lit === wp.want && wp.calls <= 1,
+        'data-ms ' + wp.ms + ', data-lit-ms ' + wp.litMs + ', ' + wp.lit + ' (opticalAt ' + wp.want + '), ' + wp.calls + ' test(s); the last test while playing was '
+          + wp.gap + ' ms before the pause' + (wp.gap < 1000 ? ', so the once-a-second rule alone would have kept it' : ''));
+    /* a scrub of a third of a second while paused: within a second of the last test, so only the paused clock's rule tests it again */
+    const scrub = await readAt(wp.litMs + 333);
+    chk('...and a scrub of a third of a second while it is paused tests the shadow again at the new instant',
+        scrub.litMs === scrub.ms && scrub.ms === wp.litMs + 333 && scrub.lit === scrub.want.lit,
+        'data-ms ' + scrub.ms + ', data-lit-ms ' + scrub.litMs + ', ' + scrub.lit + ' (opticalAt ' + scrub.want.lit + ')');
   } else console.log('\n  not checked: the rail\'s "now" section is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L53); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));

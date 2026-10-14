@@ -8,11 +8,12 @@
   /* The spacecraft at the clock's instant, under the elevation and the countdown (CHANGES-FROM-LEGACY.md, L53): whether
      sunlight reaches it, its range rate, its speed and the grid square below it. A chunk of its own, which the rail asks for
      when this part of it is first in view. Worked out on clock.tick, as the elevation beside it is (ten times a second while
-     the clock plays, never while it is paused), from one propagation; the shadow is tested at most once a second of the
-     clock (lib/analysis/live-state.ts). The instants are on the block for whoever checks it: the figures' (data-ms) and the
+     the clock plays, never while it is paused), from one propagation; while the clock plays the shadow is tested at most
+     once a second of the clock, and a paused clock's instant is always tested itself, since what a pause shows stays on the
+     page (lib/analysis/live-state.ts). The instants are on the block for whoever checks it: the figures' (data-ms) and the
      shadow test's (data-lit-ms), with the state itself (data-lit). */
   const read = liveReader();
-  const st = $derived(app.analysis ? read(getEngine(), getOptics(), app.analysis.track, clock.tick.ms) : null);
+  const st = $derived(app.analysis ? read(getEngine(), getOptics(), app.analysis.track, clock.tick.ms, !clock.playing) : null);
 </script>
 
 <dl id="nowstate" data-ms={st?.ms} data-lit={st?.lit} data-lit-ms={st?.litMs}>

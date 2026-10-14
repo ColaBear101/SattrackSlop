@@ -108,6 +108,41 @@ describe('the shadow test', () => {
     for (let k = 0; k < 20; k++) expect(read(eng, o, D.track, t0 + k * 60_000)!.litMs).toBe(t0 + k * 60_000);
     expect(o.calls).toBe(20);
   });
+  it('is made at the instant itself for a fresh reading (the clock paused), however close the last test, and only once there', () => {
+    const o = counting(), read = liveReader(), t0 = D.passes[0]!.aos.getTime();
+    for (let k = 0; k < 7; k++) read(eng, o, D.track, t0 + k * 100);   // playing at real time: one test, at t0
+    expect(o.calls).toBe(1);
+    const paused = t0 + 633;                                            // the tick a pause publishes, 0.633 s after the test
+    expect(read(eng, o, D.track, paused)!.litMs).toBe(t0);             // not fresh: the throttle keeps the test at t0
+    const s = read(eng, o, D.track, paused, true)!;
+    expect([s.ms, s.litMs]).toEqual([paused, paused]);
+    expect(s.lit).toBe(optics.opticalAt(D.track, paused)!.lit);
+    expect(o.calls).toBe(2);
+    expect(read(eng, o, D.track, paused, true)!.litMs).toBe(paused);   // the same paused instant asked again: no new test
+    expect(o.calls).toBe(2);
+    expect(read(eng, o, D.track, paused + 300, true)!.litMs).toBe(paused + 300);   // a short scrub while paused
+    expect(o.calls).toBe(3);
+  });
+  it('shows the shadow of the paused instant when the clock is paused just after the spacecraft has gone into the penumbra', () => {
+    /* the ISS's first way from sunlight into the penumbra, to the millisecond */
+    const lit = (ms: number) => optics.opticalAt(ISS.track, ms)!.lit;
+    let a = ISS.start.getTime();
+    while (!(lit(a) === 'sun' && lit(a + 10_000) === 'penumbra')) a += 10_000;
+    let b = a + 10_000;
+    while (b - a > 1) { const m = Math.floor((a + b) / 2); if (lit(m) === 'sun') a = m; else b = m; }
+    /* playing at real time, ticks 116.7 ms apart (a 60 Hz screen publishes every seventh frame) across the edge at b; then paused
+       0.25 s after it, with the last test made in sunlight less than a second before */
+    const read = liveReader(), ticks: number[] = [];
+    for (let ms = b - 700; ms < b + 250; ms += 116.7) ticks.push(ms);
+    for (const ms of ticks) read(eng, optics, ISS.track, ms);
+    const pause = b + 250;
+    expect(liveReader()(eng, optics, ISS.track, ticks[0]!)!.lit).toBe('sun');
+    const stale = (() => { const r = liveReader(); for (const ms of ticks) r(eng, optics, ISS.track, ms); return r(eng, optics, ISS.track, pause)!; })();
+    expect([stale.lit, stale.litMs]).toEqual(['sun', ticks[0]]);       // what a reading that is not fresh would leave on the page
+    const s = read(eng, optics, ISS.track, pause, true)!;
+    expect([s.lit, s.litMs]).toEqual(['penumbra', pause]);
+    expect(LIT_WORDS[s.lit][0]).toBe('Penumbra');
+  });
   it('keeps the last test through an instant with no state', () => {
     const o = counting(), read = liveReader(), t0 = D.start.getTime();
     read(eng, o, D.track, t0);

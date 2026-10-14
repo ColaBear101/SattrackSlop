@@ -16,11 +16,14 @@ import { toLocator } from '../maidenhead';
  * elements layer prints as v. It is not the speed relative to the turning Earth: that is lower for a prograde orbit and
  * higher for a retrograde one, by up to the frame's own speed there, omega r (0.49 km/s at 400 km over the equator).
  *
- * The shadow is tested at most once per second of the clock (LIT_EVERY_MS): at real time, once a second, while the
- * figures beside it follow every tick. A Sun is worked out for the test, and a LEO spacecraft takes 8 s or more to cross
- * the penumbra (the Sun is half a degree across, and the orbit turns about 0.065 deg a second), so a second is finer than
- * the state it reports changes. A seek of a second or more, or another track, tests it again at once; the instant the
- * state is for is kept with it (litMs).
+ * While the clock plays, the shadow is tested at most once per second of the clock (LIT_EVERY_MS): at real time, once a
+ * second, while the figures beside it follow every tick. A Sun is worked out for the test, and a LEO spacecraft takes 8 s
+ * or more to cross the penumbra (the Sun is half a degree across, and the orbit turns about 0.065 deg a second), so a
+ * second is finer than the state it reports changes. A seek of a second or more, or another track, tests it again at
+ * once; the instant the state is for is kept with it (litMs). A reading marked fresh (the clock paused, which publishes
+ * no more ticks, so whatever it shows stays on the page) is tested at its own instant whenever that differs from the last
+ * test's: a pause or a short scrub would otherwise leave the shadow of up to a second earlier beside the figures of the
+ * paused instant, for as long as the pause lasts, at the moment a student stopped the clock to see.
  *
  * Pure: no DOM, no globals. */
 
@@ -42,22 +45,25 @@ export interface LiveState {
   grid: string | null;
   /** whether sunlight reaches the spacecraft: 'sun', 'penumbra' or 'umbra' */
   lit: Lit;
-  /** the instant the shadow was tested at, ms: within LIT_EVERY_MS of `ms` */
+  /** the instant the shadow was tested at, ms: within LIT_EVERY_MS of `ms`, and `ms` itself for a fresh reading */
   litMs: number;
 }
 
 export type LiveEngine = Pick<Engine, 'fix' | 'subPoint' | 'rangeRateAt'>;
 export type LiveOptics = Pick<Optics, 'sunlitState'>;
-export type LiveRead = (eng: LiveEngine, optics: LiveOptics, track: Track, ms: number) => LiveState | null;
+/** `fresh`: the shadow must be the one at `ms` itself (the clock is paused); otherwise it may be up to LIT_EVERY_MS old. */
+export type LiveRead = (eng: LiveEngine, optics: LiveOptics, track: Track, ms: number, fresh?: boolean) => LiveState | null;
 
 /** A reader of the state at an instant that keeps the last shadow test, so it can be asked on every tick of the clock.
  *  Null where the propagation gives no state (an orbit SGP4 refuses at that instant). */
 export function liveReader(): LiveRead {
   let last: { track: Track; ms: number; lit: Lit } | null = null;
-  return (eng, optics, track, ms) => {
+  return (eng, optics, track, ms, fresh = false) => {
     const s = eng.fix(track, ms);
     if (!s) return null;
-    if (!last || last.track !== track || Math.abs(ms - last.ms) >= LIT_EVERY_MS) last = { track, ms, lit: optics.sunlitState(s.r, s.t) };
+    if (!last || last.track !== track || Math.abs(ms - last.ms) >= LIT_EVERY_MS || (fresh && ms !== last.ms)) {
+      last = { track, ms, lit: optics.sunlitState(s.r, s.t) };
+    }
     const p = eng.subPoint(track, s);
     return {
       ms, rr: eng.rangeRateAt(track, s), speed: Math.hypot(s.v.x, s.v.y, s.v.z),
@@ -66,5 +72,5 @@ export function liveReader(): LiveRead {
   };
 }
 
-/** The state at exactly `ms`, with the shadow tested there: a reader used once. */
-export const liveState: LiveRead = (eng, optics, track, ms) => liveReader()(eng, optics, track, ms);
+/** The state at exactly `ms`, with the shadow tested there: a reader used once (so every reading is fresh). */
+export const liveState: LiveRead = (eng, optics, track, ms) => liveReader()(eng, optics, track, ms, true);

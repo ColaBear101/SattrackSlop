@@ -2844,6 +2844,28 @@ rather than dark.
 The same code has to produce both extremes, which is the check worth having: a 51.6° LEO orbit is
 sunlit **60.5 %** of the day, a sun-synchronous METOP-B **71.4 %**.
 
+##### One bug this found, which was not hypothetical
+
+Solar elevation comes from `asin` of the cosine of the zenith angle. With the site *at* the
+sub-solar point that expression is sin² + cos², which rounds to 1.0000000000000002 and takes `asin`
+straight to **NaN**. Not a corner case: the sub-solar point crosses Bangkok's latitude twice a year.
+It is clamped, and the check that caught it — the Sun must be exactly overhead at its own sub-point
+— is kept.
+
+What survives is 8.54×10⁻⁷ degrees, and that is the formulation, not the code: `asin` has a diverging
+derivative at ±1, which is precisely where that test sits, so a double's 2×10⁻¹⁶ becomes √(4×10⁻¹⁶)
+≈ 1.1×10⁻⁶ degrees. Three milliarcseconds, at the one point on Earth where it is worst.
+
+##### One duplication deliberately kept
+
+`src/scene/orbit3d.ts` (the old `earth/orbit3d.js`) carries its own copy of the solar position for
+the directional light, one that leaves out the obliquity's slow drift, about 0.004°. It is a
+standalone renderer that has to work without the page, and the two are used for different things.
+The library's own copy, `src/lib/core/sun.ts`, is stated once, as `sunEci`, with `subsolar`
+expressed in terms of it. Merging the two was planned for the rewrite and declined
+(`CHANGES-FROM-LEGACY.md`, row 2): the globe is held to the old page's pixels, and its light is
+part of them.
+
 ##### Sunlit or eclipsed now
 
 The pass facts give the shadow at mid-pass. The answer rail gives it at any instant: under
@@ -2869,12 +2891,15 @@ with `fix`, and every figure is read from that state by code the page already ru
 sub-satellite point by the engine's `subPoint` (what `sampleMs` does after the same `fix`), the
 range rate by its `rangeRateAt` (what `rangeRateMs` does), the grid square by the observer form's
 `toLocator`, and the shadow by the optical code's `sunlitState`, which is what `opticalAt` asks of
-the same state. The shadow is tested at most once a second of the clock: at real time, once a
-second, while the figures beside it follow every tick. A LEO spacecraft takes 8 s or more to cross
-the penumbra (the Sun is half a degree across, and the orbit turns about 0.065° a second), so a
-second is finer than the state changes; a seek of a second or more, or another spacecraft, tests it
-again at once. Like the elevation beside it, the block is repainted on the clock's tick, ten times a
-second while the clock plays and never while it is paused.
+the same state. While the clock plays, the shadow is tested at most once a second of the clock: at
+real time, once a second, while the figures beside it follow every tick. A LEO spacecraft takes 8 s
+or more to cross the penumbra (the Sun is half a degree across, and the orbit turns about 0.065° a
+second), so a second is finer than the state changes; a seek of a second or more, or another
+spacecraft, tests it again at once. A paused clock's instant is always tested itself: what a pause
+shows stays on the page for as long as the pause lasts, and a student who stops the clock to see the
+moment a spacecraft fades must not be shown the shadow of up to a second before it. Like the
+elevation beside it, the block is repainted on the clock's tick, ten times a second while the clock
+plays and never while it is paused.
 
 The block, its words (`src/lib/text/now-state.ts`) and its code are a chunk of their own, 1.1 KB
 gzipped with 0.2 KB of stylesheet, which shares the grid square's code (`maidenhead.ts`, 0.7 KB)
@@ -2890,32 +2915,12 @@ its words, tested at the clock's own instant. Its range rate and speed are worke
 test surface at that instant, and its grid square by a Maidenhead encoder written in the suite. The
 shadow test is counted through the optics the page calls (the test surface hands out the live
 object, `__gt.optics`): none while the clock is paused, and no more than one a second of the clock
-while it plays at real time, with the figures following the ticks. The block's own code is not on
+while it plays at real time, with the figures following the ticks. A pause pressed while it plays,
+and a scrub of a third of a second while it is paused, must each leave the shadow tested at the
+paused instant itself, the state `opticalAt` gives there. The block's own code is not on
 the test surface: imported there as well, it would be split into a chunk of its own, one more
 request for every visitor. `tests/lib/live-state.test.ts` holds it to the engine's and the optics'
 own calls instead.
-
-##### One bug this found, which was not hypothetical
-
-Solar elevation comes from `asin` of the cosine of the zenith angle. With the site *at* the
-sub-solar point that expression is sin² + cos², which rounds to 1.0000000000000002 and takes `asin`
-straight to **NaN**. Not a corner case: the sub-solar point crosses Bangkok's latitude twice a year.
-It is clamped, and the check that caught it — the Sun must be exactly overhead at its own sub-point
-— is kept.
-
-What survives is 8.54×10⁻⁷ degrees, and that is the formulation, not the code: `asin` has a diverging
-derivative at ±1, which is precisely where that test sits, so a double's 2×10⁻¹⁶ becomes √(4×10⁻¹⁶)
-≈ 1.1×10⁻⁶ degrees. Three milliarcseconds, at the one point on Earth where it is worst.
-
-##### One duplication deliberately kept
-
-`src/scene/orbit3d.ts` (the old `earth/orbit3d.js`) carries its own copy of the solar position for
-the directional light, one that leaves out the obliquity's slow drift, about 0.004°. It is a
-standalone renderer that has to work without the page, and the two are used for different things.
-The library's own copy, `src/lib/core/sun.ts`, is stated once, as `sunEci`, with `subsolar`
-expressed in terms of it. Merging the two was planned for the rewrite and declined
-(`CHANGES-FROM-LEGACY.md`, row 2): the globe is held to the old page's pixels, and its light is
-part of them.
 
 #### Doppler, and where the frequency comes from
 

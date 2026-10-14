@@ -43,4 +43,15 @@ describe.skipIf(!built)('the production bundle', () => {
     expect(inline).toBeGreaterThan(-1);
     expect(sheet).toBeGreaterThan(inline);
   });
+
+  /* The footer's credit line states package.json's version (CHANGES-FROM-LEGACY.md, L49): Vite writes it in, so no chunk may still
+     name __APP_VERSION__ (it would throw in the page), and the chunk with the line carries the version. */
+  it('has the version written in where the footer states it', () => {
+    const js = assets.filter(f => f.endsWith('.js'));
+    expect(js.filter(f => read('assets/' + f).includes('__APP_VERSION__'))).toEqual([]);
+    const withCredit = js.filter(f => read('assets/' + f).includes('Transmitter data: '));
+    expect(withCredit.length).toBe(1);
+    const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    expect(read('assets/' + withCredit[0])).toContain(version);
+  });
 });

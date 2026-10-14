@@ -659,6 +659,14 @@ footer. Two skip links come before everything else, "Skip to the page" and "Skip
 analysis", and a link into the report lands 56 px under the top of the screen, to make room for
 the sticky line.
 
+The footer's last line is the page's credits: *Ground Track Console 1.0.0 · MIT licence ·
+github.com/ColaBear101/SattrackSlop · Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with links to
+the repository, to SatNOGS DB and to the licence. The version is the one in `package.json`, which
+the build writes in (`__APP_VERSION__`, defined in `vite.config.ts`), so the line changes when
+that does and is never edited by hand. The links are only links: the page asks nothing of those
+hosts. Why the data has a licence of its own is under *The frequency is the one thing that cannot
+be derived*. The old page said none of this.
+
 The old page's layers panel ran out of room between 901 and about 1030 px wide too. It was open
 all the time, 327 px tall from 92 px down, so it wanted a globe 431 px tall, and between those
 widths or in a short window it did not get one. Its last switches, the orbital elements and the
@@ -2836,6 +2844,15 @@ first answer has been computed, so the entry the page cannot start without does 
 
 Kept: **active** transmitters only, with a published downlink, deduplicated on frequency and mode,
 at most four per object, and only for objects actually in the catalogue.
+
+SatNOGS DB is a Libre Space Foundation project, and its data is published under the Creative
+Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
+`data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
+licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
+licence, say what was changed, and license it under CC BY-SA 4.0 too. The share-alike covers that
+data only; the code that bakes and reads it stays MIT, as the rest of the project is. The page
+gives the credit in the footer's last line, *Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with a
+link to each.
 
 | | |
 |---|---|

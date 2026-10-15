@@ -17,7 +17,8 @@ import { drawSky, type SkyColors } from './draw-sky';
    mask, the device pixel ratio, the box's size (a ResizeObserver says) or the flown stretch change: the arc has 91 samples, so at
    real time that is once every ninetieth of the pass. A plot out of view (the report's copy below the fold, the rail's in a
    closed sheet or behind another tab) is not drawn at all: an IntersectionObserver draws it when it comes into view. The clock
-   publishes no ticks while it is paused, so nothing is drawn then either.
+   publishes no ticks while it is paused, so nothing is drawn again while it stays paused: a paused plot is drawn once, when a
+   pass is chosen or the clock is moved, and again only when it comes into view or changes size or colours.
 
    The canvas carries the instant it last drew the spacecraft at, as data-live (gone once the plot is drawSky's again), for
    whoever checks it (verify-timeline.js). */

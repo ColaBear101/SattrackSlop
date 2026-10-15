@@ -518,7 +518,9 @@ pass the plot is the old page's, pixel for pixel. Nothing is drawn that does not
 drawn once and kept, and each tick of the clock (ten a second while it plays) lays it down again and
 draws only the dot; it is drawn afresh only when the flown stretch grows by a sample. A plot out of
 view, the report's copy below the fold or the rail's in a closed sheet or behind another tab, is not
-drawn until it comes into view, and while the clock is paused nothing is drawn at all. The code is a
+drawn until it comes into view. The clock publishes no ticks while it is paused, so nothing is drawn
+again while it stays paused: a paused plot is drawn once, when a pass is chosen or the clock is
+moved, and again only when it comes into view or changes size or colours. The code is a
 chunk of its own, under 1 KB gzipped, which the page fetches the first time the clock is inside the
 pass on screen. `verify-timeline.js` stops the clock 60 % of the way through a pass and reads the
 canvas: the dot's pixel in ink where the plot's projection puts the engine's azimuth and elevation,

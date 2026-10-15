@@ -14,8 +14,8 @@
      stays at the top of the rail while its day scrolls under it: the site's date, and the Sun's times there that day, which
      come with their words in a chunk of their own (lib/text/suntimes.ts), asked for once there are passes. A row flown
      before the clock's instant is grey and the one in view at it is ringed, from clock.tick; a line under the list says
-     what they mean, and that the instant is sim time when the clock is not now. Nothing in a row's own text, label, title or
-     index changes. */
+     what they mean, and that the instant is sim time when the clock is not now, and each such row is described in the same
+     words to a screen reader. Nothing in a row's own text, label, title or index changes. */
   const passes = $derived(app.analysis?.passes ?? []);
   const c = $derived(siteClock(app.site));
   const days = $derived(passDays(passes, c));
@@ -25,7 +25,13 @@
   const live = $derived(passes.findIndex(p => p.t0ms <= ms && ms <= p.t1ms));
   let st = $state.raw<typeof import('../../lib/text/suntimes') | null>(null);
   $effect(() => { if (passes.length && !st) import('../../lib/text/suntimes').then(m => { st = m; }, () => {}); });
-  const note = $derived(st ? st.flownNote(past, live, ms, Date.now()) : '');
+  /* "now" only while the clock runs at real time by the wall clock: a pause or a rate change is read here, so the line turns to
+     sim time at the very pause, with no tick after it */
+  const sim = $derived(st ? st.simTime(ms, Date.now(), clock.playing, clock.rate) : true);
+  const note = $derived(st ? st.flownNote(past, live, sim) : '');
+  const said = $derived(st ? st.rowState(sim) : null);
+  const described = (i: number): string | undefined =>
+    !said ? undefined : i < past ? 'passflown-past' : i === live ? 'passflown-live' : undefined;
 </script>
 
 <div id="passlist" class="list">
@@ -36,7 +42,8 @@
         {@const p = passes[i]!}
         {@const t = passRowText(p, c)}
         <button type="button" class="passrow" class:past={i < past} class:live={i === live} data-i={i} aria-current={i === app.selPass}
-                title={clipSay(p) ? '* ' + clipSay(p) : undefined} aria-label="Pass {i + 1}, {t.label}" onclick={() => app.selectPass(i, true)}>
+                title={clipSay(p) ? '* ' + clipSay(p) : undefined} aria-label="Pass {i + 1}, {t.label}" aria-describedby={described(i)}
+                onclick={() => app.selectPass(i, true)}>
           <span class="n">{i + 1}</span>
           <span class="t mono">{t.utc}<small>{t.sub}</small></span>
           <span class="e mono">{t.peak}<small>{compass(p.aosAz)}→{compass(p.losAz)}</small></span>
@@ -48,6 +55,8 @@
   {/each}
 </div>
 {#if note}<p class="flown" id="passflown">{note}</p>{/if}
+<!-- what a grey row and the ringed row are, for a screen reader: each such row is described by one of these (never shown) -->
+{#if said}<div hidden><span id="passflown-past">{said.past}</span><span id="passflown-live">{said.live}</span></div>{/if}
 
 <style>
   .list, .day { display: grid; }

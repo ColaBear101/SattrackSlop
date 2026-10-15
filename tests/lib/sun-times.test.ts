@@ -3,7 +3,7 @@ import { CIVIL_DEG, RISE_SET_DEG, SCAN_MS, sunEvents, sunTimes } from '../../src
 import { localDay, passDays, siteClock } from '../../src/lib/text/passfacts';
 import { plain } from '../../src/lib/text/rich';
 import {
-  DARK_ALL_DAY, dayHead, dayName, flownNote, hhmm, NEVER_DARK, SUN_DOWN_ALL_DAY, SUN_UP_ALL_DAY, sunWords
+  DARK_ALL_DAY, dayHead, dayName, dayZone, flownNote, hhmm, NEVER_DARK, rowState, simTime, SUN_DOWN_ALL_DAY, SUN_UP_ALL_DAY, sunWords
 } from '../../src/lib/text/suntimes';
 import { BANGKOK, byName, world } from './helpers';
 
@@ -171,6 +171,41 @@ describe('the observer\'s days', () => {
     expect(spring).toEqual({ key: '2026-03-29', t0: Date.parse('2026-03-29T00:00:00Z'), t1: Date.parse('2026-03-29T23:00:00Z') });
     expect(autumn).toEqual({ key: '2026-10-25', t0: Date.parse('2026-10-24T23:00:00Z'), t1: Date.parse('2026-10-26T00:00:00Z') });
   });
+  /* Where summer time starts at midnight the wall clock never reads 00:00 that night (it goes from 23:59:59 to 01:00): the day
+     starts at the change, and the day before ends there, not an hour before it. Ending it an hour early once put that last hour's
+     passes under a second header of the same date, and the list, keyed by the date, stopped rendering. */
+  it('starts the day at the change where summer time starts at midnight, so no date is two days', () => {
+    for (const [zone, date, change, next] of [
+      ['America/Santiago', '2026-09-06', '2026-09-06T04:00:00Z', '2026-09-07T03:00:00Z'],     // 00:00 at UTC-4 is 01:00 at UTC-3
+      ['America/Havana', '2026-03-08', '2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z'],       // 00:00 at UTC-5 is 01:00 at UTC-4
+      ['Asia/Beirut', '2026-03-29', '2026-03-28T22:00:00Z', '2026-03-29T21:00:00Z']           // 00:00 at UTC+2 is 01:00 at UTC+3
+    ] as const) {
+      const c = siteClock({ tz: 0, zone }), t = Date.parse(change);
+      expect(localDay(t + 1800000, c), zone).toEqual({ key: date, t0: t, t1: Date.parse(next) });         // 23 hours
+      const eve = localDay(t - 1800000, c);                                                                // 23:30 the day before
+      expect(eve.key < date && eve.t1 === t && eve.t1 - eve.t0 === 86400000, zone).toBe(true);
+      /* a pass every half hour across the night: each under its own date, every date once */
+      const P = Array.from({ length: 96 }, (_, i) => ({ t0ms: t - 86400000 + i * 1800000 })) as unknown as Parameters<typeof passDays>[0];
+      const days = passDays(P, c);
+      expect(new Set(days.map(d => d.key)).size, zone).toBe(days.length);
+      expect(days.flatMap(d => d.i), zone).toEqual(P.map((_, i) => i));
+      for (const d of days) for (const i of d.i) {
+        expect(localDay(P[i]!.t0ms, c).key, zone).toBe(d.key);
+        expect(P[i]!.t0ms >= d.t0 && P[i]!.t0ms < d.t1, zone + ' ' + new Date(P[i]!.t0ms).toISOString()).toBe(true);
+      }
+    }
+  });
+  it('keeps the week\'s real passes under one header a date at Santiago across its change', () => {
+    const SANTIAGO = { ...BANGKOK, lat: -33.45, lon: -70.67, tz: -4, zone: 'America/Santiago' };
+    const { eng } = world(SANTIAGO), c = siteClock(SANTIAGO);
+    const D = eng.compute(byName('NOAA 19'), Date.parse('2026-09-02T12:00:00Z'), 168);
+    const days = passDays(D.passes, c);
+    /* the reviewer's case: a pass whose AOS is 23:50 on Saturday the 5th, the last hour before the change */
+    expect(D.passes.some(p => p.t0ms > Date.parse('2026-09-06T03:00:00Z') && p.t0ms < Date.parse('2026-09-06T04:00:00Z'))).toBe(true);
+    expect(new Set(days.map(d => d.key)).size).toBe(days.length);
+    expect(days.map(d => d.key)).toContain('2026-09-05');
+    for (const d of days) for (const i of d.i) expect(localDay(D.passes[i]!.t0ms, c).key).toBe(d.key);
+  });
   it('groups a week of passes by the site\'s date of their AOS, in order, every pass once', () => {
     const { eng } = world();
     const D = eng.compute(byName('ISS (ZARYA)'), Date.parse('2026-09-12T07:29:09.993Z'), 168);
@@ -206,14 +241,39 @@ describe('the words', () => {
     const h = dayHead(d, c, sun, BANGKOK);
     expect(plain(h)).toBe('Thu 15 Oct local date, UTC+7\nDark\u00a0until\u00a005:47 · Sunrise\u00a006:09 · Sunset\u00a017:59 · Dark\u00a0from\u00a018:20');
   });
+  it('names both offsets on the day the site\'s clock changes, and the wall time the second starts', () => {
+    const c = siteClock({ tz: 0, zone: 'Europe/London' });
+    const spring = localDay(Date.parse('2026-03-29T12:00:00Z'), c), autumn = localDay(Date.parse('2026-10-25T12:00:00Z'), c);
+    expect(dayZone(spring, c)).toBe('UTC+0, then UTC+1 from 02:00');
+    expect(dayZone(autumn, c)).toBe('UTC+1, then UTC+0 from 01:00');
+    expect(dayZone(localDay(Date.parse('2026-03-30T12:00:00Z'), c), c)).toBe('UTC+1');
+    expect(dayZone(localDay(Date.parse('2026-10-15T05:00:00Z'), fixed(7)), fixed(7))).toBe('UTC+7');
+    /* the times under it, each at its own offset: sunrise in London on 29 March is 05:42:52Z, so 06:43 in the UTC+1 named for it */
+    const { sun: lsun } = world({ ...BANGKOK, lat: 51.5, lon: -0.12, tz: 0, zone: 'Europe/London' });
+    expect(plain(dayHead(spring, c, lsun, { lat: 51.5, lon: -0.12 })).replace(/ /g, ' '))
+      .toBe('Sun 29 Mar local date, UTC+0, then UTC+1 from 02:00\nDark until 06:09 · Sunrise 06:43 · Sunset 19:29 · Dark from 20:02');
+    const santiago = siteClock({ tz: -4, zone: 'America/Santiago' });
+    expect(dayZone(localDay(Date.parse('2026-04-04T12:00:00Z'), santiago), santiago)).toBe('UTC−3, then UTC−4 from 23:00');
+    expect(dayZone(localDay(Date.parse('2026-09-06T12:00:00Z'), santiago), santiago)).toBe('UTC−3');
+  });
   it('says what the grey and the ringed rows mean, and that the clock is not now when it is not', () => {
     const now = Date.parse('2026-10-15T05:00:00Z');
-    expect(flownNote(0, -1, now, now)).toBe('');
-    expect(flownNote(3, -1, now, now)).toBe('Grey: already flown.');
-    expect(flownNote(3, 3, now + 4000, now)).toBe('Grey: already flown. Ringed: in view now.');
-    expect(flownNote(0, 0, now, now)).toBe('Ringed: in view now.');
-    expect(flownNote(3, 3, now + 6000, now)).toBe('Grey: flown before the clock\'s instant. Ringed: in view at the clock\'s instant. The clock is on sim time, not now.');
-    expect(flownNote(2, -1, now - 86400000, now)).toBe('Grey: flown before the clock\'s instant. The clock is on sim time, not now.');
-    expect(flownNote(0, -1, now - 86400000, now)).toBe('');
+    expect(flownNote(0, -1, false)).toBe('');
+    expect(flownNote(3, -1, false)).toBe('Grey: already flown.');
+    expect(flownNote(3, 3, false)).toBe('Grey: already flown. Ringed: in view now.');
+    expect(flownNote(0, 0, false)).toBe('Ringed: in view now.');
+    expect(flownNote(3, 3, true)).toBe('Grey: flown before the clock\'s instant. Ringed: in view at the clock\'s instant. The clock is on sim time, not now.');
+    expect(flownNote(2, -1, true)).toBe('Grey: flown before the clock\'s instant. The clock is on sim time, not now.');
+    expect(flownNote(0, -1, true)).toBe('');
+    expect(rowState(false)).toEqual({ past: 'already flown', live: 'in view now' });
+    expect(rowState(true)).toEqual({ past: 'flown before the clock\'s instant', live: 'in view at the clock\'s instant' });
+    /* now: running, at real time, within 5 s of the wall clock */
+    expect(simTime(now + 4000, now, true, 1)).toBe(false);
+    expect(simTime(now + 6000, now, true, 1)).toBe(true);
+    expect(simTime(now - 86400000, now, true, 1)).toBe(true);
+    expect(simTime(now, now, true, 60)).toBe(true);
+    /* paused at the wall clock's instant: sim time at once, since a paused clock is never repainted and would stay "now" */
+    expect(simTime(now, now, false, 1)).toBe(true);
+    expect(flownNote(3, 3, simTime(now, now, false, 1))).toBe('Grey: flown before the clock\'s instant. Ringed: in view at the clock\'s instant. The clock is on sim time, not now.');
   });
 });

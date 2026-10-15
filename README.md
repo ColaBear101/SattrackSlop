@@ -507,7 +507,11 @@ promised 74.2° for a 19.7° pass.
 In the rail the pass list is grouped by the observer's own calendar day of each pass's AOS, under
 a header that stays at the top of the rail (or of a phone's sheet) while that day's passes scroll
 under it. The rows still lead with the UTC date, so the header says it is the local date and names
-the offset: "Thu 15 Oct local date, UTC+7". Under it is the Sun at the site that day, "Dark until
+the offset: "Thu 15 Oct local date, UTC+7". Each time under it is at the offset in force at that
+time, so on the day a site's clock changes the header names both, with the wall time the second
+starts: "UTC+0, then UTC+1 from 02:00" in London on 29 March. Where summer time starts at midnight,
+as at Santiago, Havana or Beirut, the wall clock never reads 00:00 that night, and the day starts at
+the change. Under it is the Sun at the site that day, "Dark until
 05:47 · Sunrise 06:09 · Sunset 17:59 · Dark from 18:20" for Bangkok in mid-October. Dark means the
 Sun 6° or more below the horizon, the end of civil twilight, which is where the naked-eye test below
 calls the sky dark: a pass outside those hours is radio only whatever the spacecraft does, which is
@@ -526,10 +530,13 @@ their own, 1.5 KB gzipped, fetched once there are passes.
 
 With the clock inside the window, the rows of passes already flown at the clock's instant are grey
 and the pass in view at it has its number ringed, and a line under the list says what they mean.
-The clock is the transport's, which can be scrubbed, sped up or paused, so when it is more than 5 s
-from the wall clock (the countdown's rule) the line says the grey rows were "flown before the
-clock's instant" and "The clock is on sim time, not now." A row given the focus under a day's
-header is scrolled out from under it. Nothing in a row's own text, label or title changes, so the
+The clock is the transport's, which can be scrubbed, sped up or paused, so unless it is running at
+real time within 5 s of the wall clock (the live Doppler line's rule) the line says the grey rows
+were "flown before the clock's instant" and "The clock is on sim time, not now." A paused clock is
+never now, however close to it it stopped, since nothing repaints a paused page: the line turns at
+the pause. A screen reader hears the same words on each grey or ringed row, as its description,
+since the grey and the ring are colour and shape. A row given the focus under a day's header is
+scrolled out from under it. Nothing in a row's own text, label or title changes, so the
 old page's words are still compared as they were.
 
 The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table

@@ -36,7 +36,9 @@
  * header stays at the top of the rail (and of a phone's sheet) over its day, a
  * row given the focus under it is scrolled out from under it, and with the clock
  * inside a pass the rows before it are grey and it is ringed, the line under the
- * list says so at the clock's instant, sim time, and no row's words change.
+ * list says so at the clock's instant, sim time, each such row is described so to
+ * a screen reader, and no row's words change; running at real time the line says
+ * "already flown", and paused there it says sim time at once.
  */
 'use strict';
 const H = require('../lib/harness');
@@ -363,7 +365,8 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
      against a different Sun and a different method, the NOAA Solar Calculator's equations (verification/reference/noaa-sun.js),
      to the minute either way. The header stays at the top of the rail while its day scrolls under it, and a row reached with
      Tab is not left under it. Rows flown before the clock's instant are grey and the one in view at it ringed, and the line
-     under the list says so, with "sim time" when the clock is not now; nothing a row says changes. */
+     under the list says so, with "sim time" when the clock is not now (paused, sped up or away from the wall clock), as does each such
+     row's description; nothing a row says changes. */
   if (NEW) {
     console.log('\n  the pass list by the observer\'s day');
     const noaa = require('../reference/noaa-sun');
@@ -471,9 +474,19 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
         tPast: css(rows[0].querySelector('.t'), 'color'), tNext: css(rows[rows.length - 1].querySelector('.t'), 'color'),
         ring: rows.filter(r => r.classList.contains('live')).map(r => css(r.querySelector('.n'), 'borderTopColor'))[0] || null,
         muted: rgb(root.getPropertyValue('--muted')), ink: rgb(root.getPropertyValue('--ink')), contact: rgb(root.getPropertyValue('--contact')),
-        note: (document.getElementById('passflown') || {}).textContent || null
+        note: (document.getElementById('passflown') || {}).textContent || null,
+        desc: rows.map(r => r.getAttribute('aria-describedby'))
       };
     });
+    /* the description a screen reader is given for a row, as the browser works it out (its accessibility tree, over CDP) */
+    const cdp = await page.context().newCDPSession(page);
+    const axDesc = async sel => {
+      const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+      if (!nodeId) return null;
+      const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+      return nodes[0] && nodes[0].description ? nodes[0].description.value : '';
+    };
     const want = C.cls.map((_, i) => (i < k ? 'past' : i === k ? 'live' : ''));
     chk('with the clock stopped inside pass ' + (k + 1) + ', the ' + k + ' rows before it are grey (the muted ink), it is ringed (the contact colour), the rest are as they were',
         JSON.stringify(C.cls) === JSON.stringify(want) && C.tPast === C.muted && C.tNext === C.ink && C.ring === C.contact,
@@ -482,10 +495,50 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
         C.note === 'Grey: flown before the clock\'s instant. Ringed: in view at the clock\'s instant. The clock is on sim time, not now.', C.note);
     chk('...and nothing a row says changed: its index, label, title and text are as before',
         JSON.stringify(C.after) === JSON.stringify(before), before.length + ' rows');
+    /* the grey and the ring are colour and shape: a screen reader is told on the row itself, in the line's words */
+    const descWant = C.cls.map(c => (c === 'past' ? 'passflown-past' : c === 'live' ? 'passflown-live' : null));
+    const dPast = await axDesc('#passlist .passrow.past'), dLive = await axDesc('#passlist .passrow.live'), dNext = await axDesc('#passlist .passrow:not(.past):not(.live)');
+    chk('...and a screen reader is told which rows are flown and which is in view: each is described as such, the others not',
+        JSON.stringify(C.desc) === JSON.stringify(descWant) && dPast === 'flown before the clock\'s instant' && dLive === 'in view at the clock\'s instant' && dNext === '',
+        JSON.stringify({ past: dPast, live: dLive, next: dNext }));
     await page.evaluate(t => window.__gt.seek(t), L.aos[0].ms - 60000);
     await page.waitForTimeout(300);
-    const none = await page.evaluate(() => ({ marked: document.querySelectorAll('#passlist .passrow.past, #passlist .passrow.live').length, note: !!document.getElementById('passflown') }));
-    chk('before the first pass no row is grey or ringed, and the line is gone', none.marked === 0 && !none.note, JSON.stringify(none));
+    const none = await page.evaluate(() => ({ marked: document.querySelectorAll('#passlist .passrow.past, #passlist .passrow.live').length, note: !!document.getElementById('passflown'),
+      described: document.querySelectorAll('#passlist .passrow[aria-describedby]').length }));
+    chk('before the first pass no row is grey or ringed, or described as either, and the line is gone', none.marked === 0 && !none.note && none.described === 0, JSON.stringify(none));
+
+    /* at real time, then paused there. The window is opened two days back so that passes have flown by now; with the clock
+       running at 1x at the wall clock the line says "already flown", and the press of pause turns it to sim time at once. A paused
+       clock publishes nothing more, and the line once stayed "now" for as long as the clock stayed paused, the passes flying on. */
+    await H.clickWindow(page, '#tpnow');
+    await page.waitForFunction(() => Math.abs(window.__gt.D.start.getTime() - Date.now()) < 120000, null, { timeout: 30000 });
+    for (const back of [1, 2]) {
+      await H.clickWindow(page, '#winPrevD');
+      await page.waitForFunction(b => Math.abs(window.__gt.D.start.getTime() - (Date.now() - b * 86400000)) < 120000, back, { timeout: 30000 });
+    }
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      window.__gt.seek(Date.now());
+      const r = document.getElementById('tprate'); r.value = 0; r.dispatchEvent(new Event('input'));
+      document.getElementById('tpplay').click();
+    });
+    await page.waitForTimeout(600);
+    const flownNow = () => page.evaluate(() => {
+      const row = document.querySelector('#passlist .passrow.past'), id = row && row.getAttribute('aria-describedby');
+      return { playing: document.getElementById('tpplay').getAttribute('aria-label') === 'Pause', rate: document.getElementById('tpratev').textContent,
+        past: document.querySelectorAll('#passlist .passrow.past').length, note: (document.getElementById('passflown') || {}).textContent || null,
+        word: id ? (document.getElementById(id) || {}).textContent || null : null };
+    });
+    const R1 = await flownNow();
+    chk('running at 1x at the wall clock, with passes flown by now, the line says they are already flown, and the rows say so',
+        R1.playing && /^1\.0/.test(R1.rate) && R1.past > 0 && /^Grey: already flown\./.test(R1.note || '') && !/sim time/.test(R1.note) && R1.word === 'already flown',
+        JSON.stringify(R1));
+    await page.click('#tpplay');     // pause, as a reader would
+    await page.waitForTimeout(400);
+    const R2 = await flownNow();
+    chk('...and paused there, the line turns to sim time at once (the pause is read, with no tick after it), and so do the rows',
+        !R2.playing && R2.past > 0 && /^Grey: flown before the clock's instant\./.test(R2.note || '') && / The clock is on sim time, not now\.$/.test(R2.note)
+          && R2.word === 'flown before the clock\'s instant', JSON.stringify(R2));
 
     /* on a phone the rail is a sheet whose body scrolls inside its own padding: a stuck header is at the sheet's edge, with no
        row showing above it */

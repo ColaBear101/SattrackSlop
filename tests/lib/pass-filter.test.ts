@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { filterOn, filterPasses, inSpan, NO_FILTER, parseClock, PEAKS, readFilter, siteMinute, type PassFilter } from '../../src/lib/analysis/pass-filter';
-import { siteClock } from '../../src/lib/text/passfacts';
+import { passRowText, siteClock } from '../../src/lib/text/passfacts';
 import { clockText, FILTER_BUTTON, FILTER_BUTTON_ON, FILTER_TITLE, filterWords, hiddenSay, shownSay } from '../../src/lib/text/passfilter';
-import { EYE_LABEL, filterNote, fromName, peakLabel, RESET_LABEL, toName } from '../../src/lib/text/passfilter-panel';
+import { EYE_LABEL, filterNote, fromName, peakLabel, RESET_LABEL, toName, zoneSpan } from '../../src/lib/text/passfilter-panel';
 import type { Pass } from '../../src/lib/types';
 import { BANGKOK, byName, world } from './helpers';
 
@@ -39,19 +39,23 @@ describe('nothing chosen', () => {
 });
 
 describe('the highest point', () => {
-  it('keeps the passes that culminate at the chosen elevation or higher, by their own indices, in order', () => {
+  it('keeps the passes whose row reads the chosen elevation or higher, by their own indices, in order', () => {
     expect(ISS.passes.length).toBe(24);
     for (const minPeak of PEAKS.slice(1)) {
-      const want = all(ISS.passes).filter(i => ISS.passes[i]!.maxEl >= minPeak);
+      const want = all(ISS.passes).filter(i => parseInt(passRowText(ISS.passes[i]!, BKK).peak) >= minPeak);
       const got = filterPasses(ISS.passes, f({ minPeak }), BKK.offsetAt, eyeOf);
       expect(got).toEqual(want);
       expect(got.length).toBeLessThan(ISS.passes.length);
     }
     expect(filterPasses(ISS.passes, f({ minPeak: 45 }), BKK.offsetAt, eyeOf).length).toBeGreaterThan(0);
   });
-  it('compares the culmination itself, not its rounding: 19.96 deg is under 20', () => {
-    const P = [pass(0, 19.96), pass(1, 20), pass(2, 20.04)];
-    expect(filterPasses(P, f({ minPeak: 20 }), () => 0, () => true)).toEqual([1, 2]);
+  /* It compared the culmination itself until the review of f13c3dd: a row reading "30°" (29.944, ALSAT 2B from London) was hidden by
+     "30°", under a line saying "peaking at 30° or more". The test is the row's own figure, so what the reader sees is what is kept. */
+  it('compares the peak as the row shows it, to the whole degree: a row that reads 20° is kept by 20°', () => {
+    const P = [pass(0, 19.49), pass(1, 19.5), pass(2, 19.96), pass(3, 20), pass(4, 20.04)];
+    const row = (p: Pass) => passRowText({ ...p, aos: new Date(p.t0ms), dur: 300 } as Pass, { offsetAt: () => 0, labelAt: () => 'UTC' }).peak;
+    expect(P.map(row)).toEqual(['19°', '20°', '20°', '20°', '20°']);
+    expect(filterPasses(P, f({ minPeak: 20 }), () => 0, () => true)).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -104,7 +108,7 @@ describe('the eye', () => {
     filterPasses(ISS.passes, f({ minPeak: 30 }), BKK.offsetAt, eye);
     expect(eye).not.toHaveBeenCalled();
     filterPasses(ISS.passes, f({ minPeak: 30, eye: true }), BKK.offsetAt, eye);
-    expect(eye.mock.calls.map(c => c[0])).toEqual(all(ISS.passes).filter(i => ISS.passes[i]!.maxEl >= 30));
+    expect(eye.mock.calls.map(c => c[0])).toEqual(all(ISS.passes).filter(i => +ISS.passes[i]!.maxEl.toFixed(0) >= 30));
   });
 });
 
@@ -148,6 +152,18 @@ describe('the words', () => {
     expect(fromName('UTC+7')).toBe('Rising from, in the site\'s time (UTC+7)');
     expect(toName('UTC+5:30')).toBe('Rising before, in the site\'s time (UTC+5:30)');
     expect(filterNote(5)).toBe('Only this list is filtered. The minutes in view, the countdown, the marks on the timeline, the report and the exports still count every pass over the 5° mask.');
+  });
+  it('names the offset the span is read at, and both when the site\'s clock changes inside the window', () => {
+    const london = siteClock({ tz: 0, zone: 'Europe/London' }), H = 3600000;
+    /* a week opening on 20 October: UTC+1 until 02:00 on the 25th, which is 01:00 UTC+0 */
+    const t0 = Date.parse('2026-10-20T07:29:09Z');
+    expect(zoneSpan(t0, t0 + 168 * H, london)).toBe('UTC+1, then UTC+0 from 10-25');
+    expect(zoneSpan(Date.parse('2026-03-26T12:00:00Z'), Date.parse('2026-04-02T12:00:00Z'), london)).toBe('UTC+0, then UTC+1 from 03-29');
+    expect(zoneSpan(t0, Date.parse('2026-10-25T00:59:59Z'), london)).toBe('UTC+1');
+    expect(zoneSpan(t0, t0 + 168 * H, BKK)).toBe('UTC+7');
+    /* the pass the review named: 19:30 UTC on the 26th is 19:30 at UTC+0, the offset named for it, and kept by 19:00 to 20:00 */
+    expect(filterPasses([pass(Date.parse('2026-10-26T19:30:00Z')), pass(Date.parse('2026-10-26T18:30:00Z'))],
+      f({ hours: { on: true, from: 19 * 60, to: 20 * 60 } }), london.offsetAt, () => true)).toEqual([0]);
   });
   it('says how many passes are shown and by what', () => {
     expect(clockText(365)).toBe('06:05');

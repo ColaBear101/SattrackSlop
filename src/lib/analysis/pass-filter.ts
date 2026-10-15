@@ -7,7 +7,8 @@
  *
  * Three tests, each off until it is asked for; a pass is shown when it passes every one that is on:
  *   - the highest point: its culmination (the highest point inside the window, for a pass the window cuts) at `minPeak`
- *     degrees or more;
+ *     degrees or more, as its row shows it, to the whole degree (passfacts.ts, passRowText): a row that reads 30 deg is
+ *     kept by 30 deg, though its culmination may be 29.6 deg;
  *   - the eye: the optical verdict on the whole pass is 'yes' (optics.ts, passOptical: fully sunlit against a dark sky at
  *     magnitude +6 or brighter at one of its samples). 'penumbra only' is not a promise, and is left out;
  *   - the hours: its AOS (the window's edge, for a pass already up when the window opens), on the site's clock at that
@@ -57,7 +58,7 @@ export const inSpan = (m: number, from: number, to: number): boolean =>
 export function filterPasses(P: readonly Pass[], f: PassFilter, offsetAt: (ms: number) => number, eyeOf: (i: number) => boolean): number[] {
   const out: number[] = [];
   P.forEach((p, i) => {
-    if (p.maxEl < f.minPeak) return;
+    if (+p.maxEl.toFixed(0) < f.minPeak) return;   // the figure the row shows
     if (f.hours.on && inSpan(siteMinute(p.t0ms, offsetAt(p.t0ms)), f.hours.from, f.hours.to) === f.hours.out) return;
     if (f.eye && !eyeOf(i)) return;
     out.push(i);

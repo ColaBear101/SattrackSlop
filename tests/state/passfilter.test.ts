@@ -80,7 +80,7 @@ describe('the pass list\'s filter, kept', () => {
     const c = siteClock(BANGKOK);
     passfilter.set({ ...NO_FILTER, minPeak: 20, eye: true });
     const first = passfilter.shown(D, c.offsetAt)!;
-    const high = D.passes.map((_, i) => i).filter(i => D.passes[i]!.maxEl >= 20);
+    const high = D.passes.map((_, i) => i).filter(i => +D.passes[i]!.maxEl.toFixed(0) >= 20);   // the peak its row shows
     expect(spy).toHaveBeenCalledTimes(high.length);
     expect(first).toEqual(high.filter(i => engine.getOptics().passOptical(D.track, D.passes[i]!)?.eye === 'yes'));
     expect(first.length).toBeGreaterThan(0);

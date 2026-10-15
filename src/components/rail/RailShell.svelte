@@ -46,9 +46,10 @@
   const cd = $derived(a ? countdown(a, clock.tick.ms, Date.now(), MASK, siteClock(app.site), () => app.passAfterWindow()) : null);
 </script>
 
-<!-- Escape inside a popover of the sheet's own (the pass list's filter: CHANGES-FROM-LEGACY.md, L56) closes that popover and leaves
-     the sheet open; this hears it first, so it looks where the focus is -->
-<svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open && !(e.target as Element).closest?.('.rail [role=dialog]')) open = false; }} />
+<!-- Escape while a popover of the sheet's own is open (the pass list's filter: CHANGES-FROM-LEGACY.md, L56) closes that popover and
+     leaves the sheet open, wherever the focus is (in the panel, back on its button, or on nothing after a press on the panel's text);
+     this hears it first, so it looks for an open one. The next Escape shuts the sheet. -->
+<svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open && !document.querySelector('.rail [role=dialog]:not([hidden])')) open = false; }} />
 
 <aside class="rail {mode}" class:open aria-label="Answer">
   {#if mode !== 'side'}

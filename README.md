@@ -540,22 +540,27 @@ scrolled out from under it. Nothing in a row's own text, label or title changes,
 old page's words are still compared as they were.
 
 The list can be filtered. *Filter*, over it, opens a panel with three tests, each off until it is
-chosen: the lowest peak shown (any, 10°, 20°, 30° or 45°), only the passes the naked eye can see
+chosen: the lowest peak shown (any, 10°, 20°, 30° or 45°, compared as the row shows the peak, to the
+whole degree, so a row that reads 30° is kept by 30°), only the passes the naked eye can see
 (the verdict the facts under the sky plot give the whole pass, "Naked eye: yes": fully sunlit
 against a dark sky at magnitude +6 or brighter; a pass bright enough only in partial shadow is left
 out), and only the passes that rise between two times of the site's day, or outside them. The hour
-is the AOS at the site's offset at that instant, so it follows a change of summer time, and a span
-that ends earlier than it starts runs past midnight: 18:00 to 06:00 is the night. It filters the
+is the AOS at the site's offset at that instant, so it follows a change of summer time; the offset
+printed beside the time fields names both when the site's clock changes inside the window ("UTC+1,
+then UTC+0 from 10-25"). A span that ends earlier than it starts runs past midnight: 18:00 to 06:00
+is the night. A time field left empty shows the time still in force once it is left. It filters the
 list and nothing else. The mask stays at 5° and the analysis is the same one: the minutes in view,
 the count, the countdown, the passes marked on the timeline, the report's table and the exports
-still count every pass, and a row shown keeps its number and selects the same pass. A line under
-the button says how many passes are shown and by what ("Showing 6 of 25 passes: peaking at 30° or
-more."), and says so when the selected pass is one of those hidden, whose sky plot and facts stay on
-screen. The choice is kept in the browser, written only when it is changed; *Show every pass*
-removes it. The bar is a chunk of its own, 2.2 KB gzipped, fetched once there are passes, and the
-panel another, 1.6 KB, fetched at the first press. `tests/lib/pass-filter.test.ts` holds the rows
-kept to the passes' own culminations, verdicts and hours, and `verify-timeline.js` checks the rows
-on the page against the analysis for each test, by their own index.
+still count every pass, and a row shown keeps its number and selects the same pass. The line under
+the list speaks only of the grey and ringed rows that are shown. A line under the button says how
+many passes are shown and by what ("Showing 6 of 25 passes: peaking at 30° or more."), and says so
+when the selected pass is one of those hidden, whose sky plot and facts stay on screen. The choice
+is kept in the browser, written only when it is changed; *Show every pass* removes it. On a phone
+the panel opens inside the answer sheet, and Escape shuts the panel first and the sheet only at the
+next press. The bar is a chunk of its own, 2.2 KB gzipped, fetched once there are passes, and the
+panel another, 1.8 KB, fetched at the first press. `tests/lib/pass-filter.test.ts` holds the rows
+kept to the peaks the rows show and the passes' own verdicts and hours, and `verify-timeline.js`
+checks the rows on the page against the analysis for each test, by their own index.
 
 The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table
 in the report: a polar plot, north up, the zenith at the centre and the horizon at the rim, with the

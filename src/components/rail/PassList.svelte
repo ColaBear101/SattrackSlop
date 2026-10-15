@@ -41,7 +41,10 @@
   /* "now" only while the clock runs at real time by the wall clock: a pause or a rate change is read here, so the line turns to
      sim time at the very pause, with no tick after it */
   const sim = $derived(st ? st.simTime(ms, Date.now(), clock.playing, clock.rate) : true);
-  const note = $derived(st ? st.flownNote(past, live, sim) : '');
+  /* the line is the key to the marks on screen: with a filter on, it speaks of grey rows only when one is shown, and of the
+     ringed row only when it is (with every row shown, these are `past` and `live` themselves) */
+  const onScreen = $derived(days.flatMap(d => d.i));
+  const note = $derived(st ? st.flownNote(onScreen.some(i => i < past) ? past : 0, onScreen.includes(live) ? live : -1, sim) : '');
   const said = $derived(st ? st.rowState(sim) : null);
   const described = (i: number): string | undefined =>
     !said ? undefined : i < past ? 'passflown-past' : i === live ? 'passflown-live' : undefined;

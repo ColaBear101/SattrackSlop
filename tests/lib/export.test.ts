@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildExports } from '../../src/lib/export';
+import { buildExports, exportPassICS, type ExportCtx } from '../../src/lib/export';
 import { BANGKOK, byName, world, MASK } from './helpers';
 
 /* The files a reader takes away. The writers are the old page's, moved verbatim; what is checked here is what a
@@ -22,12 +22,13 @@ function csvRows(text: string): string[][] {
   return rows;
 }
 
-function exportsFor(opts: { site?: typeof BANGKOK; name?: string; dopHz?: number | null; entry?: ReturnType<typeof byName> } = {}) {
+function exportsFor(opts: { site?: typeof BANGKOK; name?: string; dopHz?: number | null; entry?: ReturnType<typeof byName> & { custom?: boolean } } = {}) {
   const site = opts.site ?? BANGKOK;
   const { eng, optics } = world(site);
   const entry = opts.entry ?? byName('KNACKSAT-2');
   const D = eng.compute(opts.name ? { ...entry, name: opts.name } : entry, START, 24);
-  return { D, x: buildExports({ D, OBS: site, MASK, dopHz: opts.dopHz ?? null, eng, optics, sourceText: 'embedded', stampAt: STAMP }) };
+  const ctx: ExportCtx = { D, OBS: site, MASK, dopHz: opts.dopHz ?? null, eng, optics, sourceText: 'embedded', stampAt: STAMP };
+  return { D, ctx, x: buildExports(ctx) };
 }
 
 describe('the CSV', () => {
@@ -131,5 +132,59 @@ describe('a pass the window cuts', () => {
     expect(ics).toContain('X-GT-CLIPPED:AOS,LOS');
     expect(ics).toMatch(/SUMMARY:.*window-clipped/);
     expect(ics).not.toMatch(/AOS in 10 minutes/);
+  });
+});
+
+/* The selected pass alone (CHANGES-FROM-LEGACY.md, L57): the same writer, handed the analysis with that one pass, so the file must be the
+   whole window's calendar cut down to that pass's event, and nothing else about it changed. */
+describe('one pass as a calendar of its own', () => {
+  const sat = 'SAT — Ünïcode 🛰 with, a comma; and a semicolon';
+  const { D, ctx, x } = exportsFor({ name: sat, site: { ...BANGKOK, name: 'Bangkok, Thailand' }, dopHz: 437_000_000 });
+  const full = x.exportICS().text;
+  const END = 'END:VCALENDAR\r\n';
+  const events = full.slice(0, -END.length).split('BEGIN:VEVENT').slice(1).map(e => 'BEGIN:VEVENT' + e);
+  const head = full.slice(0, full.indexOf('BEGIN:VEVENT'));
+  const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+  it("is, for every pass, the full calendar's own event for it, byte for byte, under the same calendar lines: so its UID is the same", () => {
+    expect(D.passes.length).toBeGreaterThan(1);
+    expect(full.endsWith(END)).toBe(true);
+    D.passes.forEach((p, i) => {
+      const f = exportPassICS(ctx, i)!;
+      expect(f.text).toBe(head + events[i] + END);
+      expect(f.text.match(/BEGIN:VEVENT/g)).toHaveLength(1);
+      expect(f.text).toContain('UID:' + D.E.satnum + '-' + p.aos.getTime() + '@ground-track');
+      expect(f.text).toContain('DTSTART:' + stamp(p.aos));
+    });
+  });
+  it('is named for the spacecraft and the AOS in UTC, and says which pass it wrote and where', () => {
+    const f = exportPassICS(ctx, 1)!;
+    const name = 'sattrack-sat-n-code-with-a-comma-and-a-semicolon-pass-' + stamp(D.passes[1]!.aos) + '.ics';
+    expect(f.name).toBe(name);
+    expect(f.name).toMatch(/^sattrack-[a-z0-9-]+-pass-\d{8}T\d{6}Z\.ics$/);
+    expect(f.mime).toBe('text/calendar');
+    expect(f.hint).toBe('Pass 2 written as a calendar event: open ' + name + ' to add it.');
+  });
+  it('leaves the analysis as it was: the gate serialises it', () => {
+    const passes = D.passes, n = passes.length, first = passes[0], keys = Object.keys(D).join();
+    exportPassICS(ctx, n - 1);
+    expect(D.passes).toBe(passes); expect(D.passes).toHaveLength(n); expect(D.passes[0]).toBe(first); expect(Object.keys(D).join()).toBe(keys);
+  });
+  it('writes nothing for an index the analysis has no pass at', () => {
+    expect(exportPassICS(ctx, D.passes.length)).toBeNull();
+    expect(exportPassICS(ctx, -1)).toBeNull();
+  });
+  it("names a planned orbit's file as the full export does, and falls back to the number for a name with nothing a file name can hold", () => {
+    const k = byName('KNACKSAT-2');
+    const mine = exportsFor({ entry: { ...k, name: 'My orbit', custom: true } });
+    expect(exportPassICS(mine.ctx, 0)!.name).toMatch(/^sattrack-custom-my-orbit-pass-\d{8}T\d{6}Z\.ics$/);
+    const bare = exportsFor({ name: '曼谷' });
+    expect(exportPassICS(bare.ctx, 0)!.name).toBe('sattrack-' + k.satnum + '-pass-' + stamp(bare.D.passes[0]!.aos) + '.ics');
+  });
+  it("keeps a window-clipped pass's flags and words", () => {
+    const { ctx: g } = exportsFor({ entry: byName('INTELSAT 36 (IS-36)') });
+    const t = exportPassICS(g, 0)!.text.replace(/\r\n[ \t]/g, '');
+    expect(t).toContain('X-GT-CLIPPED:AOS,LOS');
+    expect(t).toMatch(/SUMMARY:.*window-clipped/);
   });
 });

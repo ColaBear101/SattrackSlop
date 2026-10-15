@@ -19,6 +19,12 @@
  * The download itself is driven through the actual button, with the browser's
  * download intercepted, so what is checked is the file a user would get.
  *
+ * And the selected pass alone (CHANGES-FROM-LEGACY.md, L57): its file must be
+ * the full calendar's own event for that pass, UID included, a download with a
+ * fine pointer, and on a phone a File handed to the share sheet (a recording
+ * one of this suite's), with a closed sheet a cancel and a sheet that will not
+ * take it a download.
+ *
  *   node verification/suites/verify-export.js          (needs playwright)
  */
 const H = require('../lib/harness');
@@ -327,6 +333,108 @@ function parseCSV(text) {
   chk('every event has a unique UID, so a re-import updates rather than duplicates',
       new Set(uids).size === uids.length && uids.length === expected.n,
       uids.length + ' UIDs, ' + new Set(uids).size + ' distinct');
+
+  // ---------------- One pass, to a calendar (CHANGES-FROM-LEGACY.md, L57) ----
+  /* The button under the selected pass's facts writes that pass alone: the
+     event the whole window's calendar above has for it, UID and all, so a
+     calendar that takes both files holds the pass once. Only the DTSTAMP, the
+     instant the file was written, may differ. Pressed with a share sheet on
+     the page that records whether it is asked: with a fine pointer it must not
+     be, the file is a download. */
+  const k = expected.n > 1 ? 1 : 0;
+  await H.showRailTab(page, 'Passes');
+  await page.click('#passlist .passrow[data-i="' + k + '"]');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const S = window.__share = { calls: 0 };
+    Object.defineProperty(navigator, 'share', { configurable: true, value: () => { S.calls++; return Promise.resolve(); } });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+  });
+  const one = await grab('exp-pass');
+  console.log('\n  one pass: ' + one.name + '  (' + one.text.length + ' bytes)');
+  const stampOf = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  chk('the one-pass file is named for the spacecraft and the selected pass\'s AOS in UTC',
+      new RegExp('^sattrack-[a-z0-9-]+-pass-' + stampOf(expected.aos[k]) + '\\.ics$').test(one.name), one.name + ' for pass ' + (k + 1));
+  const oneUn = one.text.replace(/\r\n[ \t]/g, '');
+  const evOf = e => e.slice(0, e.indexOf('END:VEVENT')).replace(/DTSTAMP:\S+\r\n/, '');
+  const oneEvs = oneUn.split('BEGIN:VEVENT').slice(1);
+  chk('...holds that one event, which is the full calendar\'s own event for the pass, its UID included (only the DTSTAMP is the press\'s)',
+      oneEvs.length === 1 && evOf(oneEvs[0]) === evOf(evs[k])
+      && oneUn.slice(0, oneUn.indexOf('BEGIN:VEVENT')) === unfolded.slice(0, unfolded.indexOf('BEGIN:VEVENT')),
+      oneEvs.length + ' event(s); ' + ((oneUn.match(/UID:\S+/) || ['no UID'])[0]) + ' (full file, pass ' + (k + 1) + ': ' + ((evs[k].match(/UID:\S+/) || ['no UID'])[0]) + ')');
+  const oneLong = one.text.split('\r\n').filter(l => Buffer.byteLength(l, 'utf8') > 75);
+  chk('...and is a calendar an importer takes: CRLF throughout, no line past 75 octets, one alarm',
+      one.text.includes('\r\n') && !/[^\r]\n/.test(one.text) && oneLong.length === 0 && /^BEGIN:VCALENDAR\r\n/.test(one.text)
+      && /END:VCALENDAR\r\n$/.test(one.text) && (oneUn.match(/BEGIN:VALARM/g) || []).length === 1,
+      oneLong.length ? oneLong.length + ' long line(s)' : 'longest ' + Math.max(...one.text.split('\r\n').map(l => Buffer.byteLength(l, 'utf8'))) + ' octets');
+  const oneSaid = await page.evaluate(() => ({ hint: document.getElementById('exp-passhint').textContent, asked: window.__share.calls, n: __gt.D.passes.length }));
+  chk('the button says which pass it wrote and the file\'s name, and the share sheet was not asked (a fine pointer: the file is a download)',
+      oneSaid.hint === 'Pass ' + (k + 1) + ' written as a calendar event: open ' + one.name + ' to add it.' && oneSaid.asked === 0,
+      JSON.stringify(oneSaid.hint) + '; share asked ' + oneSaid.asked + ' time(s)');
+  chk('...and the analysis on screen still has every pass', oneSaid.n === expected.n, oneSaid.n + ' of ' + expected.n);
+
+  /* On a phone the file goes to the share sheet, where the browser takes a
+     calendar file there, so that a calendar app can be picked from it; a
+     closed sheet is a cancel; a sheet that will not take it is a download.
+     A sheet of the suite's own, which records what it is handed. */
+  {
+    const px = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true });
+    await px.addInitScript(() => {
+      const S = window.__share = { can: true, mode: 'ok', calls: [] };
+      const share = d => {
+        const f = d && d.files && d.files[0];
+        const c = { files: d && d.files ? d.files.length : 0, isFile: f instanceof File, name: f && f.name, type: f && f.type, title: d && d.title, text: null };
+        S.calls.push(c);
+        return (f ? f.text().then(t => { c.text = t; }) : Promise.resolve()).then(() => {
+          if (S.mode === 'abort') throw new DOMException('Share canceled', 'AbortError');
+        });
+      };
+      const canShare = d => !!S.can && !!(d && d.files && d.files.length);
+      Object.defineProperty(navigator, 'share', { configurable: true, get: () => share });
+      Object.defineProperty(navigator, 'canShare', { configurable: true, get: () => canShare });
+    });
+    const pp = await px.newPage();
+    pp.on('pageerror', e => errs.push('phone: ' + e.message));
+    const dls = [];
+    pp.on('download', d => dls.push(d));
+    await pp.route('**celestrak.org/**', r => r.abort());
+    await pp.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
+    await pp.route('**tle.ivanstanojevic.me/**', r => r.abort());
+    await pp.goto(PAGE, { waitUntil: 'load' });
+    await pp.waitForFunction(() => !!window.__gt && !!window.__gt.D && !!document.getElementById('exp-pass'), null, { timeout: 30000 });
+    const coarse = await pp.evaluate(() => matchMedia('(pointer: coarse)').matches);
+    await H.showRailTab(pp, 'Passes');
+    const press = async (n) => {
+      await pp.click('#exp-pass');
+      await pp.waitForFunction(n => window.__share.calls.length >= n, n, { timeout: 15000 }).catch(() => {});
+      await pp.waitForTimeout(500);
+      return pp.evaluate(() => ({ hint: document.getElementById('exp-passhint').textContent, calls: window.__share.calls.slice(),
+        aos: __gt.D.passes[0].aos.getTime() }));
+    };
+    const s1 = await press(1);
+    const c1 = s1.calls[0] || {};
+    console.log('\n  on a phone: ' + (c1.name || 'nothing shared'));
+    chk('on a phone (a coarse pointer) the button hands the share sheet one calendar File, named as on a desktop, and nothing is downloaded',
+        coarse && s1.calls.length === 1 && c1.files === 1 && c1.isFile && c1.type === 'text/calendar' && c1.title === c1.name
+        && new RegExp('^sattrack-[a-z0-9-]+-pass-' + stampOf(s1.aos) + '\\.ics$').test(c1.name || '') && dls.length === 0,
+        'coarse ' + coarse + ', ' + s1.calls.length + ' share call(s), ' + c1.type + ', ' + dls.length + ' download(s)');
+    chk('...the file is the calendar, with the one event, and the button says it was shared',
+        /^BEGIN:VCALENDAR\r\n/.test(c1.text || '') && ((c1.text || '').match(/BEGIN:VEVENT/g) || []).length === 1
+        && s1.hint === 'Pass 1 shared as a calendar event.', JSON.stringify(s1.hint));
+    await pp.evaluate(() => { window.__share.mode = 'abort'; });
+    const s2 = await press(2);
+    chk('a closed share sheet is a cancel: asked once more, nothing downloaded, and the button says nothing',
+        s2.calls.length === 2 && dls.length === 0 && s2.hint === '', s2.calls.length + ' call(s), ' + dls.length + ' download(s), ' + JSON.stringify(s2.hint));
+    await pp.evaluate(() => { window.__share.can = false; window.__share.mode = 'ok'; });
+    const [dl] = await Promise.all([pp.waitForEvent('download', { timeout: 20000 }).catch(() => null), pp.click('#exp-pass')]);
+    await pp.waitForTimeout(500);
+    const s3 = await pp.evaluate(() => ({ hint: document.getElementById('exp-passhint').textContent, calls: window.__share.calls.length }));
+    chk('a share sheet that will not take a calendar file (Chrome\'s on Android) is not asked to: the file is a download',
+        !!dl && s3.calls === 2 && /^sattrack-[a-z0-9-]+-pass-\d{8}T\d{6}Z\.ics$/.test(dl.suggestedFilename())
+        && s3.hint === 'Pass 1 written as a calendar event: open ' + dl.suggestedFilename() + ' to add it.',
+        (dl ? dl.suggestedFilename() : 'no download') + ', ' + s3.calls + ' share call(s), ' + JSON.stringify(s3.hint));
+    await px.close();
+  }
 
   /* A window-edge pass, which the default spacecraft rarely has. A GEO seen
      from Bangkok is above the mask for the whole window, so both of its ends are

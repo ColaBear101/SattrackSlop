@@ -195,7 +195,7 @@ src/                the Earth console's source: Svelte 5 + TypeScript
     net/                the element sets (the page's own cache API first, then CelesTrak and its
                         mirror, as the old page asked them) and the decay histories (the API,
                         then CelesTrak)
-    export/             the CSV and the calendar
+    export/             the CSV and the calendar, and one pass's calendar on its own
     data/               the downlink table's lookups (the table is data/transmitters.json)
     shims/              the entries scripts/build-shims.mjs bundles for the Node suites
     planner/            the planner, the Professor and the decay model, moved from the old page's
@@ -219,10 +219,13 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                           radar view
       snap.ts             Snap: one picture of what the screen shows, made when the
                           reader presses the button and handed to the share sheet or
-                          to a download
+                          to a download (share.ts, which the one-pass calendar file
+                          uses too)
       arview.ts           the AR view and the radar view: the motion sensors, the rear
                           camera (not in the radar view), and the sky drawn over the
                           picture
+    share.ts            handing a file the page made to the reader: the share sheet
+                        where the browser takes it, a download where it does not
     places.ts           finding the observer: place search, this device, timezones
     observer.ts         where the observer is, and how that is remembered
     gt.ts               the DOM-free half of the test surface, which the gate measures
@@ -2669,6 +2672,24 @@ regression baseline's 72-hour window).
 Both are built in the page and handed over as a Blob, so nothing is sent anywhere and no server is
 needed to make them; the code that writes them is a chunk of its own, fetched at the first press.
 
+**One pass on its own.** Under the selected pass's facts in the rail, *Add this pass to your
+calendar* (`#exp-pass`) writes that pass by itself. It is the same calendar writer, handed the
+analysis with that one pass in it and nothing else changed (a shallow copy, so the analysis on screen
+is not touched), so the file is the whole window's calendar cut down to that pass's event: the same
+summary, description and 10-minute alarm, and the same `UID`, which is the spacecraft's number and
+the AOS instant, so a calendar that takes both files holds the pass once. It is named for the
+spacecraft and the pass's AOS in UTC, `sattrack-knacksat-2-pass-20260914T181233Z.ics`, so two passes
+saved one after the other are two files. On a phone or a tablet (a coarse pointer, the AR view's own
+test) the file goes to the share sheet when the browser says its sheet takes it (`navigator.canShare`
+with the file), so that a calendar app can be picked from it; anywhere else, and where the sheet does
+not take a calendar file, it is a download, as Snap's picture is (`src/lib/share.ts`, the AR view's
+helper moved where both can use it). A closed sheet is a cancel and says nothing; otherwise a line
+beside the button says which pass was written and the file's name, or that it was shared. iOS Safari
+keeps a downloaded `.ics` in Files until it is opened, and Google Calendar for Android imports none,
+which is why a phone is offered the sheet first. An object SGP4 takes below the entry interface is
+refused as the full export refuses it. The button comes with the page; what it runs is the
+export's chunk and a small one of its own, fetched at the first press.
+
 A pass cut by the window edge is flagged in both, because its AOS or LOS is where the analysis
 stopped and the files otherwise present it as a horizon crossing. The CSV's `aos_clipped` and
 `los_clipped` are `true` or `false`, appended after every column that was already there, so each
@@ -3375,7 +3396,8 @@ npm run doppler      # range rate, against a numerical derivative of the range; 
 npm run optical      # shadow cone geometry, brightness, and naked-eye passes; the rail's state
                      # now, in an umbra, in sunlight and in a penumbra (the rebuilt page only)
 npm run site         # moving the observer, and that Bangkok stays the default
-npm run export       # CSV and calendar, parsed back rather than eyeballed
+npm run export       # CSV and calendar, parsed back rather than eyeballed; one pass's calendar
+                     # against the full one, downloaded, and on a phone handed to a share sheet
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run custom       # what the console does with an orbit that is not in the catalogue: zero
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)

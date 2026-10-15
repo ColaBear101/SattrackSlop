@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { app } from '../../state/app.svelte';
   import { doppler } from '../../state/doppler.svelte';
   import { getEngine, getOptics } from '../../state/engine';
@@ -57,16 +58,30 @@
 
   /* This pass alone, to a calendar (CHANGES-FROM-LEGACY.md, L57): the pass selected at the press, of the analysis on screen then. The work
      is a chunk of its own with the export writers (pass-ics.ts), fetched on the first press; one that does not arrive says so, as the full
-     export does. What a press comes to is said beside the button for six seconds. */
+     export does. What a press comes to is said beside the button for six seconds.
+     One press at a time, as the AR view's Snap: a second tap while the chunks arrive or the share sheet is up would ask the browser for a
+     second sheet, which it refuses, and a refused sheet is a download, so the reader would get the sheet and a stray file. The button is
+     disabled until the press is done, and the focus, which a disabled button drops, comes back to it. */
   let said = $state('');
+  let busy = $state(false);
   let sayT: ReturnType<typeof setTimeout> | undefined;
-  async function toCalendar() {
+  async function toCalendar(e: MouseEvent) {
     const A = D, i = app.selPass;
-    if (!A) return;
-    let go: typeof import('./pass-ics')['passToCalendar'] | null = null;
-    try { ({ passToCalendar: go } = await import('./pass-ics')); } catch { /* said below */ }
-    said = go ? await go(A, i) : EXPORT_NOT_LOADED;
-    clearTimeout(sayT); sayT = setTimeout(() => { said = ''; }, 6000);
+    if (!A || busy) return;
+    const btn = e.currentTarget as HTMLButtonElement, held = document.activeElement === btn;
+    busy = true;
+    try {
+      let go: typeof import('./pass-ics')['passToCalendar'] | null = null;
+      try { ({ passToCalendar: go } = await import('./pass-ics')); } catch { /* said below */ }
+      said = go ? await go(A, i) : EXPORT_NOT_LOADED;
+      clearTimeout(sayT); sayT = setTimeout(() => { said = ''; }, 6000);
+    } finally {
+      busy = false;
+      if (held) {
+        await tick();      // the button is enabled again only once Svelte has written busy to it
+        if (btn.isConnected && !btn.disabled && (!document.activeElement || document.activeElement === document.body)) btn.focus();
+      }
+    }
   }
 </script>
 
@@ -78,7 +93,7 @@
 
 {#if pass}
   <div id="passcal" class="passcal">
-    <Button id="exp-pass" size="sm" title={PASS_ICS_TITLE} onclick={toCalendar}>{PASS_ICS}</Button>
+    <Button id="exp-pass" size="sm" title={PASS_ICS_TITLE} disabled={busy} onclick={toCalendar}>{PASS_ICS}</Button>
     <span id="exp-passhint" class="said" role="status">{said}</span>
   </div>
 {/if}

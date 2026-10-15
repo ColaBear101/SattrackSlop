@@ -53,8 +53,11 @@ export function buildExports(c: ExportCtx): Exports {
 
 /** One pass alone, as a calendar of its own (CHANGES-FROM-LEGACY.md, L57): the calendar writer above, handed an analysis that holds that one
  *  pass and nothing else changed (a shallow copy: `c.D` itself is not touched), so the event is the very one the whole window's calendar has
- *  for it, its UID included, and a calendar that imports both files holds it once. The file is named for the spacecraft and the pass's AOS in
- *  UTC, so that two passes saved one after the other are two files. Null for an index the analysis has no pass at. */
+ *  for it, its UID included, and a calendar that imports both files written from the same analysis holds it once. Not across analyses: the
+ *  UID is the AOS in ms, which findPasses bisects to 1 ms inside a bracket of the scan that steps from the window's start, so after a reload or
+ *  a moved window the same pass can be a millisecond apart, under another UID (passes.ts, verbatim, makes it). The file is named for the
+ *  spacecraft and the pass's AOS in UTC, so that two passes saved one after the other are two files. Null for an index the analysis has no
+ *  pass at. */
 export function exportPassICS(c: ExportCtx, i: number): ExportFile | null {
   const p = c.D.passes[i];
   if (!p) return null;

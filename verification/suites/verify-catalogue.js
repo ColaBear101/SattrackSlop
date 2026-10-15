@@ -35,6 +35,7 @@ const path = require('path');
 const { chromium } = H.playwright();
 
 let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
+const NEW = H.targetName() === 'new';   // the one-pass calendar button is the rebuilt page's alone (L57)
 const DAY = 86400e3;
 const BKK = 7 * 3600e3;                         // the field reads Bangkok time
 const W0 = Date.UTC(2026, 8, 14, 0, 0, 0);     // COSMOS 2558 still up; ODIN long gone
@@ -129,16 +130,21 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   page.on('download', onDl);
   await page.evaluate(() => document.getElementById('exp-csv').click());
   await page.evaluate(() => document.getElementById('exp-ics').click());
-  /* the selected pass alone, to a calendar (CHANGES-FROM-LEGACY.md, L57), is refused the same way */
-  await page.evaluate(() => document.getElementById('exp-pass').click());
+  /* the selected pass alone, to a calendar (CHANGES-FROM-LEGACY.md, L57), is refused the same way; the old page had no such button */
+  if (NEW) await page.evaluate(() => document.getElementById('exp-pass').click());
   await page.waitForTimeout(1500);
   page.off('download', onDl);
-  const [hint, hintPass] = await page.evaluate(() => [document.getElementById('exphint').textContent, document.getElementById('exp-passhint').textContent]);
+  const [hint, hintPass] = await page.evaluate(() => {
+    const p = document.getElementById('exp-passhint');
+    return [document.getElementById('exphint').textContent, p ? p.textContent : null];
+  });
   chk('its passes are not exported, as CSV or calendar', !downloaded && /Not exported/.test(hint),
       (downloaded ? 'a file was downloaded; ' : '') + hint);
-  chk('...nor its selected pass alone, which says why in the same words',
-      !downloaded && hintPass === 'Not exported — SGP4 takes COSMOS 2558 below the 120 km entry interface, so this pass will not happen.',
-      (downloaded ? 'a file was downloaded; ' : '') + JSON.stringify(hintPass));
+  if (NEW) {
+    chk('...nor its selected pass alone, which says why in the same words',
+        !downloaded && hintPass === 'Not exported — SGP4 takes COSMOS 2558 below the 120 km entry interface, so this pass will not happen.',
+        (downloaded ? 'a file was downloaded; ' : '') + JSON.stringify(hintPass));
+  } else console.log('  not checked: the selected pass alone, to a calendar, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L57); the old page had none');
 
   /* Into the day it came down. The window still has samples, so it loads, and
      SGP4's error 6 part-way through is the instant it reports the orbit meeting

@@ -2677,14 +2677,21 @@ calendar* (`#exp-pass`) writes that pass by itself. It is the same calendar writ
 analysis with that one pass in it and nothing else changed (a shallow copy, so the analysis on screen
 is not touched), so the file is the whole window's calendar cut down to that pass's event: the same
 summary, description and 10-minute alarm, and the same `UID`, which is the spacecraft's number and
-the AOS instant, so a calendar that takes both files holds the pass once. It is named for the
+the AOS instant in milliseconds, so a calendar that takes both files, written from the same analysis
+on screen, holds the pass once. Written from another analysis it may not: the AOS is narrowed to
+the millisecond by halving one step of a scan that starts at the window's opening, so after a
+reload or with the window moved the same pass can come out a millisecond apart, under another `UID`,
+and a calendar given both files shows it twice (the `UID` is the verbatim writer's). It is named for the
 spacecraft and the pass's AOS in UTC, `sattrack-knacksat-2-pass-20260914T181233Z.ics`, so two passes
 saved one after the other are two files. On a phone or a tablet (a coarse pointer, the AR view's own
 test) the file goes to the share sheet when the browser says its sheet takes it (`navigator.canShare`
 with the file), so that a calendar app can be picked from it; anywhere else, and where the sheet does
 not take a calendar file, it is a download, as Snap's picture is (`src/lib/share.ts`, the AR view's
 helper moved where both can use it). A closed sheet is a cancel and says nothing; otherwise a line
-beside the button says which pass was written and the file's name, or that it was shared. iOS Safari
+beside the button says which pass was written and the file's name, or that it was shared. The
+button takes one press at a time, as Snap does: it is disabled until the press is done (the focus
+comes back to it), because a second share sheet asked for while one is up is refused, and the
+refused file would be downloaded beside the sheet. iOS Safari
 keeps a downloaded `.ics` in Files until it is opened, and Google Calendar for Android imports none,
 which is why a phone is offered the sheet first. An object SGP4 takes below the entry interface is
 refused as the full export refuses it. The button comes with the page; what it runs is the
@@ -3398,6 +3405,7 @@ npm run optical      # shadow cone geometry, brightness, and naked-eye passes; t
 npm run site         # moving the observer, and that Bangkok stays the default
 npm run export       # CSV and calendar, parsed back rather than eyeballed; one pass's calendar
                      # against the full one, downloaded, and on a phone handed to a share sheet
+                     # one press at a time (the one-pass part on the rebuilt page only)
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run custom       # what the console does with an orbit that is not in the catalogue: zero
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)

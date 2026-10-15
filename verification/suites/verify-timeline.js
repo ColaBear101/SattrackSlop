@@ -28,6 +28,15 @@
  * playing at real time, each tick lays the kept picture down and draws only the
  * dot, the plot itself being drawn again only as the flown stretch grows; the
  * report's copy is not drawn while it is out of view, and is when it comes in.
+ *
+ * And the pass list by the observer's day (CHANGES-FROM-LEGACY.md L55, the
+ * rebuilt page's alone): over a week, every pass sits under a header naming the
+ * site's date of its AOS, with the Sun's times there that day, checked against
+ * the NOAA Solar Calculator's equations (verification/reference/noaa-sun.js); the
+ * header stays at the top of the rail (and of a phone's sheet) over its day, a
+ * row given the focus under it is scrolled out from under it, and with the clock
+ * inside a pass the rows before it are grey and it is ringed, the line under the
+ * list says so at the clock's instant, sim time, and no row's words change.
  */
 'use strict';
 const H = require('../lib/harness');
@@ -347,6 +356,159 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
       await page.evaluate(() => window.scrollTo(0, 0));
     }
   } else console.log('\n  not checked: the live sky plot is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L54); the old page had none');
+
+  /* ---- the pass list by the observer's day (CHANGES-FROM-LEGACY.md, L55) ----------------------------------------------------
+     A week's passes, grouped by the site's calendar date of their AOS under a header that names the date and the Sun's times
+     there that day. The dates are worked out here from each pass's AOS and the site's offset; the Sun's times are checked
+     against a different Sun and a different method, the NOAA Solar Calculator's equations (verification/reference/noaa-sun.js),
+     to the minute either way. The header stays at the top of the rail while its day scrolls under it, and a row reached with
+     Tab is not left under it. Rows flown before the clock's instant are grey and the one in view at it ringed, and the line
+     under the list says so, with "sim time" when the clock is not now; nothing a row says changes. */
+  if (NEW) {
+    console.log('\n  the pass list by the observer\'s day');
+    const noaa = require('../reference/noaa-sun');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => { const b = document.getElementById('tpplay'); if (b.getAttribute('aria-label') === 'Pause') b.click(); });
+    await H.clickWindow(page, '[data-h="168"]');
+    await page.waitForFunction(() => !!window.__gt.D && window.__gt.D.hours === 168, null, { timeout: 30000 });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelectorAll('#passlist .dh b').length > 0, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const L = await page.evaluate(() => {
+      const D = window.__gt.D;
+      const rows = el => [...el.querySelectorAll('.passrow')].map(r => ({ i: +r.dataset.i, label: r.getAttribute('aria-label'), title: r.getAttribute('title'), text: r.textContent }));
+      return {
+        site: { lat: window.__gt.OBS.lat, lon: window.__gt.OBS.lon },
+        aos: D.passes.map(p => ({ ms: p.t0ms, tz: window.__gt.tzAt(p.t0ms) })),
+        groups: [...document.querySelectorAll('#passlist > *')].map(g => ({
+          tag: g.tagName, cls: g.className, b: (g.querySelector('.dh b') || {}).textContent || null,
+          head: g.querySelector('.dh') ? g.querySelector('.dh').textContent : null, rows: rows(g)
+        })),
+        stray: document.querySelectorAll('#passlist .passrow').length - document.querySelectorAll('#passlist > .day > .passrow').length,
+        none: !!document.querySelector('#passlist > p'),
+        tabbed: [...document.querySelectorAll('#passlist .dh')].filter(h => h.matches('button, a, input, [tabindex]')).length
+      };
+    });
+    const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const local = a => new Date(a.ms + a.tz * 3600000);
+    const name = d => WD[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MO[d.getUTCMonth()];
+    const ymdOf = d => d.toISOString().slice(0, 10);
+    const order = L.groups.flatMap(g => g.rows.map(r => r.i));
+    const wrongDay = [];
+    L.groups.forEach(g => g.rows.forEach(r => { const d = local(L.aos[r.i]); if (name(d) !== g.b) wrongDay.push(r.i + ': ' + name(d) + ' under ' + g.b); }));
+    const dates = L.groups.map(g => ymdOf(local(L.aos[g.rows[0].i])));
+    console.log('   ' + L.aos.length + ' passes in ' + L.groups.length + ' of the site\'s days: ' + L.groups.map(g => g.b + ' (' + g.rows.length + ')').join(', '));
+    chk('a week\'s passes are grouped by the site\'s calendar date of their AOS, one header a day, in order, each pass once',
+        L.groups.length >= 5 && L.groups.every(g => g.tag === 'DIV' && /\bday\b/.test(g.cls) && g.rows.length > 0) && wrongDay.length === 0
+          && JSON.stringify(order) === JSON.stringify(L.aos.map((_, i) => i)) && new Set(dates).size === dates.length && L.stray === 0,
+        wrongDay[0] || L.groups.length + ' groups, rows in order');
+    chk('...each header says it is the local date, not the UTC date the rows lead with, and is no <p> of #passlist and no control',
+        L.groups.every(g => / local date, UTC[+−]\d/.test(g.head)) && !L.none && L.tabbed === 0, L.groups[0].head);
+    /* the Sun's times in each header, against NOAA's for that date at the site, to the minute (each is rounded to one) */
+    const SUN = [['Dark until', true, noaa.CIVIL_ZENITH], ['Sunrise', true, noaa.RISE_SET_ZENITH], ['Sunset', false, noaa.RISE_SET_ZENITH], ['Dark from', false, noaa.CIVIL_ZENITH]];
+    const sunBad = [];
+    let sunN = 0;
+    L.groups.forEach(g => {
+      const d0 = local(L.aos[g.rows[0].i]), tz = L.aos[g.rows[0].i].tz, line = g.head.replace(/\u00a0/g, ' ');
+      for (const [w, up, z] of SUN) {
+        const ms = noaa.event(up, d0.getUTCFullYear(), d0.getUTCMonth() + 1, d0.getUTCDate(), L.site.lat, L.site.lon, z);
+        const m = new RegExp(w + ' (\\d\\d):(\\d\\d)').exec(line);
+        if (ms === null || !m) { if ((ms === null) !== !m) sunBad.push(g.b + ' ' + w + ': ' + (m ? m[0] : 'missing') + ' against ' + ms); continue; }
+        const t = new Date(ms + tz * 3600000), want = t.getUTCHours() * 60 + t.getUTCMinutes() + t.getUTCSeconds() / 60;
+        sunN++;
+        if (Math.abs(+m[1] * 60 + +m[2] - want) > 1) sunBad.push(g.b + ' ' + m[0] + ' against NOAA ' + t.toISOString().slice(11, 19));
+      }
+    });
+    chk('...and the Sun\'s times that day (dark until, sunrise, sunset, dark from) are NOAA\'s for the site, to the minute',
+        sunN === 4 * L.groups.length && sunBad.length === 0, sunBad[0] || sunN + ' times; ' + L.groups[0].head.replace(/^.*UTC[+−]\d+(\.\d)?/, ''));
+
+    /* sticky: a day's second row scrolled to the top of the rail, and its header is there over it, opaque */
+    const S = await page.evaluate(() => {
+      const g = [...document.querySelectorAll('#passlist > .day')].find(x => x.querySelectorAll('.passrow').length >= 3);
+      if (!g) return null;
+      let sc = g.parentElement;
+      while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+      const box = () => (sc ? sc.getBoundingClientRect() : { top: 0 });
+      const r2 = g.querySelectorAll('.passrow')[1], dh = g.querySelector('.dh');
+      const by = dy => { if (sc) sc.scrollTop += dy; else window.scrollBy(0, dy); };
+      by(r2.getBoundingClientRect().top - box().top - 4);
+      const h = dh.getBoundingClientRect(), top = sc ? box().top + sc.clientTop : 0, hit = document.elementFromPoint(h.left + 4, h.top + h.height / 2);
+      const out = { scroller: sc ? sc.tagName.toLowerCase() + '.' + sc.className.split(' ')[0] : 'page', at: +(h.top - top).toFixed(1), rowAt: +(r2.getBoundingClientRect().top - top).toFixed(1),
+        bg: getComputedStyle(dh).backgroundColor, onTop: !!hit && dh.contains(hit), h: Math.round(h.height) };
+      /* the third row of that day, inside the rail's visible part but under the stuck header (its top 10 px below the rail's), is
+         given the focus, as Shift+Tab from the row after it would: it must be scrolled out from under the header (the rows' scroll
+         margin), since the browser leaves alone what it thinks is already in view */
+      const r3 = g.querySelectorAll('.passrow')[2];
+      by(r3.getBoundingClientRect().top - box().top - 10);
+      out.focus = { under: +(r3.getBoundingClientRect().top - top).toFixed(1) };
+      r3.focus();
+      const f = r3.getBoundingClientRect(), hh = dh.getBoundingClientRect();
+      const fHit = document.elementFromPoint(f.left + f.width / 2, f.top + f.height / 2);
+      Object.assign(out.focus, { focused: document.activeElement === r3, rowTop: +(f.top - top).toFixed(1), headBottom: +(hh.bottom - top).toFixed(1),
+        clear: out.focus.under < out.h && f.top >= hh.bottom - 1 && !!fHit && r3.contains(fHit) });
+      r3.blur();
+      if (sc) sc.scrollTop = 0;
+      return out;
+    });
+    chk('scrolled under its day, the header stays at the top of the rail, opaque, over the rows',
+        !!S && Math.abs(S.at) <= 1 && S.rowAt < S.h && S.onTop && /^rgb\(/.test(S.bg), S ? JSON.stringify({ scroller: S.scroller, at: S.at, rowAt: S.rowAt, h: S.h, bg: S.bg }) : 'no day of 3 passes');
+    chk('...and a row of that day under the stuck header, given the focus as Shift+Tab would give it, is scrolled out from under it',
+        !!S && S.focus.focused && S.focus.clear, S ? JSON.stringify(S.focus) : '');
+
+    /* the clock inside a pass in the middle of the week: the flown rows grey, that one ringed, the rest as they were */
+    const before = L.groups.flatMap(g => g.rows);
+    const k = Math.floor(L.aos.length / 2);
+    await page.evaluate(k => { const p = window.__gt.D.passes[k]; window.__gt.seek((p.t0ms + p.t1ms) / 2); }, k);
+    await page.waitForTimeout(300);
+    const C = await page.evaluate(() => {
+      const css = (e, p) => getComputedStyle(e)[p];
+      const root = getComputedStyle(document.documentElement);
+      const rgb = h => { const x = document.createElement('i'); x.style.color = h; document.body.appendChild(x); const c = getComputedStyle(x).color; x.remove(); return c; };
+      const rows = [...document.querySelectorAll('#passlist .passrow')];
+      return {
+        cls: rows.map(r => (r.classList.contains('past') ? 'past' : '') + (r.classList.contains('live') ? 'live' : '')),
+        after: rows.map(r => ({ i: +r.dataset.i, label: r.getAttribute('aria-label'), title: r.getAttribute('title'), text: r.textContent })),
+        tPast: css(rows[0].querySelector('.t'), 'color'), tNext: css(rows[rows.length - 1].querySelector('.t'), 'color'),
+        ring: rows.filter(r => r.classList.contains('live')).map(r => css(r.querySelector('.n'), 'borderTopColor'))[0] || null,
+        muted: rgb(root.getPropertyValue('--muted')), ink: rgb(root.getPropertyValue('--ink')), contact: rgb(root.getPropertyValue('--contact')),
+        note: (document.getElementById('passflown') || {}).textContent || null
+      };
+    });
+    const want = C.cls.map((_, i) => (i < k ? 'past' : i === k ? 'live' : ''));
+    chk('with the clock stopped inside pass ' + (k + 1) + ', the ' + k + ' rows before it are grey (the muted ink), it is ringed (the contact colour), the rest are as they were',
+        JSON.stringify(C.cls) === JSON.stringify(want) && C.tPast === C.muted && C.tNext === C.ink && C.ring === C.contact,
+        'past ' + C.cls.filter(c => c === 'past').length + ', live at ' + C.cls.indexOf('live') + '; grey ' + C.tPast + ' (muted ' + C.muted + '), next ' + C.tNext + ', ring ' + C.ring);
+    chk('...and the line under the list says what they mean, at the clock\'s instant, which is sim time, not now',
+        C.note === 'Grey: flown before the clock\'s instant. Ringed: in view at the clock\'s instant. The clock is on sim time, not now.', C.note);
+    chk('...and nothing a row says changed: its index, label, title and text are as before',
+        JSON.stringify(C.after) === JSON.stringify(before), before.length + ' rows');
+    await page.evaluate(t => window.__gt.seek(t), L.aos[0].ms - 60000);
+    await page.waitForTimeout(300);
+    const none = await page.evaluate(() => ({ marked: document.querySelectorAll('#passlist .passrow.past, #passlist .passrow.live').length, note: !!document.getElementById('passflown') }));
+    chk('before the first pass no row is grey or ringed, and the line is gone', none.marked === 0 && !none.note, JSON.stringify(none));
+
+    /* on a phone the rail is a sheet whose body scrolls inside its own padding: a stuck header is at the sheet's edge, with no
+       row showing above it */
+    const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const pp = await ph.newPage();
+    pp.on('pageerror', e => errs.push('phone: ' + String(e)));
+    await pp.goto(PAGE + '?span=168', { waitUntil: 'load' });
+    await pp.waitForFunction(() => !!window.__gt && !!window.__gt.D && document.querySelectorAll('#passlist .dh b').length > 0, null, { timeout: 30000 });
+    await pp.click('.rail .peek');
+    await pp.waitForTimeout(400);
+    const P2 = await pp.evaluate(() => {
+      const body = document.getElementById('answer-body'), g = [...document.querySelectorAll('#passlist > .day')].find(x => x.querySelectorAll('.passrow').length >= 2);
+      if (!g) return null;
+      const r2 = g.querySelectorAll('.passrow')[1], dh = g.querySelector('.dh');
+      body.scrollTop += r2.getBoundingClientRect().top - body.getBoundingClientRect().top + 4;
+      const top = body.getBoundingClientRect().top + body.clientTop, h = dh.getBoundingClientRect();
+      const edge = document.elementFromPoint(h.left + h.width / 2, top + 1);
+      return { scrolls: getComputedStyle(body).overflowY, pad: getComputedStyle(body).paddingTop, at: +(h.top - top).toFixed(1), edge: !!edge && dh.contains(edge) };
+    });
+    chk('on a phone\'s sheet the stuck header is at the sheet\'s edge, inside its padding, and no row shows above it',
+        !!P2 && P2.scrolls === 'auto' && Math.abs(P2.at) <= 1 && P2.edge, JSON.stringify(P2));
+    await ph.close();
+  } else console.log('\n  not checked: the pass list\'s day headers are the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L55); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.slice(0, 3).join(' | ') : 'none'));
   /* The 3D scene is not in the rebuilt app until milestone M6; its trail switch is checked then, unchanged. Said out loud

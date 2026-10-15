@@ -504,6 +504,34 @@ beyond the window for the real next pass. It used to count down to the window's 
 the ground track repeated every window, which in the case that found it was 66.6 minutes late and
 promised 74.2° for a 19.7° pass.
 
+In the rail the pass list is grouped by the observer's own calendar day of each pass's AOS, under
+a header that stays at the top of the rail (or of a phone's sheet) while that day's passes scroll
+under it. The rows still lead with the UTC date, so the header says it is the local date and names
+the offset: "Thu 15 Oct local date, UTC+7". Under it is the Sun at the site that day, "Dark until
+05:47 · Sunrise 06:09 · Sunset 17:59 · Dark from 18:20" for Bangkok in mid-October. Dark means the
+Sun 6° or more below the horizon, the end of civil twilight, which is where the naked-eye test below
+calls the sky dark: a pass outside those hours is radio only whatever the spacecraft does, which is
+most of any list, and the header shows why at a glance. Near the poles it says "Sun up all day",
+"Sun down all day", "Dark all day" or "Never dark" rather than leave a gap. The times come from the
+page's own Sun, the almanac model the shadow test uses: its elevation is read every 10 minutes and
+each crossing of 0.833° below the horizon (sunrise and sunset, which allow for refraction and the
+Sun's half-width) or of 6° below is bisected to a second. The Sun's highest and lowest points of the
+day are found as well, so a Sun that dips through the horizon and back between two readings, as it
+does at Svalbard in the days the midnight sun ends, is not missed. They are shown to the minute, for
+a level horizon: against the NOAA Solar Calculator's equations they agree to within 11 s at Bangkok
+and at Svalbard (78° N) on every date tested (`tests/lib/sun-times.test.ts` holds a table of NOAA's
+values, and `verify-timeline.js` checks each day of a week against
+`verification/reference/noaa-sun.js`, the same equations). The code and its words are a chunk of
+their own, 1.5 KB gzipped, fetched once there are passes.
+
+With the clock inside the window, the rows of passes already flown at the clock's instant are grey
+and the pass in view at it has its number ringed, and a line under the list says what they mean.
+The clock is the transport's, which can be scrubbed, sped up or paused, so when it is more than 5 s
+from the wall clock (the countdown's rule) the line says the grey rows were "flown before the
+clock's instant" and "The clock is on sim time, not now." A row given the focus under a day's
+header is scrolled out from under it. Nothing in a row's own text, label or title changes, so the
+old page's words are still compared as they were.
+
 The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table
 in the report: a polar plot, north up, the zenith at the centre and the horizon at the rim, with the
 arc from AOS to LOS and a dot at its highest point. While the clock is inside that pass the plot
@@ -3321,7 +3349,9 @@ npm run catalogue    # objects that have come down: refused, or flagged and kept
 npm run custom       # what the console does with an orbit that is not in the catalogue: zero
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)
 npm run timeline     # the window rolling forward past its end, and the next pass beyond it; the
-                     # sky plot's dot and flown stretch, read off its pixels (the rebuilt page only)
+                     # sky plot's dot and flown stretch, read off its pixels; the pass list's day
+                     # headers against NOAA's Sun, and its grey and ringed rows (the last two the
+                     # rebuilt page only)
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history

@@ -56,6 +56,27 @@ export function skyCaption(p: Pass, index: number, count: number): Inline {
     { br: true }, abbr(ABBR.AOS), ' ' + ymd(p.aos) + ' ' + hms(p.aos) + 'Z' + (p.clipA ? ' *' : '')];
 }
 
+/* The pass list by the observer's own calendar day (CHANGES-FROM-LEGACY.md, L55): new in the rebuild. The rows lead with the
+   UTC date; the day a group is headed by is the site's, and says so. */
+
+/** The observer's calendar day an instant falls in: its date (2026-10-15) and the instants of its two midnights (a day with a
+ *  summer-time change is 23 or 25 hours long). */
+export function localDay(ms: number, c: SiteClock): { key: string; t0: number; t1: number } {
+  const at = (w: number) => w - c.offsetAt(w - c.offsetAt(w) * 3600000) * 3600000;    // the instant the wall clock reads w
+  const w = Math.floor((ms + c.offsetAt(ms) * 3600000) / 86400000) * 86400000;
+  return { key: ymd(new Date(w)), t0: at(w), t1: at(w + 86400000) };
+}
+
+/** The passes grouped by the observer's day of their AOS, in order: the day, and the indices of its passes. */
+export function passDays(P: readonly Pass[], c: SiteClock): { key: string; t0: number; t1: number; i: number[] }[] {
+  const out: { key: string; t0: number; t1: number; i: number[] }[] = [];
+  P.forEach((p, i) => {
+    const d = out[out.length - 1];
+    if (d && p.t0ms < d.t1) d.i.push(i); else out.push({ ...localDay(p.t0ms, c), i: [i] });
+  });
+  return out;
+}
+
 /** The pass list's row text, as the page built it: the UTC time with its mark, the local time and duration under it. */
 export function passRowText(p: Pass, c: SiteClock): { utc: string; sub: string; peak: string; label: string } {
   const say = clipSay(p);

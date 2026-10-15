@@ -86,6 +86,8 @@
     box-shadow: 0 -10px 28px -14px rgba(0, 0, 0, .45); padding-bottom: env(safe-area-inset-bottom);
   }
   .rail.sheet .body { max-height: calc(80dvh - 64px); overflow: auto; overscroll-behavior: contain; padding: var(--space-4); border-top: 1px solid var(--rule); }
+  /* a sticky header in here (the pass list's days) sticks inside this padding: this takes it up to the sheet's edge, so that nothing scrolls past above it */
+  .rail.sheet .body { --sticky-top: calc(-1 * var(--space-4)); }
 
   .peek {
     position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px;

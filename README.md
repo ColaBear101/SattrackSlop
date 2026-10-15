@@ -367,8 +367,15 @@ epoch 2026-09-12 07:29Z, embedded").
 `verification/suites/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
 
 The picker is the page's title, at the top left: press the name and it opens a search over **2,158
-spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. Everything on the page
-recomputes on selection.
+spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. A name or number that
+starts with what was typed comes first, then one that merely contains it, as on the old page. After
+them come the ones found word by word: each word typed, with everything but letters and digits taken
+out, is looked for in the name taken apart the same way, so `iss zarya` finds ISS (ZARYA), `ao91`
+AO-91 and `knacksat 2` KNACKSAT-2; a word of digits may also be the whole NORAD number without its
+leading zeros, so `007530` and `oscar 7530` find OSCAR 7 (07530), and `landsat 9` does not list
+LANDSAT 8 for the 9 in its 39084. An AMSAT designator that the catalogue's name does not carry is
+still not found: SO-50 is listed as SAUDISAT 1C and FO-29 as JAS 2. Your own orbits are found by
+name, never by their placeholder number. Everything on the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
 
@@ -2186,11 +2193,13 @@ behind a tested first one, survive as listed (25 to 35 minutes; not in `npm run 
 that page's text, so it cannot be pointed at a bundle, and runs only with the old page checked out
 as `legacy/` (`git worktree add legacy legacy-earth-console`). For the rebuilt page there is
 `npm run mutate` (`verification/tools/mutate-new.js`; 36 minutes at one job, about 20 at two): each of the
-85 mutants in `verification/fixtures/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
+86 mutants in `verification/fixtures/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
 scratch copy that is built and run through `verify-custom.js` on the groups meant to catch it, and 3
-of them are equivalents that must survive. Its first full run caught 81 of the other 82 and let one
-through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
-either build; group 13 has the check now. `--list` checks that every edit's anchor still matches
+of them are equivalents that must survive. Its first full run, of the first 85, caught 81 of the other 82
+and let one through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
+either build; group 13 has the check now. The 86th, `rank-words-number`, came with the picker's search by
+the words of a query: it lets that search find an orbit of the reader's own by its placeholder number,
+and group 4's check that `O0001` lists nothing catches it. `--list` checks that every edit's anchor still matches
 exactly once. `verification/fixtures/behaviours-custom.json` maps each of the 79 old mutants, the 3
 equivalents and the 24 groups to the check, or the Vitest test, that guards the same behaviour here,
 and `node verification/tools/check-behaviours-custom.js` keeps that map honest.
@@ -3301,6 +3310,9 @@ doing it by hand would change the catalogue count the regression gate compares.
 `verification/suites/verify-catalogue.js` drives both SGP4 cases through the picker, the window and span
 buttons, the transport and the export buttons, in a fixed window — which objects are decayed
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
+On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
+reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
+planner.
 The default's fallback is not in the suite: exercising it needs a doctored catalogue.
 
 #### Running it

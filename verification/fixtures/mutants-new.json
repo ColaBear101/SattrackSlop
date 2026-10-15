@@ -264,6 +264,16 @@
       ]
     },
     {
+      "id": "rank-words-number",
+      "intent": "The picker's last tier, the words of a query (CHANGES-FROM-LEGACY.md, L58), finds a custom orbit by its placeholder number as well as by its name.",
+      "file": "lib/catalogue/rank.ts",
+      "find": "fits(m.name)) out.push(cat.length + k);",
+      "replace": "fits(m.name, String((m as { satnum?: string }).satnum).toLowerCase())) out.push(cat.length + k);",
+      "groups": [
+        4
+      ]
+    },
+    {
       "id": "m60",
       "intent": "choose() loads the catalogue entry at the index: a custom row of the picker loads nothing.",
       "file": "components/shell/Picker.svelte",

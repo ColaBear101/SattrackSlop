@@ -27,6 +27,10 @@
  * 2558, whose set SGP4 last propagates at 11:39:50 on 2026-09-15. A rebuild
  * that drops them has to choose others, the same way.
  *
+ * Last, on the rebuilt page, the picker's search of the catalogue by the
+ * words of a query (CHANGES-FROM-LEGACY.md, L58): ISS (ZARYA), AO-91 and
+ * OSCAR 7 found from what people type for them.
+ *
  *   node verification/suites/verify-catalogue.js          (needs playwright)
  */
 'use strict';
@@ -208,6 +212,37 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   chk('a spacecraft in orbit carries no re-entry flag', s.shown === 'KNACKSAT-2'
       && s.field === null && s.reentry === '' && s.note === '',
       'lowest point well above 120 km; note ' + (s.reentry ? 'shown' : 'hidden'));
+
+  // ---- the picker's last tier: the words of a query ------------------------
+  /* After the old page's four tiers (starts, then contains), the rebuilt picker matches what they missed word by word, in the name with
+     everything but letters and digits taken out, or a word of digits as the whole catalogue number without its leading zeros
+     (CHANGES-FROM-LEGACY.md, L58). The old page found none of these. */
+  if (NEW) {
+    const rows = async q => {
+      await H.typeInPicker(page, q);
+      await page.waitForTimeout(250);
+      return page.evaluate(() => [...document.querySelectorAll('#satlist li[data-idx]')].map(li => li.querySelector('.nm').textContent.trim()));
+    };
+    let r = await rows('iss zarya');
+    chk('the picker finds ISS (ZARYA) from "iss zarya", the words without the brackets', r.join(' | ') === 'ISS (ZARYA)', JSON.stringify(r));
+    r = await rows('ao91');
+    chk('...AO-91 from "ao91"', r.join(' | ') === 'AO-91', JSON.stringify(r));
+    r = await rows('007530');
+    chk('...OSCAR 7 from its number with more leading zeros than the catalogue gives it (007530 for 07530)', r.join(' | ') === 'OSCAR 7', JSON.stringify(r));
+    r = await rows('landsat 9');
+    chk('...and a word of digits only as the whole number: "landsat 9" lists LANDSAT 9 alone, not LANDSAT 8, whose 39084 has a 9 in it',
+        r.join(' | ') === 'LANDSAT 9', JSON.stringify(r));
+    r = await rows('zzqq nothing');
+    const none = await H.pickerNotes(page);
+    chk('...while a query no word of which is in any name still lists nothing, and says so', r.length === 0 && none[0] === 'Nothing in the catalogue matches that.',
+        JSON.stringify({ rows: r, notes: none }));
+    await H.closePicker(page);
+    await pick('oscar 7530');
+    s = await state();
+    const planner = await page.evaluate(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; });
+    chk('Enter on a query only its words match picks the first row, as on any other (oscar 7530: OSCAR 7), and the planner stays shut',
+        s.shown === 'OSCAR 7' && s.masthead === 'OSCAR 7' && !planner, s.shown + (planner ? ', planner open' : ''));
+  } else console.log('  not checked: the picker\'s last tier, the words of a query, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L58); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

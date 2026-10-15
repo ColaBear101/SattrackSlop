@@ -28,7 +28,8 @@ export const FORGET_KEYS = [
   'obs-site', 'obs-recent',                                // lib/observer.ts: the saved site and the recent places (the old page's keys)
   'gt.prefs', 'gt.surface',                                // state/prefs.svelte.ts (the theme and the tab), the globe's surface
   'gt.custom', 'gt.custom.bak',                            // state/custom.svelte.ts: the reader's orbits, and a record this version could not read
-  'gt.arlens', 'gt.araim', 'gt.arradar'                    // lib/ar/arview.ts: the AR view's lens, aim and radar
+  'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
+  'gt.passfilter'                                          // state/passfilter.svelte.ts: the pass list's filter (L56)
 ] as const;
 
 /** The page's namespaces: a key that starts with one of these is the page's. */

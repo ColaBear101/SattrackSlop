@@ -39,6 +39,14 @@
  * list says so at the clock's instant, sim time, each such row is described so to
  * a screen reader, and no row's words change; running at real time the line says
  * "already flown", and paused there it says sim time at once.
+ *
+ * And the pass list's filter (CHANGES-FROM-LEGACY.md L56, the rebuilt page's
+ * alone): a visit that has not touched it stores nothing; with a lowest peak, the
+ * naked eye or a span of the site's hours, the rows are exactly the passes kept,
+ * each with its own index as data-i and the words it had, a press on one selects
+ * that pass, and nothing outside the list moves; a hidden selected pass is said;
+ * the choice comes back after a reload, and "Show every pass" removes it; on a
+ * phone, Escape in its panel shuts the panel and leaves the answer sheet open.
  */
 'use strict';
 const H = require('../lib/harness');
@@ -562,6 +570,153 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
         !!P2 && P2.scrolls === 'auto' && Math.abs(P2.at) <= 1 && P2.edge, JSON.stringify(P2));
     await ph.close();
   } else console.log('\n  not checked: the pass list\'s day headers are the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L55); the old page had none');
+
+  /* ---- the pass list's filter (CHANGES-FROM-LEGACY.md, L56) ------------------------------------------------------------------
+     A filter of the list only. In a page of its own, with storage of its own: the ISS's first week from London in the assignment
+     snapshot (37 passes, 14 of them naked-eye visible). Nothing is stored until the filter is touched. With it on, the rows are
+     exactly the passes it keeps, worked out here from the analysis itself (the culmination, the optics' verdict, the AOS on the
+     site's clock), each row with its own index as data-i and the words it had, and a press on a row selects that pass, as the
+     AR view's suite presses rows by data-i (verify-ar.js); the minutes in view, the count, the countdown, the transport's marks
+     and the report's table do not move. The selected pass hidden is said; the choice is there again after a reload; "Show every
+     pass" stores nothing again; on a phone, Escape in the panel shuts the panel alone. */
+  if (NEW) {
+    console.log('\n  the pass list\'s filter');
+    const fx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const fp = await fx.newPage();
+    fp.on('pageerror', e => errs.push('filter: ' + String(e)));
+    await fp.route('**://celestrak.org/**', r => r.abort());
+    await fp.route('**://tle.ivanstanojevic.me/**', r => r.abort());
+    await fp.route('**gibs.earthdata.nasa.gov/**', r => r.abort());
+    await fp.goto(PAGE + (PAGE.includes('?') ? '&' : '?') + 'tle=embedded&sat=25544&span=168&site=51.5000,-0.1200', { waitUntil: 'load' });
+    const ready = () => fp.waitForFunction(() => !!window.__gt && !!window.__gt.D && window.__gt.D.hours === 168 && !!document.getElementById('passfilterbtn'), null, { timeout: 30000 });
+    const pause = () => fp.evaluate(() => { const b = document.getElementById('tpplay'); if (b.getAttribute('aria-label') === 'Pause') b.click(); });
+    await ready();
+    await pause();
+    const read = () => fp.evaluate(() => ({
+      rows: [...document.querySelectorAll('#passlist .passrow')].map(r => ({ i: +r.dataset.i, n: r.querySelector('.n').textContent, label: r.getAttribute('aria-label'), title: r.getAttribute('title'), text: r.textContent })),
+      cur: [...document.querySelectorAll('#passlist .passrow[aria-current="true"]')].map(r => +r.dataset.i),
+      say: (document.getElementById('passfiltersay') || {}).textContent || null,
+      hid: (document.getElementById('passfilterhid') || {}).textContent || null,
+      btn: document.getElementById('passfilterbtn').textContent.trim(),
+      stored: localStorage.getItem('gt.passfilter'),
+      fixed: { big: document.getElementById('totalbig').textContent, exact: document.getElementById('totalexact').textContent,
+               cd: document.getElementById('cdlabel').textContent + ' | ' + document.getElementById('cdwhen').textContent,
+               marks: document.querySelectorAll('#tppasses > *').length, table: document.querySelectorAll('#passbody tr[data-i]').length, none: !!document.querySelector('#passlist > p') }
+    }));
+    /* what each test keeps, from the analysis: the AOS's minute of the site's day at the offset the page gives that instant */
+    const want = await fp.evaluate(() => {
+      const D = window.__gt.D, H = 3600000, idx = f => D.passes.map((p, i) => (f(p) ? i : -1)).filter(i => i >= 0);
+      const min = ms => { const m = Math.floor((ms + window.__gt.tzAt(ms) * H) / 60000) % 1440; return m < 0 ? m + 1440 : m; };
+      return { n: D.passes.length, peak30: idx(p => p.maxEl >= 30), eye: idx(p => (window.__gt.passOptical(D.track, p) || {}).eye === 'yes'),
+               night: idx(p => { const m = min(p.t0ms); return m >= 20 * 60 || m < 4 * 60; }), maxAt: D.passes.map(p => p.maxAt.getTime()) };
+    });
+    const ids = R => JSON.stringify(R.rows.map(r => r.i));
+    const R0 = await read();
+    const before = new Map(R0.rows.map(r => [r.i, r]));
+    /* a row shown says what it said with the filter off: its number, label, title and text */
+    const same = R => R.rows.every(r => { const o = before.get(r.i); return !!o && o.n === r.n && o.label === r.label && o.title === r.title && o.text === r.text; });
+    console.log('   ' + want.n + ' passes; 30° or more: ' + want.peak30.length + '; naked-eye visible: ' + want.eye.length + '; rising 20:00 to 04:00 site time: ' + want.night.length);
+    chk('a visit that has not touched the filter stores nothing, lists every pass and says nothing of a filter',
+        R0.stored === null && R0.btn === 'Filter' && !R0.say && !R0.hid && ids(R0) === JSON.stringify([...Array(want.n).keys()]),
+        JSON.stringify({ stored: R0.stored, btn: R0.btn, rows: R0.rows.length }));
+
+    await fp.click('#passfilterbtn');
+    await fp.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+    await fp.click('#passfilter [data-peak="30"]');
+    await fp.waitForTimeout(200);
+    const R1 = await read();
+    chk('peaking at 30° or more: the rows are exactly those passes, each with its own index as data-i and the words it had',
+        ids(R1) === JSON.stringify(want.peak30) && want.peak30.length > 1 && want.peak30.length < want.n && same(R1), ids(R1));
+    chk('...the line under the button says how many and by what, the button says the filter is on, and the choice is stored',
+        R1.say === 'Showing ' + want.peak30.length + ' of ' + want.n + ' passes: peaking at 30° or more.' && R1.btn === 'Filter · on' && !!R1.stored && JSON.parse(R1.stored).minPeak === 30,
+        JSON.stringify({ say: R1.say, btn: R1.btn, stored: R1.stored }));
+    chk('...and nothing else moved: the minutes in view, the count of passes, the countdown, the transport\'s marks and the report\'s table',
+        JSON.stringify(R1.fixed) === JSON.stringify(R0.fixed) && R0.fixed.marks === want.n && R0.fixed.table === want.n && !R0.fixed.none, JSON.stringify(R1.fixed));
+
+    /* a row pressed is its own pass, whatever its place in the list (shut the panel first: it lies over the rows) */
+    await fp.keyboard.press('Escape');
+    await fp.waitForSelector('#passfilter', { state: 'detached', timeout: 5000 });
+    const k = want.peak30[1];
+    await fp.click('#passlist .passrow[data-i="' + k + '"]');
+    await fp.waitForTimeout(300);
+    const S = await fp.evaluate(() => ({ facts: document.querySelector('#skyfacts .row dd').textContent.trim(), clock: document.getElementById('tpclock').textContent.trim() }));
+    const S1 = await read();
+    const clockMs = Date.parse(S.clock.replace(' ', 'T').replace(/Z?$/, 'Z'));
+    chk('pressed, the row of pass ' + (k + 1) + ' (the second shown) selects pass ' + (k + 1) + ': it is the row marked, the facts say "' + (k + 1) + ' of ' + want.n + '", the clock is at its culmination',
+        JSON.stringify(S1.cur) === JSON.stringify([k]) && S.facts === (k + 1) + ' of ' + want.n && Math.abs(clockMs - Math.floor(want.maxAt[k] / 1000) * 1000) < 1000 && !S1.hid,
+        JSON.stringify({ cur: S1.cur, facts: S.facts, clock: S.clock }));
+    const h = [...Array(want.n).keys()].find(i => !want.peak30.includes(i));
+    await fp.click('#passbody tr[data-i="' + h + '"]');
+    await fp.waitForTimeout(300);
+    const S2 = await read();
+    chk('a pass the filter hides, selected in the report\'s table, is said to be hidden, and no row is marked',
+        S2.hid === 'Pass ' + (h + 1) + ', the one selected, is hidden by the filter; the sky plot and the facts under it still show it.' && S2.cur.length === 0, S2.hid);
+
+    /* the eye, then the hours */
+    await fp.evaluate(() => window.scrollTo(0, 0));
+    await fp.click('#passfilterbtn');
+    await fp.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+    await fp.click('#passfilter [data-peak="0"]');
+    await fp.check('#pf-eye');
+    await fp.waitForTimeout(200);
+    const R2 = await read();
+    chk('naked-eye visible only: the rows are exactly the passes the optics call "yes", by their own indices',
+        ids(R2) === JSON.stringify(want.eye) && want.eye.length > 0 && want.eye.length < want.n && same(R2) && R2.say === 'Showing ' + want.eye.length + ' of ' + want.n + ' passes: visible to the naked eye.',
+        ids(R2) + ' | ' + R2.say);
+    await fp.uncheck('#pf-eye');
+    await fp.fill('#pf-from', '20:00');
+    await fp.fill('#pf-to', '04:00');
+    await fp.waitForTimeout(200);
+    const R3 = await read();
+    chk('rising between 20:00 and 04:00 site time (a span past midnight, turned on by typing a time): the rows are exactly those passes',
+        ids(R3) === JSON.stringify(want.night) && want.night.length > 0 && want.night.length < want.n && same(R3)
+          && R3.say === 'Showing ' + want.night.length + ' of ' + want.n + ' passes: rising between 20:00 and 04:00 site time.', ids(R3) + ' | ' + R3.say);
+
+    /* kept: the same rows after a reload, the filter's chunk read the stored choice before the first press */
+    await fp.reload({ waitUntil: 'load' });
+    await ready();
+    await pause();
+    await fp.waitForSelector('#passfiltersay', { timeout: 10000 }).catch(() => {});
+    const R4 = await read();
+    chk('after a reload the stored filter is applied again before anything is pressed',
+        ids(R4) === JSON.stringify(want.night) && R4.btn === 'Filter · on' && R4.say === R3.say, ids(R4));
+    await fp.click('#passfilterbtn');
+    await fp.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+    await fp.click('#pf-reset');
+    await fp.waitForTimeout(200);
+    const R5 = await read();
+    chk('"Show every pass" lists every pass again, says nothing of a filter and leaves nothing stored',
+        ids(R5) === ids(R0) && R5.stored === null && !R5.say && R5.btn === 'Filter', JSON.stringify({ rows: R5.rows.length, stored: R5.stored, btn: R5.btn }));
+    await fx.close();
+
+    /* on a phone the panel opens inside the answer sheet: Escape with the focus in it shuts the panel alone, and gives the focus back to the
+       button in the sheet; Escape again, from there, shuts the sheet, as it always did */
+    const px = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const pp = await px.newPage();
+    pp.on('pageerror', e => errs.push('filter, phone: ' + String(e)));
+    await pp.route('**://celestrak.org/**', r => r.abort());
+    await pp.route('**://tle.ivanstanojevic.me/**', r => r.abort());
+    await pp.goto(PAGE + (PAGE.includes('?') ? '&' : '?') + 'tle=embedded&sat=25544', { waitUntil: 'load' });
+    await pp.waitForFunction(() => !!window.__gt && !!window.__gt.D && !!document.getElementById('passfilterbtn'), null, { timeout: 30000 });
+    await pp.click('.rail .peek');
+    await pp.waitForTimeout(300);
+    await pp.click('#passfilterbtn');
+    await pp.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+    await pp.waitForFunction(() => !!document.activeElement && !!document.activeElement.closest('#passfilter'), null, { timeout: 3000 }).catch(() => {});
+    const sheet = () => pp.evaluate(() => ({ open: document.querySelector('.rail .peek').getAttribute('aria-expanded'), panel: !!document.getElementById('passfilter'),
+      focus: document.activeElement ? (document.activeElement.id || document.activeElement.tagName.toLowerCase()) + (document.activeElement.closest('#passfilter') ? ' (in the panel)' : '') : null }));
+    const P0 = await sheet();
+    await pp.keyboard.press('Escape');
+    await pp.waitForTimeout(300);
+    const P1 = await sheet();
+    await pp.keyboard.press('Escape');
+    await pp.waitForTimeout(300);
+    const P2 = await sheet();
+    chk('on a phone, Escape in the filter\'s panel shuts the panel and leaves the answer sheet open, with the focus on the button; Escape again shuts the sheet',
+        P0.open === 'true' && P0.panel && /in the panel/.test(P0.focus) && P1.open === 'true' && !P1.panel && P1.focus === 'passfilterbtn' && P2.open === 'false',
+        JSON.stringify([P0, P1, P2]));
+    await px.close();
+  } else console.log('\n  not checked: the pass list\'s filter is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L56); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.slice(0, 3).join(' | ') : 'none'));
   /* The 3D scene is not in the rebuilt app until milestone M6; its trail switch is checked then, unchanged. Said out loud

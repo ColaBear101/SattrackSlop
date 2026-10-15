@@ -12,7 +12,7 @@
  * 360x640 and 320x568 (the smallest). From the tablet down the context has a touch screen as its primary pointer, so (pointer: coarse) is true there.
  * Each size is visited once, in these states, and every sweep runs in each of them, in light and in dark:
  *   default . the Layers panel . the spacecraft picker . the observer form . the window popover . the Map tab . the answer rail (its three tabs,
- *   and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
+ *   the pass list's filter open, and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
  *
  *   1  The page does not scroll sideways (documentElement.scrollWidth <= the window's width, as the context was given it: in a mobile context innerWidth
  *      itself grows with a wide page), in every state.
@@ -200,6 +200,12 @@ function statesFor(page, size, assertPlanner) {
     S.push({ id, overlay: ov, enter: () => railTab(tab), exit: async () => {} });
   }
   S[S.length - 1].exit = async () => { await railTab('Passes'); await peekTo(rm !== 'sheet'); };
+  /* the pass list's filter, open (CHANGES-FROM-LEGACY.md, L56): a popover in the rail, whose panel is a chunk of its own asked for at the first
+     press; on a phone it opens inside the sheet, over the sheet's own rows, so both are overlays there. Escape shuts it and leaves the sheet open. */
+  const pf = POP('Filter the pass list');
+  S.push({ id: 'rail-filter', overlay: rm === 'sheet' ? ['.rail.sheet', pf] : pf,
+    enter: async () => { await railTab('Passes'); await page.click('#passfilterbtn'); await shownSel('#passfilter'); await raf2(page); },
+    exit: async () => { await esc('#passfilter'); await peekTo(rm !== 'sheet'); } });
   if (rm === 'panel') S.push({ id: 'rail-folded', overlay: null, enter: () => peekTo(false), exit: () => peekTo(true) });
   S.push({ id: 'planner-' + pm, overlay: pm === 'sheet' ? '#planner' : null,
     enter: async () => {

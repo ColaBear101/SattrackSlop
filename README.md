@@ -80,7 +80,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 
 A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
 
-What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
@@ -539,6 +539,24 @@ since the grey and the ring are colour and shape. A row given the focus under a 
 scrolled out from under it. Nothing in a row's own text, label or title changes, so the
 old page's words are still compared as they were.
 
+The list can be filtered. *Filter*, over it, opens a panel with three tests, each off until it is
+chosen: the lowest peak shown (any, 10°, 20°, 30° or 45°), only the passes the naked eye can see
+(the verdict the facts under the sky plot give the whole pass, "Naked eye: yes": fully sunlit
+against a dark sky at magnitude +6 or brighter; a pass bright enough only in partial shadow is left
+out), and only the passes that rise between two times of the site's day, or outside them. The hour
+is the AOS at the site's offset at that instant, so it follows a change of summer time, and a span
+that ends earlier than it starts runs past midnight: 18:00 to 06:00 is the night. It filters the
+list and nothing else. The mask stays at 5° and the analysis is the same one: the minutes in view,
+the count, the countdown, the passes marked on the timeline, the report's table and the exports
+still count every pass, and a row shown keeps its number and selects the same pass. A line under
+the button says how many passes are shown and by what ("Showing 6 of 25 passes: peaking at 30° or
+more."), and says so when the selected pass is one of those hidden, whose sky plot and facts stay on
+screen. The choice is kept in the browser, written only when it is changed; *Show every pass*
+removes it. The bar is a chunk of its own, 2.2 KB gzipped, fetched once there are passes, and the
+panel another, 1.6 KB, fetched at the first press. `tests/lib/pass-filter.test.ts` holds the rows
+kept to the passes' own culminations, verdicts and hours, and `verify-timeline.js` checks the rows
+on the page against the analysis for each test, by their own index.
+
 The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table
 in the report: a polar plot, north up, the zenith at the centre and the horizon at the rim, with the
 arc from AOS to LOS and a dot at its highest point. While the clock is inside that pass the plot
@@ -806,10 +824,11 @@ the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB
 worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the saved site and the
 last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
-read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`); and two caches,
-an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is
-used for three hours or twelve, but nothing removes an old one: it stays until that object's is
-fetched again or it is forgotten here, so the caches are also a list of the objects you looked at.
+read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
+filter, `gt.passfilter`); and two caches, an object's element set (`tle:<n>`) and its history of
+element sets (`hist:<n>`). A cached copy is used for three hours or twelve, but nothing removes an
+old one: it stays until that object's is fetched again or it is forgotten here, so the caches are
+also a list of the objects you looked at.
 The first press reads the store, writes nothing, and says what the second will
 forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
 places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
@@ -839,13 +858,13 @@ The old page had no such button.
 1024×650, on a tablet, on a phone held upright and sideways, on the two largest phones held
 sideways, 915×412 and 932×430, and on the two smallest, 360×640 and 320×568, and in the states that
 change what is on screen: the Layers panel, the picker, the observer's form, the window popover, the
-Map tab, the answer rail's three tabs and the planner. It tests whether a button or a layer switch
-is covered with `elementFromPoint` at its centre, with the layers panel, or any panel that scrolls,
-scrolled to the control, with the page at its top, with the stage's foot at the foot of the screen,
-with the stage's top at the top, at the foot of the page and with each control brought to the
-middle of the screen, rather than by reading z-indices. The reasons for each difference from the
-old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3, L5, L17, L21, L26 and L35 are the ones
-this section describes).
+Map tab, the answer rail's three tabs, the pass list's filter open and the planner. It tests
+whether a button or a layer switch is covered with `elementFromPoint` at its centre, with the layers
+panel, or any panel that scrolls, scrolled to the control, with the page at its top, with the
+stage's foot at the foot of the screen, with the stage's top at the top, at the foot of the page
+and with each control brought to the middle of the screen, rather than by reading z-indices. The
+reasons for each difference from the old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3,
+L5, L17, L21, L26 and L35 are the ones this section describes).
 
 #### The sky through the phone
 
@@ -3357,8 +3376,8 @@ npm run custom       # what the console does with an orbit that is not in the ca
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)
 npm run timeline     # the window rolling forward past its end, and the next pass beyond it; the
                      # sky plot's dot and flown stretch, read off its pixels; the pass list's day
-                     # headers against NOAA's Sun, and its grey and ringed rows (the last two the
-                     # rebuilt page only)
+                     # headers against NOAA's Sun, its grey and ringed rows, and its filter's rows
+                     # against the analysis (the last three the rebuilt page only)
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history

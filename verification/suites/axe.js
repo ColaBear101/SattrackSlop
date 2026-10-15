@@ -71,6 +71,19 @@ const VIEWS = [
           await page.evaluate(() => document.activeElement && document.activeElement.blur());
           await page.waitForTimeout(250);
         }],
+        /* the pass list's filter, open (CHANGES-FROM-LEGACY.md, L56): a popover in the rail, on a phone inside the answer sheet (opened first), whose
+           panel is a chunk of its own asked for at the first press. The focus is taken out of it, as from the observer form, so that the next state's
+           Escape shuts the sheet as well as the panel (Escape with the focus inside it shuts the panel alone). */
+        ['passfilter', async () => {
+          await page.keyboard.press('Escape');
+          await page.evaluate(() => { const p = document.querySelector('.rail .peek'); if (p && p.getAttribute('aria-expanded') !== 'true') p.click(); });
+          await page.waitForTimeout(250);
+          await page.evaluate(() => document.getElementById('passfilterbtn').click());
+          await page.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+          await page.waitForTimeout(250);     // the popover moves the focus into its panel a frame after it opens: taken out after that
+          await page.evaluate(() => document.activeElement && document.activeElement.blur());
+          await page.waitForTimeout(100);
+        }],
         /* the orbit planner: the pill brings its chunk in and opens it (the three presentations - flow, drawer, sheet - are what the viewports are for) */
         ['planner', async () => {
           await page.keyboard.press('Escape');

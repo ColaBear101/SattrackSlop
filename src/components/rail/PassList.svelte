@@ -4,6 +4,7 @@
   import { sun } from '../../state/engine';
   import { compass } from '../../lib/text/fmt';
   import { clipSay, passDays, passRowText, siteClock } from '../../lib/text/passfacts';
+  import type { Analysis } from '../../lib/types';
   import Rich from '../ui/Rich.svelte';
 
   /* The access windows, one row per pass. A row is a button: it picks the pass (the sky plot and the facts under it
@@ -18,7 +19,19 @@
      words to a screen reader. Nothing in a row's own text, label, title or index changes. */
   const passes = $derived(app.analysis?.passes ?? []);
   const c = $derived(siteClock(app.site));
-  const days = $derived(passDays(passes, c));
+
+  /* The filter (CHANGES-FROM-LEGACY.md, L56): it hides rows, and nothing else. A row shown keeps its index, its data-i and
+     what pressing it selects; a day with no row shown goes with its header. The filter's bar over the list (the button, the
+     panel it opens, the lines under it) is a chunk of its own, asked for once there are passes, which hands back the indices
+     to show with the analysis they are of: indices of an analysis no longer on screen are not read. Until it has come the
+     list shows every pass, and the bar's height is kept for it. */
+  let Bar = $state.raw<typeof import('./PassFilterBar.svelte').default | null>(null);
+  $effect(() => { if (passes.length && !Bar) import('./PassFilterBar.svelte').then(m => { Bar = m.default; }, () => {}); });
+  let kept = $state.raw<{ D: Analysis; i: number[] } | null>(null);
+  const days = $derived.by(() => {
+    const all = passDays(passes, c), k = kept && kept.D === app.analysis ? new Set(kept.i) : null;
+    return k ? all.map(d => ({ ...d, i: d.i.filter(i => k.has(i)) })).filter(d => d.i.length) : all;
+  });
   const ms = $derived(clock.tick.ms);
   /* the passes are in time order and do not overlap: the flown ones are the first `past`, and at most one is in view */
   const past = $derived(passes.filter(p => p.t1ms < ms).length);
@@ -34,6 +47,7 @@
     !said ? undefined : i < past ? 'passflown-past' : i === live ? 'passflown-live' : undefined;
 </script>
 
+{#if passes.length}<div class="pfbar">{#if Bar}<Bar bind:kept />{/if}</div>{/if}
 <div id="passlist" class="list">
   {#each days as d (d.key)}
     <div class="day">
@@ -50,15 +64,16 @@
         </button>
       {/each}
     </div>
-  {:else}
-    <p class="none">No pass clears the 5° mask in this window.</p>
   {/each}
+  <!-- said only when there is no pass at all: a filter that hides every one says so in its own line above -->
+  {#if !passes.length}<p class="none">No pass clears the 5° mask in this window.</p>{/if}
 </div>
 {#if note}<p class="flown" id="passflown">{note}</p>{/if}
 <!-- what a grey row and the ringed row are, for a screen reader: each such row is described by one of these (never shown) -->
 {#if said}<div hidden><span id="passflown-past">{said.past}</span><span id="passflown-live">{said.live}</span></div>{/if}
 
 <style>
+  .pfbar { min-height: 28px; margin-bottom: var(--space-3); }   /* the filter's button, kept room for while its chunk is on the way */
   .list, .day { display: grid; }
   /* the day's header: opaque, over the rows of its own day as they scroll under it, and gone with the last of them */
   .dh {
@@ -86,5 +101,5 @@
   .passrow[aria-current='true'] .n { background: var(--contact); border-color: var(--contact); color: var(--sel-ink); }   /* white on the light theme's orange, the panel's own dark on the dark theme's: 4.5:1 on both */
   .none { color: var(--muted); font-size: var(--fs-1); }
   .flown { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--fs-0); }
-  @media (pointer: coarse) { .n { width: var(--tap); height: var(--tap); } .passrow { grid-template-columns: var(--tap) minmax(0, 1fr) auto; } }
+  @media (pointer: coarse) { .n { width: var(--tap); height: var(--tap); } .passrow { grid-template-columns: var(--tap) minmax(0, 1fr) auto; } .pfbar { min-height: var(--tap); } }
 </style>

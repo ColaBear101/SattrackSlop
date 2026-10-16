@@ -41,8 +41,20 @@
 </script>
 
 <header class="bar bar-top">
+  <!-- The star (L60) is a toggle: its name stays "Watch", aria-pressed says whether it is on. A spacecraft is starred by its number, so
+       an orbit of the reader's own has none: the star is hidden for it. It is drawn in one of two places, and only one is ever displayed:
+       from 720 px beside the name (#watchstar), on the name's row, which is taller than it, so the header is no taller and the line of
+       ids under the name, nearly full at some widths, wraps no sooner; on a phone, where the name wraps in its own column and a star
+       beside it would cost a long name a line, at the end of that line of ids, after the age chip, as the two wrap together. -->
+  {#snippet starButton(id: string | undefined)}
+    <button type="button" {id} class="star" hidden={entry?.custom} aria-pressed={watched} aria-label={WATCH_LABEL}
+            title={WATCH_LABEL} onclick={star}><Icon name="star" size={14} /></button>
+  {/snippet}
   <div class="id">
-    <Picker />
+    <div class="nameln">
+      <Picker />
+      {#if entry}{@render starButton('watchstar')}{/if}
+    </div>
     {#if E && A && entry}
       <p class="ids mono">
         <!-- An orbit the reader designed has no catalogue number, and a made-up one beside a real label is the thing to avoid: the two
@@ -52,11 +64,7 @@
         <span hidden={entry.custom}><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep" hidden={entry.custom}>·</span>
         <span hidden={entry.custom}><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
         <span class="wide-only">Epoch <b id="idepoch">{iso(E.epoch)}</b></span>
-        <!-- The age chip and the star wrap together. The star (L60) is a toggle: its name stays "Watch", aria-pressed says whether it is
-             on. A spacecraft is starred by its number, so an orbit of the reader's own has none: the star is hidden for it. -->
-        <span class="agegrp"><span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
-          <button type="button" id="watchstar" class="star" hidden={entry.custom} aria-pressed={watched} aria-label={WATCH_LABEL}
-                  title={WATCH_LABEL} onclick={star}><Icon name="star" size={14} /></button></span>
+        <span class="agegrp"><span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>{@render starButton(undefined)}</span>
         {#if PINNED}
           <span class="chip snapshot" title="The embedded element sets, each window opening at its set's epoch: the figures in the README">assignment snapshot</span>
         {/if}
@@ -100,15 +108,19 @@
   .plannote { margin: 0; padding: var(--space-1) var(--space-4); background: var(--sunk); border-bottom: 1px solid var(--rule); color: var(--ink2); font-size: var(--fs-1); }
   .plannote[hidden] { display: none; }
   .chip.stale { border-color: var(--warn); color: var(--warn); }
-  /* the star: as tall as the chip it sits by, 24 px where the pointer is a finger (it keeps 8 px clear of the title above and the
-     observer below); outlined, and filled in the link colour while it is on */
+  /* the name's row: the picker's title, then the star, 8 px clear of it (a 24 px target needs that much room where the pointer is a
+     finger). The title gives way to it (its name ends in an ellipsis), so the star stays inside the row with the longest names */
+  .nameln { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  .nameln > :global(.pop) { min-width: 0; }
+  /* the star: 20 px, 24 px where the pointer is a finger (inside the 40 px of the title's row; on a phone's line of ids, 8 px clear of
+     the title above it and the observer below); outlined, and filled in the link colour while it is on */
   .agegrp { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
   .star {
-    display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
+    flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
     border: 0; border-radius: var(--r-1); background: none; color: var(--muted); cursor: pointer;
   }
-  .star[hidden] { display: none; }
-  /* the ring inside the star's own box: from 1100 px the line clips what is outside it, and the star is as tall as the line */
+  .star[hidden], .ids .star { display: none; }
+  /* the ring inside the star's own box, as the segmented controls draw theirs (on the line of ids it is as tall as the line) */
   .star:focus-visible { outline-offset: -2px; }
   @media (hover: hover) { .star:hover { color: var(--ink); background: var(--hover); } }
   .star[aria-pressed='true'] { color: var(--link); }
@@ -132,6 +144,9 @@
     .t-obs { grid-area: obs; justify-self: start; min-width: 0; }
     .t-plan { grid-area: plan; justify-self: end; }
     .wide-only { display: none; }
+    /* the star after the age chip, not beside the name, which here wraps in its own column */
+    .nameln .star { display: none; }
+    .ids .star:not([hidden]) { display: inline-flex; }
   }
   /* wide: one row of fixed height, because the console below is sized to what is left of the screen */
   @media (min-width: 1100px) {

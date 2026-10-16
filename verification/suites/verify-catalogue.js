@@ -613,7 +613,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   } else console.log('  not checked: the picker\'s "decayed now" is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L59); the old page had none');
 
   // ---- the watchlist ----------------------------------------------------------
-  /* The rebuilt page's watchlist (CHANGES-FROM-LEGACY.md, L60): a star on the identity line under the name, a toggle button (its name
+  /* The rebuilt page's watchlist (CHANGES-FROM-LEGACY.md, L60): a star beside the name, on the title's row, a toggle button (its name
      "Watch", aria-pressed its state) outside the picker's listbox, reached with the keyboard; a press puts the spacecraft on screen on
      the list or takes it off, written under gt.watch then and only then (the press is a chunk of its own, asked for at the first one),
      and the last one off leaves nothing stored. On the empty query the picker lists the watched first, in a group of their own and in
@@ -636,10 +636,14 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     };
     const PRESS = /\/assets\/watch-press-[A-Za-z0-9_-]{8}\.js$/;
     const origin = new URL(PAGE).origin;
+    /* beside the name: in the header's identity block, after the title and on its row (the star's middle inside the title's height),
+       and not on the line of ids under it, where it once made the header taller at 901 px with the planner's pill beside it */
     const star = p => p.evaluate(() => {
-      const b = document.getElementById('watchstar');
+      const b = document.getElementById('watchstar'), t = document.querySelector('header button.title');
+      const s = b && b.getBoundingClientRect(), tr = t && t.getBoundingClientRect(), mid = s && (s.top + s.bottom) / 2;
       return b && { tag: b.tagName, type: b.getAttribute('type'), pressed: b.getAttribute('aria-pressed'), name: b.getAttribute('aria-label'), title: b.getAttribute('title'),
-        hidden: b.hidden, shown: b.checkVisibility(), inIds: !!b.closest('header .ids'), inList: !!b.closest('#satlist, [role=listbox], [role=option]') };
+        hidden: b.hidden, shown: b.checkVisibility(), inHead: !!b.closest('header .id') && !b.closest('header .ids'),
+        byName: !!tr && s.left >= tr.right - 0.5 && mid > tr.top && mid < tr.bottom, inList: !!b.closest('#satlist, [role=listbox], [role=option]') };
     });
     const stored = p => p.evaluate(() => ({ keys: Object.keys(localStorage).sort().join(), watch: localStorage.getItem('gt.watch') }));
     /* the picker's rows as they are drawn: a group heading as [name], an option as its name */
@@ -651,8 +655,8 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     };
     const pA = await open();
     const at0 = await star(pA), st0 = await stored(pA);
-    chk('the star is a button on the identity line, outside the picker\'s list: named "Watch" (its tooltip too), not pressed, on KNACKSAT-2',
-        at0 && at0.tag === 'BUTTON' && at0.type === 'button' && at0.pressed === 'false' && at0.name === 'Watch' && at0.title === 'Watch' && at0.shown && at0.inIds && !at0.inList,
+    chk('the star is a button beside the name, on the title\'s row and outside the picker\'s list: named "Watch" (its tooltip too), not pressed, on KNACKSAT-2',
+        at0 && at0.tag === 'BUTTON' && at0.type === 'button' && at0.pressed === 'false' && at0.name === 'Watch' && at0.title === 'Watch' && at0.shown && at0.inHead && at0.byName && !at0.inList,
         JSON.stringify(at0));
     chk('...a visit that has not pressed it stores nothing, and has not asked for the press\'s chunk', st0.keys === '' && !reqsW.some(u => PRESS.test(u)),
         JSON.stringify(st0) + (reqsW.some(u => PRESS.test(u)) ? ' (press chunk requested)' : ''));
@@ -663,8 +667,9 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     await pA.focus('button.title');
     await pA.keyboard.press('Tab');
     const focused = await pA.evaluate(() => document.activeElement && document.activeElement.id);
-    /* the focus ring as the keyboard draws it, against every box above the star that clips: at this width the line under the name is
-       one (overflow: hidden) and the star is as tall as it, so a ring drawn outside the star's box would lose its top and bottom */
+    /* the focus ring as the keyboard draws it, against every box above the star that clips (counted in `clips`, which may be none: the
+       star sat once on the line under the name, which is overflow: hidden from 1100 px and as tall as the star, and a ring drawn outside
+       its box lost its top and bottom there; beside the name it is inside its own box still, outline-offset -2px) */
     const ring = await pA.evaluate(() => {
       const b = document.activeElement, cs = getComputedStyle(b), s = b.getBoundingClientRect();
       const reach = parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset), cut = [];
@@ -687,8 +692,8 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
         focused === 'watchstar' && on1 && st1.keys === 'gt.watch' && st1.watch === '["67683"]', JSON.stringify({ focused, on1, st1 }));
     chk('...the press\'s chunk asked for once, from this origin, and nothing else asked of any host for it',
         asked.filter(u => PRESS.test(u)).length === 1 && asked.every(u => u.startsWith(origin + '/')), asked.map(u => u.replace(origin, '')).join(' ') || 'nothing');
-    chk('the star\'s focus ring, from the keyboard, is drawn whole: at 1400 px the line under the name clips what is outside it, so the ring is inside the star\'s own box',
-        focused === 'watchstar' && ring.fv && ring.style === 'solid' && parseFloat(ring.width) >= 2 && ring.clips >= 1 && ring.cut.length === 0, JSON.stringify(ring));
+    chk('the star\'s focus ring, from the keyboard, is drawn whole: inside the star\'s own box, and no box above it cuts it',
+        focused === 'watchstar' && ring.fv && ring.style === 'solid' && parseFloat(ring.width) >= 2 && parseFloat(ring.width) + parseFloat(ring.offset) <= 0.01 && ring.cut.length === 0, JSON.stringify(ring));
 
     let rows = await listed(pA, '');
     const notes = await H.pickerNotes(pA);

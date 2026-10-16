@@ -403,9 +403,10 @@ SGP4 has down at the clock's instant when the list is opened carries a mark besi
 longer there*).
 Everything on the page recomputes on selection.
 
-The star at the end of the line under the name, after the age chip, puts the spacecraft on screen
-on your **watchlist**: press it (from the name, Tab reaches it, and Space or Enter presses it), and
-the picker, opened with nothing typed, lists the spacecraft you watch first, under *Watched*, in
+The star beside the name (on a phone, at the end of the line under it, after the age chip) puts
+the spacecraft on screen on your **watchlist**: press it (from the name, Tab reaches it, and Space
+or Enter presses it), and the picker, opened with nothing typed, lists the spacecraft you watch
+first, under *Watched*, in
 the order you starred them, then your own orbits, then the catalogue without them. What you type
 is still answered in the search's own order, with no group. The star is a toggle button named
 *Watch*, so a screen reader says whether it is pressed; pressed again, it takes the spacecraft off.
@@ -3464,9 +3465,9 @@ rows of its other names come, and Enter then opening the planner; `rs44` (and `r
 RS-44* in plain text in its option; `ao7` listing OSCAR 7 before FUNCUBE 1; `so50` SAUDISAT 1C, and
 Enter on it picking it; `iss` its seven rows as before, with no line; `o000`, `customs` and the
 empty query as before; the table and its code asked for once each from the page's own origin,
-nothing asked of any SatNOGS host, and nothing stored. It then works the watchlist's star: reached by Tab from the name, its focus ring whole
-inside the line that clips it at 1400 px, and pressed with Space, nothing stored until then and
-`gt.watch` written at the press; the picker's *Watched* group on the
+nothing asked of any SatNOGS host, and nothing stored. It then works the watchlist's star: beside the
+name on its row, reached by Tab from the name, its focus ring whole inside its own box, and pressed
+with Space, nothing stored until then and `gt.watch` written at the press; the picker's *Watched* group on the
 empty query, in the order starred, with the same 80 rows and notes and a query's order untouched;
 a second tab that follows the first without a reload; nothing left stored once the last is off; no
 star for an orbit of your own; and, with 50 watched, a 51st refused with the sentence under the bar.

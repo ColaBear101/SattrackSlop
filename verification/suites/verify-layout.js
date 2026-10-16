@@ -32,7 +32,8 @@
  *      so a row of 40 px buttons with no gap between them is under this rule and over WCAG's. The exemptions are the criterion's own: a link inside a
  *      sentence, and a range slider the page does not restyle. The controls that rely on the 24 px + 8 px exception are listed, with their clearance.
  *   5  What the design promises: the header is one row of fixed height from 1100 px and the identity line is whole (the age chip, also under
- *      ?tle=embedded, with the longest names in the catalogue); under 720 px the header's name wraps and never widens the page; the globe and the
+ *      ?tle=embedded, with the longest names in the catalogue, and the watchlist's star beside the name, on its row, or on a phone after
+ *      the age chip); under 720 px the header's name wraps and never widens the page; the globe and the
  *      map are never slivers (200 x 150 for the globe, 200 x 100 for the 2:1 map); the answer rail is a column / a panel / a sheet and its peek says whether it is open; the AR opener
  *      exists on touch and only there; the Source tab does not widen its rail; with the planner open at 901 px and wider the rail is gone and the
  *      planner is inside the viewport; the skip links exist and are on screen when focused; the report's sub-navigation is sticky and does not
@@ -501,6 +502,11 @@ const HEADER = () => {
   const lh = parseFloat(getComputedStyle(nm).lineHeight) || parseFloat(getComputedStyle(nm).fontSize) * 1.15;
   o.lines = Math.round(R(nm).h / lh);
   o.titleCut = title.scrollWidth - title.clientWidth;
+  /* the watchlist's star (CHANGES-FROM-LEGACY.md, L60), the one of its two that is displayed: beside the name from 720 px (the title gives
+     way to it), after the age chip on a phone; and how many are displayed (one) */
+  const stars = [...bar.querySelectorAll('.star')].filter(e => window.__L.shown(e));
+  o.star = stars.length ? Object.assign(R(stars[0]), { inIds: !!stars[0].closest('.ids') }) : null;
+  o.stars = stars.length;
   if (ids && chip) {
     o.ids = R(ids); o.chip = R(chip); o.idsClip = ids.scrollWidth - ids.clientWidth;
     const cr = document.createRange(); cr.selectNodeContents(txt); const tr = cr.getBoundingClientRect();
@@ -542,12 +548,19 @@ async function headerChecks(browser, srv, size) {
       let ok = chipWhole && !h.out.length && h.page <= 0 && h.titleCut <= 0 && h.name.r <= h.tools.l + 0.5 + (phone ? 1e9 : 0);
       if (wide) ok = ok && Math.abs(h.barH - h.barVar) < 0.5 && h.title.r <= h.tools.l + 0.5;
       if (phone) ok = ok && h.title.r <= h.theme.l + 0.5 && h.name.r <= size.w;
+      /* ...and one star: from 720 px after the name, on its row, clear of the tools beside the row; on a phone after the age chip, inside
+         the line of ids */
+      const mid = h.star ? (h.star.t + h.star.b) / 2 : 0;
+      const starOk = h.stars === 1 && (phone
+        ? h.star.inIds && !!h.chip && h.star.l >= h.chip.r - 0.5 && h.star.r <= h.ids.r + 0.5 && mid > h.chip.t && mid < h.chip.b
+        : !h.star.inIds && h.star.l >= h.title.r - 0.5 && h.star.r <= h.id.r + 0.5 && h.star.r <= h.tools.l + 0.5 && mid > h.title.t && mid < h.title.b);
+      ok = ok && starOk;
       if (!ok) okAll = false;
-      rows.push(nm + ' (' + names[i].norad + '): header ' + Math.round(h.barH) + ' px, name ' + h.lines + ' line' + (h.lines === 1 ? '' : 's') + ' ' + Math.round(h.name.l) + '..' + Math.round(h.name.r) + ', ' + (phone ? 'toggle at ' + Math.round(h.theme.l) : 'tools at ' + Math.round(h.tools.l)) + (h.chip ? ', age chip ' + (chipWhole ? 'whole' : 'CUT') : ', no age chip') + (h.page > 0 ? ', page ' + h.page + ' px too wide' : '') + (h.out.length ? ', sticks out: ' + h.out.join(', ') : '') + (h.titleCut > 0 ? ', title cut by ' + h.titleCut + ' px' : ''));
+      rows.push(nm + ' (' + names[i].norad + '): header ' + Math.round(h.barH) + ' px, name ' + h.lines + ' line' + (h.lines === 1 ? '' : 's') + ' ' + Math.round(h.name.l) + '..' + Math.round(h.name.r) + ', ' + (phone ? 'toggle at ' + Math.round(h.theme.l) : 'tools at ' + Math.round(h.tools.l)) + (h.chip ? ', age chip ' + (chipWhole ? 'whole' : 'CUT') : ', no age chip') + (h.page > 0 ? ', page ' + h.page + ' px too wide' : '') + (h.out.length ? ', sticks out: ' + h.out.join(', ') : '') + (h.titleCut > 0 ? ', title cut by ' + h.titleCut + ' px' : '') + (h.star ? ', star ' + Math.round(h.star.l) + '..' + Math.round(h.star.r) + (starOk ? '' : ' OUT OF PLACE') : ', NO STAR'));
     }
     if (!okAll) await shot(page, size, 'light', 'header-longname', 'header', 0);
     await ctx.close();
-    chk(5, size.id + ': ' + (wide ? 'the header stays one row of fixed height and the identity line whole' : phone ? 'the header\'s name wraps in its own column and never widens the page' : 'the header wraps its rows and never widens the page') + ' with the longest names in the catalogue',
+    chk(5, size.id + ': ' + (wide ? 'the header stays one row of fixed height and the identity line whole' : phone ? 'the header\'s name wraps in its own column and never widens the page' : 'the header wraps its rows and never widens the page') + ' with the longest names in the catalogue, and one watchlist star, ' + (phone ? 'after the age chip' : 'beside the name and clear of the tools'),
         okAll, rows.join(' | '));
   }
 }

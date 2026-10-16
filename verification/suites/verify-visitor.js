@@ -10,7 +10,7 @@
  * Eight groups, each measured on the page as it is (the chunk names are assets/<name>-<hash>.js):
  *   1  a fresh visitor on a desktop: the first answer before any planner chunk, the pill from the first paint, the planner's chunks
  *      once each when the browser idles, no AR chunk, no test surface, nothing on the window, nothing in storage, nobody else asked;
- *      the report's footer states the version, the repository and the transmitter data's licence (L49);
+ *      the report's footer states the version, the repository and the licence of the SatNOGS DB data, and no licence for the code (L49);
  *      and the control that a live visit does ask the page's own cache API (/api/tle/<n>), which group 4 says it does not under the snapshot
  *   2  a visitor with a saved orbit: it is listed once the planner is up, the record is not rewritten, the planner lists it
  *   3  the pill pressed at first paint, before the browser has idled: it opens when its chunks arrive; the page's own idle request,
@@ -332,10 +332,10 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
         count(w, 'lifetime') + ' request, at ' + (tl.length ? round(tl[0]) + ' ms (' + (tl[0] < v.answer ? 'before' : 'after') + ' the answer)' : 'never'));
       chk('the planner is up: the picker offers its Plan row (the idle request was answered, init ran)', up);
       /* The report's footer ends with the credits (CHANGES-FROM-LEGACY.md, L49): package.json's version as Vite wrote it in, the repository,
-         and the licence of the SatNOGS DB transmitter data and alternative names (L61: the picker's table of other names, data/aliases.json);
-         it names no licence for the code. A paragraph of its own with no span in it, so
-         the four spans golden reads (foot[]) are the same four; the links are links only, and the host check below covers a visit with them
-         in the page. */
+         and the licence of the SatNOGS DB data the page carries (the catalogue's element sets from its TLE list, the transmitter table, and
+         L61's alternative names, data/aliases.json); it names no licence for the code, which its author has not licensed for reuse (the
+         owner's decision: package.json says UNLICENSED). A paragraph of its own with no span in it, so the four spans golden reads (foot[])
+         are the same four; the links are links only, and the host check below covers a visit with them in the page. */
       const creditShown = await until(w.page, () => { const p = document.getElementById('footcredit'); return !!p && p.getClientRects().length > 0; });
       const cr = await w.page.evaluate(() => {
         const p = document.getElementById('footcredit');
@@ -343,9 +343,9 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
           spans: p.querySelectorAll('span').length, footSpans: document.querySelectorAll('#report footer span').length, inFooter: !!p.closest('#report footer') } : null;
       });
       const version = require('../../package.json').version;
-      const WANT = 'Ground Track Console ' + version + ' · github.com/ColaBear101/SattrackSlop · Transmitter data and alternative names: SatNOGS DB, CC BY-SA 4.0';
-      chk('the report\'s footer states the version (' + version + ', package.json\'s), the repository and "Transmitter data and alternative names: SatNOGS DB, CC BY-SA 4.0", with links to the repository, SatNOGS DB and the licence; no span in it, and the footer\'s four spans are still four',
-        creditShown && !!cr && cr.inFooter && cr.text === WANT && cr.spans === 0 && cr.footSpans === 4
+      const WANT = 'Ground Track Console ' + version + ' · github.com/ColaBear101/SattrackSlop · Data: SatNOGS DB (element sets, transmitters, alternative names), CC BY-SA 4.0';
+      chk('the report\'s footer states the version (' + version + ', package.json\'s), the repository and "Data: SatNOGS DB (element sets, transmitters, alternative names), CC BY-SA 4.0", with links to the repository, SatNOGS DB and the licence, and no licence for the code; no span in it, and the footer\'s four spans are still four',
+        creditShown && !!cr && cr.inFooter && cr.text === WANT && !/\bMIT\b|licen[cs]e/i.test(cr.text) && cr.spans === 0 && cr.footSpans === 4
           && JSON.stringify(cr.links) === JSON.stringify([['https://github.com/ColaBear101/SattrackSlop', 'github.com/ColaBear101/SattrackSlop'], ['https://db.satnogs.org/', 'SatNOGS DB'], ['https://creativecommons.org/licenses/by-sa/4.0/', 'CC BY-SA 4.0']]),
         JSON.stringify(cr));
       /* the control for the claim of group 4: it only means something if the page, not embedded, does ask its API (the offline profile answers 503,

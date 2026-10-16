@@ -44,12 +44,12 @@ describe.skipIf(!built)('the production bundle', () => {
     expect(sheet).toBeGreaterThan(inline);
   });
 
-  /* The footer's credit line (CHANGES-FROM-LEGACY.md, L49; its words since L61) states package.json's version: Vite writes it in, so no chunk may still
+  /* The footer's credit line (CHANGES-FROM-LEGACY.md, L49, which gives its words) states package.json's version: Vite writes it in, so no chunk may still
      name __APP_VERSION__ (it would throw in the page), and the chunk with the line carries the version. */
   it('has the version written in where the footer states it', () => {
     const js = assets.filter(f => f.endsWith('.js'));
     expect(js.filter(f => read('assets/' + f).includes('__APP_VERSION__'))).toEqual([]);
-    const withCredit = js.filter(f => read('assets/' + f).includes('Transmitter data and alternative names: '));
+    const withCredit = js.filter(f => read('assets/' + f).includes(' (element sets, transmitters, alternative names), '));
     expect(withCredit.length).toBe(1);
     const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
     expect(read('assets/' + withCredit[0])).toContain(version);

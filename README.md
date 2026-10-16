@@ -865,9 +865,10 @@ pass table carry their expansion as a tooltip, and the notes that lean on a term
 warning and the Professor's notes, link to its entry.
 
 Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 ·
-github.com/ColaBear101/SattrackSlop · Transmitter data and alternative names: SatNOGS DB, CC BY-SA
-4.0*, with links to the repository, to SatNOGS DB and to the data's licence. It names no licence for
-the page's code.
+github.com/ColaBear101/SattrackSlop · Data: SatNOGS DB (element sets, transmitters, alternative
+names), CC BY-SA 4.0*, with links to the repository, to SatNOGS DB and to the data's licence. It
+names no licence for the page's code: its author has not licensed it for reuse, so there is no
+`LICENSE` file and `package.json` says `"license": "UNLICENSED"`, npm's word for that.
 The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
 `vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
 only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
@@ -2674,7 +2675,9 @@ opens, with `data/catalogue.meta.json` beside it recording when it was fetched a
 
 1. **SatNOGS DB** — `https://db.satnogs.org/api/tle/?format=json`, which serves anonymously
    (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
-   `tle_source` for that object as **Space-Track.org**.
+   `tle_source` for that object as **Space-Track.org**. SatNOGS DB publishes its data under
+   CC BY-SA 4.0, and these element sets carry that licence; the footer credits them (see *The
+   frequency is the one thing that cannot be derived*).
 2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
    via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
    both :80 and :443 at the time (it answers now — the block appears to have been transient or
@@ -3140,13 +3143,13 @@ SatNOGS DB is a Libre Space Foundation project, and its data is published under 
 Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 `data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
 licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
-licence, say what was changed, and license it under CC BY-SA 4.0 too. The page gives the credit
-in the footer's last line, *Transmitter data and alternative names: SatNOGS DB, CC BY-SA 4.0*, with
-a link to each (the alternative names are the picker's table of other names, below). The 1,437
-element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint (see *Data
-provenance*) are from the same database. Whether its licence reaches them, and
-so whether the catalogue carries it too and the footer should say so, has not been decided; until
-it is, the footer's line names the transmitter data and the alternative names and nothing else.
+licence, say what was changed, and license it under CC BY-SA 4.0 too. The same goes for the
+1,437 of the 2,158 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint
+(see *Data provenance*; the other 721 are CelesTrak's), and for the picker's table of other names
+(below): the owner decided that the database's licence reaches them as well. The page gives the
+credit in the footer's last line, *Data: SatNOGS DB (element sets, transmitters, alternative
+names), CC BY-SA 4.0*, with a link to each. The share-alike reaches that data and what is made from
+it, not the project's own code, which its author has not licensed for reuse.
 
 | | |
 |---|---|
@@ -3201,8 +3204,8 @@ The page asks SatNOGS nothing: the names are a file of the page's own, so the ta
 privacy* is unchanged.
 
 Like the transmitter table, it is an adaptation of SatNOGS DB's data, so it is under CC BY-SA 4.0
-too, and the footer's line credits both: *Transmitter data and alternative names: SatNOGS DB, CC
-BY-SA 4.0*.
+too, and the footer's line credits it with the transmitters and the catalogue's element sets:
+*Data: SatNOGS DB (element sets, transmitters, alternative names), CC BY-SA 4.0*.
 
 ```
 node verification/tools/fetch-aliases.js                    # re-bake data/aliases.json (one request)

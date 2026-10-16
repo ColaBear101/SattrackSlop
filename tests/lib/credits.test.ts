@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { creditLine, REPO_URL, SATNOGS_DB_URL, CC_BY_SA_URL } from '../../src/lib/text/credits';
 import { plain, type Inline } from '../../src/lib/text/rich';
@@ -5,14 +7,17 @@ import { REPO_URL as SERVER_REPO_URL } from '../../server/config.js';
 import viteConfig from '../../vite.config';
 import pkg from '../../package.json';
 
-/* The footer's credit line (CHANGES-FROM-LEGACY.md, L49): the version, the repository and the licence of the transmitter data and the
-   alternative names (L61) the page carries from SatNOGS DB. It names no licence for the page's own code. */
+/* The footer's credit line (CHANGES-FROM-LEGACY.md, L49): the version, the repository and the licence of the data the page carries
+   from SatNOGS DB: the catalogue's element sets from its TLE list, the transmitter table and the alternative names (L61). It names no
+   licence for the page's own code, which its author has not licensed for reuse. */
+const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const nodes = (x: Inline): Inline[] => typeof x === 'string' ? [x] : Array.isArray(x) ? x.flatMap(nodes) : [x];
 const links = (x: Inline) => nodes(x).flatMap(n => typeof n === 'object' && !Array.isArray(n) && 'link' in n ? [n.link] : []);
 
 describe('the credit line', () => {
   it('says the version it is given, the repository and the data licence, in that order, and no licence for the code', () => {
-    expect(plain(creditLine('9.8.7'))).toBe('Ground Track Console 9.8.7 · github.com/ColaBear101/SattrackSlop · Transmitter data and alternative names: SatNOGS DB, CC BY-SA 4.0');
+    expect(plain(creditLine('9.8.7'))).toBe('Ground Track Console 9.8.7 · github.com/ColaBear101/SattrackSlop · Data: SatNOGS DB (element sets, transmitters, alternative names), CC BY-SA 4.0');
+    expect(plain(creditLine('9.8.7'))).not.toMatch(/\bMIT\b|licen[cs]e/i);
   });
   it('links the repository, SatNOGS DB and the licence deed (CC BY-SA asks for a link to the licence), all over https', () => {
     expect(links(creditLine('1.0.0'))).toEqual([
@@ -28,6 +33,17 @@ describe('the credit line', () => {
   });
   it('names the repository the cache API names', () => {
     expect(REPO_URL).toBe(SERVER_REPO_URL);
+  });
+});
+
+/* The owner's decision (L49): the project states no licence for its own code. "UNLICENSED" is npm's word for a package that is not
+   licensed for others to use; the licences the lock records for the dependencies are theirs, and are not read here. */
+describe('the code\'s licence', () => {
+  it('is none: package.json and the lock\'s root entry say UNLICENSED, and there is no LICENSE file', () => {
+    expect(pkg.license).toBe('UNLICENSED');
+    const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8')) as { packages: Record<string, { license?: string }> };
+    expect(lock.packages[''].license).toBe('UNLICENSED');
+    expect(fs.readdirSync(ROOT).filter(f => /^(licen[cs]e|copying)(\.|$)/i.test(f))).toEqual([]);
   });
 });
 

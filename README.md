@@ -16,14 +16,15 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 
 ## What you can do
 
-- **Search 2,158 spacecraft** by name or NORAD number and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot.
+- **Search 2,158 spacecraft** by name (its words in any order), NORAD number, or another name it goes by (AO-7, SO-50, RS-44), and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot. Star the ones you follow, and they head the list when you open the search.
+- **Read the passes by your own day.** They come under each date at your place, with that day's sunrise, sunset and hours of darkness; the passes already flown turn grey, and while the selected pass is flown, its sky plot shows where the spacecraft is on it. *Filter* can keep only the passes that peak high enough, that the naked eye can see, or that rise in the hours you choose.
 - **Watch it move.** A 3D globe and a flat map, a clock you can run up to 3,600× or scrub, trails, the footprint on the ground, and a camera that can ride on the satellite or look from your site.
-- **Set your own place.** Bangkok is the default; search for a town, use your location, or type coordinates. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates, the nearest hour of solar time unless you enter an offset).
-- **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar; the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
+- **Set your own place.** Bangkok is the default; search for a town, use your location, type coordinates, or type a Maidenhead grid square such as OK03gs, which the page reads itself and sends nowhere. The form names your site's own square too. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates or a grid square, the nearest hour of solar time unless you enter an offset).
+- **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar, every pass at once or the selected one alone (on a phone, offered to the share sheet); the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
-- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why.
+- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down.
 - **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
-- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, and a naked-eye verdict for each pass.
+- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
 
 <p align="center">
   <img src="docs/img/console-dark-map.jpg" alt="Dark theme, flat map: the ISS ground track over a day with Bangkok's visibility circle" width="49%">
@@ -101,7 +102,7 @@ The camera, motion sensors and your location are used only when you tap the butt
 The long account of the project (the orbit maths worked through for the assignment, the decay model, the planner and the Professor, the AR view, the Moon pages, how every check works) is below, folded away. It was written with AI assistance.
 
 <details>
-<summary><b>Open the full technical README</b> <i>(about 2,700 lines)</i></summary>
+<summary><b>Open the full technical README</b> <i>(about 3,600 lines)</i></summary>
 
 ### Ground Track Console
 

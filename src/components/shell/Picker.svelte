@@ -22,7 +22,15 @@
      they lead the list, in a group of their own, and rank()'s rows follow without them. What is typed is answered in rank()'s order.
      The catalogue is read so that the indices are taken again once it has come (catIndex's map is not itself reactive). */
   const lead = $derived(query.trim() || !app.catalogue.length ? [] : watch.list.map(n => app.catIndex({ satnum: n })).filter(i => i >= 0));
-  const hits = $derived.by(() => { void custom.rev; return watchedFirst(rank(app.catalogue, query, custom.list), lead); });
+  /* The other names (CHANGES-FROM-LEGACY.md, L61): SatNOGS DB's for the catalogue's spacecraft (RS-44 for BREEZE-KM R/B), in a chunk of
+     their own asked for the first time something is typed. What rank() did not list that one of them matches comes after rank()'s rows,
+     and its option says which name matched. A wrapper: rank() is not touched, and only the catalogue is searched this way. */
+  let al = $state.raw<import('../../lib/catalogue/alias').AliasFinder | null>(null);
+  let alp: Promise<void> | null = null;
+  const aliases = () => (alp ??= import('../../lib/catalogue/alias').then(m => m.aliasFinder()).then(f => { al = f; }, () => {}));
+  const ranked = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
+  const said = $derived(al && query.trim() ? al(app.catalogue, query, ranked) : null);
+  const hits = $derived(watchedFirst(said?.size ? ranked.concat([...said.keys()]) : ranked, lead));
   const shown = $derived(hits.slice(0, SHOWN_MAX));
   const more = $derived(hits.length - shown.length);
   /* the row in the list that is on screen: the entry may carry a live set's lines, so a spacecraft is its number, an orbit its object */
@@ -43,7 +51,7 @@
   let dk = $state.raw<typeof import('../../state/decayed.svelte')['decayed'] | null>(null);
 
   $effect(() => { if (open) { query = ''; active = 0; if (!PINNED) import('../../state/decayed.svelte').then(m => { dk = m.decayed.ensure(app.catalogue); }, () => {}); } });
-  $effect(() => { query; active = 0; });
+  $effect(() => { active = 0; if (query.trim()) void aliases(); });
 
   /* Closed whether or not it loaded: the title names the spacecraft on screen, and a refusal is said in the note under the bar
      (the old combobox put the current name back in its field; here there is no field to put it in). */
@@ -67,7 +75,10 @@
     /* Tab leaves the field and the list with it: a list left open behind the next stop is a list nobody is using */
     else if (e.key === 'Tab') open = false;
     else if (e.key === 'Enter') {
-      if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
+      /* nothing listed while the other names are still on their way (the first query): Enter waits for them, then picks the first row
+         they bring, or opens the planner as it would have */
+      if (!al && !shown.length && query.trim()) { e.preventDefault(); void aliases().then(() => { if (open && shown.length) choose(shown[0]!); else if (open && planOn) plan(); }); }
+      else if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
       else if (planOn && active === shown.length) { e.preventDefault(); plan(); }
       else if (shown.length) { e.preventDefault(); choose(shown[0]!); }
       else if (planOn && query.trim()) { e.preventDefault(); plan(); }
@@ -118,7 +129,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li role="option" id="sopt{k}" data-idx={idx} aria-selected={idx === here} class:on={k === active} class:cu={mine}
             onclick={() => choose(idx)} onpointermove={() => (active = k)}>
-          <span class="nm">{c.name}</span>{#if dk?.has(idx)}<span class="dk">{dk.label}</span>{/if}{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
+          <span class="nm">{c.name}</span>{#if said?.has(idx)}<span class="al">{said.get(idx)}</span>{/if}{#if dk?.has(idx)}<span class="dk">{dk.label}</span>{/if}{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
         </li>
       {/each}
       <!-- One option after the real ones: the arrow keys reach it, Enter or a press opens the planner. It is a constant string; nothing typed
@@ -174,6 +185,8 @@
   .id { color: var(--muted); font-size: var(--fs-0); }
   /* "decayed now" (L59): plain text in the option, in the re-entry notice's colour, by the number; and the line that says what it means */
   li .dk { flex: none; margin-left: auto; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--r-pill); color: var(--bad); font-size: var(--fs-0); white-space: nowrap; }
+  /* the other name a search matched (L61): plain text in the option, after the name, in the muted ink of the number */
+  li .al { margin-right: auto; color: var(--muted); font-size: var(--fs-0); overflow-wrap: anywhere; }
   .note, .dkn { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
   .count { margin: var(--space-2) 0 0; padding: 0 var(--space-3); color: var(--muted); font-size: var(--fs-0); }
 </style>

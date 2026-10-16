@@ -31,6 +31,11 @@
  * words of a query (CHANGES-FROM-LEGACY.md, L58): ISS (ZARYA), AO-91 and
  * OSCAR 7 found from what people type for them, what starts with the first
  * word listed first, and a word in another script looked for, not dropped.
+ * Then the other names SatNOGS DB keeps (L61): RS-44, AO-7, SO-50 and FO-29
+ * found under the catalogue's BREEZE-KM R/B, OSCAR 7, SAUDISAT 1C and JAS 2,
+ * each option saying which name matched, the table a chunk of its own asked
+ * for at the first query (Enter on it waits for it), and nothing asked of
+ * SatNOGS.
  * Then the picker's "decayed now" (L59): on a page whose clock starts at the
  * same fixed instant, the rows SGP4 has down then are marked, exactly those,
  * as an independent run of the pinned satellite.js finds them; nothing is
@@ -276,6 +281,93 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
       await page.waitForFunction(() => document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
     }
   } else console.log('  not checked: the picker\'s last tier, the words of a query, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L58); the old page had none');
+
+  // ---- the picker's other names ---------------------------------------------
+  /* The rebuilt picker also matches the other names SatNOGS DB keeps for the catalogue's spacecraft, baked into data/aliases.json
+     (CHANGES-FROM-LEGACY.md, L61): after rank()'s rows, what one of them matches, by every word of the query starting a word of the name,
+     its option saying which name matched in plain text. The table is a chunk of its own (with its finder, another), asked for the first
+     time something is typed, not at boot and not when the list opens; Enter on that first query, if it comes before the table, waits for
+     it. Nothing is asked of SatNOGS and nothing is stored. A context of its own, so that no chunk is in the cache. */
+  if (NEW) {
+    const ctxA = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
+    for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctxA.route(host, r => r.abort());
+    const pA = await ctxA.newPage();
+    const errsA = [], reqsA = [];
+    pA.on('pageerror', e => errsA.push(e.message));
+    pA.on('request', r => reqsA.push(r.url()));
+    const TABLE = /\/assets\/aliases-[A-Za-z0-9_-]{8}\.js$/, FINDER = /\/assets\/alias-[A-Za-z0-9_-]{8}\.js$/;
+    const originA = new URL(PAGE).origin;
+    /* the table is held back 1.5 s the first time, so that the Enter below is surely pressed before it has come */
+    let held = 0;
+    await pA.route(TABLE, async r => { held++; await new Promise(res => setTimeout(res, 1500)); await r.continue(); });
+    await pA.goto(PAGE, { waitUntil: 'load' });
+    await pA.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+    await pA.waitForTimeout(1500);
+    const before = await pA.evaluate(() => __gt.D.entry.name);
+    await H.openPicker(pA);
+    await pA.waitForTimeout(800);
+    chk('the other names are not asked for at boot, nor when the list opens', !reqsA.some(u => TABLE.test(u) || FINDER.test(u)),
+        reqsA.filter(u => TABLE.test(u) || FINDER.test(u)).join(' ') || 'not requested');
+    await pA.click('#satsearch');
+    await pA.fill('#satsearch', 'fo29');
+    await pA.keyboard.press('Enter');
+    await pA.waitForTimeout(300);
+    const waiting = await pA.evaluate(() => ({ shown: __gt.D.entry.name, planner: (p => !!p && !p.hidden)(document.getElementById('planner')), open: !!document.getElementById('satsearch') }));
+    await pA.waitForFunction(() => __gt.D.entry.name === 'JAS 2', null, { timeout: 10000 }).catch(() => {});
+    const picked = await pA.evaluate(() => ({ shown: __gt.D.entry.name, planner: (p => !!p && !p.hidden)(document.getElementById('planner')), open: !!document.getElementById('satsearch') }));
+    chk('Enter at once on the first thing typed, "fo29", which only an other name matches, waits for the table (the list still open, the planner shut) and then picks JAS 2, FO-29',
+        held === 1 && before !== 'JAS 2' && waiting.shown === before && waiting.open && !waiting.planner && picked.shown === 'JAS 2' && !picked.open && !picked.planner,
+        JSON.stringify({ held, before, waiting, picked }));
+    await pA.unroute(TABLE);
+    await pA.waitForTimeout(900);
+    const storeA = await pA.evaluate(() => Object.keys(localStorage).sort().join());
+
+    const rowsA = async q => {
+      await H.typeInPicker(pA, q);
+      await pA.waitForTimeout(250);
+      return pA.evaluate(() => [...document.querySelectorAll('#satlist li[data-idx]')].map(li => {
+        const al = li.querySelector('.al');
+        return { nm: li.querySelector('.nm').textContent.trim(), al: al ? al.textContent : null, n: (li.querySelector('.id') || {}).textContent, role: li.getAttribute('role'),
+                 alRole: al && al.getAttribute('role'), alShown: !!al && al.getClientRects().length > 0, inner: li.querySelectorAll('a, button, input, select, textarea, [tabindex]').length };
+      }));
+    };
+    let ra = await rowsA('rs44');
+    chk('"rs44" lists BREEZE-KM R/B (44909), the rocket stage RS-44 is filed under, its option saying "matches RS-44" in plain text (no role, nothing focusable: the field keeps the keys)',
+        ra.length === 1 && ra[0].nm === 'BREEZE-KM R/B' && ra[0].n === '44909' && ra[0].al === 'matches RS-44' && ra[0].alShown && ra[0].role === 'option' && ra[0].alRole === null && ra[0].inner === 0,
+        JSON.stringify(ra));
+    const spelt = [];
+    for (const q of ['rs-44', 'RS 44', 'RS-44']) spelt.push(q + ': ' + (await rowsA(q)).map(x => x.nm + ' ' + x.al).join(', '));
+    chk('...and so do "rs-44", "RS 44" and "RS-44"', spelt.every(s => /: BREEZE-KM R\/B matches RS-44$/.test(s)), spelt.join(' | '));
+    ra = await rowsA('ao7');
+    chk('"ao7" lists OSCAR 7 (AO-7) first, then FUNCUBE 1 (AO-73): a name that is the whole query before one that starts with it',
+        ra.map(x => x.nm + ' / ' + x.al).join(' | ') === 'OSCAR 7 / matches AO-7 | FUNCUBE 1 / matches AO-73', JSON.stringify(ra.map(x => x.nm + ' / ' + x.al)));
+    ra = await rowsA('so50');
+    chk('"so50" lists SAUDISAT 1C (SO-50)', ra.map(x => x.nm + ' / ' + x.al).join(' | ') === 'SAUDISAT 1C / matches SO-50', JSON.stringify(ra.map(x => x.nm + ' / ' + x.al)));
+    ra = await rowsA('iss');
+    chk('rank()\'s rows come first and carry no line, and a word is looked for at the start of a word of a name: "iss" is its seven rows as before, none of them a "Mission"',
+        ra.length === 7 && ra.every(x => x.al === null) && ra[0].nm === 'ISS (NAUKA)', JSON.stringify(ra.map(x => x.nm + (x.al ? ' / ' + x.al : ''))));
+    ra = await rowsA('o000');
+    const noneA = await H.pickerNotes(pA);
+    ra = ra.concat(await rowsA('customs'));
+    chk('a placeholder number ("o000") and "customs" still find nothing with the table in', ra.length === 0 && noneA[0] === 'Nothing in the catalogue matches that.', JSON.stringify({ rows: ra, notes: noneA }));
+    ra = await rowsA('');
+    chk('...and the empty query lists the catalogue with no line in it', ra.length === 80 && ra.every(x => x.al === null), ra.length + ' rows, ' + ra.filter(x => x.al).length + ' with a line');
+    const storeA2 = await pA.evaluate(() => Object.keys(localStorage).sort().join());
+    chk('...and the searches store nothing', storeA2 === storeA, JSON.stringify({ before: storeA, after: storeA2 }));
+    await H.closePicker(pA);
+    await H.pick(pA, 'so50');
+    await pA.waitForTimeout(900);
+    const so = await pA.evaluate(() => __gt.D.entry.name);
+    chk('Enter on "so50" picks SAUDISAT 1C, as on any list', so === 'SAUDISAT 1C', so);
+    const tableReqs = reqsA.filter(u => TABLE.test(u)), finderReqs = reqsA.filter(u => FINDER.test(u));
+    chk('the table and its finder are each asked for once in the visit, from the page\'s own origin', tableReqs.length === 1 && finderReqs.length === 1
+        && tableReqs.concat(finderReqs).every(u => u.startsWith(originA + '/')), tableReqs.concat(finderReqs).map(u => u.replace(originA, '')).join(' '));
+    chk('...and nothing is asked of db.satnogs.org, or of any SatNOGS host, at any point of the visit', !reqsA.some(u => /satnogs/i.test(new URL(u).hostname)),
+        reqsA.filter(u => /satnogs/i.test(new URL(u).hostname)).join(' ') || 'none of ' + reqsA.length + ' requests');
+    await ctxA.close();
+    chk('...with no page error on the way', errsA.length === 0, errsA.join(' | ') || 'none');
+    errs.push(...errsA);
+  } else console.log('  not checked: the picker\'s other names are the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L61); the old page had none');
 
   // ---- the picker's mark: decayed now ---------------------------------------
   /* The rebuilt picker marks "decayed now" what SGP4 has down at the clock's instant when the list is opened: SGP4's own error 6, a position

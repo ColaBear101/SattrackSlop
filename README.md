@@ -190,13 +190,15 @@ src/                the Earth console's source: Svelte 5 + TypeScript
       sun.ts              where the Sun is, and where it is overhead (from the old
                           page's inline script, not from public/core/)
     analysis/           elements, ground track, passes, the optics, the Doppler shift
-    catalogue/          reading the catalogue; ranking what the picker offers; the watchlist
+    catalogue/          reading the catalogue; ranking what the picker offers; its other names; the
+                        watchlist
     text/               the sentences the page builds from its numbers, and the glossary, as data
     net/                the element sets (the page's own cache API first, then CelesTrak and its
                         mirror, as the old page asked them) and the decay histories (the API,
                         then CelesTrak)
     export/             the CSV and the calendar, and one pass's calendar on its own
-    data/               the downlink table's lookups (the table is data/transmitters.json)
+    data/               the downlink table's lookups (the table is data/transmitters.json), and the
+                        loader of the other names (data/aliases.json)
     shims/              the entries scripts/build-shims.mjs bundles for the Node suites
     planner/            the planner, the Professor and the decay model, moved from the old page's
                         files with their arithmetic untouched
@@ -267,7 +269,8 @@ server/, shared/    the cache API (Elysia): GET /api/health, /api/tle/:norad and
                     /api/history/:norad; and the code the browser and the server share
 serve.ts            runs the API on a port (3001 unless PORT says otherwise)
 data/               catalogue.txt (+ .meta.json): the 2,158 element sets; world.json: the
-                    coastlines; transmitters.json: downlink frequencies; WMM.COF: NOAA's
+                    coastlines; transmitters.json: downlink frequencies; aliases.json: the
+                    spacecraft's other names (both from SatNOGS DB); WMM.COF: NOAA's
                     magnetic model
 
 scripts/            extract-data (the data files, from what the old page carried inline),
@@ -378,9 +381,18 @@ read as the plain ones: a Thai or Cyrillic word must be in the name like any oth
 finds nothing in the catalogue, whose names are all in Latin letters, and Enter opens the planner
 with it as the orbit's name, while your own orbit ดาวเทียม-ไทย is found by `ดาวเทียม ไทย`. These
 come in the same order as the rest: a name that starts with the first word before one that only
-holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. An AMSAT designator
-that the catalogue's name does not carry is still not found: SO-50 is listed as SAUDISAT 1C and
-FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder number. A spacecraft
+holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. Last come the ones
+found by **another name**: many spacecraft are known by a name the catalogue does not carry, an
+AMSAT designator or a mission's own (AO-7 is listed as OSCAR 7, SO-50 as SAUDISAT 1C, FO-29 as
+JAS 2, and RS-44 under the rocket stage it rode on, BREEZE-KM R/B), and the picker also looks in
+the names SatNOGS DB keeps for them, so `rs44`, `rs-44` or `RS 44` finds BREEZE-KM R/B and `so50`
+SAUDISAT 1C. There, each word typed must begin a word of the name (`iss` is not looked for inside
+*Mission*), and a name that is the whole query comes first, so `ao7` lists OSCAR 7 (AO-7) before
+FUNCUBE 1 (AO-73). The row says which name matched, *matches RS-44*, in the option, after the
+catalogue's name. The names are a file of the page's own (see *Other names, from the same
+database*), asked for the first time something is typed, and nobody else is asked anything; Enter
+on that first query, if it comes before them, waits for them. Your own orbits are found by name,
+never by their placeholder number, and never by another name. A spacecraft
 SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
 *decayed now*; it is still listed, and still picked like any other (see *When the object is no
 longer there*).
@@ -849,12 +861,14 @@ pass table carry their expansion as a tooltip, and the notes that lean on a term
 warning and the Professor's notes, link to its entry.
 
 Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 ·
-github.com/ColaBear101/SattrackSlop · Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with links to
-the repository, to SatNOGS DB and to the data's licence. It names no licence for the page's code.
+github.com/ColaBear101/SattrackSlop · Transmitter data and alternative names: SatNOGS DB, CC BY-SA
+4.0*, with links to the repository, to SatNOGS DB and to the data's licence. It names no licence for
+the page's code.
 The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
 `vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
 only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
-*The frequency is the one thing that cannot be derived*. The old page said none of this.
+*The frequency is the one thing that cannot be derived* and *Other names, from the same database*.
+The old page said none of this.
 
 Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
 the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB or a service
@@ -3123,10 +3137,12 @@ Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommo
 `data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
 licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
 licence, say what was changed, and license it under CC BY-SA 4.0 too. The page gives the credit
-in the footer's last line, *Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with a link to each. The 1,437 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE
-endpoint (see *Data provenance*) are from the same database. Whether its licence reaches them, and
+in the footer's last line, *Transmitter data and alternative names: SatNOGS DB, CC BY-SA 4.0*, with
+a link to each (the alternative names are the picker's table of other names, below). The 1,437
+element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint (see *Data
+provenance*) are from the same database. Whether its licence reaches them, and
 so whether the catalogue carries it too and the footer should say so, has not been decided; until
-it is, the footer's line names the transmitter data and nothing else.
+it is, the footer's line names the transmitter data and the alternative names and nothing else.
 
 | | |
 |---|---|
@@ -3145,6 +3161,44 @@ window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 
 ```
 node verification/tools/fetch-transmitters.js   # re-bake data/transmitters.json
+```
+
+##### Other names, from the same database
+
+The catalogue names an object as its element-set source does, and that is often not the name a
+radio amateur knows it by. `data/aliases.json` holds the other names of **496** of the 2,158
+spacecraft, **714** names in all: the name SatNOGS DB gives each, and its alternative names, where
+a search of the catalogue's own name would not find them. AO-7 for OSCAR 7, SO-50 for SAUDISAT 1C,
+FO-29 for JAS 2, PO-101 for DIWATA 2B, QO-100 for ES'HAIL 2, RS-44 and DOSAAF-85 for BREEZE-KM R/B,
+call signs such as DP0BEE, and the names of launch objects the catalogue still calls OBJECT G or
+OBJECT AY (MESAT-1, MO-122; ASRTU-1, AO-123). The picker matches a search against them after its own
+rows (see *Satellite*).
+
+It was baked on **16 October 2026** (13:16 UTC) from SatNOGS DB's satellite endpoint,
+`db.satnogs.org/api/satellites/`, which is anonymous and answered with all 2,839 of its records in
+one unpaginated request (`verification/tools/fetch-aliases.js`, which names the repository in its
+User-Agent and would follow a paginated answer one page at a time). Kept: catalogue objects only, by
+NORAD number, and of each one's names (the SatNOGS name, and the alternative names, split at commas
+and semicolons) only those a search would miss. Both sides are stripped of everything but letters,
+marks and digits, as the search strips them, and a name is dropped when it is the catalogue number
+or is held in the catalogue's own name (ISS for ISS (ZARYA)), when it is a spelling of one already
+kept, when it is not a name at all (an international designator or a date given as one, the
+placeholders *Object A* and *Unknown Satellite*: 399 of them), or when it is over 30 characters (an
+acronym spelled out, *Television Infrared Observation Satellite-N* for TIROS N: 32). The file is
+13.9 KB, 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a chunk of its
+own that the picker asks for the first time something is typed into it, not at boot and not when
+the list opens, so a visit that never searches never loads it, and the code that searches it is a
+chunk of its own too (0.6 KB). The page asks SatNOGS nothing: the names are a file of the page's
+own, so the table in *Data and privacy* is unchanged.
+
+Like the transmitter table, it is an adaptation of SatNOGS DB's data, so it is under CC BY-SA 4.0
+too, and the footer's line credits both: *Transmitter data and alternative names: SatNOGS DB, CC
+BY-SA 4.0*.
+
+```
+node verification/tools/fetch-aliases.js                    # re-bake data/aliases.json (one request)
+node verification/tools/fetch-aliases.js --save <file>      # ...and keep the answer
+node verification/tools/fetch-aliases.js --from <file>      # re-bake from a kept answer, no request
 ```
 
 ##### Tuning while it is up
@@ -3386,7 +3440,13 @@ buttons, the transport and the export buttons, in a fixed window — which objec
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
 On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
 reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
-planner. It then works the watchlist's star: reached by Tab from the name, its focus ring whole
+planner. It types the other names, on a page of its own: the table not asked for at boot or when
+the list opens; Enter at once on a first `fo29`, with the table held back 1.5 s, waiting for it
+and then picking JAS 2; `rs44` (and `rs-44`, `RS 44`, `RS-44`) listing BREEZE-KM R/B with *matches
+RS-44* in plain text in its option; `ao7` listing OSCAR 7 before FUNCUBE 1; `so50` SAUDISAT 1C, and
+Enter on it picking it; `iss` its seven rows as before, with no line; `o000`, `customs` and the
+empty query as before; the table and its code asked for once each from the page's own origin,
+nothing asked of any SatNOGS host, and nothing stored. It then works the watchlist's star: reached by Tab from the name, its focus ring whole
 inside the line that clips it at 1400 px, and pressed with Space, nothing stored until then and
 `gt.watch` written at the press; the picker's *Watched* group on the
 empty query, in the order starred, with the same 80 rows and notes and a query's order untouched;

@@ -61,6 +61,9 @@ const VIEWS = [
         /* ...on a query with rows SGP4 has down at NOW, each marked "decayed now" in plain text inside its option, and the line under the list
            that says what the mark is (CHANGES-FROM-LEGACY.md, L59; worked out in a chunk of its own when the list first opens) */
         ['decayed', async () => { await page.fill('#satsearch', 'jilin-01 gaofen 3'); await page.waitForSelector('#satdecayed', { state: 'visible', timeout: 10000 }); }],
+        /* ...on a query only the other names match (CHANGES-FROM-LEGACY.md, L61): OSCAR 7 and FUNCUBE 1, each option saying in plain text which
+           name matched ("matches AO-7"), the first row the active one; the table is a chunk of its own, asked for at the first query */
+        ['alias', async () => { await page.fill('#satsearch', 'ao7'); await page.waitForSelector('#satlist .al', { state: 'visible', timeout: 10000 }); }],
         /* the watchlist (CHANGES-FROM-LEGACY.md, L60): the star on the identity line pressed (a toggle button, aria-pressed; outside the listbox, so no
            control sits inside an option), and the list opened again on the empty query, with the group of the watched over the catalogue */
         ['watched', async () => {

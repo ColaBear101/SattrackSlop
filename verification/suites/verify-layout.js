@@ -188,6 +188,12 @@ function statesFor(page, size, assertPlanner) {
     await page.click('button.title'); await shownSel('#satsearch');
     await page.fill('#satsearch', 'jilin-01 gaofen 3'); await shownSel('#satdecayed'); await raf2(page);
   }, exit: () => esc('#satsearch') });
+  /* ...on a query only an other name matches (CHANGES-FROM-LEGACY.md, L61), the longest line of the kind beside a long name: "heo-09" lists
+     IRIDE-MS2-HEO-9, "matches HEO-09 (a.k.a Ornella Vanono)" (the table is a chunk of its own, asked for at the first query) */
+  S.push({ id: 'picker-alias', overlay: POP('Choose a spacecraft'), enter: async () => {
+    await page.click('button.title'); await shownSel('#satsearch');
+    await page.fill('#satsearch', 'heo-09'); await shownSel('#satlist .al'); await raf2(page);
+  }, exit: () => esc('#satsearch') });
   S.push({ id: 'observer', overlay: POP('Observer'), enter: async () => {
     await page.click('#siteopen'); await shownSel('#s-search');
     await page.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });   // the coordinate fields: the form at its tallest

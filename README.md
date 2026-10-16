@@ -381,8 +381,9 @@ come in the same order as the rest: a name that starts with the first word befor
 holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. An AMSAT designator
 that the catalogue's name does not carry is still not found: SO-50 is listed as SAUDISAT 1C and
 FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder number. A spacecraft
-SGP4 has down at the moment the list is opened carries a mark beside its number, *decayed now*; it
-is still listed, and still picked like any other (see *When the object is no longer there*).
+SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
+*decayed now*; it is still listed, and still picked like any other (see *When the object is no
+longer there*).
 Everything on the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
@@ -2648,8 +2649,8 @@ opens, with `data/catalogue.meta.json` beside it recording when it was fetched a
    anyway — six STARLINK and ONEWEB-0639 — because they came in with the SatNOGS list, where each
    has a published downlink, and nothing filtered that list by constellation. Dropping them belongs
    to the next rebuild: done by hand it would change the catalogue count the regression gate
-   compares. One, STARLINK-2342, is among the objects the page refuses, because SGP4 rejects its
-   elements (see *When the object is no longer there*).
+   compares. One, STARLINK-2342, is among the objects the page refuses: SGP4 reads its set, but its
+   drag terms run out two days after the epoch (error 1; see *When the object is no longer there*).
 
 Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
 and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
@@ -3271,17 +3272,19 @@ object in one of two ways, and the page used to handle neither.
 - **SGP4 refuses it.** Once the drag terms put the orbit inside the Earth, SGP4 returns error 6
   ("decayed") for every instant and there is nothing to analyse. By late September 2026 that is
   fourteen catalogue entries — COSMOS 2558, ODIN and DUCHIFAT 1 among them, all three recorded as
-  re-entered in the CelesTrak SATCAT — plus STARLINK-2342, whose elements SGP4 rejects outright
-  (error 1). Picking one threw after the picker had already moved: the masthead, passes and globe
-  stayed on the previous spacecraft under a picker naming the new one, and every later change of
-  span or window threw again. The new analysis is now computed before anything on screen is
-  touched. If it cannot be, the picker, window and span go back to what is still on screen, and a
-  note under the picker gives SGP4's reason — "ODIN not loaded: SGP4 cannot propagate it anywhere
-  in this window (error 6: decayed)". A window SGP4 cannot fill is refused the same way, playback
-  that runs into one stops at its edge, and a default spacecraft that has itself come down falls
-  back to the next in the preference list rather than opening a blank page. To make the reason
-  available at all, the propagator keeps SGP4's error code (`track.lastError`) where it used to
-  flatten it to `null`; the success path, and the `r` and `v` it hands through, are untouched.
+  re-entered in the CelesTrak SATCAT — plus STARLINK-2342, whose set SGP4 reads cleanly but refuses
+  with error 1 from 11 August, two days after its epoch, once its drag terms have taken the mean
+  eccentricity below SGP4's floor. Picking one threw after the picker had already moved: the
+  masthead, passes and globe stayed on the previous spacecraft under a picker naming the new one,
+  and every later change of span or window threw again. The new analysis is now computed before
+  anything on screen is touched. If it cannot be, the picker, window and span go back to what is
+  still on screen, and a note under the picker gives SGP4's reason — "ODIN not loaded: SGP4 cannot
+  propagate it anywhere in this window (error 6: decayed)". A window SGP4 cannot fill is refused the
+  same way, playback that runs into one stops at its edge, and a default spacecraft that has itself
+  come down falls back to the next in the preference list rather than opening a blank page. To make
+  the reason available at all, the propagator keeps SGP4's error code (`track.lastError`) where it
+  used to flatten it to `null`; the success path, and the `r` and `v` it hands through, are
+  untouched.
 - **SGP4 propagates it anyway.** Short of that point it goes on producing positions at 40 km,
   then at 20, and the page quoted passes, naked-eye verdicts and Doppler for them — ICEYE-X34,
   re-entered 14 September, showed a mean altitude of 42.7 km. The analysis now records how low the
@@ -3293,28 +3296,53 @@ object in one of two ways, and the page used to handle neither.
   24 h window can hold nothing but apogee arcs from an object whose perigee is underground.
 
 **The picker marks what SGP4 has down now.** A row of the spacecraft picker whose element set SGP4
-has down at the moment the list is opened reads *decayed now* beside its number, and while one is
-in the list a line under it says what the mark is: "Decayed now: at this moment SGP4 has it below
-the 120 km entry interface, or refuses it as decayed (error 6). It is still listed; picking it asks
-SGP4 for its whole window." It is one SGP4 sample per entry, at that moment, through the page's own
-propagator (`src/lib/catalogue/decayed.ts`): error 6, or a position under the entry interface, on
-the lines a pick would analyse (the live set, where one was taken). That is not the analysis's
-test, which samples the whole window and a revolution: an eccentric orbit whose perigee SGP4 puts
-underground can be above 120 km at the instant asked, so a row without the mark can still be
-refused, and the window's answer is the one that counts. The mark takes nothing away: the list
-still holds 2,158, and a marked row is picked as any other is (ODIN is then refused with SGP4's
-reason, COSMOS 2558 on 14 September loads with its re-entry note). At 2026-09-14 00:00 UTC it
-marks thirteen entries, ODIN and COSMOS 2558 among them; on 16 October, twenty-three. STARLINK-2342
-is never marked: SGP4 rejects its elements with error 1, not 6, and its refusal says so. The 2,158
-propagations take a few tens of milliseconds. They are a chunk of their own, asked for the first
-time the list opens and spread over the browser's idle moments, so a visit that never opens the
-list does none of them, and the marks appear together once every entry has been through; a set
-more than an hour old is worked out again at the next opening. Under `?tle=embedded` nothing is
-marked, because each window there opens at its own set's epoch and a mark for this moment could
-contradict a window that loads. Nothing is stored and nothing is asked of any host.
-`verify-catalogue.js` opens the list on a clock that starts on 14 September and checks every row it
-reads against the pinned satellite.js run apart from the page; `axe.js` and `verify-layout.js`
-look at the marked rows too.
+has down at the clock's instant when the list is opened reads *decayed now* beside its number, and
+while one is in the list a line under it says what the mark is: "Decayed now: at the clock's instant
+SGP4 has it below the 120 km entry interface, or refuses it as decayed (error 6), or its drag terms
+have carried it past what they can model (after the set's epoch: refused with error 1 to 4, or put
+above its own apogee). It is still listed; picking it asks SGP4 for its whole window." It is one
+SGP4 sample per entry, at that instant, through the page's own propagator
+(`src/lib/catalogue/decayed.ts`), on the lines a pick would analyse (the live set, where one was
+taken). The instant is the clock's, not the wall clock's: a load puts the clock at the start of the
+window it analyses, so moving the window (to a set's epoch with the Window popover's *Epoch*, say)
+moves the marks with it, and while the clock runs at real time it is now. The mark takes nothing
+away: the list still holds 2,158, and a marked row is picked as any other is (ODIN is then refused
+with SGP4's reason, STARLINK-2342 with its error 1, and COSMOS 2558 on 14 September loads with its
+re-entry note). At 2026-09-14 00:00 UTC it marks fourteen entries, ODIN, COSMOS 2558 and
+STARLINK-2342 among them; at 00:00 UTC on 16 October, twenty-four.
+
+The third way down is SGP4's own arithmetic. In its near-earth theory (periods under 225 minutes)
+only the drag terms change the mean orbit's size and shape over time, and with a positive B* they
+only shrink it after the epoch: the semi-major axis goes as a(1 − C1·t − …)², and the eccentricity
+falls with t. Run far enough, the eccentricity falls through SGP4's floor and SGP4 refuses the set
+(error 1, or 4), or the polynomial passes zero and the orbit grows again, to thousands of
+kilometres. So for a near-earth set SGP4 read without complaint, with a positive B*, after its
+epoch, a refusal with error 1 to 4, or a position more than 1 % over the set's own apogee radius, is
+a decay and not an orbit; SGP4's short-period terms take such a set at most 0.16 % over its apogee
+in this catalogue before the drag runs out. STARLINK-2342 is the first kind: SGP4 reads its set
+(epoch 9 August) cleanly, has it under 120 km 16 hours later and refuses it with error 1 from 11
+August. DUCHIFAT 1 is the second: refused with error 6 from late September, it is put at 2,690 km on
+28 October and at 19,464 km on 1 November. Before a set's epoch (where SGP4 runs the drag backwards,
+to a larger orbit), with a B* of zero or less, or in deep space (where the Sun and the Moon move the
+eccentricity), an error 1 to 4 is not called a decay: the analysis names the reason.
+
+None of this is the analysis's test, which samples the whole window and a revolution. An orbit whose
+perigee SGP4 puts underground can be above 120 km at the instant asked, and a set long gone can, for
+a while, sit between 120 km and its apogee as its drag polynomial passes back through the size it
+had, so a row without the mark can still be refused, and the window's answer is the one that counts.
+Long after a decay the runaway can even be analysed: on 1 November compute() loads DUCHIFAT 1 with
+no re-entry note at a mean height of 22,562 km, which the mark there contradicts; that is the
+analysis's, and older than the mark. The 2,158 propagations take a few tens of milliseconds. They
+are a chunk of their own, asked for the first time the list opens and spread over the browser's idle
+moments, so a visit that never opens the list does none of them, and the marks appear together once
+every entry has been through. They are worked out again at the next opening when a live set has been
+taken or given back since (the check after a pick can adopt one), or when the clock is more than an
+hour from the instant they were worked out for. Under `?tle=embedded` nothing is marked, because
+each window there opens at its own set's epoch and a mark for one instant could contradict a window
+that loads. Nothing is stored and nothing is asked of any host. `verify-catalogue.js` opens the list
+on a clock that starts on 14 September and checks every row it reads against the pinned satellite.js
+run apart from the page, then again with the clock put at KNACKSAT-2's epoch; `axe.js` and
+`verify-layout.js` look at the marked rows too.
 
 The live refresh has three answers of its own that are not a fresher set:
 

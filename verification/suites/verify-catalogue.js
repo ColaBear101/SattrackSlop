@@ -35,7 +35,8 @@
  * same fixed instant, the rows SGP4 has down then are marked, exactly those,
  * as an independent run of the pinned satellite.js finds them; nothing is
  * taken out of the list, a marked row is still a pick, the work is a chunk of
- * its own asked for when the list first opens, and the snapshot has none.
+ * its own asked for when the list first opens, the marks follow the clock
+ * when it is put at another instant, and the snapshot has none.
  *
  *   node verification/suites/verify-catalogue.js          (needs playwright)
  */
@@ -274,12 +275,15 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   } else console.log('  not checked: the picker\'s last tier, the words of a query, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L58); the old page had none');
 
   // ---- the picker's mark: decayed now ---------------------------------------
-  /* The rebuilt picker marks "decayed now" what SGP4 has down at the moment the list is opened: SGP4's own error 6, or a position under the
-     120 km entry interface, one sample per entry (CHANGES-FROM-LEGACY.md, L59). Which ones depends on when you ask, so this page runs on a
-     clock that starts at W0, and what should be marked is worked out here, apart from the page's code, with the pinned satellite.js
-     (verification/reference/satellite.min.js) over the catalogue file. It is a mark: no row is taken away, a marked row is still picked
-     the way any is, the work is done in a chunk of its own the first time the list opens (and never in the snapshot, ?tle=embedded), and
-     it asks nothing of the network and stores nothing. The old page had none. */
+  /* The rebuilt picker marks "decayed now" what SGP4 has down at the clock's instant when the list is opened: SGP4's own error 6, a position
+     under the 120 km entry interface, or SGP4's drag terms run past what they model (after the epoch of a near-earth set it read cleanly,
+     with a positive B*: a refusal with error 1 to 4, or a position over the set's own apogee), one sample per entry (CHANGES-FROM-LEGACY.md,
+     L59). Which ones depends on when you ask, so this page runs on a clock that starts at W0, and what should be marked is worked out here,
+     apart from the page's code, with the pinned satellite.js (verification/reference/satellite.min.js) over the catalogue file, reading the
+     drag rule off satellite.js's own record of each set where the page reads the two lines. It is a mark: no row is taken away, a marked
+     row is still picked the way any is, the work is done in a chunk of its own the first time the list opens (and never in the snapshot,
+     ?tle=embedded), the marks are for the clock's instant (put back to KNACKSAT-2's epoch, they are what is down there), and it asks
+     nothing of the network and stores nothing. The old page had none. */
   if (NEW) {
     const fs = require('fs');
     const sat = require('../reference/satellite.min.js');
@@ -292,14 +296,22 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     }
     const downAt = ms => cat.filter(e => {
       let s; try { s = sat.twoline2satrec(e.l1, e.l2); } catch (x) { return false; }
+      /* read before propagate() clears it: the error SGP4 gave the set when it was read (t = 0) */
+      const drag = !s.error && s.bstar > 0 && s.method === 'n' && ms > (s.jdsatepoch - 2440587.5) * DAY;
       const d = new Date(ms), pv = sat.propagate(s, d);
-      if (!pv || !pv.position || !isFinite(pv.position.x)) return s.error === 6;
-      return sat.eciToGeodetic(pv.position, sat.gstime(d)).height < 120;
+      if (!pv || !pv.position || !isFinite(pv.position.x)) return s.error === 6 || (drag && s.error >= 1 && s.error <= 4);
+      const p = pv.position;
+      if (drag && Math.hypot(p.x, p.y, p.z) > 1.01 * s.a * 6378.135 * (1 + s.ecco)) return true;
+      return sat.eciToGeodetic(p, sat.gstime(d)).height < 120;
     }).map(e => e.satnum).sort();
     const DOWN = downAt(W0);
     const DOWN_LATER = downAt(W0 + 10 * 60e3);
-    chk('(reference) at W0 the pinned SGP4 has 13 of the 2,158 down, ODIN and COSMOS 2558 among them, and the same 13 ten minutes on (so the seconds the page takes to open cannot change the answer)',
-        cat.length === 2158 && DOWN.length === 13 && DOWN.includes('26702') && DOWN.includes('53323') && DOWN.join() === DOWN_LATER.join(), DOWN.join(' '));
+    chk('(reference) at W0 the pinned SGP4 has 14 of the 2,158 down, ODIN, COSMOS 2558 and STARLINK-2342 (refused with error 1 a month after its epoch) among them, and the same 14 ten minutes on (so the seconds the page takes to open cannot change the answer)',
+        cat.length === 2158 && DOWN.length === 14 && DOWN.includes('26702') && DOWN.includes('53323') && DOWN.includes('47883') && DOWN.join() === DOWN_LATER.join(), DOWN.join(' '));
+    const EPOCH = Date.parse('2026-09-12T07:29:09.993Z');      // KNACKSAT-2's set: the Window popover's "Epoch" puts the window and the clock there
+    const DOWN_EPOCH = downAt(EPOCH);
+    chk('(reference) at KNACKSAT-2\'s epoch it has 13 down: the same but COSMOS 2558, not yet under 120 km',
+        DOWN_EPOCH.length === 13 && DOWN_EPOCH.join() === DOWN.filter(n => n !== '53323').join(), DOWN_EPOCH.join(' '));
 
     const ctx2 = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
     await ctx2.clock.install({ time: W0 });
@@ -335,13 +347,14 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     chk('the list, opened at W0 on "26702", marks ODIN "decayed now", in plain text inside its option (no role, nothing focusable: the field keeps the keys)',
         came && odin.role === 'option' && odin.nm === 'ODIN' && odin.dk === 'decayed now' && odin.dkRole === null && odin.inner === 0, JSON.stringify(odin));
     chk('...and says under the list what the mark is, in a line of its own (not one of the picker\'s notes)',
-        odin.note === 'Decayed now: at this moment SGP4 has it below the 120 km entry interface, or refuses it as decayed (error 6). It is still listed; picking it asks SGP4 for its whole window.'
+        odin.note === "Decayed now: at the clock's instant SGP4 has it below the 120 km entry interface, or refuses it as decayed (error 6), or its drag terms have carried it "
+          + "past what they can model (after the set's epoch: refused with error 1 to 4, or put above its own apogee). It is still listed; picking it asks SGP4 for its whole window."
         && !odin.noteIsNote, JSON.stringify(odin.note));
     const asked = reqs.slice(sinceOpen);
     chk('...worked out in its own chunk, asked for once, and nothing else is asked of any host for it',
         asked.filter(u => CHUNK.test(u)).length === 1 && asked.every(u => u.startsWith(origin + '/')), asked.map(u => u.replace(origin, '')).join(' ') || 'nothing');
 
-    /* each of the 13 by its number, and some lists of many rows: a row is marked exactly when the reference has it down */
+    /* each of the 14 by its number, and some lists of many rows: a row is marked exactly when the reference has it down */
     const wrong = [], seen = new Set();
     for (const q of DOWN.concat(['object', 'cosmos', 'jilin-01 gaofen 3d', 'lemur', 'starlink-23', 'knacksat', 'iss'])) {
       for (const r of await rows(q)) {
@@ -349,7 +362,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
         if ((r.dk === 'decayed now') !== DOWN.includes(r.n)) wrong.push(q + ': ' + r.n + ' ' + r.nm + ' ' + (r.dk || 'unmarked'));
       }
     }
-    chk('every row is marked exactly when the reference has it down at W0: the 13 by their numbers, and the rows for "object", "cosmos", "jilin-01 gaofen 3d", "lemur", "starlink-23" (STARLINK-2342 is refused with error 1, not 6), "knacksat" and "iss"',
+    chk('every row is marked exactly when the reference has it down at W0: the 14 by their numbers, and the rows for "object", "cosmos", "jilin-01 gaofen 3d", "lemur", "starlink-23" (STARLINK-2342 marked: refused with error 1 after its epoch, the drag run out), "knacksat" and "iss"',
         wrong.length === 0 && DOWN.every(n => seen.has(n)) && seen.size > 150, wrong.slice(0, 4).join(' | ') || seen.size + ' rows read, ' + DOWN.length + ' of them marked');
     const quiet = await rows('knacksat');
     const quietNote = await p2.evaluate(() => !!document.getElementById('satdecayed'));
@@ -364,16 +377,39 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     chk('...and stores nothing', storeAfter === storeBefore, JSON.stringify({ before: storeBefore, after: storeAfter }));
     await H.closePicker(p2);
 
-    /* a marked row is a pick like any other: COSMOS 2558 loads at W0, flagged as re-entering, and ODIN is refused with SGP4's reason, as above */
+    /* a marked row is a pick like any other: COSMOS 2558 loads at W0, flagged as re-entering, and ODIN and STARLINK-2342 are refused with
+       SGP4's reasons, as above */
     await H.pick(p2, '53323');
     await p2.waitForTimeout(900);
     const c2558 = await p2.evaluate(() => ({ shown: __gt.D.entry.name, reentry: !!__gt.D.reentry }));
     await H.pick(p2, '26702');
     await p2.waitForTimeout(900);
     const refused = await p2.evaluate(() => ({ shown: __gt.D.entry.name, note: document.getElementById('loadnote').textContent }));
-    chk('a marked row is still picked as any is: COSMOS 2558 loads at W0, flagged as re-entering; ODIN is refused with SGP4\'s own reason',
-        c2558.shown === 'COSMOS 2558' && c2558.reentry && refused.shown === 'COSMOS 2558' && /ODIN/.test(refused.note) && /error 6: decayed/.test(refused.note),
-        JSON.stringify({ c2558, refused }));
+    await H.pick(p2, '47883');
+    await p2.waitForTimeout(900);
+    const spent = await p2.evaluate(() => ({ shown: __gt.D.entry.name, note: document.getElementById('loadnote').textContent }));
+    chk('a marked row is still picked as any is: COSMOS 2558 loads at W0, flagged as re-entering; ODIN is refused with SGP4\'s own reason (error 6), and STARLINK-2342 with its own (error 1)',
+        c2558.shown === 'COSMOS 2558' && c2558.reentry && refused.shown === 'COSMOS 2558' && /ODIN/.test(refused.note) && /error 6: decayed/.test(refused.note)
+        && spent.shown === 'COSMOS 2558' && /STARLINK-2342/.test(spent.note) && /error 1: mean eccentricity or semi-major axis out of range/.test(spent.note),
+        JSON.stringify({ c2558, refused, spent }));
+
+    /* the marks are for the clock's instant, not the wall clock's: put the clock at KNACKSAT-2's epoch (where a load from that window puts it)
+       and the list, opened again, marks what is down there, worked out again for it; COSMOS 2558 is not down yet */
+    await p2.evaluate(ms => __gt.seek(ms), EPOCH);
+    await p2.waitForTimeout(300);
+    await rows('53323');
+    const moved = await p2.waitForFunction(() => { const li = document.querySelector('#satlist li[data-idx]'); return !!li && !li.querySelector('.dk'); }, null, { timeout: 10000 })
+      .then(() => true, () => false);
+    const wrongE = [], seenE = new Set();
+    for (const q of ['53323', '26702', '47883', 'object', 'cosmos', 'jilin-01 gaofen 3d']) {
+      for (const r of await rows(q)) {
+        seenE.add(r.n);
+        if ((r.dk === 'decayed now') !== DOWN_EPOCH.includes(r.n)) wrongE.push(q + ': ' + r.n + ' ' + r.nm + ' ' + (r.dk || 'unmarked'));
+      }
+    }
+    chk('the marks follow the clock: put at KNACKSAT-2\'s epoch, the list marks exactly what the reference has down there (COSMOS 2558 not, ODIN and STARLINK-2342 still)',
+        moved && wrongE.length === 0 && seenE.has('53323') && seenE.has('26702') && seenE.has('47883') && seenE.size > 80, wrongE.slice(0, 4).join(' | ') || seenE.size + ' rows read');
+    await H.closePicker(p2);
 
     await ctx2.close();
 

@@ -6,6 +6,7 @@
   import { watchedFirst } from '../../lib/catalogue/watch';
   import { watch } from '../../state/watch.svelte';
   import { WATCHED } from '../../lib/text/watch';
+  import { loadAliases } from '../../lib/data/aliases';
   import { session } from '../planner/session.svelte';
   import Popover from '../ui/Popover.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -24,10 +25,18 @@
   const lead = $derived(query.trim() || !app.catalogue.length ? [] : watch.list.map(n => app.catIndex({ satnum: n })).filter(i => i >= 0));
   /* The other names (CHANGES-FROM-LEGACY.md, L61): SatNOGS DB's for the catalogue's spacecraft (RS-44 for BREEZE-KM R/B), in a chunk of
      their own asked for the first time something is typed. What rank() did not list that one of them matches comes after rank()'s rows,
-     and its option says which name matched. A wrapper: rank() is not touched, and only the catalogue is searched this way. */
+     and its option says which name matched. A wrapper: rank() is not touched, and only the catalogue is searched this way. The finder's
+     chunk and the table's are asked for together, one round trip. Rows that come in after the first query has been answered go before
+     the Plan row: if that row was the one chosen, it stays chosen. `alDone`: the table has come, or will not. */
   let al = $state.raw<import('../../lib/catalogue/alias').AliasFinder | null>(null);
+  let alDone = $state(false);
   let alp: Promise<void> | null = null;
-  const aliases = () => (alp ??= import('../../lib/catalogue/alias').then(m => m.aliasFinder()).then(f => { al = f; }, () => {}));
+  const aliases = () => (alp ??= Promise.all([import('../../lib/catalogue/alias'), loadAliases()]).then(([m, d]) => {
+    const keep = planOn && shown.length > 0 && active === shown.length;
+    al = m.aliasFinder(d.a);
+    alDone = true;
+    if (keep) active = shown.length;
+  }, () => { alDone = true; }));
   const ranked = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
   const said = $derived(al && query.trim() ? al(app.catalogue, query, ranked) : null);
   const hits = $derived(watchedFirst(said?.size ? ranked.concat([...said.keys()]) : ranked, lead));
@@ -46,6 +55,9 @@
      pill says why instead. */
   const planOn = $derived(session.enabled && !PINNED);
   const last = $derived(shown.length + (planOn ? 1 : 0) - 1);
+  /* The first query, nothing listed, and the other names still on their way: not yet answered. The list does not say that nothing
+     matches, and the Plan row is not offered as the choice, until they have come (Enter waits for them, below). */
+  const wait = $derived(!alDone && !shown.length && !!query.trim());
   /* What SGP4 has down at this moment is marked "decayed now" (CHANGES-FROM-LEGACY.md, L59), in words the list carries: worked out in a
      chunk of its own the first time the list opens, and never in the snapshot (?tle=embedded). A mark only: no row is taken away. */
   let dk = $state.raw<typeof import('../../state/decayed.svelte')['decayed'] | null>(null);
@@ -76,8 +88,13 @@
     else if (e.key === 'Tab') open = false;
     else if (e.key === 'Enter') {
       /* nothing listed while the other names are still on their way (the first query): Enter waits for them, then picks the first row
-         they bring, or opens the planner as it would have */
-      if (!al && !shown.length && query.trim()) { e.preventDefault(); void aliases().then(() => { if (open && shown.length) choose(shown[0]!); else if (open && planOn) plan(); }); }
+         they bring, or opens the planner as it would have; but only for the query it was pressed on, in the list it was pressed in. If
+         the reader has typed on, or closed the list, it does nothing: the next Enter decides. */
+      if (wait) {
+        e.preventDefault();
+        const q = query;
+        void aliases().then(() => { if (!open || query !== q) return; if (shown.length) choose(shown[0]!); else if (planOn) plan(); });
+      }
       else if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
       else if (planOn && active === shown.length) { e.preventDefault(); plan(); }
       else if (shown.length) { e.preventDefault(); choose(shown[0]!); }
@@ -85,7 +102,7 @@
     }
   }
 
-  const activeId = $derived(planOn && active === shown.length ? 'soptplan' : shown.length ? 'sopt' + active : undefined);
+  const activeId = $derived(wait ? undefined : planOn && active === shown.length ? 'soptplan' : shown.length ? 'sopt' + active : undefined);
   $effect(() => { document.getElementById(activeId ?? '')?.scrollIntoView({ block: 'nearest' }); });
 
   /* "/" focuses the picker from anywhere that is not a text field */
@@ -136,12 +153,12 @@
            reaches it. The press does not move focus (the list would take it back when it closes), the planner takes it. -->
       {#if planOn}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <li role="option" id="soptplan" class="plan" class:on={active === shown.length} data-plan="1" aria-selected="false"
+        <li role="option" id="soptplan" class="plan" class:on={!wait && active === shown.length} data-plan="1" aria-selected="false"
             onmousedown={e => e.preventDefault()} onclick={plan} onpointermove={() => (active = shown.length)}>+ Plan a custom orbit…</li>
       {/if}
     </ul>
   {/if}
-  {#if !shown.length}<p class="note">Nothing in the catalogue matches that.</p>{/if}
+  {#if !shown.length && !wait}<p class="note">Nothing in the catalogue matches that.</p>{/if}
   {#if more > 0}<p class="note">{more.toLocaleString('en-US')} more match. Keep typing to narrow them.</p>{/if}
   {#if dk?.any(shown)}<p id="satdecayed" class="dkn">{dk.note}</p>{/if}
   <p id="satcount" class="count mono">{app.catalogue.length.toLocaleString('en-US')}{custom.count ? ' + ' + custom.count + ' of yours' : ' spacecraft'}</p>

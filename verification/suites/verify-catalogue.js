@@ -34,8 +34,10 @@
  * Then the other names SatNOGS DB keeps (L61): RS-44, AO-7, SO-50 and FO-29
  * found under the catalogue's BREEZE-KM R/B, OSCAR 7, SAUDISAT 1C and JAS 2,
  * each option saying which name matched, the table a chunk of its own asked
- * for at the first query (Enter on it waits for it), and nothing asked of
- * SatNOGS.
+ * for at the first query together with its finder's (Enter on it waits for
+ * it, and acts only on the query it was pressed on; until it comes the list
+ * says neither that nothing matches nor offers the Plan row; rows it brings
+ * leave a chosen Plan row chosen), and nothing asked of SatNOGS.
  * Then the picker's "decayed now" (L59): on a page whose clock starts at the
  * same fixed instant, the rows SGP4 has down then are marked, exactly those,
  * as an independent run of the pinned satellite.js finds them; nothing is
@@ -285,9 +287,10 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   // ---- the picker's other names ---------------------------------------------
   /* The rebuilt picker also matches the other names SatNOGS DB keeps for the catalogue's spacecraft, baked into data/aliases.json
      (CHANGES-FROM-LEGACY.md, L61): after rank()'s rows, what one of them matches, by every word of the query starting a word of the name,
-     its option saying which name matched in plain text. The table is a chunk of its own (with its finder, another), asked for the first
-     time something is typed, not at boot and not when the list opens; Enter on that first query, if it comes before the table, waits for
-     it. Nothing is asked of SatNOGS and nothing is stored. A context of its own, so that no chunk is in the cache. */
+     its option saying which name matched in plain text. The table is a chunk of its own (with its finder, another, asked for in the same
+     moment), asked for the first time something is typed, not at boot and not when the list opens; Enter on that first query, if it comes
+     before the table, waits for it. Nothing is asked of SatNOGS and nothing is stored. A context of its own, so that no chunk is in the
+     cache (and routes, which keep the page from its HTTP cache on each fresh load below). */
   if (NEW) {
     const ctxA = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
     for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctxA.route(host, r => r.abort());
@@ -297,9 +300,11 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     pA.on('request', r => reqsA.push(r.url()));
     const TABLE = /\/assets\/aliases-[A-Za-z0-9_-]{8}\.js$/, FINDER = /\/assets\/alias-[A-Za-z0-9_-]{8}\.js$/;
     const originA = new URL(PAGE).origin;
-    /* the table is held back 1.5 s the first time, so that the Enter below is surely pressed before it has come */
-    let held = 0;
+    /* the table is held back 1.5 s the first time, so that the Enter below is surely pressed before it has come; and so is the finder's
+       code, so that the table is seen to be asked for while that is still on its way (together, one round trip; not one after the other) */
+    let held = 0, heldF = 0;
     await pA.route(TABLE, async r => { held++; await new Promise(res => setTimeout(res, 1500)); await r.continue(); });
+    await pA.route(FINDER, async r => { heldF++; await new Promise(res => setTimeout(res, 1500)); await r.continue(); });
     await pA.goto(PAGE, { waitUntil: 'load' });
     await pA.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
     await pA.waitForTimeout(1500);
@@ -310,6 +315,16 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
         reqsA.filter(u => TABLE.test(u) || FINDER.test(u)).join(' ') || 'not requested');
     await pA.click('#satsearch');
     await pA.fill('#satsearch', 'fo29');
+    await pA.waitForTimeout(300);
+    /* Until they have come, the first query is not yet answered: the list must not say nothing matches (FO-29 will), nor offer the Plan
+       row as the choice when Enter is not going to open it */
+    const unanswered = await pA.evaluate(() => ({ rows: document.querySelectorAll('#satlist li[data-idx]').length,
+      notes: [...document.querySelectorAll('.search ~ p.note')].map(n => n.textContent), active: document.getElementById('satsearch').getAttribute('aria-activedescendant'),
+      planOn: !!document.querySelector('#satlist li.plan.on'), plan: !!document.getElementById('soptplan') }));
+    chk('the finder\'s code and the table are asked for together, the first time something is typed: both on their way while the code is still held back',
+        held === 1 && heldF === 1, JSON.stringify({ table: held, finder: heldF }));
+    chk('...and until they have come, "fo29" is not yet answered: no "Nothing in the catalogue matches that", and the Plan row is listed but not the active option',
+        unanswered.rows === 0 && unanswered.notes.length === 0 && unanswered.active === null && !unanswered.planOn, JSON.stringify(unanswered));
     await pA.keyboard.press('Enter');
     await pA.waitForTimeout(300);
     const waiting = await pA.evaluate(() => ({ shown: __gt.D.entry.name, planner: (p => !!p && !p.hidden)(document.getElementById('planner')), open: !!document.getElementById('satsearch') }));
@@ -319,6 +334,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
         held === 1 && before !== 'JAS 2' && waiting.shown === before && waiting.open && !waiting.planner && picked.shown === 'JAS 2' && !picked.open && !picked.planner,
         JSON.stringify({ held, before, waiting, picked }));
     await pA.unroute(TABLE);
+    await pA.unroute(FINDER);
     await pA.waitForTimeout(900);
     const storeA = await pA.evaluate(() => Object.keys(localStorage).sort().join());
 
@@ -362,6 +378,71 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     const tableReqs = reqsA.filter(u => TABLE.test(u)), finderReqs = reqsA.filter(u => FINDER.test(u));
     chk('the table and its finder are each asked for once in the visit, from the page\'s own origin', tableReqs.length === 1 && finderReqs.length === 1
         && tableReqs.concat(finderReqs).every(u => u.startsWith(originA + '/')), tableReqs.concat(finderReqs).map(u => u.replace(originA, '')).join(' '));
+
+    /* What the reader does while the table is on its way. Each case is a fresh load (the chunks are a page's once), with the table held
+       back 1.5 s again. A waiting Enter acts on the query it was pressed on, in the list it was pressed in: typed on, or closed and opened
+       again, it does nothing when the table comes (the next Enter decides). And rows that come in after the first query has been answered
+       go before the Plan row, which stays the active option if it was. */
+    const freshA = async () => {
+      let n = 0;
+      await pA.route(TABLE, async r => { n++; await new Promise(res => setTimeout(res, 1500)); await r.continue(); });
+      await pA.goto(PAGE, { waitUntil: 'load' });
+      await pA.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+      await pA.waitForTimeout(1500);
+      await H.openPicker(pA);
+      await pA.click('#satsearch');
+      return { name: await pA.evaluate(() => __gt.D.entry.name), held: () => n };
+    };
+    const afterA = () => pA.evaluate(() => ({ shown: __gt.D.entry.name, planner: (p => !!p && !p.hidden)(document.getElementById('planner')), open: !!document.getElementById('satsearch'),
+      q: (document.getElementById('satsearch') || {}).value, rows: [...document.querySelectorAll('#satlist li[data-idx] .nm')].slice(0, 2).map(n => n.textContent) }));
+    let f = await freshA();
+    await pA.fill('#satsearch', 'fo29');
+    await pA.keyboard.press('Enter');
+    await pA.waitForTimeout(300);
+    await pA.fill('#satsearch', 'iss');
+    await pA.waitForTimeout(2200);
+    let after = await afterA();
+    chk('Enter on a first "fo29", then "iss" typed before the table comes: nothing is picked when it comes (not JAS 2, not ISS (NAUKA)), the list stays open on "iss"',
+        f.held() === 1 && after.shown === f.name && after.open && after.q === 'iss' && after.rows[0] === 'ISS (NAUKA)' && !after.planner, JSON.stringify({ before: f.name, after }));
+    await H.closePicker(pA);
+    await pA.unroute(TABLE);
+
+    f = await freshA();
+    await pA.fill('#satsearch', 'tango');
+    await pA.keyboard.press('Enter');
+    await pA.waitForTimeout(300);
+    await pA.keyboard.press('Escape');
+    await pA.waitForSelector('#satsearch', { state: 'detached', timeout: 5000 }).catch(() => {});
+    await pA.keyboard.press('/');
+    await pA.waitForSelector('#satsearch', { state: 'visible', timeout: 5000 }).catch(() => {});
+    await pA.fill('#satsearch', 'zzqq nothing');
+    await pA.waitForTimeout(2200);
+    after = await afterA();
+    chk('...Enter on a first "tango", then Escape, "/" and "zzqq nothing" before it comes: neither CLUSTER II-FM8 (TANGO) is picked nor the planner opened, the list open',
+        f.held() === 1 && after.shown === f.name && after.open && after.q === 'zzqq nothing' && after.rows.length === 0 && !after.planner, JSON.stringify({ before: f.name, after }));
+    await H.closePicker(pA);
+    await pA.unroute(TABLE);
+
+    f = await freshA();
+    await pA.fill('#satsearch', 'cube');
+    await pA.waitForSelector('#soptplan', { timeout: 10000 }).catch(() => {});
+    await pA.keyboard.press('ArrowUp');
+    const actA = () => pA.evaluate(() => ({ active: document.getElementById('satsearch').getAttribute('aria-activedescendant'), planOn: !!document.querySelector('#satlist li.plan.on'),
+      rows: document.querySelectorAll('#satlist li[data-idx]').length, al: document.querySelectorAll('#satlist li[data-idx] .al').length }));
+    const upA = await actA();
+    await pA.waitForSelector('#satlist .al', { timeout: 10000 }).catch(() => {});
+    await pA.waitForTimeout(200);
+    const inA = await actA();
+    chk('"cube" as the first query, ArrowUp to the Plan row, then the table comes: its six rows go before the Plan row, which is still the active option',
+        f.held() === 1 && upA.active === 'soptplan' && upA.planOn && upA.al === 0 && inA.al === 6 && inA.rows === upA.rows + 6 && inA.active === 'soptplan' && inA.planOn,
+        JSON.stringify({ before: upA, after: inA }));
+    await pA.keyboard.press('Enter');
+    await pA.waitForFunction(() => (p => !!p && !p.hidden)(document.getElementById('planner')), null, { timeout: 5000 }).catch(() => {});
+    after = await afterA();
+    chk('...and Enter then opens the planner, as the Plan row says, rather than picking CSC-1', after.planner && after.shown === f.name && !after.open, JSON.stringify(after));
+    await pA.keyboard.press('Escape');
+    await pA.waitForFunction(() => document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
+    await pA.unroute(TABLE);
     chk('...and nothing is asked of db.satnogs.org, or of any SatNOGS host, at any point of the visit', !reqsA.some(u => /satnogs/i.test(new URL(u).hostname)),
         reqsA.filter(u => /satnogs/i.test(new URL(u).hostname)).join(' ') || 'none of ' + reqsA.length + ' requests');
     await ctxA.close();

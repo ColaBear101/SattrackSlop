@@ -14,10 +14,10 @@
  * names it only happens to contain). The rows are ordered by how well the name matched: a name that is the whole query (stripped)
  * first ("ao7": OSCAR 7 for AO-7, before FUNCUBE 1 for AO-73), then one that starts with the first word, then one that only holds the
  * words; in catalogue order within each, and each row by its best name (the first the table gives, of the best kind). The table
- * holds no name the catalogue's own already holds (stripped), so what rank() would find by such a name it finds first. Only the
+ * holds no name the catalogue's own already holds (stripped), so what rank() would find by such a name it finds first, and no name
+ * that is another object's catalogue name (where SatNOGS and the catalogue disagree on which object is which). Only the
  * catalogue is searched: an orbit of the reader's own is never matched this way, by name or by its placeholder number, whatever
  * number the test hook gives it, since the picker's indices past the catalogue are never looked at. Pure. */
-import { loadAliases } from '../data/aliases';
 import { aliasSaid } from '../text/alias';
 
 /** rank()'s own comparison (rank.ts, the word tier): the two must agree, or a name could be offered twice or not at all */
@@ -59,13 +59,12 @@ export function byAlias(cat: readonly { satnum: string }[], query: string, table
 /** What the picker calls once the table has come: the rows byAlias() finds, each mapped to the words its option says ("matches RS-44"). */
 export type AliasFinder = (cat: readonly { satnum: string }[], query: string, listed: readonly number[]) => Map<number, string>;
 
-let finder: Promise<AliasFinder> | null = null;
-/** The finder, over the table fetched on first use (its own chunk) and kept. */
-export function aliasFinder(): Promise<AliasFinder> {
-  finder ??= loadAliases().then(d => (cat, query, listed) => {
-    const m = byAlias(cat, query, d.a, listed);
+/** The finder over a table. The picker asks for this chunk and for the table's (lib/data/aliases.ts) at once, so that the table is not
+ *  asked for only once this one has come: one round trip, not two. */
+export function aliasFinder(table: AliasTable): AliasFinder {
+  return (cat, query, listed) => {
+    const m = byAlias(cat, query, table, listed);
     for (const [i, n] of m) m.set(i, aliasSaid(n));
     return m;
-  });
-  return finder;
+  };
 }

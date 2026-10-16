@@ -390,8 +390,12 @@ SAUDISAT 1C. There, each word typed must begin a word of the name (`iss` is not 
 *Mission*), and a name that is the whole query comes first, so `ao7` lists OSCAR 7 (AO-7) before
 FUNCUBE 1 (AO-73). The row says which name matched, *matches RS-44*, in the option, after the
 catalogue's name. The names are a file of the page's own (see *Other names, from the same
-database*), asked for the first time something is typed, and nobody else is asked anything; Enter
-on that first query, if it comes before them, waits for them. Your own orbits are found by name,
+database*), asked for the first time something is typed, and nobody else is asked anything. Until
+they have come, a first query nothing else matches is not yet answered: the list does not say that
+nothing matches, and does not offer the Plan row as the choice. Enter on it waits for them, and then
+acts on that query only: if you have typed on, or closed the list, it does nothing, and your next
+Enter decides. Rows they bring after a query has been answered come before the Plan row, which
+stays chosen if you had chosen it. Your own orbits are found by name,
 never by their placeholder number, and never by another name. A spacecraft
 SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
 *decayed now*; it is still listed, and still picked like any other (see *When the object is no
@@ -3166,8 +3170,8 @@ node verification/tools/fetch-transmitters.js   # re-bake data/transmitters.json
 ##### Other names, from the same database
 
 The catalogue names an object as its element-set source does, and that is often not the name a
-radio amateur knows it by. `data/aliases.json` holds the other names of **496** of the 2,158
-spacecraft, **714** names in all: the name SatNOGS DB gives each, and its alternative names, where
+radio amateur knows it by. `data/aliases.json` holds the other names of **494** of the 2,158
+spacecraft, **712** names in all: the name SatNOGS DB gives each, and its alternative names, where
 a search of the catalogue's own name would not find them. AO-7 for OSCAR 7, SO-50 for SAUDISAT 1C,
 FO-29 for JAS 2, PO-101 for DIWATA 2B, QO-100 for ES'HAIL 2, RS-44 and DOSAAF-85 for BREEZE-KM R/B,
 call signs such as DP0BEE, and the names of launch objects the catalogue still calls OBJECT G or
@@ -3183,13 +3187,18 @@ and semicolons) only those a search would miss. Both sides are stripped of every
 marks and digits, as the search strips them, and a name is dropped when it is the catalogue number
 or is held in the catalogue's own name (ISS for ISS (ZARYA)), when it is a spelling of one already
 kept, when it is not a name at all (an international designator or a date given as one, the
-placeholders *Object A* and *Unknown Satellite*: 399 of them), or when it is over 30 characters (an
-acronym spelled out, *Television Infrared Observation Satellite-N* for TIROS N: 32). The file is
-13.9 KB, 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a chunk of its
+placeholders *Object A* and *Unknown Satellite*: 399 of them), when it is over 30 characters (an
+acronym spelled out, *Television Infrared Observation Satellite-N* for TIROS N: 32), or when it is
+another object's name in the catalogue. That last is where SatNOGS DB and the catalogue disagree on
+which object is which: SatNOGS gives CBERS-4A to 44879, which the catalogue calls OBJECT A, while
+the catalogue's CBERS 4A is 44883, and GRUS-1D to 47935, the catalogue's GRUS-1E (2 names; kept,
+they would list a second spacecraft under a name that is another's). The file is 14.0 KB (14,021
+bytes), 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a chunk of its
 own that the picker asks for the first time something is typed into it, not at boot and not when
-the list opens, so a visit that never searches never loads it, and the code that searches it is a
-chunk of its own too (0.6 KB). The page asks SatNOGS nothing: the names are a file of the page's
-own, so the table in *Data and privacy* is unchanged.
+the list opens, so a visit that never searches never loads it. The code that searches it is a
+chunk of its own too (0.5 KB), asked for in the same moment, so the two come in one round trip.
+The page asks SatNOGS nothing: the names are a file of the page's own, so the table in *Data and
+privacy* is unchanged.
 
 Like the transmitter table, it is an adaptation of SatNOGS DB's data, so it is under CC BY-SA 4.0
 too, and the footer's line credits both: *Transmitter data and alternative names: SatNOGS DB, CC
@@ -3441,8 +3450,13 @@ depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the t
 On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
 reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
 planner. It types the other names, on a page of its own: the table not asked for at boot or when
-the list opens; Enter at once on a first `fo29`, with the table held back 1.5 s, waiting for it
-and then picking JAS 2; `rs44` (and `rs-44`, `RS 44`, `RS-44`) listing BREEZE-KM R/B with *matches
+the list opens; the table and its code, each held back 1.5 s, both asked for at once on the first
+query, and until they come `fo29` saying neither that nothing matches nor offering the Plan row;
+Enter at once on it waiting and then picking JAS 2; on fresh loads, Enter on a first `fo29` then
+`iss` typed, and on a first `tango` then Escape, `/` and `zzqq nothing`, each doing nothing when
+the table comes; `cube` with ArrowUp to the Plan row, which stays the active option when the six
+rows of its other names come, and Enter then opening the planner; `rs44` (and `rs-44`, `RS 44`,
+`RS-44`) listing BREEZE-KM R/B with *matches
 RS-44* in plain text in its option; `ao7` listing OSCAR 7 before FUNCUBE 1; `so50` SAUDISAT 1C, and
 Enter on it picking it; `iss` its seven rows as before, with no line; `o000`, `customs` and the
 empty query as before; the table and its code asked for once each from the page's own origin,

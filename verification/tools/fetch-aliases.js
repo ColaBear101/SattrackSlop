@@ -21,6 +21,9 @@
  *     letters, marks and digits: "RS-44", "rs44" and "RS 44" are one name), and a name is dropped when that form
  *     is empty, is the catalogue number, or is held in the catalogue name's own form (rank()'s word tier finds
  *     whatever such a name would: ISS for ISS (ZARYA)). One spelling of each form, the first SatNOGS gives.
+ *   - a name that is, in that form, the catalogue name of another object is dropped too: there SatNOGS and the
+ *     catalogue disagree on which object is which ('CBERS-4A' on 44879, OBJECT A, where the catalogue's CBERS 4A
+ *     is 44883), and the option would tell the reader that a second spacecraft has that name.
  *   - what is not a name is dropped (NOT_A_NAME below), and so is a name of more than MAX_LEN characters: those
  *     are acronyms spelled out ('Television Infrared Observation Satellite-N' for TIROS N), which nobody types to
  *     find a spacecraft and which would be a sixth of the file.
@@ -88,7 +91,9 @@ async function download() {
   if (save && !from) { fs.writeFileSync(save, JSON.stringify(raw)); console.log('raw answer kept in ' + save); }
 
   const a = {};
-  let ours = 0, offered = 0, kept = 0, notNames = 0, long = 0;
+  /* every catalogue name in the picker's form: one of them on another object is that object's name, not this one's */
+  const taken = new Set([...cat.values()].map(bare));
+  let ours = 0, offered = 0, kept = 0, notNames = 0, long = 0, others = 0;
   for (const s of raw.satellites) {
     const id = s.norad_cat_id == null ? null : String(s.norad_cat_id);
     if (!id || !cat.has(id)) continue;
@@ -103,26 +108,27 @@ async function download() {
       if (!b || b === id || own.includes(b) || seen.has(b)) continue;
       if (NOT_A_NAME.some(re => re.test(n))) { notNames++; continue; }
       if (n.length > MAX_LEN) { long++; continue; }
+      if (taken.has(b)) { others++; continue; }
       seen.add(b); list.push(n); kept++;
     }
     if (list.length) a[id] = list;
   }
-  /* in catalogue-number order, so that a re-bake that changes nothing changes no byte but `built` */
-  const sorted = {};
-  for (const id of Object.keys(a).sort((x, y) => Number(x) - Number(y))) sorted[id] = a[id];
+  /* The keys are NORAD numbers, which an object lists in ascending number order whatever order they were set in (the rule for
+     integer-like keys), and JSON.stringify writes them so: a re-bake that changes nothing changes no byte but `built`. */
 
   console.log('\nin the catalogue  : ' + ours + ' SatNOGS records');
   console.log('names offered     : ' + offered);
   console.log('  not names       : ' + notNames + ' (designators, dates, placeholders)');
   console.log('  over ' + MAX_LEN + ' chars   : ' + long);
-  console.log('kept              : ' + kept + ' names on ' + Object.keys(sorted).length + ' objects');
+  console.log('  another\'s name  : ' + others + ' (the catalogue name of another object)');
+  console.log('kept              : ' + kept + ' names on ' + Object.keys(a).length + ' objects');
 
   const out = JSON.stringify({
     built: raw.fetched,
     source: 'SatNOGS DB — db.satnogs.org/api/satellites/',
     licence: 'CC BY-SA 4.0',
-    a: sorted
+    a
   }) + '\n';
   fs.writeFileSync(OUT, out);
-  console.log('\nwritten: ' + OUT + '  (' + out.length + ' bytes, ' + require('zlib').gzipSync(out, { level: 9 }).length + ' gzipped)');
+  console.log('\nwritten: ' + OUT + '  (' + Buffer.byteLength(out) + ' bytes, ' + require('zlib').gzipSync(out, { level: 9 }).length + ' gzipped)');
 })();

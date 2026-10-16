@@ -33,14 +33,17 @@ describe('data/aliases.json', () => {
     expect(raw.source).toBe('SatNOGS DB — db.satnogs.org/api/satellites/');
     expect(raw.licence).toBe('CC BY-SA 4.0');
   });
-  it('is keyed by catalogue objects only, by NORAD number without leading zeros, in number order', () => {
+  it('is keyed by catalogue objects only, by NORAD number without leading zeros, in number order in the file itself', () => {
     const keys = Object.keys(T);
     expect(keys.length).toBeGreaterThan(400);
     for (const k of keys) {
       expect(k).toMatch(/^[1-9]\d*$/);
       expect(byNum.has(k)).toBe(true);
     }
-    expect(keys).toEqual(keys.slice().sort((a, b) => Number(a) - Number(b)));
+    /* read from the text: a parsed object lists integer-like keys in ascending order whatever order the file has them in */
+    const written = [...text.matchAll(/"(\d+)":\[/g)].map(m => m[1]!);
+    expect(written).toEqual(keys);
+    expect(written).toEqual(written.slice().sort((a, b) => Number(a) - Number(b)));
   });
   it('holds only names a search of the catalogue name would miss: none empty, none the number, none in the name, none twice, none over 30 characters', () => {
     for (const [k, names] of Object.entries(T)) {
@@ -58,6 +61,17 @@ describe('data/aliases.json', () => {
       }
     }
   });
+  it('holds no name that is another object\'s catalogue name (where SatNOGS and the catalogue disagree on which object is which)', () => {
+    const owner = new Map<string, string[]>();
+    for (const c of CATALOGUE) owner.set(bare(c.name), (owner.get(bare(c.name)) ?? []).concat(unpad(c.satnum)));
+    const clash = Object.entries(T).flatMap(([k, names]) => names.filter(n => (owner.get(bare(n)) ?? []).some(o => o !== k)).map(n => k + ' ' + n));
+    expect(clash).toEqual([]);
+    /* the two the first bake kept: CBERS-4A on 44879 (OBJECT A; the catalogue's CBERS 4A is 44883), GRUS-1D on 47935 (GRUS-1E; GRUS-1D is 47936) */
+    expect(T['44879']).toBeUndefined();
+    expect(T['47935']).toBeUndefined();
+    expect(byNum.get('44883')!.name).toBe('CBERS 4A');
+    expect(byNum.get('47936')!.name).toBe('GRUS-1D');
+  });
   it('holds no international designator, date or placeholder of an unidentified object', () => {
     for (const n of Object.values(T).flat()) {
       expect(n).not.toMatch(/\b\d{4}-\d{3}[A-Z]{0,3}\b|^\d{5}[A-Z]{1,3}$|\b\d{4}-\d{2}-\d{2}\b/);
@@ -73,7 +87,7 @@ describe('data/aliases.json', () => {
     expect(T['43700']).toContain('QO-100');         // ES'HAIL 2
   });
   it('is small: a lazy chunk the picker asks for once, a few kilobytes gzipped', () => {
-    expect(text.length).toBeLessThan(16_000);
+    expect(Buffer.byteLength(text)).toBeLessThan(16_000);      // bytes, not characters: Cyrillic, CJK, Ø and the like are more than one
     expect(zlib.gzipSync(text, { level: 9 }).length).toBeLessThan(7_000);
   });
 });
@@ -163,9 +177,13 @@ describe('the finder the picker calls', () => {
     const [a, b] = [await loadAliases(), await loadAliases()];
     expect(a).toBe(b);
     expect(a.a['44909']).toEqual(T['44909']);
-    const f = await aliasFinder();
-    expect(await aliasFinder()).toBe(f);
+    const f = aliasFinder(a.a);
     expect([...f(CATALOGUE, 'rs44', [])]).toEqual([[CATALOGUE.findIndex(c => c.satnum === '44909'), 'matches RS-44']]);
+    expect(f(CATALOGUE, 'rs44', [CATALOGUE.findIndex(c => c.satnum === '44909')]).size).toBe(0);
     expect(aliasSaid('RS-44')).toBe('matches RS-44');
+  });
+  it('is over the table it is given, so the picker can ask for the table and the finder\'s chunk at once', () => {
+    expect([...aliasFinder({ 5: ['ZETA AB'] })([{ satnum: '00005' }], 'zeta', [])]).toEqual([[0, 'matches ZETA AB']]);
+    expect(aliasFinder({})([{ satnum: '00005' }], 'zeta', []).size).toBe(0);
   });
 });

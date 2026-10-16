@@ -29,7 +29,8 @@
  *
  * Last, on the rebuilt page, the picker's search of the catalogue by the
  * words of a query (CHANGES-FROM-LEGACY.md, L58): ISS (ZARYA), AO-91 and
- * OSCAR 7 found from what people type for them.
+ * OSCAR 7 found from what people type for them, what starts with the first
+ * word listed first, and a word in another script looked for, not dropped.
  *
  *   node verification/suites/verify-catalogue.js          (needs playwright)
  */
@@ -215,7 +216,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
 
   // ---- the picker's last tier: the words of a query ------------------------
   /* After the old page's four tiers (starts, then contains), the rebuilt picker matches what they missed word by word, in the name with
-     everything but letters and digits taken out, or a word of digits as the whole catalogue number without its leading zeros
+     everything but letters, marks and digits (of any script) taken out, or a word of digits as the whole catalogue number without its leading zeros
      (CHANGES-FROM-LEGACY.md, L58). The old page found none of these. */
   if (NEW) {
     const rows = async q => {
@@ -242,6 +243,29 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     const planner = await page.evaluate(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; });
     chk('Enter on a query only its words match picks the first row, as on any other (oscar 7530: OSCAR 7), and the planner stays shut',
         s.shown === 'OSCAR 7' && s.masthead === 'OSCAR 7' && !planner, s.shown + (planner ? ', planner open' : ''));
+    /* The tier is ordered as the four are, what starts with the first word first: "iss." (a stray full stop), which the four miss, lists the
+       two ISS modules before the AAC-AIS-SAT objects, whose names only hold "iss" once the hyphens are out, so Enter picks an ISS. */
+    r = await rows('iss.');
+    chk('...the tier puts what starts with the first word first: "iss." lists ISS (NAUKA) and ISS (ZARYA) before AAC-AIS-SAT-1',
+        r[0] === 'ISS (NAUKA)' && r[1] === 'ISS (ZARYA)' && r.indexOf('AAC-AIS-SAT-1') > 1, JSON.stringify(r.slice(0, 4)));
+    /* A word in another script is a word to find, never dropped: the catalogue's names are ASCII, so a Thai one finds nothing, and the query is not
+       matched on its 2 alone (which would list 516 rows); Enter then opens the planner with it as the orbit's name, the Plan row's way. */
+    const THAI = 'ดาวเทียม 2';
+    r = await rows(THAI);
+    const thaiNote = (await H.pickerNotes(page))[0];
+    chk('...and a word in another script must be in the name too: "' + THAI + '" (Thai, then 2) lists nothing and says so, rather than every name with a 2',
+        r.length === 0 && thaiNote === 'Nothing in the catalogue matches that.', JSON.stringify({ rows: r.length, first: r[0], note: thaiNote }));
+    const planRow = await page.evaluate(() => !!document.querySelector('#satlist li.plan'));
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; }, null, { timeout: 5000 }).catch(() => {});
+    const pl = await page.evaluate(() => { const p = document.getElementById('planner'), n = document.getElementById('pl-name');
+      return { open: !!p && !p.hidden, name: n ? n.value : null }; });
+    pl.planRow = planRow;
+    chk('...so Enter on it opens the planner with it as the name, as before the tier', planRow && pl.open && pl.name === THAI, JSON.stringify(pl));
+    if (pl.open) {
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
+    }
   } else console.log('  not checked: the picker\'s last tier, the words of a query, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L58); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));

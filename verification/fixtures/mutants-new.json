@@ -267,8 +267,8 @@
       "id": "rank-words-number",
       "intent": "The picker's last tier, the words of a query (CHANGES-FROM-LEGACY.md, L58), finds a custom orbit by its placeholder number as well as by its name.",
       "file": "lib/catalogue/rank.ts",
-      "find": "fits(m.name)) out.push(cat.length + k);",
-      "replace": "fits(m.name, String((m as { satnum?: string }).satnum).toLowerCase())) out.push(cat.length + k);",
+      "find": "put(cat.length + k, 0, m.name));",
+      "replace": "put(cat.length + k, 0, m.name, String((m as { satnum?: string }).satnum).toLowerCase()));",
       "groups": [
         4
       ]

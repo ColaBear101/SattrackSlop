@@ -373,9 +373,15 @@ them come the ones found word by word: each word typed, with everything but lett
 out, is looked for in the name taken apart the same way, so `iss zarya` finds ISS (ZARYA), `ao91`
 AO-91 and `knacksat 2` KNACKSAT-2; a word of digits may also be the whole NORAD number without its
 leading zeros, so `007530` and `oscar 7530` find OSCAR 7 (07530), and `landsat 9` does not list
-LANDSAT 8 for the 9 in its 39084. An AMSAT designator that the catalogue's name does not carry is
-still not found: SO-50 is listed as SAUDISAT 1C and FO-29 as JAS 2. Your own orbits are found by
-name, never by their placeholder number. Everything on the page recomputes on selection.
+LANDSAT 8 for the 9 in its 39084. A letter or digit of any script counts, and full-width letters
+read as the plain ones: a Thai or Cyrillic word must be in the name like any other, so `ดาวเทียม 2`
+finds nothing in the catalogue, whose names are all in Latin letters, and Enter opens the planner
+with it as the orbit's name, while your own orbit ดาวเทียม-ไทย is found by `ดาวเทียม ไทย`. These
+come in the same order as the rest: a name that starts with the first word before one that only
+holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. An AMSAT designator
+that the catalogue's name does not carry is still not found: SO-50 is listed as SAUDISAT 1C and
+FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder number. Everything on
+the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
 

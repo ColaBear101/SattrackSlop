@@ -31,7 +31,8 @@ describe('rank', () => {
 });
 
 /* The lowest tier, word by word (CHANGES-FROM-LEGACY.md, L58): what the four tiers above did not list, matched on every word of the query
-   in the name with everything but a-z and 0-9 taken out, or on a word of digits that is the whole catalogue number without its leading zeros. */
+   in the name with everything but letters, marks and digits (of any script, after NFKC) taken out, or on a word of digits that is the
+   whole catalogue number without its leading zeros; what starts with the first word before the rest, the reader's orbits leading each. */
 const legacy = (c: readonly { name: string; satnum: string }[], query: string, m: readonly { name: string }[] = []): number[] => {
   /* the old page's four tiers, as rank() was before the last one was added: what every order must still begin with */
   const q = query.trim().toLowerCase();
@@ -74,9 +75,11 @@ describe('rank: the words of a query', () => {
     expect(rank(cat2, 'landsat 9')).toEqual([3]);                     // LANDSAT 8's 39084 has a 9 in it, but 9 is not its number
     expect(rank(cat2, 'oscar 753')).toEqual([]);
   });
-  it('comes after the four tiers, the reader\'s own leading it, and lists nothing twice', () => {
+  it('comes after the four tiers, the reader\'s own leading each half of it, and lists nothing twice', () => {
     expect(rank(cat, 'sun sync', mine)).toEqual([5]);
-    expect(rank(cat, 'c u b e', mine)).toEqual([4, 1]);               // My Cube and CUBESAT ONE hold every letter; Sun-sync no b, SCOUT no b or e
+    /* My Cube and CUBESAT ONE hold every letter (Sun-sync no b, SCOUT no b or e); CUBESAT ONE starts with the first word, c, and My Cube
+       does not, so the catalogue's start comes first, as a catalogue start comes before a custom contains in the four tiers */
+    expect(rank(cat, 'c u b e', mine)).toEqual([1, 4]);
     expect(rank(cat2, 'landsat', mine)).toEqual([2, 3]);
     const both = [...cat, { name: 'ZARYA (ISS)', satnum: '25546' }];
     expect(rank(both, 'zarya', mine)).toEqual([2, 4, 0]);             // a start, a start, a contains: the last tier adds nothing here
@@ -92,6 +95,30 @@ describe('rank: the words of a query', () => {
     expect(rank(cat, 'alpha-orbit', placed)).toEqual([4]);            // by the words of its name
     expect(rank(cat, '( - )', mine)).toEqual([]);
     expect(rank(cat, '0000', mine)).toEqual([]);                     // no number is 0, and no name holds 0000
+  });
+  it('puts what starts with the first word before what only holds the words, in each of the reader\'s and the catalogue\'s', () => {
+    const c3 = [{ name: 'AAC-AIS-SAT', satnum: '11111' }, { name: 'ISS (NAUKA)', satnum: '49044' }, { name: 'SAT ISS', satnum: '22222' }];
+    const m3 = [{ name: 'Big-ISS' }, { name: 'ISS-2 mine' }];
+    expect(rank(c3, 'iss.', m3)).toEqual([4, 1, 3, 0, 2]);           // ISS-2 mine, ISS (NAUKA); then Big-ISS, AAC-AIS-SAT, SAT ISS
+    expect(rank(c3, 'nauka iss.', m3)).toEqual([1]);                 // "issnauka" holds both words, and only ISS (NAUKA) holds nauka
+    const c4 = [{ name: 'SAT 022222', satnum: '33333' }, { name: 'SAT ISS', satnum: '22222' }];
+    expect(rank(c4, '022222 sat')).toEqual([1, 0]);                  // a first word that is the entry's number leads, as a name that starts with it
+  });
+  it('treats a word in any script as a word: it must be in the name, it is never dropped', () => {
+    for (const q of ['Спутник 2', 'Спутник2', 'ดาวเทียม 2', 'Молния-1', '卫星 1', '東方紅 1']) expect(rank(CATALOGUE, q)).toEqual([]);
+    const thai = [{ name: 'ดาวเทียม-ไทย' }, { name: 'Молния-1 копия' }];
+    expect(rank(cat, 'ดาวเทียม ไทย', thai)).toEqual([4]);
+    expect(rank(cat, 'ไทย', thai)).toEqual([4]);                     // the old contains tier
+    expect(rank(cat, 'молния 1', thai)).toEqual([5]);
+    expect(rank(cat, 'ดาวเทียม 2', thai)).toEqual([]);
+    expect(rank(cat, 'café 1', [{ name: 'Café 1' }])).toEqual([4]);  // a decomposed é is the composed one (NFKC, as the planner keeps NFC)
+    expect(real('ＩＳＳ　ＺＡＲＹＡ')).toEqual(['ISS (ZARYA)']);              // full-width letters and space, as an IME types them
+  });
+  it('lists ISS before the AAC-AIS-SAT objects for "iss" with a stray mark after it, so Enter picks an ISS', () => {
+    for (const q of ['iss.', 'iss(', 'iss-']) {
+      expect(legacy(CATALOGUE, q)).toEqual([]);
+      expect(real(q).slice(0, 2)).toEqual(['ISS (NAUKA)', 'ISS (ZARYA)']);
+    }
   });
   it('finds ISS (ZARYA), OSCAR 7 and AO-91 in the real catalogue by the words people type', () => {
     expect(real('iss zarya')).toEqual(['ISS (ZARYA)']);

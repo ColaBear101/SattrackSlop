@@ -27,8 +27,11 @@
      pill says why instead. */
   const planOn = $derived(session.enabled && !PINNED);
   const last = $derived(shown.length + (planOn ? 1 : 0) - 1);
+  /* What SGP4 has down at this moment is marked "decayed now" (CHANGES-FROM-LEGACY.md, L59), in words the list carries: worked out in a
+     chunk of its own the first time the list opens, and never in the snapshot (?tle=embedded). A mark only: no row is taken away. */
+  let dk = $state.raw<typeof import('../../state/decayed.svelte')['decayed'] | null>(null);
 
-  $effect(() => { if (open) { query = ''; active = 0; } });
+  $effect(() => { if (open) { query = ''; active = 0; if (!PINNED) import('../../state/decayed.svelte').then(m => { dk = m.decayed.ensure(app.catalogue); }, () => {}); } });
   $effect(() => { query; active = 0; });
 
   /* Closed whether or not it loaded: the title names the spacecraft on screen, and a refusal is said in the note under the bar
@@ -104,7 +107,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li role="option" id="sopt{k}" data-idx={idx} aria-selected={idx === here} class:on={k === active} class:cu={mine}
             onclick={() => choose(idx)} onpointermove={() => (active = k)}>
-          <span class="nm">{c.name}</span>{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
+          <span class="nm">{c.name}</span>{#if dk?.has(idx)}<span class="dk">{dk.label}</span>{/if}{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
         </li>
       {/each}
       <!-- One option after the real ones: the arrow keys reach it, Enter or a press opens the planner. It is a constant string; nothing typed
@@ -118,6 +121,7 @@
   {/if}
   {#if !shown.length}<p class="note">Nothing in the catalogue matches that.</p>{/if}
   {#if more > 0}<p class="note">{more.toLocaleString('en-US')} more match. Keep typing to narrow them.</p>{/if}
+  {#if dk?.any(shown)}<p id="satdecayed" class="dkn">{dk.note}</p>{/if}
   <p id="satcount" class="count mono">{app.catalogue.length.toLocaleString('en-US')}{custom.count ? ' + ' + custom.count + ' of yours' : ' spacecraft'}</p>
 </Popover>
 
@@ -157,6 +161,8 @@
   li.plan { margin-top: var(--space-1); border-top: 1px solid var(--rule); border-radius: 0 0 var(--r-2) var(--r-2); padding-top: var(--space-3); justify-content: flex-start; }
   li[aria-selected='true'] .nm { font-weight: 600; }
   .id { color: var(--muted); font-size: var(--fs-0); }
-  .note { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
+  /* "decayed now" (L59): plain text in the option, in the re-entry notice's colour, by the number; and the line that says what it means */
+  li .dk { flex: none; margin-left: auto; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--r-pill); color: var(--bad); font-size: var(--fs-0); white-space: nowrap; }
+  .note, .dkn { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
   .count { margin: var(--space-2) 0 0; padding: 0 var(--space-3); color: var(--muted); font-size: var(--fs-0); }
 </style>

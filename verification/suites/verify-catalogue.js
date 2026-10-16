@@ -31,6 +31,11 @@
  * words of a query (CHANGES-FROM-LEGACY.md, L58): ISS (ZARYA), AO-91 and
  * OSCAR 7 found from what people type for them, what starts with the first
  * word listed first, and a word in another script looked for, not dropped.
+ * Then the picker's "decayed now" (L59): on a page whose clock starts at the
+ * same fixed instant, the rows SGP4 has down then are marked, exactly those,
+ * as an independent run of the pinned satellite.js finds them; nothing is
+ * taken out of the list, a marked row is still a pick, the work is a chunk of
+ * its own asked for when the list first opens, and the snapshot has none.
  *
  *   node verification/suites/verify-catalogue.js          (needs playwright)
  */
@@ -267,6 +272,133 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
       await page.waitForFunction(() => document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
     }
   } else console.log('  not checked: the picker\'s last tier, the words of a query, is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L58); the old page had none');
+
+  // ---- the picker's mark: decayed now ---------------------------------------
+  /* The rebuilt picker marks "decayed now" what SGP4 has down at the moment the list is opened: SGP4's own error 6, or a position under the
+     120 km entry interface, one sample per entry (CHANGES-FROM-LEGACY.md, L59). Which ones depends on when you ask, so this page runs on a
+     clock that starts at W0, and what should be marked is worked out here, apart from the page's code, with the pinned satellite.js
+     (verification/reference/satellite.min.js) over the catalogue file. It is a mark: no row is taken away, a marked row is still picked
+     the way any is, the work is done in a chunk of its own the first time the list opens (and never in the snapshot, ?tle=embedded), and
+     it asks nothing of the network and stores nothing. The old page had none. */
+  if (NEW) {
+    const fs = require('fs');
+    const sat = require('../reference/satellite.min.js');
+    const lines = fs.readFileSync(path.join(__dirname, '..', '..', 'data', 'catalogue.txt'), 'utf8').split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(Boolean);
+    const cat = [];
+    for (let i = 0; i < lines.length - 2; i++) {
+      if (lines[i + 1][0] === '1' && lines[i + 2][0] === '2' && lines[i][0] !== '1' && lines[i][0] !== '2') {
+        cat.push({ name: lines[i].trim(), l1: lines[i + 1], l2: lines[i + 2], satnum: lines[i + 1].substring(2, 7).trim() }); i += 2;
+      }
+    }
+    const downAt = ms => cat.filter(e => {
+      let s; try { s = sat.twoline2satrec(e.l1, e.l2); } catch (x) { return false; }
+      const d = new Date(ms), pv = sat.propagate(s, d);
+      if (!pv || !pv.position || !isFinite(pv.position.x)) return s.error === 6;
+      return sat.eciToGeodetic(pv.position, sat.gstime(d)).height < 120;
+    }).map(e => e.satnum).sort();
+    const DOWN = downAt(W0);
+    const DOWN_LATER = downAt(W0 + 10 * 60e3);
+    chk('(reference) at W0 the pinned SGP4 has 13 of the 2,158 down, ODIN and COSMOS 2558 among them, and the same 13 ten minutes on (so the seconds the page takes to open cannot change the answer)',
+        cat.length === 2158 && DOWN.length === 13 && DOWN.includes('26702') && DOWN.includes('53323') && DOWN.join() === DOWN_LATER.join(), DOWN.join(' '));
+
+    const ctx2 = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
+    await ctx2.clock.install({ time: W0 });
+    for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctx2.route(host, r => r.abort());
+    const p2 = await ctx2.newPage();
+    const errs2 = [], reqs = [];
+    p2.on('pageerror', e => errs2.push(e.message));
+    p2.on('request', r => reqs.push(r.url()));
+    const CHUNK = /\/assets\/decayed\.svelte-[A-Za-z0-9_-]{8}\.js$/;
+    const origin = new URL(PAGE).origin;
+    await p2.goto(PAGE, { waitUntil: 'load' });
+    await p2.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+    await p2.waitForTimeout(1500);
+    chk('the mark\'s chunk is not asked for while the list has not been opened', !reqs.some(u => CHUNK.test(u)), reqs.filter(u => CHUNK.test(u)).join(' ') || 'not requested');
+    const storeBefore = await p2.evaluate(() => Object.keys(localStorage).sort().join());
+    const sinceOpen = reqs.length;
+
+    const rows = async q => {
+      await H.typeInPicker(p2, q);
+      await p2.waitForTimeout(200);
+      return p2.evaluate(() => [...document.querySelectorAll('#satlist li[data-idx]')].map(li => ({
+        n: (li.querySelector('.id') || {}).textContent, nm: li.querySelector('.nm').textContent.trim(),
+        dk: li.querySelector('.dk') ? li.querySelector('.dk').textContent : null })));
+    };
+    await rows('26702');
+    const came = await p2.waitForSelector('#satlist li .dk', { timeout: 10000 }).then(() => true, () => false);
+    const odin = await p2.evaluate(() => {
+      const li = document.querySelector('#satlist li[data-idx]'), dk = li && li.querySelector('.dk'), note = document.getElementById('satdecayed');
+      return { role: li && li.getAttribute('role'), nm: li && li.querySelector('.nm').textContent, dk: dk && dk.textContent, dkRole: dk && dk.getAttribute('role'),
+               inner: li ? li.querySelectorAll('a, button, input, select, textarea, [tabindex]').length : -1, note: note && note.textContent,
+               noteIsNote: !!note && note.classList.contains('note') };
+    });
+    chk('the list, opened at W0 on "26702", marks ODIN "decayed now", in plain text inside its option (no role, nothing focusable: the field keeps the keys)',
+        came && odin.role === 'option' && odin.nm === 'ODIN' && odin.dk === 'decayed now' && odin.dkRole === null && odin.inner === 0, JSON.stringify(odin));
+    chk('...and says under the list what the mark is, in a line of its own (not one of the picker\'s notes)',
+        odin.note === 'Decayed now: at this moment SGP4 has it below the 120 km entry interface, or refuses it as decayed (error 6). It is still listed; picking it asks SGP4 for its whole window.'
+        && !odin.noteIsNote, JSON.stringify(odin.note));
+    const asked = reqs.slice(sinceOpen);
+    chk('...worked out in its own chunk, asked for once, and nothing else is asked of any host for it',
+        asked.filter(u => CHUNK.test(u)).length === 1 && asked.every(u => u.startsWith(origin + '/')), asked.map(u => u.replace(origin, '')).join(' ') || 'nothing');
+
+    /* each of the 13 by its number, and some lists of many rows: a row is marked exactly when the reference has it down */
+    const wrong = [], seen = new Set();
+    for (const q of DOWN.concat(['object', 'cosmos', 'jilin-01 gaofen 3d', 'lemur', 'starlink-23', 'knacksat', 'iss'])) {
+      for (const r of await rows(q)) {
+        seen.add(r.n);
+        if ((r.dk === 'decayed now') !== DOWN.includes(r.n)) wrong.push(q + ': ' + r.n + ' ' + r.nm + ' ' + (r.dk || 'unmarked'));
+      }
+    }
+    chk('every row is marked exactly when the reference has it down at W0: the 13 by their numbers, and the rows for "object", "cosmos", "jilin-01 gaofen 3d", "lemur", "starlink-23" (STARLINK-2342 is refused with error 1, not 6), "knacksat" and "iss"',
+        wrong.length === 0 && DOWN.every(n => seen.has(n)) && seen.size > 150, wrong.slice(0, 4).join(' | ') || seen.size + ' rows read, ' + DOWN.length + ' of them marked');
+    const quiet = await rows('knacksat');
+    const quietNote = await p2.evaluate(() => !!document.getElementById('satdecayed'));
+    chk('...and a list with no marked row has no line about the mark', quiet.length > 0 && !quietNote, quiet.length + ' row(s), line ' + (quietNote ? 'shown' : 'absent'));
+
+    const all = await rows('');
+    const count = await p2.evaluate(() => document.getElementById('satcount').textContent);
+    const notes = await H.pickerNotes(p2);
+    chk('the mark takes no row away: the empty query still lists 80 of 2,158, says 2,078 more match, and counts "2,158 spacecraft"',
+        all.length === 80 && count === '2,158 spacecraft' && notes.length === 1 && notes[0] === '2,078 more match. Keep typing to narrow them.', all.length + ' rows; ' + count + '; ' + JSON.stringify(notes));
+    const storeAfter = await p2.evaluate(() => Object.keys(localStorage).sort().join());
+    chk('...and stores nothing', storeAfter === storeBefore, JSON.stringify({ before: storeBefore, after: storeAfter }));
+    await H.closePicker(p2);
+
+    /* a marked row is a pick like any other: COSMOS 2558 loads at W0, flagged as re-entering, and ODIN is refused with SGP4's reason, as above */
+    await H.pick(p2, '53323');
+    await p2.waitForTimeout(900);
+    const c2558 = await p2.evaluate(() => ({ shown: __gt.D.entry.name, reentry: !!__gt.D.reentry }));
+    await H.pick(p2, '26702');
+    await p2.waitForTimeout(900);
+    const refused = await p2.evaluate(() => ({ shown: __gt.D.entry.name, note: document.getElementById('loadnote').textContent }));
+    chk('a marked row is still picked as any is: COSMOS 2558 loads at W0, flagged as re-entering; ODIN is refused with SGP4\'s own reason',
+        c2558.shown === 'COSMOS 2558' && c2558.reentry && refused.shown === 'COSMOS 2558' && /ODIN/.test(refused.note) && /error 6: decayed/.test(refused.note),
+        JSON.stringify({ c2558, refused }));
+
+    await ctx2.close();
+
+    /* the snapshot: each window opens at its own set's epoch there, so a mark for this moment is never worked out (a context of its own, so
+       that a chunk in the cache could not hide a request) */
+    const ctx3 = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
+    await ctx3.clock.install({ time: W0 });
+    for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctx3.route(host, r => r.abort());
+    const p3 = await ctx3.newPage();
+    const reqs3 = [];
+    p3.on('pageerror', e => errs2.push(e.message));
+    p3.on('request', r => reqs3.push(r.url()));
+    await p3.goto(PAGE + '?tle=embedded', { waitUntil: 'load' });
+    await p3.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+    await H.typeInPicker(p3, '26702');
+    await p3.waitForTimeout(2000);
+    const pinned = await p3.evaluate(() => ({ rows: [...document.querySelectorAll('#satlist li[data-idx] .nm')].map(n => n.textContent),
+      dk: document.querySelectorAll('#satlist .dk').length, line: !!document.getElementById('satdecayed') }));
+    chk('in the snapshot (?tle=embedded) nothing is marked, and the chunk is never asked for',
+        pinned.rows.join() === 'ODIN' && pinned.dk === 0 && !pinned.line && !reqs3.some(u => CHUNK.test(u)),
+        JSON.stringify(pinned) + (reqs3.some(u => CHUNK.test(u)) ? ' (chunk requested)' : ''));
+    await ctx3.close();
+    chk('...with no page error on the way', errs2.length === 0, errs2.join(' | ') || 'none');
+    errs.push(...errs2);
+  } else console.log('  not checked: the picker\'s "decayed now" is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L59); the old page had none');
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

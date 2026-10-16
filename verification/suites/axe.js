@@ -58,6 +58,9 @@ const VIEWS = [
         ['map', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim() === 'Map').click()); await page.waitForTimeout(400); }],
         ['window', async () => { await page.evaluate(() => document.getElementById('winOpen').click()); await page.waitForTimeout(250); }],
         ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }],
+        /* ...on a query with rows SGP4 has down at NOW, each marked "decayed now" in plain text inside its option, and the line under the list
+           that says what the mark is (CHANGES-FROM-LEGACY.md, L59; worked out in a chunk of its own when the list first opens) */
+        ['decayed', async () => { await page.fill('#satsearch', 'jilin-01 gaofen 3'); await page.waitForSelector('#satdecayed', { state: 'visible', timeout: 10000 }); }],
         /* the observer form, with a four-character grid square typed: the square and the button to the place search are listed, found on the page
            with no request (CHANGES-FROM-LEGACY.md, L51). The field is left without the focus, so that the next state's Escape closes the form
            (in the field, with the list open, Escape closes the list and stops there). */

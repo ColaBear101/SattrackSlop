@@ -11,7 +11,8 @@
  * 768x1024 (a tablet), 390x844 and 844x390 (a phone upright and sideways), 915x412 and 932x430 (the largest phones sideways: wider than 900 px),
  * 360x640 and 320x568 (the smallest). From the tablet down the context has a touch screen as its primary pointer, so (pointer: coarse) is true there.
  * Each size is visited once, in these states, and every sweep runs in each of them, in light and in dark:
- *   default . the Layers panel . the spacecraft picker . the observer form . the window popover . the Map tab . the answer rail (its three tabs,
+ *   default . the Layers panel . the spacecraft picker (and on a query whose rows are marked "decayed now") . the observer form . the window
+ *   popover . the Map tab . the answer rail (its three tabs,
  *   the pass list's filter open, and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
  *
  *   1  The page does not scroll sideways (documentElement.scrollWidth <= the window's width, as the context was given it: in a mobile context innerWidth
@@ -180,6 +181,13 @@ function statesFor(page, size, assertPlanner) {
   S.push({ id: 'default', overlay: null, enter: async () => {}, exit: async () => {} });
   S.push({ id: 'layers', overlay: POP('Scene layers'), enter: async () => { await page.click('#layerstoggle'); await shownSel('#layersMenu'); await raf2(page); }, exit: () => esc('#layersMenu') });
   S.push({ id: 'picker', overlay: POP('Choose a spacecraft'), enter: async () => { await page.click('button.title'); await shownSel('#satsearch'); await raf2(page); }, exit: () => esc('#satsearch') });
+  /* ...on a query whose rows include some SGP4 has down at NOW, marked "decayed now" beside their numbers, with the line under the list that
+     says what the mark is (CHANGES-FROM-LEGACY.md, L59): the mark is worked out in a chunk of its own when the list first opens.
+     "jilin-01 gaofen 3" lists six rows, three of them marked at NOW (JILIN-01 GAOFEN 3D 27, 3D 28 and 3G: long names beside the mark). */
+  S.push({ id: 'picker-decayed', overlay: POP('Choose a spacecraft'), enter: async () => {
+    await page.click('button.title'); await shownSel('#satsearch');
+    await page.fill('#satsearch', 'jilin-01 gaofen 3'); await shownSel('#satdecayed'); await raf2(page);
+  }, exit: () => esc('#satsearch') });
   S.push({ id: 'observer', overlay: POP('Observer'), enter: async () => {
     await page.click('#siteopen'); await shownSel('#s-search');
     await page.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });   // the coordinate fields: the form at its tallest

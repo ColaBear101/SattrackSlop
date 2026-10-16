@@ -380,8 +380,10 @@ with it as the orbit's name, while your own orbit ดาวเทียม-ไ�
 come in the same order as the rest: a name that starts with the first word before one that only
 holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. An AMSAT designator
 that the catalogue's name does not carry is still not found: SO-50 is listed as SAUDISAT 1C and
-FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder number. Everything on
-the page recomputes on selection.
+FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder number. A spacecraft
+SGP4 has down at the moment the list is opened carries a mark beside its number, *decayed now*; it
+is still listed, and still picked like any other (see *When the object is no longer there*).
+Everything on the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
 
@@ -3289,6 +3291,30 @@ object in one of two ways, and the page used to handle neither.
   write the passes: once they are a spreadsheet row or a phone alarm, the warning is no longer
   beside them. The revolution matters on its own account. CLUSTER II-FM8 has a 53 h period, so a
   24 h window can hold nothing but apogee arcs from an object whose perigee is underground.
+
+**The picker marks what SGP4 has down now.** A row of the spacecraft picker whose element set SGP4
+has down at the moment the list is opened reads *decayed now* beside its number, and while one is
+in the list a line under it says what the mark is: "Decayed now: at this moment SGP4 has it below
+the 120 km entry interface, or refuses it as decayed (error 6). It is still listed; picking it asks
+SGP4 for its whole window." It is one SGP4 sample per entry, at that moment, through the page's own
+propagator (`src/lib/catalogue/decayed.ts`): error 6, or a position under the entry interface, on
+the lines a pick would analyse (the live set, where one was taken). That is not the analysis's
+test, which samples the whole window and a revolution: an eccentric orbit whose perigee SGP4 puts
+underground can be above 120 km at the instant asked, so a row without the mark can still be
+refused, and the window's answer is the one that counts. The mark takes nothing away: the list
+still holds 2,158, and a marked row is picked as any other is (ODIN is then refused with SGP4's
+reason, COSMOS 2558 on 14 September loads with its re-entry note). At 2026-09-14 00:00 UTC it
+marks thirteen entries, ODIN and COSMOS 2558 among them; on 16 October, twenty-three. STARLINK-2342
+is never marked: SGP4 rejects its elements with error 1, not 6, and its refusal says so. The 2,158
+propagations take a few tens of milliseconds. They are a chunk of their own, asked for the first
+time the list opens and spread over the browser's idle moments, so a visit that never opens the
+list does none of them, and the marks appear together once every entry has been through; a set
+more than an hour old is worked out again at the next opening. Under `?tle=embedded` nothing is
+marked, because each window there opens at its own set's epoch and a mark for this moment could
+contradict a window that loads. Nothing is stored and nothing is asked of any host.
+`verify-catalogue.js` opens the list on a clock that starts on 14 September and checks every row it
+reads against the pinned satellite.js run apart from the page; `axe.js` and `verify-layout.js`
+look at the marked rows too.
 
 The live refresh has three answers of its own that are not a fresher set:
 

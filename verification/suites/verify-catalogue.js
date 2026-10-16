@@ -436,6 +436,155 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     errs.push(...errs2);
   } else console.log('  not checked: the picker\'s "decayed now" is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L59); the old page had none');
 
+  // ---- the watchlist ----------------------------------------------------------
+  /* The rebuilt page's watchlist (CHANGES-FROM-LEGACY.md, L60): a star on the identity line under the name, a toggle button (its name
+     "Watch", aria-pressed its state) outside the picker's listbox, reached with the keyboard; a press puts the spacecraft on screen on
+     the list or takes it off, written under gt.watch then and only then (the press is a chunk of its own, asked for at the first one),
+     and the last one off leaves nothing stored. On the empty query the picker lists the watched first, in a group of their own and in
+     the order they were starred, then the reader's orbits, then the catalogue, the same rows with none twice; what is typed is
+     answered in rank()'s order, untouched. Another tab of the page hears a change through the storage event. At 50 a press puts
+     nothing on and says why under the bar. An orbit of the reader's own has no star. The old page had none of it. */
+  if (NEW) {
+    const ctxW = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
+    await ctxW.clock.install({ time: W0 });
+    for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctxW.route(host, r => r.abort());
+    const errsW = [], reqsW = [];
+    const open = async () => {
+      const p = await ctxW.newPage();
+      p.on('pageerror', e => errsW.push(e.message));
+      p.on('request', r => reqsW.push(r.url()));
+      await p.goto(PAGE, { waitUntil: 'load' });
+      await p.waitForFunction(() => !!window.__gt && !!window.__gt.D && !!document.getElementById('watchstar'), null, { timeout: 30000 });
+      await p.waitForTimeout(800);
+      return p;
+    };
+    const PRESS = /\/assets\/watch-press-[A-Za-z0-9_-]{8}\.js$/;
+    const origin = new URL(PAGE).origin;
+    const star = p => p.evaluate(() => {
+      const b = document.getElementById('watchstar');
+      return b && { tag: b.tagName, type: b.getAttribute('type'), pressed: b.getAttribute('aria-pressed'), name: b.getAttribute('aria-label'), title: b.getAttribute('title'),
+        hidden: b.hidden, shown: b.checkVisibility(), inIds: !!b.closest('header .ids'), inList: !!b.closest('#satlist, [role=listbox], [role=option]') };
+    });
+    const stored = p => p.evaluate(() => ({ keys: Object.keys(localStorage).sort().join(), watch: localStorage.getItem('gt.watch') }));
+    /* the picker's rows as they are drawn: a group heading as [name], an option as its name */
+    const listed = async (p, q) => {
+      await H.typeInPicker(p, q);
+      await p.waitForTimeout(250);
+      return p.evaluate(() => [...document.querySelectorAll('#satlist li')].filter(li => !li.classList.contains('plan'))
+        .map(li => li.classList.contains('grp') ? '[' + li.textContent + ']' : li.querySelector('.nm').textContent));
+    };
+    const pA = await open();
+    const at0 = await star(pA), st0 = await stored(pA);
+    chk('the star is a button on the identity line, outside the picker\'s list: named "Watch" (its tooltip too), not pressed, on KNACKSAT-2',
+        at0 && at0.tag === 'BUTTON' && at0.type === 'button' && at0.pressed === 'false' && at0.name === 'Watch' && at0.title === 'Watch' && at0.shown && at0.inIds && !at0.inList,
+        JSON.stringify(at0));
+    chk('...a visit that has not pressed it stores nothing, and has not asked for the press\'s chunk', st0.keys === '' && !reqsW.some(u => PRESS.test(u)),
+        JSON.stringify(st0) + (reqsW.some(u => PRESS.test(u)) ? ' (press chunk requested)' : ''));
+    const issBefore = await listed(pA, 'iss');
+    await H.closePicker(pA);
+
+    /* the keyboard: from the title (the picker's button), Tab is the star, and Space presses it */
+    await pA.focus('button.title');
+    await pA.keyboard.press('Tab');
+    const focused = await pA.evaluate(() => document.activeElement && document.activeElement.id);
+    const before = reqsW.length;
+    await pA.keyboard.press('Space');
+    const on1 = await pA.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'true', null, { timeout: 5000 }).then(() => true, () => false);
+    const st1 = await stored(pA), asked = reqsW.slice(before);
+    chk('Tab from the title reaches the star, and Space presses it: pressed, and gt.watch holds KNACKSAT-2\'s number, written now',
+        focused === 'watchstar' && on1 && st1.keys === 'gt.watch' && st1.watch === '["67683"]', JSON.stringify({ focused, on1, st1 }));
+    chk('...the press\'s chunk asked for once, from this origin, and nothing else asked of any host for it',
+        asked.filter(u => PRESS.test(u)).length === 1 && asked.every(u => u.startsWith(origin + '/')), asked.map(u => u.replace(origin, '')).join(' ') || 'nothing');
+
+    let rows = await listed(pA, '');
+    const notes = await H.pickerNotes(pA);
+    const count = await pA.evaluate(() => document.getElementById('satcount').textContent);
+    const opts = await pA.evaluate(() => [...document.querySelectorAll('#satlist li[role=option][data-idx]')].map(li => li.dataset.idx));
+    chk('the empty query lists it first, in a group of its own, then the catalogue without it: the same 80 rows of 2,158, none twice, the same notes',
+        rows[0] === '[Watched]' && rows[1] === 'KNACKSAT-2' && rows[2] === '[Catalogue]' && !rows.slice(3).includes('KNACKSAT-2') && opts.length === 80
+        && new Set(opts).size === 80 && count === '2,158 spacecraft' && notes.length === 1 && notes[0] === '2,078 more match. Keep typing to narrow them.',
+        JSON.stringify({ first: rows.slice(0, 5), options: opts.length, count, notes }));
+    const issAfter = await listed(pA, 'iss');
+    chk('...and a query is answered in the search\'s own order, with no group: "iss" lists what it listed before the star',
+        issAfter.join('|') === issBefore.join('|') && !issAfter.some(r => r.startsWith('[')) && issAfter.length > 3, issAfter.slice(0, 4).join(' | '));
+    await H.closePicker(pA);
+
+    /* a second spacecraft: its own star, off; on, it joins the group after the first, in the order they were starred */
+    await H.pick(pA, '25544');
+    await pA.waitForFunction(() => __gt.D.entry.name === 'ISS (ZARYA)', null, { timeout: 10000 });
+    await pA.waitForTimeout(300);
+    const issStar = await star(pA);
+    await pA.click('#watchstar');
+    await pA.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'true', null, { timeout: 5000 }).catch(() => {});
+    rows = await listed(pA, '');
+    const st2 = await stored(pA);
+    chk('ISS (ZARYA)\'s star is off until pressed; then the group is KNACKSAT-2 and ISS (ZARYA), in the order they were starred, and so is the record',
+        issStar.pressed === 'false' && rows.slice(0, 4).join('|') === '[Watched]|KNACKSAT-2|ISS (ZARYA)|[Catalogue]' && st2.watch === '["67683","25544"]',
+        JSON.stringify({ issStar: issStar.pressed, rows: rows.slice(0, 4), st2 }));
+    await H.closePicker(pA);
+
+    /* another tab of the page: it reads the list as it opens, and hears the first tab change it */
+    const pB = await open();
+    const b0 = await star(pB);
+    await pA.click('#watchstar');                      // ISS (ZARYA) off, in the first tab
+    await pA.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'false', null, { timeout: 5000 }).catch(() => {});
+    rows = await listed(pB, '');
+    await H.closePicker(pB);
+    await H.pick(pA, '67683');                         // KNACKSAT-2 off too: the last one, nothing left stored
+    await pA.waitForFunction(() => __gt.D.entry.name === 'KNACKSAT-2', null, { timeout: 10000 });
+    await pA.click('#watchstar');
+    const heard = await pB.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'false', null, { timeout: 5000 }).then(() => true, () => false);
+    const st3 = await stored(pA);
+    const rowsB = await listed(pB, '');
+    chk('a second tab opens with the star on for KNACKSAT-2, hears the first take ISS (ZARYA) off (its group: KNACKSAT-2 alone), then KNACKSAT-2, without a reload',
+        b0.pressed === 'true' && rows.slice(0, 3).join('|') === '[Watched]|KNACKSAT-2|[Catalogue]' && heard && rowsB[0] === '3CAT-4',
+        JSON.stringify({ opened: b0.pressed, groupAfterIss: rows.slice(0, 3), heard, first: rowsB.slice(0, 2) }));
+    chk('...and with the last one off nothing is stored', st3.keys === '' && st3.watch === null, JSON.stringify(st3));
+    await H.closePicker(pB);
+    await pB.close();
+
+    /* an orbit of the reader's own has no number to star: the star is hidden for it, and its group sits between the watched and the catalogue */
+    await pA.click('#watchstar');                      // KNACKSAT-2 on again
+    await pA.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'true', null, { timeout: 5000 }).catch(() => {});
+    await pA.evaluate(() => { const k = __gt.D.entry; __gt.addCustomTLE('KNACKSAT-2 copy', k.l1, k.l2); });
+    await pA.waitForTimeout(500);
+    const mine = await star(pA);
+    rows = await listed(pA, '');
+    chk('an orbit of the reader\'s own shows no star; the empty query is then the watched, the reader\'s orbits, the catalogue',
+        mine && mine.hidden && !mine.shown && rows.slice(0, 6).join('|') === '[Watched]|KNACKSAT-2|[Your orbits]|KNACKSAT-2 copy|[Catalogue]|3CAT-4',
+        JSON.stringify({ hidden: mine && mine.hidden, rows: rows.slice(0, 6) }));
+    await H.closePicker(pA);
+    await pA.close();
+    await ctxW.close();
+
+    /* the cap: fifty watched (the first fifty of the catalogue, put there before the page opened), a press on a fifty-first */
+    const ctxF = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
+    await ctxF.clock.install({ time: W0 });
+    for (const host of ['**celestrak.org/**', '**tle.ivanstanojevic.me/**', '**gibs.earthdata.nasa.gov/**']) await ctxF.route(host, r => r.abort());
+    const catLines = require('fs').readFileSync(path.join(__dirname, '..', '..', 'data', 'catalogue.txt'), 'utf8').split(/\r?\n/).filter(l => /^1 /.test(l));
+    const FIFTY = catLines.slice(0, 50).map(l => l.substring(2, 7).trim());   // the catalogue's own order: its first fifty, KNACKSAT-2 not among them
+    await ctxF.addInitScript(v => { localStorage.setItem('gt.watch', v); }, JSON.stringify(FIFTY));
+    const pF = await ctxF.newPage();
+    pF.on('pageerror', e => errsW.push(e.message));
+    await pF.goto(PAGE, { waitUntil: 'load' });
+    await pF.waitForFunction(() => !!window.__gt && !!window.__gt.D && !!document.getElementById('watchstar'), null, { timeout: 30000 });
+    await pF.waitForTimeout(800);
+    rows = await H.typeInPicker(pF, '').then(() => pF.waitForTimeout(250)).then(() => pF.evaluate(() => [...document.querySelectorAll('#satlist li')]
+      .filter(li => !li.classList.contains('plan')).map(li => li.classList.contains('grp') ? '[' + li.textContent + ']' : li.dataset.idx)));
+    chk('fifty watched are the group, in their order, before the catalogue', rows[0] === '[Watched]' && rows.slice(1, 51).join() === FIFTY.map((_, i) => String(i)).join() && rows[51] === '[Catalogue]',
+        JSON.stringify(rows.slice(0, 4)) + ' ... ' + JSON.stringify(rows.slice(50, 53)));
+    await H.closePicker(pF);
+    await pF.click('#watchstar');
+    await pF.waitForFunction(() => !document.getElementById('loadnote').hidden, null, { timeout: 5000 }).catch(() => {});
+    const capped = await pF.evaluate(() => ({ pressed: document.getElementById('watchstar').getAttribute('aria-pressed'), note: document.getElementById('loadnote').hidden ? '' : document.getElementById('loadnote').textContent.trim(),
+      watch: JSON.parse(localStorage.getItem('gt.watch')).length, shown: __gt.D.entry.name }));
+    chk('a press on a fifty-first puts nothing on, keeps the record, and says why under the bar', capped.pressed === 'false' && capped.watch === 50 && capped.shown === 'KNACKSAT-2'
+        && capped.note === 'You are watching 50 spacecraft, the most this page keeps: take the star off one of them to watch KNACKSAT-2.', JSON.stringify(capped));
+    await ctxF.close();
+    chk('...with no page error on the way', errsW.length === 0, errsW.join(' | ') || 'none');
+    errs.push(...errsW);
+  } else console.log('  not checked: the watchlist is the rebuilt page\'s (CHANGES-FROM-LEGACY.md, L60); the old page had none');
+
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));
   await browser.close();

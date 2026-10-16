@@ -99,7 +99,7 @@ const SEED = JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'Saved ea
 const LONDON = { lat: 51.5, lon: -0.12, altKm: 0.02, name: 'London', tz: 0, zone: 'Europe/London', where: 'England' };
 const SEED_ALL = {
   'obs-site': JSON.stringify(LONDON), 'obs-recent': JSON.stringify([LONDON]), 'gt.prefs': JSON.stringify({ theme: 'dark', tab: 'map' }), 'gt.surface': 'vector',
-  'gt.custom': SEED, 'gt.arlens': '60', 'gt.araim': 'head', 'gt.arradar': '0',
+  'gt.custom': SEED, 'gt.arlens': '60', 'gt.araim': 'head', 'gt.arradar': '0', 'gt.watch': '["25544"]',
   'tle:25544': JSON.stringify({ l1: '', l2: '', src: 'celestrak', at: 0 }), 'hist:25544': JSON.stringify({ at: 0, P: [] }), 'someone-else': 'keep me'
 };
 const PAGE_KEY = /^(gt\.|obs-|tle:|hist:)/;
@@ -815,14 +815,15 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       await w.page.goto(srv.page + '?sat=25544&tab=map', { waitUntil: 'load' });
       await answerOn(w);
       await until(w.page, () => !!document.getElementById('forgetbtn') && /[?&]site=/.test(location.search));
-      const before = await w.page.evaluate(() => ({ keys: Object.keys(localStorage).sort(), theme: document.documentElement.getAttribute('data-theme'), search: location.search }));
-      chk('[everything stored] the page opened on what was stored: the dark theme, the site (in the address, where the page puts it), the map, and every key in place',
-        before.theme === 'dark' && /[?&]site=/.test(before.search) && /[?&]tab=map/.test(before.search) && JSON.stringify(before.keys) === JSON.stringify(Object.keys(SEED_ALL).sort()), JSON.stringify(before));
+      const before = await w.page.evaluate(() => ({ keys: Object.keys(localStorage).sort(), theme: document.documentElement.getAttribute('data-theme'), search: location.search,
+        star: document.getElementById('watchstar') && document.getElementById('watchstar').getAttribute('aria-pressed') }));
+      chk('[everything stored] the page opened on what was stored: the dark theme, the site (in the address, where the page puts it), the map, ISS (ZARYA) watched (its star on, L60), and every key in place',
+        before.theme === 'dark' && /[?&]site=/.test(before.search) && /[?&]tab=map/.test(before.search) && before.star === 'true' && JSON.stringify(before.keys) === JSON.stringify(Object.keys(SEED_ALL).sort()), JSON.stringify(before));
       const w0 = (await clock(w)).writes.length;
       await w.page.click('#forgetbtn');
       const armed = await labelIs(w.page, ARMED);
       const s1 = await state(w.page);
-      const WANT = 'Press again to forget these and reload the page: your saved site, 1 recent place, your display choices, 1 orbit of your own, 1 cached element set and 1 cached decay history. Your own orbits cannot be brought back.';
+      const WANT = 'Press again to forget these and reload the page: your saved site, 1 recent place, your display choices, 1 watched spacecraft, 1 orbit of your own, 1 cached element set and 1 cached decay history. Your own orbits cannot be brought back.';
       chk('[everything stored] the first press arms it: the label becomes "' + ARMED + '" and it says what the second press will forget, counted from the store, and that orbits of your own do not come back',
         armed && !!s1 && s1.said === WANT, JSON.stringify(s1));
       const st1 = await storeNow(w.page);

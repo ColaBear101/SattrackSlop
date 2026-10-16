@@ -58,7 +58,19 @@ describe('survey', () => {
   it('says a record it cannot read without a count, and a later version\'s gt. key as a choice', () => {
     expect(survey(new FakeStore({ 'obs-recent': 'not json', 'gt.custom': '{"items":7}' }))!.parts).toEqual([{ kind: 'recents', n: null }, { kind: 'orbits', n: null }]);
     expect(survey(new FakeStore({ 'gt.custom.bak': 'old' }))!.parts).toEqual([{ kind: 'orbits', n: null }]);
-    expect(survey(new FakeStore({ 'gt.watch': '[]' }))!.parts).toEqual([{ kind: 'choices', n: 1 }]);
+    /* the example of a later key was gt.watch until the watchlist (L60) made it one of the page's own, said apart (below) */
+    expect(survey(new FakeStore({ 'gt.later': '[]' }))!.parts).toEqual([{ kind: 'choices', n: 1 }]);
+  });
+  it('says the watchlist apart from the display choices, counted, between them and the orbits (L60)', () => {
+    const s = survey(new FakeStore({ 'gt.custom': CUSTOM, 'gt.watch': '["25544","07530","43017"]', 'gt.prefs': '{}' }))!;
+    expect(s.keys).toEqual(['gt.custom', 'gt.watch', 'gt.prefs']);
+    expect(s.parts).toEqual([{ kind: 'choices', n: 1 }, { kind: 'watch', n: 3 }, { kind: 'orbits', n: 2 }]);
+    expect(survey(new FakeStore({ 'gt.watch': 'not json' }))!.parts).toEqual([{ kind: 'watch', n: null }]);
+    expect(forgetArmed(s.parts)).toBe('Press again to forget these and reload the page: your display choices, 3 watched spacecraft and 2 orbits of your own. Your own orbits cannot be brought back.');
+    expect(forgetArmed([{ kind: 'watch', n: 1 }])).toBe('Press again to forget these and reload the page: 1 watched spacecraft.');
+    const st = new FakeStore({ 'gt.watch': '["25544"]', 'someone-else': '1' });
+    expect(forget(st)).toEqual({ removed: ['gt.watch'], left: [] });
+    expect(st.keys()).toEqual(['someone-else']);
   });
   it('does not call an empty list of orbits nothing to lose while a record this version could not read is kept beside it', () => {
     /* restore() moves an unreadable record to .bak; an orbit made and deleted afterwards leaves {v, next:2, items:[]} (an empty list keeps
@@ -125,6 +137,8 @@ describe('the words', () => {
     expect(partWords({ kind: 'recents', n: 1 })).toBe('1 recent place');
     expect(partWords({ kind: 'recents', n: null })).toBe('your recent places');
     expect(partWords({ kind: 'orbits', n: 1 })).toBe('1 orbit of your own');
+    expect(partWords({ kind: 'watch', n: 2 })).toBe('2 watched spacecraft');
+    expect(partWords({ kind: 'watch', n: null })).toBe('your watchlist');
   });
   it('says when the browser kept some of it', () => {
     expect(forgetLeft(1)).toBe('This browser refused to remove 1 item, so the page has not been reloaded.');
@@ -266,8 +280,9 @@ describe('every key the code keeps is one forget knows', () => {
     expect(found).toEqual([]);
   });
   it('would fail on a key it does not know (the scan, shown violators)', () => {
+    /* the unknown gt. key planted was gt.watch until the watchlist (L60) made it one FORGET_KEYS lists */
     const planted: Src[] = [
-      { rel: 'a.ts', code: "localStorage.setItem('gt.watch', '[]');" },
+      { rel: 'a.ts', code: "localStorage.setItem('gt.later', '[]');" },
       { rel: 'b.ts', code: "const WATCH = 'watchlist';\nstore.setItem(WATCH, v);" },
       { rel: 'c.ts', code: "const P = 'pass:';\nconst key = P + n;\nstore.getItem(key);" },
       { rel: 'd.ts', code: 'store.removeItem(somethingFromElsewhere);' },
@@ -275,7 +290,7 @@ describe('every key the code keeps is one forget knows', () => {
     ];
     const r = storageKeys(planted);
     expect(r.unread).toEqual(['d.ts:1 removeItem(somethingFromElsewhere)']);
-    expect(uncovered(r.keys).map(k => k.key)).toEqual([{ exact: 'gt.watch' }, { exact: 'watchlist' }, { prefix: 'pass:' }]);
+    expect(uncovered(r.keys).map(k => k.key)).toEqual([{ exact: 'gt.later' }, { exact: 'watchlist' }, { prefix: 'pass:' }]);
     expect(r.keys.filter(k => !uncovered(r.keys).includes(k)).map(k => k.key)).toEqual([{ exact: 'obs-site' }, { prefix: 'tle:' }, { exact: 'gt.custom.bak' }]);
   });
 });

@@ -80,7 +80,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 
 A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
 
-What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the spacecraft you watch, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
@@ -190,7 +190,7 @@ src/                the Earth console's source: Svelte 5 + TypeScript
       sun.ts              where the Sun is, and where it is overhead (from the old
                           page's inline script, not from public/core/)
     analysis/           elements, ground track, passes, the optics, the Doppler shift
-    catalogue/          reading the catalogue; ranking what the picker offers
+    catalogue/          reading the catalogue; ranking what the picker offers; the watchlist
     text/               the sentences the page builds from its numbers, and the glossary, as data
     net/                the element sets (the page's own cache API first, then CelesTrak and its
                         mirror, as the old page asked them) and the decay histories (the API,
@@ -384,6 +384,19 @@ FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder nu
 SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
 *decayed now*; it is still listed, and still picked like any other (see *When the object is no
 longer there*).
+
+The star at the end of the line under the name, after the age chip, puts the spacecraft on screen
+on your **watchlist**: press it (from the name, Tab reaches it, and Space or Enter presses it), and
+the picker, opened with nothing typed, lists the spacecraft you watch first, under *Watched*, in
+the order you starred them, then your own orbits, then the catalogue without them. What you type
+is still answered in the search's own order, with no group. The star is a toggle button named
+*Watch*, so a screen reader says whether it is pressed; pressed again, it takes the spacecraft off.
+Up to 50 are kept, and a press on a 51st puts nothing on and says so under the bar. Your own
+orbits have no NORAD number, so they have no star. The list is kept in your browser under
+`gt.watch`, as the NORAD numbers, written when you press the star and at no other time; the last
+one taken off leaves nothing stored. Another tab of the page follows a change at once (the browser
+tells it). Nothing is fetched for a watched spacecraft: the list only orders the picker. The
+press is a chunk of its own, asked for at the first one; reading the list is in the entry.
 Everything on the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
@@ -849,10 +862,11 @@ worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the 
 last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
-filter, `gt.passfilter`); and two caches, an object's element set (`tle:<n>`) and its history of
-element sets (`hist:<n>`). A cached copy is used for three hours or twelve, but nothing removes an
-old one: it stays until that object's is fetched again or it is forgotten here, so the caches are
-also a list of the objects you looked at.
+filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"); and
+two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
+cached copy is used for three hours or twelve, but nothing removes an old one: it stays until that
+object's is fetched again or it is forgotten here, so the caches are also a list of the objects you
+looked at.
 The first press reads the store, writes nothing, and says what the second will
 forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
 places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
@@ -3370,7 +3384,11 @@ buttons, the transport and the export buttons, in a fixed window — which objec
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
 On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
 reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
-planner.
+planner. It then works the watchlist's star: reached by Tab from the name and pressed with Space,
+nothing stored until then and `gt.watch` written at the press; the picker's *Watched* group on the
+empty query, in the order starred, with the same 80 rows and notes and a query's order untouched;
+a second tab that follows the first without a reload; nothing left stored once the last is off; no
+star for an orbit of your own; and, with 50 watched, a 51st refused with the sentence under the bar.
 The default's fallback is not in the suite: exercising it needs a doctored catalogue.
 
 #### Running it

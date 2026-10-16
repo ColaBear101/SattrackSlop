@@ -2,9 +2,9 @@
  *
  * New in the rebuild; the old page had no way to take back what it had stored. Everything the page keeps is in
  * localStorage (no session storage, cookie, IndexedDB, Cache Storage or service worker), under one of four
- * namespaces: the observer's two keys from the old page (`obs-site`, `obs-recent`), the page's own choices and the
- * reader's orbits (`gt.*`), and the two caches, the element set of an object (`tle:<n>`) and its history of element
- * sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), but nothing removes an old
+ * namespaces: the observer's two keys from the old page (`obs-site`, `obs-recent`), the page's own choices, the
+ * spacecraft the reader watches and the reader's orbits (`gt.*`), and the two caches, the element set of an object
+ * (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), but nothing removes an old
  * one: it stays until that object's is fetched again, or until it is forgotten here. A key of any of them is the
  * page's; any other key on the origin is somebody else's and is left alone (the page never calls `clear()`).
  *
@@ -29,7 +29,8 @@ export const FORGET_KEYS = [
   'gt.prefs', 'gt.surface',                                // state/prefs.svelte.ts (the theme and the tab), the globe's surface
   'gt.custom', 'gt.custom.bak',                            // state/custom.svelte.ts: the reader's orbits, and a record this version could not read
   'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
-  'gt.passfilter'                                          // state/passfilter.svelte.ts: the pass list's filter (L56)
+  'gt.passfilter',                                         // state/passfilter.svelte.ts: the pass list's filter (L56)
+  'gt.watch'                                               // state/watch.svelte.ts: the spacecraft the reader starred (L60)
 ] as const;
 
 /** The page's namespaces: a key that starts with one of these is the page's. */
@@ -42,6 +43,7 @@ export type ForgetPart =
   | { kind: 'site' }
   | { kind: 'recents'; n: number | null }
   | { kind: 'choices'; n: number }
+  | { kind: 'watch'; n: number | null }
   | { kind: 'orbits'; n: number | null }
   | { kind: 'tle'; n: number }
   | { kind: 'hist'; n: number };
@@ -80,9 +82,11 @@ export function survey(store: ForgetStore | null): ForgetSurvey | null {
   if (has('obs-site')) parts.push({ kind: 'site' });
   if (has('obs-recent')) parts.push({ kind: 'recents', n: countIn(get('obs-recent')) });
   const orbitKeys = ['gt.custom', 'gt.custom.bak'];
-  /* every other key of the page's that is not a cache is a choice: the listed ones, and a gt. key of a later version */
-  const choices = keys.filter(k => !orbitKeys.includes(k) && !k.startsWith('tle:') && !k.startsWith('hist:') && k !== 'obs-site' && k !== 'obs-recent').length;
+  /* every other key of the page's that is not a cache, nor the watchlist, is a choice: the listed ones, and a gt. key of a later version */
+  const choices = keys.filter(k => !orbitKeys.includes(k) && k !== 'gt.watch' && !k.startsWith('tle:') && !k.startsWith('hist:') && k !== 'obs-site' && k !== 'obs-recent').length;
   if (choices) parts.push({ kind: 'choices', n: choices });
+  /* the spacecraft starred (L60): a list of numbers, counted */
+  if (has('gt.watch')) parts.push({ kind: 'watch', n: countIn(get('gt.watch')) });
   /* gt.custom.bak is orbits this version could not read: with it there, an empty list is not "nothing to lose", so it is said without a
      count (and with the warning) */
   if (has('gt.custom') || has('gt.custom.bak')) {

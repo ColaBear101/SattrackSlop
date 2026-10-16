@@ -57,7 +57,8 @@ class AppState {
   startMs = $state<number | null>(null);
   hours = $state(24);
   selPass = $state(0);
-  /** What the last load that did not go through said (cleared by the next one that does): the old #loadnote. */
+  /** What the last load that did not go through said (cleared by the next one that does): the old #loadnote. The watchlist's star
+   *  says its refusal at the cap here too (state/watch-press.ts, L60), where a refused load is said. */
   note = $state('');
   /** A fatal problem: the catalogue could not be read at all. */
   error = $state<string | null>(null);

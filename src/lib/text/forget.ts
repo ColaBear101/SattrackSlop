@@ -19,6 +19,7 @@ export function partWords(p: ForgetPart): string {
     case 'site': return 'your saved site';
     case 'recents': return p.n ? count(p.n, 'recent place', 'recent places') : 'your recent places';
     case 'choices': return 'your display choices';
+    case 'watch': return p.n ? count(p.n, 'watched spacecraft', 'watched spacecraft') : 'your watchlist';
     case 'orbits': return p.n ? count(p.n, 'orbit of your own', 'orbits of your own') : 'the record of your own orbits';
     case 'tle': return count(p.n, 'cached element set', 'cached element sets');
     case 'hist': return count(p.n, 'cached decay history', 'cached decay histories');

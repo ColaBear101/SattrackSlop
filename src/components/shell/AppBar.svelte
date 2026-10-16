@@ -12,6 +12,9 @@
   import ThemeToggle from './ThemeToggle.svelte';
   import Button from '../ui/Button.svelte';
   import { PINNED_SENTENCE } from '../../lib/text/planner';
+  import Icon from '../ui/Icon.svelte';
+  import { watch } from '../../state/watch.svelte';
+  import { WATCH_LABEL } from '../../lib/text/watch';
 
   const E = $derived(app.analysis?.E);
   /* A snapshot of the entry's fields, new on every load: an orbit the reader designed is edited in place, and a view that read its name
@@ -27,6 +30,14 @@
     custom: entry.custom, prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry),
     now: wall.now, epoch: E.epoch, name: entry.name, satnum: entry.satnum, fetched: built, source: meta.source, pinned: PINNED
   }) : null);
+
+  /* The watchlist's star (CHANGES-FROM-LEGACY.md, L60): whether the spacecraft on screen is watched is read here, and a press is a
+     chunk of its own (state/watch-press.ts), asked for at the first one, for the one on screen when it was pressed. */
+  const watched = $derived(!!entry && watch.list.includes(entry.satnum));
+  function star() {
+    const e = entry;
+    if (e) import('../../state/watch-press').then(m => m.press(e), () => {});
+  }
 </script>
 
 <header class="bar bar-top">
@@ -41,7 +52,11 @@
         <span hidden={entry.custom}><abbr title="NORAD catalogue number, the US Space Force's number for this object">NORAD</abbr> <b id="idnorad">{entry.custom ? 'none · custom' : E.satnum}</b></span><span class="sep" hidden={entry.custom}>·</span>
         <span hidden={entry.custom}><abbr title="COSPAR ID, the international designator: launch year, launch of that year, piece">COSPAR</abbr> <b id="idcospar">{entry.custom ? '—' : E.cospar}</b></span><span class="sep wide-only" hidden={entry.custom}>·</span>
         <span class="wide-only">Epoch <b id="idepoch">{iso(E.epoch)}</b></span>
-        <span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
+        <!-- The age chip and the star wrap together. The star (L60) is a toggle: its name stays "Watch", aria-pressed says whether it is
+             on. A spacecraft is starred by its number, so an orbit of the reader's own has none: the star is hidden for it. -->
+        <span class="agegrp"><span class="chip" id="agechip" class:stale={A.chip.stale} title={A.chip.title}><span id="agetext">{A.chip.text}</span></span>
+          <button type="button" id="watchstar" class="star" hidden={entry.custom} aria-pressed={watched} aria-label={WATCH_LABEL}
+                  title={WATCH_LABEL} onclick={star}><Icon name="star" size={14} /></button></span>
         {#if PINNED}
           <span class="chip snapshot" title="The embedded element sets, each window opening at its set's epoch: the figures in the README">assignment snapshot</span>
         {/if}
@@ -85,6 +100,18 @@
   .plannote { margin: 0; padding: var(--space-1) var(--space-4); background: var(--sunk); border-bottom: 1px solid var(--rule); color: var(--ink2); font-size: var(--fs-1); }
   .plannote[hidden] { display: none; }
   .chip.stale { border-color: var(--warn); color: var(--warn); }
+  /* the star: as tall as the chip it sits by, 24 px where the pointer is a finger (it keeps 8 px clear of the title above and the
+     observer below); outlined, and filled in the link colour while it is on */
+  .agegrp { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+  .star {
+    display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
+    border: 0; border-radius: var(--r-1); background: none; color: var(--muted); cursor: pointer;
+  }
+  .star[hidden] { display: none; }
+  @media (hover: hover) { .star:hover { color: var(--ink); background: var(--hover); } }
+  .star[aria-pressed='true'] { color: var(--link); }
+  .star[aria-pressed='true'] :global(svg) { fill: currentColor; }
+  @media (pointer: coarse) { .star { width: 24px; height: 24px; } }
   .chip.snapshot { border-color: var(--link); color: var(--link); }
   /* after the age chip, so that where the row is tight the snapshot label goes first: the age chip is the stale flag, and the note under the bar says the same */
   @media (min-width: 1100px) and (max-width: 1239px) { .chip.snapshot { display: none; } }

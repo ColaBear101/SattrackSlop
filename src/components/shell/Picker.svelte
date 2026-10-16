@@ -3,6 +3,9 @@
   import { custom } from '../../state/custom.svelte';
   import { isCustom } from '../../lib/planner/custom';
   import { rank, SHOWN_MAX } from '../../lib/catalogue/rank';
+  import { watchedFirst } from '../../lib/catalogue/watch';
+  import { watch } from '../../state/watch.svelte';
+  import { WATCHED } from '../../lib/text/watch';
   import { session } from '../planner/session.svelte';
   import Popover from '../ui/Popover.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -15,14 +18,22 @@
   let query = $state('');
   let active = $state(0);
 
-  const hits = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
+  /* The watched spacecraft (CHANGES-FROM-LEGACY.md, L60), by their catalogue index in the order they were starred: on the empty query
+     they lead the list, in a group of their own, and rank()'s rows follow without them. What is typed is answered in rank()'s order.
+     The catalogue is read so that the indices are taken again once it has come (catIndex's map is not itself reactive). */
+  const lead = $derived(query.trim() || !app.catalogue.length ? [] : watch.list.map(n => app.catIndex({ satnum: n })).filter(i => i >= 0));
+  const hits = $derived.by(() => { void custom.rev; return watchedFirst(rank(app.catalogue, query, custom.list), lead); });
   const shown = $derived(hits.slice(0, SHOWN_MAX));
   const more = $derived(hits.length - shown.length);
   /* the row in the list that is on screen: the entry may carry a live set's lines, so a spacecraft is its number, an orbit its object */
   const here = $derived.by(() => { void app.rev; void custom.rev; return custom.indexOf(app.entry); });
-  /* Two group rows, on the empty query only and only when there is something of the reader's to separate from the catalogue. They are
-     presentation: not options, not in `shown`, so every index below is still a position in it. */
-  const groups = $derived(!query.trim() && custom.count > 0);
+  /* Group rows, on the empty query only and only when there is something of the reader's to separate from the catalogue: what they
+     watch, their orbits, then the catalogue. They are presentation: not options, not in `shown`, so every index below is still a
+     position in it. The empty query lists the watched, then every orbit of the reader's, then the catalogue, so a group starts at a
+     count of rows. */
+  const groups = $derived(!query.trim() && custom.count + lead.length > 0);
+  const head = (k: number): string => !groups ? '' : k === 0 && lead.length ? WATCHED : k === lead.length && custom.count ? 'Your orbits'
+    : k === lead.length + custom.count ? 'Catalogue' : '';
   /* Only a planner that is up may be offered: not before it has been built, not after a failed build, and not in the snapshot, where the
      pill says why instead. */
   const planOn = $derived(session.enabled && !PINNED);
@@ -102,8 +113,8 @@
       {#each shown as idx, k (idx)}
         {@const c = custom.entryAt(idx)!}
         {@const mine = isCustom(c)}
-        {#if groups && mine && !isCustom(custom.entryAt(shown[k - 1]!))}<li class="grp" role="presentation">Your orbits</li>{/if}
-        {#if groups && !mine && (k === 0 || isCustom(custom.entryAt(shown[k - 1]!)))}<li class="grp" role="presentation">Catalogue</li>{/if}
+        {@const g = head(k)}
+        {#if g}<li class="grp" role="presentation">{g}</li>{/if}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li role="option" id="sopt{k}" data-idx={idx} aria-selected={idx === here} class:on={k === active} class:cu={mine}
             onclick={() => choose(idx)} onpointermove={() => (active = k)}>

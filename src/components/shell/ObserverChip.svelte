@@ -178,7 +178,9 @@
   {/snippet}
 
   <div class="form" id="siteform">
-    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}{#if kit && siteGrid}<span class="grid" id="s-grid" title={siteGrid.given ? kit.GRID_TITLE_GIVEN : kit.GRID_TITLE}>{kit.GRID_LABEL} <span class="loc">{siteGrid.locator}</span></span>{/if}</p>
+    <!-- the square's line is held, empty, while its code is on the way: the form is as tall the moment it opens as once the square is
+         there, so Apply and the fields do not move down under a press a moment after it opens -->
+    <p class="eyebrow">Observer · {latStr(app.site.lat)} {lonStr(app.site.lon)}{#if kit && siteGrid}<span class="grid" id="s-grid" title={siteGrid.given ? kit.GRID_TITLE_GIVEN : kit.GRID_TITLE}>{kit.GRID_LABEL} <span class="loc">{siteGrid.locator}</span></span>{:else}<span class="grid" aria-hidden="true">&nbsp;</span>{/if}</p>
 
     <div class="find">
       <input id="s-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search a town or city"

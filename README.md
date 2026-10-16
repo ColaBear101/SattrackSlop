@@ -2846,7 +2846,9 @@ Four ways in, because the observer used to be five numbers you had to already kn
   square, whichever way the site was set (Bangkok is OK03gs), on a line of its own under the
   coordinates; a site picked as a square, while it is still that square's centre, is named by the
   square as it was given (OK03, whose centre is the corner of four subsquares and would otherwise
-  be named OK03mm, one of them). The code and its words (`src/lib/text/grid.ts`, and
+  be named OK03mm, one of them). That line is there, blank, from the moment the form opens, so the
+  fields and *Apply* under it do not move when the square arrives. The code and its words
+  (`src/lib/text/grid.ts`, and
   `maidenhead.ts`, a chunk of its own that the rail's state now shares, below under "Sunlit or
   eclipsed now") are two chunks, about 1.7 KB gzipped together, fetched from the page's own origin
   when the form first opens (the locator's code may be there already, brought by the rail). The

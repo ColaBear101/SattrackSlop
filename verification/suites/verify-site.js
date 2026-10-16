@@ -544,6 +544,31 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('...while a place name still goes to the search, once', nkCalls === 1, nkCalls + ' request(s)');
   await nk.close();
 
+  /* The square's line at the head of the form is held, blank, while its chunk is on the way, so nothing under it moves when the square
+     comes: Apply was once 18 px lower a moment after the form opened, under a press that might be on its way to it (L51). On a page of
+     its own, the chunk is held back until the form has been measured, then let through. */
+  const hold = await ctx.newPage();
+  hold.on('pageerror', e => errs.push('[held grid chunk] ' + e.message));
+  let release = () => {};
+  const held = new Promise(f => { release = f; });
+  await hold.route('**/assets/grid-*.js', async r => { await held; await r.continue(); });
+  await hold.goto(PAGE, { waitUntil: 'load' });
+  await hold.waitForSelector('#siteopen', { timeout: 30000 });
+  await hold.click('#siteopen');
+  await hold.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });
+  const formNow = () => hold.evaluate(() => {
+    const b = document.getElementById('siteapply'), g = document.getElementById('s-grid');
+    return { apply: b ? Math.round(b.getBoundingClientRect().top * 10) / 10 : null, grid: g ? g.textContent.trim() : null };
+  });
+  const waiting = await formNow();
+  release();
+  await hold.waitForSelector('#s-grid', { timeout: 8000 }).catch(() => {});
+  const arrived = await formNow();
+  chk('the form does not move when the grid square comes: Apply is where it was while the square\'s code was held back',
+      waiting.grid === null && /^Grid square [A-R]{2}\d\d/.test(arrived.grid || '') && waiting.apply !== null && waiting.apply === arrived.apply,
+      JSON.stringify({ waiting, arrived }));
+  await hold.close();
+
   // ---- no network ----------------------------------------------------------
   /* Search is a convenience over typing numbers in, so losing it has to cost
      the convenience and nothing else. */

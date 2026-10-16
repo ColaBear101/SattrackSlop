@@ -832,13 +832,13 @@ lands. The abbreviations in the header, over the globe, in the rail, in the sky 
 pass table carry their expansion as a tooltip, and the notes that lean on a term, the re-entry
 warning and the Professor's notes, link to its entry.
 
-Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 · MIT licence ·
+Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 ·
 github.com/ColaBear101/SattrackSlop · Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with links to
-the repository, to SatNOGS DB and to the licence. The version is the one in `package.json`, which
-the build writes in (`__APP_VERSION__`, defined in `vite.config.ts`), so the line changes when
-that does and is never edited by hand. The links are only links: the page asks nothing of those
-hosts. Why the data has a licence of its own is under *The frequency is the one thing that cannot
-be derived*. The old page said none of this.
+the repository, to SatNOGS DB and to the data's licence. It names no licence for the page's code.
+The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
+`vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
+only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
+*The frequency is the one thing that cannot be derived*. The old page said none of this.
 
 Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
 the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB or a service
@@ -3103,10 +3103,8 @@ SatNOGS DB is a Libre Space Foundation project, and its data is published under 
 Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 `data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
 licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
-licence, say what was changed, and license it under CC BY-SA 4.0 too. The share-alike covers the
-data, not the code that bakes and reads it, which stays MIT, as the rest of the project is. The
-page gives the credit in the footer's last line, *Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with
-a link to each. The 1,437 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE
+licence, say what was changed, and license it under CC BY-SA 4.0 too. The page gives the credit
+in the footer's last line, *Transmitter data: SatNOGS DB, CC BY-SA 4.0*, with a link to each. The 1,437 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE
 endpoint (see *Data provenance*) are from the same database. Whether its licence reaches them, and
 so whether the catalogue carries it too and the footer should say so, has not been decided; until
 it is, the footer's line names the transmitter data and nothing else.

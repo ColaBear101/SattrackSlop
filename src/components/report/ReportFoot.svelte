@@ -9,7 +9,7 @@
      the footer of legacy/index.html (main@4eadd7a) and `#footepoch` in load(). */
   const D = $derived(app.analysis);
   const epoch = $derived(D ? 'Element set epoch ' + iso(D.E.epoch) + ' · window ' + spanLabel(D.hours) + ' from ' + iso(D.start) + ' · sample ' + D.step + ' s' : '—');
-  /* The credits (CHANGES-FROM-LEGACY.md, L49): the version Vite writes in from package.json, the licences and the repository. A
+  /* The credits (CHANGES-FROM-LEGACY.md, L49): the version Vite writes in from package.json, the repository and the data's licence. A
      paragraph and not a span, and with no span inside it: the golden capture reads the footer's spans as the old page's words. */
   const credit = creditLine(__APP_VERSION__);
 </script>

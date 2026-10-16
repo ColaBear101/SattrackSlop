@@ -47,9 +47,14 @@
     edge = align === 'end' ? (r.right - panel.offsetWidth >= 0 ? 'end' : 'start') : (r.left + panel.offsetWidth <= innerWidth ? 'start' : 'end');
     /* in the next frame, once the flip above is on the screen: focused while the panel is still where it was first placed - below the fold, for a
        popover on the transport - a date field makes the browser scroll to it whatever is asked, and the page jumped by hundreds of pixels */
+    /* ...unless the focus is in the panel already: a field pressed or typed into before that frame came keeps it. Taken from it, the
+       keys pressed after went to the panel's first field instead (the observer's latitude, filled by a script the moment the form
+       opened, was typed into its search box) */
     const p = panel;
-    const raf = requestAnimationFrame(() => p.querySelector<HTMLElement>('input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])')
-      ?.focus({ preventScroll: true }));
+    const raf = requestAnimationFrame(() => {
+      if (p.contains(document.activeElement)) return;
+      p.querySelector<HTMLElement>('input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])')?.focus({ preventScroll: true });
+    });
     return () => cancelAnimationFrame(raf);
   });
 </script>

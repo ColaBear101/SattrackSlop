@@ -567,6 +567,25 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('the form does not move when the grid square comes: Apply is where it was while the square\'s code was held back',
       waiting.grid === null && /^Grid square [A-R]{2}\d\d/.test(arrived.grid || '') && waiting.apply !== null && waiting.apply === arrived.apply,
       JSON.stringify({ waiting, arrived }));
+  /* The popover puts the focus in the form in the frame after it opens; a field pressed or typed into before that frame keeps it.
+     It used to be taken to the search box, and the keys that followed went there: H.setSite's latitude, typed the moment the form
+     opened, landed in the search box once in a run, and Bangkok's stayed in the field. Opened, and a field focused as soon as the
+     form is in the page, in the same task (microtasks only: no frame can come between), so the frame is always after it. */
+  await hold.keyboard.press('Escape');
+  await hold.waitForSelector('#s-search', { state: 'detached', timeout: 5000 }).catch(() => {});
+  const kept = await hold.evaluate(async () => {
+    document.getElementById('siteopen').click();
+    let lat = null;
+    for (let i = 0; i < 50 && !(lat = document.getElementById('s-lat')); i++) await Promise.resolve();
+    if (!lat) return { before: null, after: null };
+    const m = document.getElementById('s-manual'); if (m) m.open = true;
+    lat.focus();
+    const before = document.activeElement && document.activeElement.id;
+    await new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f)));
+    return { before, after: document.activeElement && document.activeElement.id };
+  });
+  chk('a field focused the moment the form opens keeps the focus: the form\'s first frame does not take it to the search box',
+      kept.before === 's-lat' && kept.after === 's-lat', JSON.stringify(kept));
   await hold.close();
 
   // ---- no network ----------------------------------------------------------

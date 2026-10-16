@@ -108,6 +108,8 @@
     border: 0; border-radius: var(--r-1); background: none; color: var(--muted); cursor: pointer;
   }
   .star[hidden] { display: none; }
+  /* the ring inside the star's own box: from 1100 px the line clips what is outside it, and the star is as tall as the line */
+  .star:focus-visible { outline-offset: -2px; }
   @media (hover: hover) { .star:hover { color: var(--ink); background: var(--hover); } }
   .star[aria-pressed='true'] { color: var(--link); }
   .star[aria-pressed='true'] :global(svg) { fill: currentColor; }

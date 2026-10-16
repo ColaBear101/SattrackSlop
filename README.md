@@ -384,6 +384,7 @@ FO-29 as JAS 2. Your own orbits are found by name, never by their placeholder nu
 SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
 *decayed now*; it is still listed, and still picked like any other (see *When the object is no
 longer there*).
+Everything on the page recomputes on selection.
 
 The star at the end of the line under the name, after the age chip, puts the spacecraft on screen
 on your **watchlist**: press it (from the name, Tab reaches it, and Space or Enter presses it), and
@@ -397,7 +398,6 @@ orbits have no NORAD number, so they have no star. The list is kept in your brow
 one taken off leaves nothing stored. Another tab of the page follows a change at once (the browser
 tells it). Nothing is fetched for a watched spacecraft: the list only orders the picker. The
 press is a chunk of its own, asked for at the first one; reading the list is in the entry.
-Everything on the page recomputes on selection.
 
 #### (a) Orbital elements at epoch
 
@@ -2037,8 +2037,10 @@ and the TLE is rebuilt on every read. At most **12** orbits and 24 code points o
 thirteenth Add is refused and nothing is evicted. A page opened with nothing saved writes nothing and
 adds no request of its own, and it opens on the catalogue default, never on a saved orbit. The
 saved orbits are read when the planner arrives, so for the first moments of a visit the picker lists
-the catalogue only (`CHANGES-FROM-LEGACY.md`, L33). If storage is blocked or full the orbit works
-for the visit and the form says that it will not be remembered.
+none of them and no Plan row: only the catalogue, after the spacecraft you watch if there are any
+(the *Watched* and *Catalogue* group rows do not wait for the planner; `CHANGES-FROM-LEGACY.md`, L33
+and L60). If storage is blocked or full the orbit works for the visit and the form says that it will
+not be remembered.
 
 **Validated on read.** `Planner.sanitizeStore` treats a stored record as hostile. Above 65,536
 characters it is refused before parsing and dropped unread; a record that is not JSON or is of
@@ -3384,8 +3386,9 @@ buttons, the transport and the export buttons, in a fixed window — which objec
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
 On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
 reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
-planner. It then works the watchlist's star: reached by Tab from the name and pressed with Space,
-nothing stored until then and `gt.watch` written at the press; the picker's *Watched* group on the
+planner. It then works the watchlist's star: reached by Tab from the name, its focus ring whole
+inside the line that clips it at 1400 px, and pressed with Space, nothing stored until then and
+`gt.watch` written at the press; the picker's *Watched* group on the
 empty query, in the order starred, with the same 80 rows and notes and a query's order untouched;
 a second tab that follows the first without a reload; nothing left stored once the last is off; no
 star for an orbit of your own; and, with 50 watched, a 51st refused with the sentence under the bar.

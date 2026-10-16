@@ -37,6 +37,9 @@
  * taken out of the list, a marked row is still a pick, the work is a chunk of
  * its own asked for when the list first opens, the marks follow the clock
  * when it is put at another instant, and the snapshot has none.
+ * Then the watchlist (L60): the star on the line under the name, reached by
+ * Tab with its focus ring whole, stored only at a press; the picker's
+ * "Watched" group on the empty query; another tab; the cap at 50.
  *
  *   node verification/suites/verify-catalogue.js          (needs playwright)
  */
@@ -487,6 +490,22 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     await pA.focus('button.title');
     await pA.keyboard.press('Tab');
     const focused = await pA.evaluate(() => document.activeElement && document.activeElement.id);
+    /* the focus ring as the keyboard draws it, against every box above the star that clips: at this width the line under the name is
+       one (overflow: hidden) and the star is as tall as it, so a ring drawn outside the star's box would lose its top and bottom */
+    const ring = await pA.evaluate(() => {
+      const b = document.activeElement, cs = getComputedStyle(b), s = b.getBoundingClientRect();
+      const reach = parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset), cut = [];
+      let clips = 0;
+      for (let e = b.parentElement; e; e = e.parentElement) {
+        const c = getComputedStyle(e);
+        if (c.overflowX === 'visible' && c.overflowY === 'visible') continue;
+        clips++;
+        const q = e.getBoundingClientRect();
+        if (s.top - reach < q.top - 0.01 || s.bottom + reach > q.bottom + 0.01 || s.left - reach < q.left - 0.01 || s.right + reach > q.right + 0.01)
+          cut.push((e.id || e.className) + ' ' + Math.round(q.top) + '..' + Math.round(q.bottom));
+      }
+      return { fv: b.matches(':focus-visible'), style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset, star: Math.round(s.top) + '..' + Math.round(s.bottom), clips, cut };
+    });
     const before = reqsW.length;
     await pA.keyboard.press('Space');
     const on1 = await pA.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'true', null, { timeout: 5000 }).then(() => true, () => false);
@@ -495,6 +514,8 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
         focused === 'watchstar' && on1 && st1.keys === 'gt.watch' && st1.watch === '["67683"]', JSON.stringify({ focused, on1, st1 }));
     chk('...the press\'s chunk asked for once, from this origin, and nothing else asked of any host for it',
         asked.filter(u => PRESS.test(u)).length === 1 && asked.every(u => u.startsWith(origin + '/')), asked.map(u => u.replace(origin, '')).join(' ') || 'nothing');
+    chk('the star\'s focus ring, from the keyboard, is drawn whole: at 1400 px the line under the name clips what is outside it, so the ring is inside the star\'s own box',
+        focused === 'watchstar' && ring.fv && ring.style === 'solid' && parseFloat(ring.width) >= 2 && ring.clips >= 1 && ring.cut.length === 0, JSON.stringify(ring));
 
     let rows = await listed(pA, '');
     const notes = await H.pickerNotes(pA);

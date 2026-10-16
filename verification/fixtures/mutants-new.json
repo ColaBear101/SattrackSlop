@@ -798,8 +798,8 @@
       "id": "m57",
       "intent": "The picker writes its group rows for a typed query too.",
       "file": "components/shell/Picker.svelte",
-      "find": "const groups = $derived(!query.trim() && custom.count > 0);",
-      "replace": "const groups = $derived(custom.count > 0);",
+      "find": "const groups = $derived(!query.trim() && custom.count + lead.length > 0);",
+      "replace": "const groups = $derived(custom.count + lead.length > 0);",
       "groups": [
         23
       ]

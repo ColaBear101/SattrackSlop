@@ -633,7 +633,9 @@ chunk of its own, under 1 KB gzipped, which the page fetches the first time the 
 pass on screen. `verify-timeline.js` stops the clock 60 % of the way through a pass and reads the
 canvas: the dot's pixel in ink where the plot's projection puts the engine's azimuth and elevation,
 the flown stretch no longer in the arc's colour, the stretch still to come unchanged, and no other
-pixel different from the plot outside the pass, which it is again once the clock leaves. It counts
+pixel different from the plot outside the pass, which it is again once the clock leaves (a pixel at
+the edge of the stretch still to come may be up to 5 levels off: that stretch is drawn as a path of
+its own, and its anti-aliasing can come out a level or three apart). It counts
 the drawing calls too: none in a second paused, and playing at real time one laid-down picture and
 one dot a tick, with the plot itself drawn only as the stretch grows and the report's copy, out of
 view, not drawn at all. The old page drew the arc alone.

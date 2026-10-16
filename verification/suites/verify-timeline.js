@@ -265,17 +265,22 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
         const fi = best(3, k - 3), ui = best(k + 3, n - 3);
         const at = (img, q) => T.px(img, q[0], q[1]);
         /* every pixel that differs from the plot outside the pass must be the dot's (within 12 px of it) or on the flown
-           stretch (within 3 px of it: the line is 3 px wide, with round caps) */
+           stretch (within 3 px of it: the line is 3 px wide, with round caps). One on the stretch still to come (within 3 px of
+           it) may differ by a few levels, 5 at most: that stretch is now a path of its own, and the rasteriser's coverage at
+           its anti-aliased edge can come out a level or three apart from the whole arc's (seen once in a day's passes: one
+           pixel, by 3, 12.5 px from the dot); drawn faint, or anything else drawn over it, it differs by forty and more */
         const segD = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l)); return Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy); };
-        let diff = 0, stray = 0, strayAt = null;
+        let diff = 0, stray = 0, strayAt = null, edge = 0;
         for (let y = 0; y < live.height; y++) for (let x = 0; x < live.width; x++) {
           const i = (y * live.width + x) * 4;
-          if (Math.max(Math.abs(live.data[i] - ref.data[i]), Math.abs(live.data[i + 1] - ref.data[i + 1]), Math.abs(live.data[i + 2] - ref.data[i + 2]), Math.abs(live.data[i + 3] - ref.data[i + 3])) <= 2) continue;
+          const dd = Math.max(Math.abs(live.data[i] - ref.data[i]), Math.abs(live.data[i + 1] - ref.data[i + 1]), Math.abs(live.data[i + 2] - ref.data[i + 2]), Math.abs(live.data[i + 3] - ref.data[i + 3]));
+          if (dd <= 2) continue;
           diff++;
           const cx = x + 0.5, cy = y + 0.5;
           if (Math.hypot(cx - dot[0], cy - dot[1]) <= 12 * dpr) continue;
           let near = false;
           for (let j = 0; j < k && !near; j++) near = segD(cx, cy, pts[j], pts[j + 1]) <= 3 * dpr;
+          if (!near && dd <= 5) { let ahead = false; for (let j = k; j < n && !ahead; j++) ahead = segD(cx, cy, pts[j], pts[j + 1]) <= 3 * dpr; if (ahead) { edge++; continue; } }
           if (!near) { stray++; strayAt = strayAt || [x, y]; }
         }
         return {
@@ -283,7 +288,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
           dotPx: at(live, dot), dotRef: at(ref, dot), ink: T.ink, contact: T.contact,
           fi, fClear: clear(pts[fi]) / dpr, fLive: at(live, pts[fi]), fRef: at(ref, pts[fi]),
           ui, uClear: clear(pts[ui]) / dpr, uLive: at(live, pts[ui]), uRef: at(ref, pts[ui]),
-          diff, stray, strayAt
+          diff, stray, strayAt, edge
         };
       }, { t, P });
       const T = { off: (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) };
@@ -298,8 +303,9 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16);
       chk('...and the stretch still to come is as it was: at its sample ' + L.ui + ' the arc is unchanged',
           L.uClear >= 14 && T.off(L.uRef, L.contact) <= 3 && T.off(L.uLive, L.uRef) <= 2,
           'outside the pass ' + L.uRef.join(',') + ', now ' + L.uLive.join(',') + '; ' + L.uClear.toFixed(0) + ' px clear of the marks');
-      chk('nothing else on the plot differs from the plot outside the pass: every changed pixel is the dot\'s or on the flown stretch',
-          L.diff > 0 && L.stray === 0, L.diff + ' changed, ' + L.stray + ' elsewhere' + (L.strayAt ? ' (first at ' + L.strayAt.join(',') + ')' : ''));
+      chk('nothing else on the plot differs from the plot outside the pass: every changed pixel is the dot\'s or on the flown stretch (or, by 5 levels at most, on the edge of the stretch still to come)',
+          L.diff > 0 && L.stray === 0, L.diff + ' changed, ' + L.stray + ' elsewhere' + (L.strayAt ? ' (first at ' + L.strayAt.join(',') + ')' : '')
+          + (L.edge ? '; ' + L.edge + ' on the stretch still to come by 5 levels or less, its edge drawn as a path of its own' : ''));
 
       /* the work: none paused; playing at real time, every tick lays the kept picture down and draws the dot, and drawSky runs
          again only when another sample of the arc is flown. Counted on the canvas's own context calls: a blit (drawImage), a

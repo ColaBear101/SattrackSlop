@@ -6,9 +6,12 @@
  * with both an uplink and a downlink in the amateur bands, the uplink the spacecraft listens on and the downlink it sends, either a
  * LINEAR passband (a transponder that maps its uplink range onto its downlink range point for point, inverting or not) or a single-
  * frequency PAIR (an FM repeater, a digipeater, a transceiver); the downlink mode and the uplink mode; the CTCSS tone the record
- * names; and SatNOGS's description. It is SatNOGS DB data, under CC BY-SA 4.0, as the footer's credit line says. A chunk of its own,
- * asked for when the transponder panel is first opened (never at boot): the page never asks SatNOGS anything. Keyed by the NORAD
- * number without its leading zeros ("7530" for 07530), as the other two tables are.
+ * names; and SatNOGS's description. It is SatNOGS DB data, under CC BY-SA 4.0, as the footer's credit line says. A file of the page's
+ * own, fetched when the transponder panel is first opened (never at boot; state/transponder.svelte.ts, L63): the page never asks
+ * SatNOGS anything. Fetched rather than imported as a chunk because a browser keeps a failed import() for the life of the page, so a
+ * second import of a chunk that did not arrive fails at once without asking again (Chromium does, as the module map of the HTML
+ * standard says), and the panel's Try again would be a button that cannot work. Keyed by the NORAD number without its leading
+ * zeros ("7530" for 07530), as the other two tables are.
  *
  * Each record is [ulLo, ulHi, dlLo, dlHi, inv, mode, upMode, tone, desc]: integer Hz (a pair has ulHi === ulLo and dlHi === dlLo),
  * inv 1 for an inverting passband (always 0 for a pair), upMode '' when SatNOGS gives none or the same as the downlink's, tone 0
@@ -73,12 +76,16 @@ export function makeTransponders(data: TransponderData): TransponderTable {
 }
 
 /** One promise for every caller while it is on its way or has come; a failure is forgotten, so the next call asks again (a lost
- *  chunk on a flaky connection is not the end of the table for the visit). */
+ *  file on a flaky connection is not the end of the table for the visit). */
 export function retrying<T>(get: () => Promise<T>): () => Promise<T> {
   let p: Promise<T> | null = null;
   return () => (p ??= get().catch((e: unknown) => { p = null; throw e; }));
 }
 
-/** The table, fetched on first use (its own chunk) and kept; asked for again after a failure. */
-export const loadTransponders: () => Promise<TransponderTable> = retrying(
-  () => import('../../../data/transponders.json').then(m => makeTransponders(m.default as unknown as TransponderData)));
+/** The table from what `get` gives, the file's JSON (the store hands it a fetch of the file), asked for once and kept, and asked for
+ *  again after a failure. Anything that is not the table's shape is a failure too: a host's error page read as JSON, a cut answer. */
+export const tableLoader = (get: () => Promise<unknown>): (() => Promise<TransponderTable>) => retrying(() => get().then(d => {
+  const x = d && typeof d === 'object' ? (d as { x?: unknown }).x : null;
+  if (!x || typeof x !== 'object' || Array.isArray(x)) throw new Error('not the transponder table');
+  return makeTransponders(d as TransponderData);
+}));

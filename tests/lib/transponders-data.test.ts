@@ -5,7 +5,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
 import raw from '../../data/transponders.json';
-import { CTCSS_HZ, loadTransponders, makeTransponders, retrying, type TransponderData, type XpRecord } from '../../src/lib/data/transponders';
+import { CTCSS_HZ, makeTransponders, retrying, tableLoader, type TransponderData, type XpRecord } from '../../src/lib/data/transponders';
 import { CATALOGUE } from './helpers';
 
 /* The uplink and transponder table (CHANGES-FROM-LEGACY.md, L62): every active SatNOGS DB record of a catalogue object with both an
@@ -176,7 +176,7 @@ describe('data/transponders.json', () => {
     expect(D.x['50466']).toBeUndefined();
     expect(D.x['49402']).toBeUndefined();
   });
-  it('is small: a lazy chunk the transponder panel asks for once, under 2 KB gzipped', () => {
+  it('is small: a file the transponder panel fetches once, under 2 KB gzipped', () => {
     expect(Buffer.byteLength(text)).toBeLessThan(8_000);
     expect(zlib.gzipSync(text, { level: 9 }).length).toBeLessThan(2_000);
   });
@@ -224,11 +224,25 @@ describe('the loader', () => {
     a.pop();
     expect(T.forSat(24278)[0]!.ulLo).toBe(145900000);
   });
-  it('loads the baked table once, as a chunk of its own', async () => {
-    const [a, b] = await Promise.all([loadTransponders(), loadTransponders()]);
+  /* the page fetches the file (state/transponder.svelte.ts, L63) rather than importing it as a chunk: a browser keeps a failed import()
+     for the life of the page, so Try again could not ask again */
+  it('loads the baked table once from what it is handed, the file\'s JSON', async () => {
+    let calls = 0;
+    const load = tableLoader(async () => { calls++; return JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'transponders.json'), 'utf8')); });
+    const [a, b] = await Promise.all([load(), load()]);
     expect(a).toBe(b);
-    expect(await loadTransponders()).toBe(a);
+    expect(await load()).toBe(a);
+    expect(calls).toBe(1);
     expect(a.forSat(43803)).toEqual(T.forSat(43803));
+  });
+  it('takes what is not the table\'s shape as a failure, and asks again after it', async () => {
+    const answers: unknown[] = [null, '<!doctype html>', [], { x: [] }, { x: null }, { built: 'x' }];
+    for (const bad of answers) await expect(tableLoader(async () => bad)(), JSON.stringify(bad)).rejects.toThrow('not the transponder table');
+    let n = 0;
+    const load = tableLoader(async () => (++n === 1 ? { x: null } : { built: 'b', source: 's', licence: 'l', objects: 0, records: 0, x: {} }));
+    await expect(load()).rejects.toThrow();
+    expect((await load()).built).toBe('b');
+    expect(n).toBe(2);
   });
   it('asks again after a failure, and keeps what came', async () => {
     let calls = 0;

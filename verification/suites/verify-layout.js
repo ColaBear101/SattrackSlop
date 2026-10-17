@@ -13,7 +13,8 @@
  * Each size is visited once, in these states, and every sweep runs in each of them, in light and in dark:
  *   default . the Layers panel . the spacecraft picker (and on a query whose rows are marked "decayed now") . the observer form . the window
  *   popover . the Map tab . the answer rail (its three tabs,
- *   the pass list's filter open, and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
+ *   the pass list's filter open, and folded, where it folds, and the transponder calculator open on QO-100, L63) . the orbit planner (a drawer, a
+ *   sheet or a panel, by width)
  *
  *   1  The page does not scroll sideways (documentElement.scrollWidth <= the window's width, as the context was given it: in a mobile context innerWidth
  *      itself grows with a wide page), in every state.
@@ -222,6 +223,34 @@ function statesFor(page, size, assertPlanner) {
     enter: async () => { await railTab('Passes'); await page.click('#passfilterbtn'); await shownSel('#passfilter'); await raf2(page); },
     exit: async () => { await esc('#passfilter'); await peekTo(rm !== 'sheet'); } });
   if (rm === 'panel') S.push({ id: 'rail-folded', overlay: null, enter: () => peekTo(false), exit: () => peekTo(true) });
+  /* the transponder calculator, open (CHANGES-FROM-LEGACY.md, L63): "Uplink and transponders", the disclosure that ends the live line in the
+     Passes tab, whose panel is a chunk of its own mounted at the first opening, on QO-100 (ES'HAIL 2), the panel at its tallest (a linear
+     passband: the record list, whose options are the longest of the table, the three-way hold, the dial, the nudges, the figures, the offset
+     and its hint). Picked through the picker by its number; the default spacecraft is picked again on the way out. Not FO-29: its report
+     opens the Professor's group with "Go to Orbital decay" in it, a link 15 px tall that is not in a sentence, which this suite would
+     flag on any spacecraft whose group opens so (the default's stays shut), and which is not the calculator's. The press on the summary
+     scrolls the rail to it; the rail is put back at its top, as the other states leave it, so that the pass list's sticky day header is
+     not left over rows scrolled under it. */
+  const pickNo = async (n, name) => {
+    await page.click('button.title'); await shownSel('#satsearch');
+    await page.fill('#satsearch', n); await page.press('#satsearch', 'Enter');
+    await waitFor(page, nm => (document.getElementById('satname') || {}).textContent === nm, name, 15000);
+    await page.waitForTimeout(300);
+  };
+  S.push({ id: 'rail-xpdr', overlay: ov,
+    enter: async () => {
+      await pickNo('43700', "ES'HAIL 2");
+      await railTab('Passes');
+      await page.click('#xpdr summary'); await shownSel('#xpdrsel');
+      await page.evaluate(() => { for (let e = document.getElementById('xpdr'); e && e !== document.body; e = e.parentElement) if (e.scrollTop) e.scrollTop = 0; });
+      await raf2(page);
+    },
+    exit: async () => {
+      await page.click('#xpdr summary'); await hidden('#xpdrsel');
+      await peekTo(false);
+      await pickNo('67683', 'KNACKSAT-2');
+      await peekTo(rm !== 'sheet');
+    } });
   S.push({ id: 'planner-' + pm, overlay: pm === 'sheet' ? '#planner' : null,
     enter: async () => {
       await page.click('#planopen');

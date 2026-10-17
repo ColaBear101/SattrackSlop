@@ -9,7 +9,8 @@
  *
  * Eight groups, each measured on the page as it is (the chunk names are assets/<name>-<hash>.js):
  *   1  a fresh visitor on a desktop: the first answer before any planner chunk, the pill from the first paint, the planner's chunks
- *      once each when the browser idles, no AR chunk, no test surface, nothing on the window, nothing in storage, nobody else asked;
+ *      once each when the browser idles, no AR chunk, no test surface, no transponder calculator (its chunk and its table, L63, are for
+ *      whoever opens "Uplink and transponders"), nothing on the window, nothing in storage, nobody else asked;
  *      the report's footer states the version, the repository and the licence of the SatNOGS DB data, and no licence for the code (L49);
  *      and the control that a live visit does ask the page's own cache API (/api/tle/<n>), which group 4 says it does not under the snapshot
  *   2  a visitor with a saved orbit: it is listed once the planner is up, the record is not rewritten, the planner lists it
@@ -81,7 +82,12 @@ const HOLD = 3000;                 // group 8: how long the catalogue is kept ba
 /* The planner's own chunks. `lifetime` is also the Decay panel's (the drag integrator is shared), so on a desktop it is fetched at boot, with
    the Decay panel, and not by the planner: it is counted once for the whole visit and not ordered. */
 const FAMILY = ['planner', 'plannerui', 'advisor', 'advisor-copy', 'parts'];
-const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client']);
+const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client', 'xpdr']);
+/* The transponder calculator (CHANGES-FROM-LEGACY.md, L63): its chunk, xpdr (in EXPECTED), and its table, a file of the page's own
+   (assets/transponders-<hash>.json, fetched, not imported: a browser keeps a failed import() for the life of the page), are asked for
+   when "Uplink and transponders" is first opened, never by a visit that does not open it. */
+const XPDR_TABLE = /^\/assets\/transponders-[A-Za-z0-9_-]{8}\.json$/;
+const pathOf = u => { try { return new URL(u, 'http://x').pathname; } catch (e) { return ''; } };
 /* ...and the six files whose refusal takes the planner away (group 5). */
 const REFUSED = FAMILY.concat(['lifetime']);
 /* The two element-set sources the page asks directly when no cache API answers as itself (CHANGES-FROM-LEGACY 7). Nothing else. */
@@ -99,7 +105,7 @@ const SEED = JSON.stringify({ v: 1, next: 2, items: [{ id: 'c1', name: 'Saved ea
 const LONDON = { lat: 51.5, lon: -0.12, altKm: 0.02, name: 'London', tz: 0, zone: 'Europe/London', where: 'England' };
 const SEED_ALL = {
   'obs-site': JSON.stringify(LONDON), 'obs-recent': JSON.stringify([LONDON]), 'gt.prefs': JSON.stringify({ theme: 'dark', tab: 'map' }), 'gt.surface': 'vector',
-  'gt.custom': SEED, 'gt.arlens': '60', 'gt.araim': 'head', 'gt.arradar': '0', 'gt.watch': '["25544"]',
+  'gt.custom': SEED, 'gt.arlens': '60', 'gt.araim': 'head', 'gt.arradar': '0', 'gt.watch': '["25544"]', 'gt.xpdr': '{"24278":400}',
   'tle:25544': JSON.stringify({ l1: '', l2: '', src: 'celestrak', at: 0 }), 'hist:25544': JSON.stringify({ at: 0, P: [] }), 'someone-else': 'keep me'
 };
 const PAGE_KEY = /^(gt\.|obs-|tle:|hist:)/;
@@ -298,6 +304,8 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       for (const f of fs.readdirSync(path.join(srv.root, 'assets')).filter(f => f.endsWith('.js'))) (byName[chunkOf('/assets/' + f)] = byName[chunkOf('/assets/' + f)] || []).push(f);
       chk('every chunk the checks below name is one file in the build (a rename would make each "not requested" vacuous; the "requested once" checks prove the planner\'s and the AR view\'s names on the wire)',
         EXPECTED.every(n => (byName[n] || []).length === 1), EXPECTED.map(n => n + ' ' + ((byName[n] || []).join(',') || 'MISSING')).join('  '));
+      const tables = fs.readdirSync(path.join(srv.root, 'assets')).filter(f => XPDR_TABLE.test('/assets/' + f));
+      chk('...and the transponder table is one file of its own (assets/transponders-<hash>.json), so that "not requested" below means something', tables.length === 1, tables.join(', ') || 'MISSING');
     } else note('(GT_URL: the build\'s files cannot be listed; the "requested once" checks prove the names on the wire)');
   }
 
@@ -354,6 +362,9 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       chk('the page, live, asks its own cache API for the element set (/api/tle/<n>): the control for group 4, where under ?tle=embedded it must not', apiPaths.some(p => /^\/api\/tle\//.test(p)), apiPaths.join(' ') || 'none');
       chk('the AR chunk is not requested (a fine pointer has no finger to use it with)', count(w, 'chunk') === 0, 'chunk requests: ' + count(w, 'chunk'));
       chk('the test surface chunk is not requested', count(w, 'surface') === 0, 'surface requests: ' + count(w, 'surface'));
+      const tablesAsked = w.reqs.filter(u => XPDR_TABLE.test(pathOf(u))).length;
+      chk('the transponder calculator\'s chunk (xpdr) and its table (transponders) are not requested: nobody opened "Uplink and transponders" (L63)', count(w, 'xpdr') === 0 && tablesAsked === 0,
+        'xpdr requests: ' + count(w, 'xpdr') + ', transponders requests: ' + tablesAsked);
       const win = await w.page.evaluate(n => n.map(k => k + ':' + typeof window[k]), FACADE);
       chk('nothing of the facade is on the window (' + FACADE.join(', ') + ')', win.every(s => /:undefined$/.test(s)), win.filter(s => !/:undefined$/.test(s)).join(' ') || 'all undefined');
       chk('#arbtn is not visible, and the AR view is not in the page at all', !(await visible(w.page, '#arbtn')) && (await w.page.evaluate(() => document.getElementById('arview') === null)));

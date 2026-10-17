@@ -6,14 +6,16 @@
   import { getEngine, MASK } from '../../state/engine';
   import { isLive, tuneAt } from '../../lib/analysis/tune';
   import { freqGrouped } from '../../lib/text/fmt';
-  import { belowMask, GO_LIVE, RX, shiftKHz, TUNE_NOW, tuneAtSim, TX, UPLINK, UPLINK_NAME } from '../../lib/text/doppler-live';
+  import { belowMask, GO_LIVE, RX, shiftKHz, TUNE_NOW, tuneAtSim, TX, UPLINK, UPLINK_NAME, XPDR_OPEN } from '../../lib/text/doppler-live';
   import Button from '../ui/Button.svelte';
 
   /* The frequency to tune to at one instant, under the downlink box (CHANGES-FROM-LEGACY.md, L52): the downlink chosen
      above as it is heard on the ground, and, for an uplink typed here, the frequency to send on. It is worked out on
      clock.tick, the one value the clock republishes (ten times a second while it plays, never while it is paused), so a
      paused page does no work for it. "Now" means the wall clock, and only while the clock runs at real time near it;
-     at any other instant the line says which, and offers to go live. */
+     at any other instant the line says which, and offers to go live.
+     It ends with "Uplink and transponders" (L63), a disclosure whose panel is a chunk of its own (xpdr.ts), asked for at its first
+     opening and mounted into it; the panel takes the line's instant and range rate from here, so the caption speaks for it too. */
 
   /* the uplink, in memory only, for the spacecraft it was typed for: another spacecraft listens on another frequency */
   let up = $state<{ sat: string; hz: number; text: string } | null>(null);
@@ -37,6 +39,8 @@
      nothing, and where the next Tab goes is up to the browser. A press that had the focus hands it to the caption, which
      now says "Tune now", and the next Tab goes on to the Uplink box (the caption is focusable from script only,
      tabindex -1, so Tab never stops on it). */
+  const xpOpen = (e: Event) => { const d = e.currentTarget as HTMLDetailsElement; import('./xpdr').then(m => m.open(d, () => v), () => {}); };
+
   let caption: HTMLElement | undefined = $state();
   function goLive(e: MouseEvent) {
     const b = e.currentTarget as HTMLElement, had = document.activeElement === b;
@@ -70,6 +74,7 @@
       <span class="d">MHz</span>
     </p>
     {#if mine}{@render row('tx', TX, v.r?.tx, mine.hz)}{/if}
+    <details id="xpdr" ontoggle={xpOpen}><summary>{XPDR_OPEN}</summary></details>
   </div>
 {/if}
 
@@ -85,4 +90,24 @@
   }
   input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   @media (pointer: coarse) { input { height: var(--tap); } }
+  /* the transponder calculator (L63): its panel (TransponderPanel.svelte, mounted by xpdr.ts) has no style of its own, so that its chunk
+     brings no stylesheet the entry would have to name; these rules are its */
+  details { margin-top: var(--space-2); }
+  summary { min-height: 32px; padding: 6px 0; color: var(--ink); font-weight: 500; cursor: pointer; }
+  :global(#xpdr .ln) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; min-height: 28px; }
+  :global(#xpdr p) { margin: var(--space-2) 0 0; }
+  :global(#xpdr .k) { width: 6rem; }
+  :global(#xpdr .f) { color: var(--ink); font-weight: 500; }
+  :global(#xpdr .f), :global(#xpdr .d) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  :global(#xpdr input), :global(#xpdr select) {
+    height: 32px; padding: 0 var(--space-2); border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--sunk);
+    color: var(--ink); font-family: var(--font-mono); font-size: var(--fs-1);
+  }
+  :global(#xpdr input) { width: 8.5rem; }
+  :global(#xpdrsel) { width: 100%; min-width: 0; max-width: 100%; }
+  :global(#xpdr input:focus), :global(#xpdr select:focus) { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+  :global(#xpdr-out) { color: var(--warn); }
+  :global(#xpdr-out:empty), :global(#xpdr-offsay:empty) { margin: 0; }
+  :global(#xpdr [aria-disabled='true']) { cursor: not-allowed; border-style: dashed; }
+  @media (pointer: coarse) { summary { min-height: var(--tap); } :global(#xpdr input), :global(#xpdr select) { height: var(--tap); } }
 </style>

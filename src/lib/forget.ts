@@ -30,7 +30,9 @@ export const FORGET_KEYS = [
   'gt.custom', 'gt.custom.bak',                            // state/custom.svelte.ts: the reader's orbits, and a record this version could not read
   'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
   'gt.passfilter',                                         // state/passfilter.svelte.ts: the pass list's filter (L56)
-  'gt.watch'                                               // state/watch.svelte.ts: the spacecraft the reader starred (L60)
+  'gt.watch',                                              // state/watch.svelte.ts: the spacecraft the reader starred (L60)
+  'gt.xpdr'                                                // state/transponder.svelte.ts: each spacecraft's transponder offset (L63), said as one of
+                                                           // "your display choices": a word of its own would add bytes to the report's chunk
 ] as const;
 
 /** The page's namespaces: a key that starts with one of these is the page's. */

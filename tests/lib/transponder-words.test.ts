@@ -97,11 +97,12 @@ describe('the hold, the dial and the nudges', () => {
     expect(HOLDS[1]!.title).toBe('Keep the frequency you listen on where it is; the one you send on follows');
     expect(HOLDS[2]!.title).toBe('Keep the spot in the passband where it is; both frequencies follow, so a contact stays put');
   });
-  it('labels the box, and names it for a screen reader with what is held and the unit', () => {
+  it('labels the box, and names it for a screen reader with what is held and the unit, starting with the label (WCAG 2.5.3)', () => {
     expect(XP_DIAL).toBe('Held at');
-    expect(dialName('tx')).toBe('Frequency to send on, held, in MHz');
-    expect(dialName('rx')).toBe('Frequency to listen on, held, in MHz');
-    expect(dialName('sat')).toBe('Uplink as the spacecraft hears it, held, in MHz');
+    expect(dialName('tx')).toBe('Held at: the frequency to send on, in MHz');
+    expect(dialName('rx')).toBe('Held at: the frequency to listen on, in MHz');
+    expect(dialName('sat')).toBe('Held at: the uplink as the spacecraft hears it, in MHz');
+    for (const h of HOLDS) expect(dialName(h.value).startsWith(XP_DIAL + ':')).toBe(true);
   });
   it('writes the held frequency back to the hertz, in the form the box reads', () => {
     expect(dialText(145_950_000)).toBe('145.950000');
@@ -155,7 +156,8 @@ describe('the figures', () => {
 
 describe('the offset', () => {
   it('labels its rows and buttons', () => {
-    expect([XP_OFFSET, XP_HEARD, XP_HEARD_NAME, XP_CAL, XP_RESET]).toEqual(['Offset', 'Heard on', 'Frequency you heard yourself on, in MHz', 'Set offset', 'Reset']);
+    expect([XP_OFFSET, XP_HEARD, XP_HEARD_NAME, XP_CAL, XP_RESET]).toEqual(['Offset', 'Heard on', 'Heard on: the frequency you heard yourself on, in MHz', 'Set offset', 'Reset']);
+    expect(XP_HEARD_NAME.startsWith(XP_HEARD + ':')).toBe(true);   // the box's name starts with its label (WCAG 2.5.3)
     expect(XP_CAL_HINT).toBe('Send, find yourself on the receiver, type the frequency it shows into Heard on and press Set offset, while the line above says Tune now and the spacecraft hears you inside its passband.');
     expect(XP_CAL_NOT_NOW).toBe('Set offset works only while the line above says Tune now and the spacecraft hears you inside its passband.');
     expect(XP_HEARD_BAD).toBe('Type the frequency you heard yourself on, in MHz, as 435.851460.');

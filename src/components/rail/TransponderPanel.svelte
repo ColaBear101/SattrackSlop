@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { app } from '../../state/app.svelte';
   import { getEngine } from '../../state/engine';
   import { xpdr } from '../../state/transponder.svelte';
@@ -65,22 +66,42 @@
   const allowed = $derived(live && !!legs && legs.inside === true);
   const mode = $derived(rec ? modeAndTone(rec) : '');
 
+  /* The record list follows the store, whatever was picked in it before. A picked <option> is "dirty" (the HTML standard; Chromium does
+     it): from then on its `selected` attribute, which is all Svelte sets for selected={...}, no longer moves it. The same <select> stays
+     in place from one spacecraft with records to the next, its options reused, so after OSCAR 7's third record, the ISS and OSCAR 7
+     again, the list would say Mode A, or nothing, while the figures were Mode B's. The index is set instead, as #dopsel's is
+     (PassDetails.svelte). */
+  let selEl: HTMLSelectElement | undefined = $state();
+  $effect(() => { if (selEl && pick && list.length) selEl.selectedIndex = pick.i; });
+
   function choose(e: Event) {
     xpdr.choose(sat, list, +(e.currentTarget as HTMLSelectElement).value);
-    snap = null;
+    stale();
   }
   function setHold(h: Hold) {
     if (!rec || h === hold) return;
     xpdr.setHold(sat, list, h, (legs && dialFor(legs, h)) ?? centreFor(rec, h));
-    snap = null;
+    stale();
   }
   function dial(e: Event) {
     const el = e.currentTarget as HTMLInputElement, hz = parseMHz(el.value);
     xpdr.setDial(sat, list, hz, el.value);
     if (hz !== null) el.value = dialText(hz);
-    snap = null;
+    stale();
   }
-  function nudge(d: number) { xpdr.nudge(sat, list, d); snap = null; }
+  function nudge(d: number) { xpdr.nudge(sat, list, d); stale(); }
+
+  /* Try again: its line goes at the press (the store clears `failed` as it asks again), and the focus the press had would fall to the
+     page, a screen reader left on nothing and the next Tab from the top. It goes to the disclosure's summary, which stays whatever the
+     answer, as Go live hands its focus to the caption (DopplerLive.svelte). */
+  function retry(e: MouseEvent) {
+    const had = document.activeElement === e.currentTarget;
+    void xpdr.ensure();
+    if (had) void tick().then(() => {
+      const s = details.querySelector('summary'), a = document.activeElement;
+      if (s && (a === null || a === document.body)) s.focus({ preventScroll: true });
+    });
+  }
 
   /* What a press says, for six seconds, as the one-pass calendar's line does. */
   let said = $state('');
@@ -88,40 +109,54 @@
   function say(s: string) { said = s; clearTimeout(sayT); sayT = setTimeout(() => { said = ''; }, 6000); }
 
   /* The offset is set from the frequency the reader heard their own signal on against the one predicted for the same instant. The reader
-     reads the receiver, then types: the predicted figure (and the range rate under it) is taken when the typing starts, the first input
-     into an empty box after the record, the hold or the held frequency last changed, not when Set offset is pressed seconds later, by which
-     time the prediction has moved by tens of hertz a second near culmination. A snapshot taken while the line was not live is taken again
-     at the press. The panel carries the snapshot it will use, or the one the last press used, as data-pred and data-pred-ms. */
+     reads the receiver, then types: the predicted figure (and the range rate under it) is taken when the typing starts, at the first input
+     into the empty box, not when Set offset is pressed seconds later, by which time the prediction has moved by tens of hertz a second
+     near culmination. A figure typed is good for one press. The box is emptied, and its snapshot dropped, by the press that sets the
+     offset and by Reset, and by another spacecraft (the disclosure shut too), another record, hold or held frequency: what was heard was
+     heard against what was set before, and a press on the empty box asks for a figure, rather than compare the old one with the
+     prediction at the press. A press that refuses the figure leaves it in the box, still against its snapshot, and the first edit takes
+     another. A snapshot taken while the line was not live, or none at all (the figures were dashes as the typing began), is taken at the
+     press. The panel carries the snapshot it will use, or the one the last press used, as data-pred and data-pred-ms. */
   type Snap = { pred: number; rr: number; ms: number; live: boolean; off: number; sat: string };
-  let snap = $state.raw<Snap | null>(null), used = $state.raw<Snap | null>(null);
+  let snap = $state.raw<Snap | null>(null), used = $state.raw<Snap | null>(null), retake = false;
   const shown = $derived(snap ?? used);
   const take = (): Snap | null => (legs && L && rr !== null && !legs.far && legs.rx > 0 ? { pred: legs.rx, rr, ms: L.ms, live: L.live, off, sat } : null);
+  let heardEl: HTMLInputElement | undefined = $state();
+  function stale() {
+    snap = null;
+    retake = false;
+    if (heardEl) heardEl.value = '';
+  }
+  let heardFor = '';
+  $effect(() => { if (sat !== heardFor) { heardFor = sat; stale(); } });
   function heardIn(e: Event) {
     const v = (e.currentTarget as HTMLInputElement).value;
     if (!v.trim()) snap = null;
-    else if (!snap) snap = take();
+    else if (!snap || retake) snap = take();
+    retake = false;
   }
-  let heardEl: HTMLInputElement | undefined = $state();
   function setOffset() {
     if (!rec || !rec.linear || !entry) return;
     if (!allowed) { say(XP_CAL_NOT_NOW); return; }
     const heard = parseMHz(heardEl ? heardEl.value : '');
     if (heard === null) { say(XP_HEARD_BAD); return; }
     const s = snap && snap.sat === sat && snap.live ? snap : take();
-    snap = null;
     if (!s) { say(XP_CAL_NOT_NOW); return; }
-    used = s;
     const C = getEngine().C_KMS, next = calibrate(s.off, heard, s.pred, s.rr, C);
     if (next === null) {
+      snap = s;
+      retake = true;
       const sh = calShift(heard, s.pred, s.rr, C);
       say(Math.abs(sh) > OFFSET_MAX || !Number.isFinite(sh) ? calFar(heard - s.pred) : calMax(s.off + sh, OFFSET_MAX));
       return;
     }
+    used = s;
+    stale();
     say(offsetSaid(entry.name, next, xpdr.setOffset(sat, next) ?? 'visit'));
   }
   function reset() {
     if (!entry) return;
-    snap = null;
+    stale();
     say(offsetSaid(entry.name, 0, xpdr.setOffset(sat, 0) ?? 'visit'));
   }
 </script>
@@ -134,14 +169,14 @@
 <div id="xpdr-panel" data-ms={L ? L.ms : undefined} data-pred={shown ? String(shown.pred) : undefined} data-pred-ms={shown ? shown.ms : undefined}>
   {#if open}
     {#if xpdr.failed}
-      <p id="xpdr-fail" class="ln">{XP_FAILED} <Button size="sm" id="xpdr-retry" onclick={() => xpdr.ensure()}>{XP_RETRY}</Button></p>
+      <p id="xpdr-fail" class="ln">{XP_FAILED} <Button size="sm" id="xpdr-retry" onclick={retry}>{XP_RETRY}</Button></p>
     {:else if !xpdr.table}
       <p id="xpdr-wait" role="status">{XP_LOADING}</p>
     {:else if !rec || !pick}
       <p id="xpdr-none">{XP_NONE}</p>
     {:else}
-      <p class="ln"><select id="xpdrsel" aria-label={XP_SELECT_NAME} onchange={choose}>
-        {#each list as t, i}<option value={String(i)} selected={i === pick.i}>{xpOption(t)}</option>{/each}
+      <p class="ln"><select id="xpdrsel" aria-label={XP_SELECT_NAME} bind:this={selEl} onchange={choose}>
+        {#each list as t, i}<option value={String(i)}>{xpOption(t)}</option>{/each}
       </select></p>
       {#if rec.linear}
         <div class="ln"><span class="k">{XP_HOLD}</span> <Segmented size="sm" label={XP_HOLD} value={hold} options={HOLDS.map(h => ({ ...h }))} onchange={h => setHold(h as Hold)} /></div>

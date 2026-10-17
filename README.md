@@ -3448,45 +3448,57 @@ type the frequency it shows into **Heard on** and press **Set offset**: the offs
 the downlink was from the one predicted, worked back on board, T(heard) − T(predicted). The
 prediction is the one at the moment you start typing (the first character typed into the empty box),
 not at the press seconds later: near culmination it moves by tens of hertz a second, and the stored
-offset would carry that. The press works only while the line says *Tune now* (you hear your own
-signal now, not at a scrubbed instant) and the spacecraft hears you inside the passband (outside, it
-relays nothing to hear); at other times the button says it cannot be pressed (it stays focusable,
-and the hint under it says when it can) and a press says why. A figure more than 50 kHz from the one
-predicted is refused, with the reason (*That is 739.860 MHz from the predicted figure: type the
-frequency your receiver shows for the spacecraft's downlink*): it is another frequency, a slip, or an
-LNB's intermediate frequency, and an LNB's own error belongs in the receiver's setting. So is one
-that would put the offset beyond 50 kHz. Nothing is clamped, so what is kept is what was heard.
-**Reset** takes it back to nought. The offset is per spacecraft (AO-7's two modes share one) and is
-kept in this browser under `gt.xpdr`, `{"<NORAD number>": hertz}`, written only by those two
-presses (a browser that refuses storage keeps it for the visit and the press says so); another tab
-follows a change at once, and *Forget what this page stored* removes it with the rest.
+offset would carry that. So a figure typed is good for one press. The box is emptied by the press
+that sets the offset, by **Reset**, and by another spacecraft, record, hold or held frequency (what
+you heard was heard against what was set before), and a press on the empty box asks for a figure
+rather than compare the old one with the prediction at the press. A figure the press refuses stays
+in the box, against the prediction its typing took, until you put it right. The press works only
+while the line says *Tune now* (you hear your own signal now, not at a scrubbed instant) and the
+spacecraft hears you inside the passband (outside, it relays nothing to hear); at other times the
+button says it cannot be pressed (it stays focusable, and the hint under it says when it can) and a
+press says why. A figure more than 50 kHz from the one predicted is refused, with the reason (*That
+is 739.860 MHz from the predicted figure: type the frequency your receiver shows for the
+spacecraft's downlink*): it is another frequency, a slip, or an LNB's intermediate frequency, and an
+LNB's own error belongs in the receiver's setting. So is one that would put the offset beyond 50
+kHz. Nothing is clamped, so what is kept is what was heard. **Reset** takes it back to nought. The
+offset is per spacecraft: AO-7's Modes A and B share one, though they are two transponders with
+oscillators of their own, so set it again after changing mode. It is kept in this browser under
+`gt.xpdr`, `{"<NORAD number>": hertz}`, written only by those two presses (a browser that refuses
+storage keeps it for the visit and the press says so); another tab follows a change at once, and
+*Forget what this page stored* removes it with the rest.
 
 The calculator is a chunk of its own (`xpdr`: the panel, its store, its words and its arithmetic),
 asked for the first time the disclosure is opened and mounted into it, and its table a file of its
 own, fetched then; the entry carries the disclosure and its one line of words. A table that did not
-come is said, with **Try again**. A calculator chunk that did not come leaves the disclosure empty,
-and the browser keeps that failure for the life of the page, so a reload is what asks again. The
-panel works only while open, and asks the engine for nothing: its figures are for the line's instant
-and from the range rate the line has already worked out there, so paused, choosing and nudging are
-arithmetic on that one figure, and shut it does nothing at all. An orbit of your own has no records,
-even when its pasted element set carries a real NORAD number: it is not that spacecraft. The words
-are in `src/lib/text/transponder.ts`.
+come is said, with **Try again** (its line goes as the table is asked for again, and a press from
+the keyboard leaves the focus on the disclosure's summary, not on the page). A calculator chunk that
+did not come leaves the disclosure empty, and the browser keeps that failure for the life of the
+page, so a reload is what asks again. The panel works only while open, and asks the engine for
+nothing: its figures are for the line's instant and from the range rate the line has already worked
+out there, so paused, choosing and nudging are arithmetic on that one figure, and shut it does
+nothing at all. An orbit of your own has no records, even when its pasted element set carries a real
+NORAD number: it is not that spacecraft. The words are in `src/lib/text/transponder.ts`.
 
 `verify-doppler.js` checks it after the line: neither chunk nor table asked for before the first
 opening, and each once at it; the ISS's voice repeater (send T(145.990 MHz), listen R(437.800 MHz),
 FM with its 67.0 Hz tone, nothing to hold) and FO-29 at a scrubbed instant, worked out again from
-the test surface's range rate with the map written out; the nudges (+1 kHz twice moves the receive
-figure down by 2 kHz (1 − ṙ/c)²), the three holds, *145,952*, a frequency outside the passband
-(the amount to the hertz) and one far from it; that no box or row golden reads moves; that the
-arrows in the dial and Space on the summary leave the clock alone; Set offset refused while
-scrubbed, set live from 300 Hz above the receive figure against the snapshot the panel exposes
-(`data-pred`, `data-pred-ms`), refused 60 kHz out, kept only on the press, still there after a
-reload, and reset; a table refused once and fetched by Try again; no state asked of the engine
-while paused (a nudge and two changes of hold included) and one a tick, the line's, open or shut;
-no request to SatNOGS; and a calculator chunk refused, which leaves the summary working and no page
-error. `axe.js` scans it open on FO-29, with a frequency outside the passband and on the ISS's
-repeater; `verify-layout.js` lays it out open on QO-100, whose options are the longest, at every
-size.
+the test surface's range rate with the map written out; the record list saying the record the
+figures are for when OSCAR 7's Mode B has been picked in it, the ISS shown, and OSCAR 7 shown again
+(a picked option no longer follows its `selected` attribute, so the list is set by its index, as the
+downlink list is); the nudges (+1 kHz twice moves the receive figure down by 2 kHz (1 − ṙ/c)²), the
+three holds, *145,952*, a frequency outside the passband (the amount to the hertz) and one far from
+it; that no box or row golden reads moves; that the arrows in the dial and Space on the summary
+leave the clock alone; Set offset refused while scrubbed, set live from 300 Hz above the receive
+figure against the snapshot the panel exposes (`data-pred`, `data-pred-ms`), the box emptied by that
+press and by a nudge so that a second press asks for a figure, refused 60 kHz out and refused again
+against the same snapshot until put right, a new snapshot in the box of a disclosure shut and opened
+again, kept only on the press, still there after a reload, and reset; a table refused once and
+fetched by Try again pressed from the keyboard, which leaves the focus on the summary; no state
+asked of the engine while paused (a nudge and two changes of hold included) and one a tick, the
+line's, open or shut; no request to SatNOGS; and a calculator chunk refused, which leaves the
+summary working and no page error. `axe.js` scans it open on FO-29, with a frequency outside the
+passband and on the ISS's repeater; `verify-layout.js` lays it out open on QO-100, whose options are
+the longest, at every size.
 
 #### Staying current
 

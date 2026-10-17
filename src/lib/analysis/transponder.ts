@@ -2,8 +2,9 @@ import { rxHz, txHz } from './tune';
 import type { Engine } from '../types';
 
 /* What to send and where to listen through a satellite's transponder at one instant: the arithmetic under the transponder
- * calculator, built on tune.ts's two laws and nothing else. Nothing imports it yet; the panel that will comes with its own
- * ledger row.
+ * calculator (CHANGES-FROM-LEGACY.md, L63), built on tune.ts's two laws and nothing else. Its readers are the calculator's
+ * store (state/transponder.svelte.ts), panel (components/rail/TransponderPanel.svelte) and words (text/transponder.ts), all
+ * in the chunk xpdr.
  *
  * Three steps, in the order the signal takes them:
  *  1. the uplink leg. The spacecraft hears what the ground sends shifted by the same law the ground hears the spacecraft by

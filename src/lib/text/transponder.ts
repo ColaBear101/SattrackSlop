@@ -50,9 +50,10 @@ export const HOLDS: readonly { value: Hold; label: string; title: string; id: st
 ];
 /** the label of the box that holds the held frequency */
 export const XP_DIAL = 'Held at';
-/** ...and its accessible name, with what is held and the unit */
+/** ...and its accessible name, with what is held and the unit. It starts with the label, so that a reader who goes by what is shown
+ *  ("click Held at", by voice) reaches the box (WCAG 2.5.3, Label in Name): Held at: the frequency to send on, in MHz. */
 export const dialName = (h: Hold): string =>
-  (h === 'tx' ? 'Frequency to send on' : h === 'rx' ? 'Frequency to listen on' : 'Uplink as the spacecraft hears it') + ', held, in MHz';
+  XP_DIAL + ': ' + (h === 'tx' ? 'the frequency to send on' : h === 'rx' ? 'the frequency to listen on' : 'the uplink as the spacecraft hears it') + ', in MHz';
 /** The held frequency written back into its box: MHz to the hertz, 145.952000. */
 export const dialText = (hz: number): string => {
   const t = Math.round(hz);
@@ -108,7 +109,8 @@ export const modeAndTone = (t: Transponder): string => [modeLine(t), toneLine(t.
 
 export const XP_OFFSET = 'Offset';
 export const XP_HEARD = 'Heard on';
-export const XP_HEARD_NAME = 'Frequency you heard yourself on, in MHz';
+/** the box's accessible name, which starts with its label too (see dialName) */
+export const XP_HEARD_NAME = XP_HEARD + ': the frequency you heard yourself on, in MHz';
 export const XP_CAL = 'Set offset';
 export const XP_RESET = 'Reset';
 /** Under the two buttons, always: how the offset is set, and when it can be. */

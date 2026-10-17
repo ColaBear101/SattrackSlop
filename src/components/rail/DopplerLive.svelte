@@ -34,13 +34,15 @@
     up = isFinite(f) && f > 0 && app.entry ? { sat: app.entry.satnum, hz: f * 1e6, text: el.value } : null;
   }
 
+  /* "Uplink and transponders" toggled: the calculator's chunk (xpdr.ts), asked for at the first opening, mounts its panel into the
+     disclosure with a getter for the line; one that does not come leaves the summary as it was */
+  const xpOpen = (e: Event) => { const d = e.currentTarget as HTMLDetailsElement; import('./xpdr').then(m => m.open(d, () => v), () => {}); };
+
   /* as the AR view's: real time, running, and the clock at the wall clock; a window that does not hold now is opened at it.
      The button goes as the line turns live, and the focus it held would fall to the page: a screen reader is left on
      nothing, and where the next Tab goes is up to the browser. A press that had the focus hands it to the caption, which
      now says "Tune now", and the next Tab goes on to the Uplink box (the caption is focusable from script only,
      tabindex -1, so Tab never stops on it). */
-  const xpOpen = (e: Event) => { const d = e.currentTarget as HTMLDetailsElement; import('./xpdr').then(m => m.open(d, () => v), () => {}); };
-
   let caption: HTMLElement | undefined = $state();
   function goLive(e: MouseEvent) {
     const b = e.currentTarget as HTMLElement, had = document.activeElement === b;

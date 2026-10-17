@@ -39,13 +39,18 @@
  * L63), on the rebuilt page only: its chunk and its table asked for at the first
  * opening and not before; the ISS's voice repeater (a pair) and FO-29 (JAS 2, an
  * inverting linear passband) at the clock's instant, worked out again here from
- * the range rate and the transponder's map written out; the nudges, the three
- * holds, a decimal comma, a frequency outside the passband and one far from it;
- * no coupling to the downlink box, the Doppler rows or the uplink box; the keys a
- * field and the summary keep; the offset, refused while scrubbed, set live from a
- * frequency typed (against the snapshot the panel took when the typing began),
- * refused when far, kept only on a press, surviving a reload, and reset; a table
- * that did not come, and Try again; no work while paused (choosing and nudging
+ * the range rate and the transponder's map written out; the record list saying
+ * the record the figures are for, OSCAR 7's Mode B picked, the ISS, and OSCAR 7
+ * again; the nudges, the three holds, a decimal comma, a frequency outside the
+ * passband and one far from it; no coupling to the downlink box, the Doppler rows
+ * or the uplink box; the keys a field and the summary keep; the offset, refused
+ * while scrubbed, set live from a frequency typed (against the snapshot the panel
+ * took when the typing began), a figure good for one press (the box emptied by
+ * the press that used it and by a nudge; a refused one kept, against its own
+ * snapshot, until put right; a new box after the disclosure is shut, a new
+ * snapshot), refused when far, kept only on a press, surviving a reload, and
+ * reset; a table that did not come, and Try again, which hands the focus it had
+ * to the summary; no work while paused (choosing and nudging
  * included) or shut, and no more while open; nothing asked of SatNOGS; and a
  * calculator chunk that did not come, which leaves the summary as it was.
  *
@@ -381,7 +386,7 @@ const chk = (name, ok, detail) => {
                predMs: p && p.dataset.predMs !== undefined ? +p.dataset.predMs : null, at: document.getElementById('doplive-at').textContent,
                opts: [...document.querySelectorAll('#xpdrsel option')].map(o => o.textContent), sel: (document.getElementById('xpdrsel') || {}).value ?? null,
                ids: ['xpdr-hold-tx', 'xpdr-hold-rx', 'xpdr-hold-sat', 'xpdr-dial', 'xpdr-cal', 'xpdr-heard', 'xpdr-sat', 'xpdr-out', 'xpdr-off'].filter(i => document.getElementById(i)),
-               kept: localStorage.getItem('gt.xpdr') };
+               heard: (document.getElementById('xpdr-heard') || {}).value ?? null, kept: localStorage.getItem('gt.xpdr') };
     });
     const up1 = (X, f) => f * (1 - X.rr / X.C);                 // R: what the other side hears
     const upT = (X, f) => f / (1 - X.rr / X.C);                 // T: R's inverse
@@ -428,6 +433,41 @@ const chk = (name, ok, detail) => {
     const coupledI = await coupled();
     chk('...and opening it and choosing a record moved nothing of the downlink box, its list, the uplink box or the pass\'s facts and Doppler rows (golden reads them)',
         JSON.stringify(coupledI) === JSON.stringify(coupled0), JSON.stringify(coupledI).slice(0, 160));
+
+    /* 2b. the record list shows the record the figures are for, from one spacecraft to another. A record picked in the list makes its
+       <option> "dirty" (the HTML standard; Chromium does it), and from then on its `selected` attribute no longer moves it; the same
+       <select> stays in place between two spacecraft that both have records, its options reused. OSCAR 7 (AO-7): its third record,
+       Mode B, picked; then the ISS, which shows its first; then OSCAR 7 again, whose Mode B the store gives back, and the list must say
+       Mode B too, not Mode A or nothing. */
+    const MODE_B = '432.125–432.175 → 145.975–145.925 MHz inverting  USB';
+    const listSays = () => page.evaluate(() => {
+      const s = document.getElementById('xpdrsel'), o = s ? s.options[s.selectedIndex] : null;
+      return { sel: s ? s.value : null, idx: s ? s.selectedIndex : null, text: o ? o.textContent : null };
+    });
+    await H.pickExact(page, 'OSCAR 7');
+    await page.waitForFunction(() => window.__gt.D.entry.name === 'OSCAR 7', null, { timeout: 15000 });
+    await page.waitForSelector('#xpdrsel', { timeout: 15000 });
+    await page.selectOption('#xpdrsel', '2');
+    await page.waitForTimeout(300);
+    X = await xp();
+    const b0 = await listSays();
+    chk('OSCAR 7 (AO-7): its three records, the third, Mode B, picked in the list; the figures are Mode B\'s (listen near 145.950 MHz, Send LSB, heard as USB)',
+        X.opts.length === 3 && b0.sel === '2' && b0.text === MODE_B && X.mode === 'Send LSB, heard as USB' && X.dial === '145.950000' && Math.abs(HZS(X.rx) - 145.95e6) < 10e3,
+        JSON.stringify(b0) + ' ' + X.rx + ' "' + X.mode + '"');
+    await H.pickExact(page, 'ISS (ZARYA)');
+    await page.waitForFunction(() => window.__gt.D.entry.name === 'ISS (ZARYA)', null, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const b1 = await listSays();
+    X = await xp();
+    chk('...the ISS: the list shows its first record, which the figures are for', b1.sel === '0' && b1.text === X.opts[0], JSON.stringify(b1));
+    await H.pickExact(page, 'OSCAR 7');
+    await page.waitForFunction(() => window.__gt.D.entry.name === 'OSCAR 7', null, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const b2 = await listSays();
+    X = await xp();
+    chk('...OSCAR 7 again: the store gives back Mode B, and the list says Mode B too, the record the figures are for',
+        b2.sel === '2' && b2.idx === 2 && b2.text === MODE_B && X.mode === 'Send LSB, heard as USB' && Math.abs(HZS(X.rx) - 145.95e6) < 10e3,
+        JSON.stringify(b2) + ' ' + X.rx + ' "' + X.mode + '"');
 
     /* 3. FO-29 (JAS 2): an inverting V/U passband, 145.900-146.000 -> 435.900-435.800 MHz, at a scrubbed instant 30 % into a pass */
     await H.pickExact(page, 'JAS 2');
@@ -558,11 +598,60 @@ const chk = (name, ok, detail) => {
         && X.said === 'Offset for JAS 2 set to ' + X.off + ', kept in this browser.', X.kept + '; "' + X.said + '"');
     W = fo29(X, 145.95e6, kept7 ? kept7['24278'] : 0);
     chk('...and the receive figure now carries it: (S - fu + offset) (1 - rr/c), to the hertz', half(HZS(X.rx), W.rx), X.rx + ' vs ' + W.rx.toFixed(2));
+    /* A figure typed is good for one press, against the prediction of the moment its typing began. The press that used it empties the
+       box: pressed again seconds later, the same figure would be compared with a prediction that has moved since (tens of hertz a second
+       near culmination) and with the offset just set, and a second offset would be stored from that. */
+    const XP_HEARD_BAD = 'Type the frequency you heard yourself on, in MHz, as 435.851460.';
+    const kept7s = X.kept;
+    chk('...the press emptied the Heard box: the figure it used is not used again', X.heard === '', JSON.stringify(X.heard));
+    await press('#xpdr-cal');
+    X = await xp();
+    chk('...so a second press asks for the frequency heard, and stores nothing', X.said === XP_HEARD_BAD && X.kept === kept7s, '"' + X.said + '", gt.xpdr ' + X.kept);
     await page.fill('#xpdr-heard', ((HZS(X.rx) + 60000) / 1e6).toFixed(6));
     await press('#xpdr-cal');
     X = await xp();
-    chk('a frequency 60 kHz from the predicted one is refused, with the reason, and nothing changes', /^That is 60\.\d{3} kHz from the predicted figure: /.test(X.said) && JSON.stringify(JSON.parse(X.kept)) === JSON.stringify(kept7),
-        '"' + X.said + '"');
+    chk('a frequency 60 kHz from the predicted one is refused, with the reason, and nothing changes; the figure stays in the box, to be put right',
+        /^That is 60\.\d{3} kHz from the predicted figure: /.test(X.said) && JSON.stringify(JSON.parse(X.kept)) === JSON.stringify(kept7) && X.heard !== '',
+        '"' + X.said + '", box "' + X.heard + '"');
+    /* refused, the figure keeps the snapshot its typing took: pressed again it is refused again against the same prediction; the first
+       edit, the figure put right, takes another */
+    const predR = X.predMs;
+    await page.waitForTimeout(600);
+    await press('#xpdr-cal');
+    X = await xp();
+    const predR2 = X.predMs, saidR2 = X.said;
+    await page.fill('#xpdr-heard', ((HZS(X.rx) + 59000) / 1e6).toFixed(6));
+    X = await xp();
+    chk('...pressed again, refused again against the same snapshot; the figure put right takes a new one',
+        predR !== null && predR2 === predR && /^That is 60\.\d{3} kHz from the predicted figure: /.test(saidR2) && X.predMs !== null && X.predMs >= predR + 500
+          && JSON.stringify(JSON.parse(X.kept)) === JSON.stringify(kept7),
+        'snapshot ' + predR + ', again ' + predR2 + ', after the edit +' + (X.predMs - predR) + ' ms');
+    /* a figure typed, then the held frequency moved: the figure was heard on the frequency before, so the box is emptied, and a press
+       asks for one rather than compare it with the figures now */
+    await page.fill('#xpdr-heard', ((HZS(X.rx) + 300) / 1e6).toFixed(6));
+    await press('#xpdr-p-100');
+    X = await xp();
+    const heardN = X.heard;
+    await press('#xpdr-cal');
+    X = await xp();
+    chk('a figure typed, then a nudge: the box is emptied, and a press asks for the frequency heard and stores nothing',
+        heardN === '' && X.said === XP_HEARD_BAD && X.kept === kept7s, 'box "' + heardN + '", "' + X.said + '", gt.xpdr ' + X.kept);
+    await press('#xpdr-n-100');
+    /* the snapshot belongs to the box it was typed into: shut and opened again, a figure typed into the new box is compared with the
+       prediction as that typing began, not with one made before the disclosure was shut */
+    await page.fill('#xpdr-heard', ((HZS(X.rx) + 300) / 1e6).toFixed(6));
+    await page.waitForTimeout(1200);
+    await page.click('#xpdr summary');
+    await page.waitForTimeout(200);
+    await page.click('#xpdr summary');
+    await page.waitForSelector('#xpdr-heard', { timeout: 5000 });
+    const boxR = await page.evaluate(() => document.getElementById('xpdr-heard').value);
+    await page.fill('#xpdr-heard', ((HZS((await xp()).rx) + 300) / 1e6).toFixed(6));
+    const typedR = await page.evaluate(() => Date.now());
+    X = await xp();
+    chk('...shut and opened again: the box is empty, and a figure typed into it takes the prediction as its typing began, not the one before',
+        boxR === '' && X.predMs !== null && X.predMs >= typedR - 400 && X.predMs <= typedR + 50, 'box "' + boxR + '", snapshot ' + (typedR - X.predMs) + ' ms before the typing');
+    await page.fill('#xpdr-heard', '');
     const coupled2 = await coupled();
     chk('...and setting the offset moved nothing of the downlink box, the uplink box or the rows either (the selected pass aside: the clock is live now)',
         coupled2.sel === coupledJ.sel && coupled2.freq === coupledJ.freq && coupled2.up === coupledJ.up, JSON.stringify(coupled2).slice(0, 120));
@@ -583,11 +672,16 @@ const chk = (name, ok, detail) => {
     X = await xp();
     chk('after a reload, a table that does not come is said, with Try again', !!X.fail && X.fail.startsWith('The transponder table did not load.') && refused === 1
         && (await page.isVisible('#xpdr-retry')), '"' + X.fail + '", refused ' + refused);
-    await page.click('#xpdr-retry');
+    /* pressed from the keyboard: the button goes with the line it is in as the table is asked for again, and the focus it had goes to
+       the disclosure's summary, which stays, rather than falling to the page */
+    await page.focus('#xpdr-retry');
+    await page.keyboard.press('Enter');
     await page.waitForSelector('#xpdrsel', { timeout: 15000 }).catch(() => {});
     X = await xp();
+    const focusR = await page.evaluate(() => { const a = document.activeElement; return a ? (a.id || a.tagName.toLowerCase()) + (a.parentElement ? ' in #' + a.parentElement.id : '') : null; });
     chk('...Try again fetches it (a second request), and the offset set before the reload is still there', !!X.opts.length && refused === 2 && KHZS(X.off) === (kept7 ? kept7['24278'] : NaN),
         X.off + ', requests for the table ' + refused);
+    chk('...and the focus the press had is on the summary of "Uplink and transponders", not dropped to the page', focusR === 'summary in #xpdr', String(focusR));
     await press('#xpdr-off0');
     X = await xp();
     chk('Reset: the offset is nought, gt.xpdr is gone (it was the last one), and it says so', X.off === '+0.000 kHz' && X.kept === null && X.said === 'Offset for JAS 2 cleared.', X.off + ', ' + X.kept + ', "' + X.said + '"');

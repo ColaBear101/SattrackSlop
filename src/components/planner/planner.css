@@ -264,4 +264,7 @@
   /* the node's label row holds the RAAN | LTAN switch, which is 44 px of button inside the group's 1 px border: 46 px tall here; its
      neighbour's label is as tall, so the two boxes under them stay on one line */
   .pl-f > label[for='pl-inc'] { min-height: 46px; }
+  /* the read-only note's "Go to Orbital decay" (life.tracked, built by plannerui.ts buildItem) is a link on a line of its own, not in a
+     sentence, so it is a target like any other: as tall as a finger, the way the rail's "All the elements" link is (L44, L64) */
+  #sec-prof .adv .basis a[href='#sec-life'] { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

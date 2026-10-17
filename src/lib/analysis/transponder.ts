@@ -47,8 +47,9 @@ export interface Legs {
   fd: number;
   /** what the ground receives */
   rx: number;
-  /** the spacecraft hears the uplink inside its passband, edges included (so its downlink, before the offset, is inside the
-   *  downlink passband too); null for a pair, which has a channel, not a passband */
+  /** the spacecraft hears the uplink inside the passband given, edges included (so its downlink, before the offset, is inside
+   *  the downlink passband too); null for a pair, which has a channel, not a passband. Give the whole transponder
+   *  (passbandOf), not one segment of its band plan, or a dial the spacecraft relays is called outside. */
   inside: boolean | null;
   /** how far below the passband's low edge, or above its high edge, the spacecraft hears the uplink, Hz; 0 when it is not */
   below: number;
@@ -77,6 +78,37 @@ export function mapUp(p: Passband, fu: number): number {
 export function mapDown(p: Passband, fd: number): number {
   if (!p.linear) return p.ulLo;
   return p.inv ? (p.ulLo + p.dlHi) - fd : fd - (p.dlLo - p.ulLo);
+}
+
+/** The widest gap between two segments of one band plan that still counts as inside the transponder, Hz. QO-100 leaves
+ *  10 kHz around its middle beacon (2400.245-2400.255 MHz up, 10489.745-10489.755 down): the transponder relays it, but
+ *  the table files the segments either side as separate records. */
+export const GUARD_MAX = 25_000;
+
+/* the constant of a linear passband's map, Hz: D for a non-inverting one, S for an inverting one */
+const mapConst = (p: Passband): number => p.inv ? p.ulLo + p.dlHi : p.dlLo - p.ulLo;
+
+/** The whole transponder a record belongs to, for the passband flag: the table files a band plan as several records (QO-100's
+ *  one 2400.005-2400.495 MHz passband is six segments, CW, digimodes, SSB, mixed), and a dial in the SSB segment while the CW
+ *  record is chosen is still relayed. The records of one spacecraft (`all`) that are linear, invert alike and share the map's
+ *  constant to the hertz (D, or S) are one transponder where their uplinks overlap, touch or leave a gap of at most
+ *  GUARD_MAX; the result spans those chained to `p`, `p` included. Its map is `p`'s exactly (the same D or S, in whole hertz),
+ *  so every figure is the same to the bit; only `inside`, `below`, `above` and `far` are measured against the whole span. A
+ *  pair is returned as it is. */
+export function passbandOf(p: Passband, all: readonly Passband[]): Passband {
+  if (!p.linear) return p;
+  const k = mapConst(p);
+  const kin = all.filter(q => q.linear && q.inv === p.inv && mapConst(q) === k);
+  let lo = p.ulLo, hi = p.ulHi, grew = true;
+  while (grew) {
+    grew = false;
+    for (const q of kin) {
+      if (q.ulLo > hi + GUARD_MAX || q.ulHi < lo - GUARD_MAX || (q.ulLo >= lo && q.ulHi <= hi)) continue;
+      lo = Math.min(lo, q.ulLo); hi = Math.max(hi, q.ulHi); grew = true;
+    }
+  }
+  return p.inv ? { ulLo: lo, ulHi: hi, dlLo: k - hi, dlHi: k - lo, inv: true, linear: true }
+    : { ulLo: lo, ulHi: hi, dlLo: lo + k, dlHi: hi + k, inv: false, linear: true };
 }
 
 const positive = (f: number): boolean => Number.isFinite(f) && f > 0;
@@ -200,8 +232,24 @@ export function parseMHz(s: string): number | null {
 const NORAD_KEY = /^[1-9]\d{0,8}$/;
 const OFFSETS_KEPT = 200;
 
+/** The key a spacecraft's offset is kept under: its NORAD number without leading zeros, as the transponder table's loader
+ *  reads one ("07530", the catalogue's own field for OSCAR 7, and 7530 are one object), or null for what is not a NORAD
+ *  number (an orbit of the reader's own, O0001; nought). */
+export function offsetKey(satnum: string | number): string | null {
+  const s = String(satnum).trim();
+  const k = /^\d+$/.test(s) ? String(Number(s)) : s;
+  return NORAD_KEY.test(k) ? k : null;
+}
+
+/** A spacecraft's kept offset, Hz, looked up by the same satnum offsetKey takes; 0 when none is kept. */
+export function offsetOf(m: Readonly<Record<string, number>>, satnum: string | number): number {
+  const k = offsetKey(satnum);
+  return k !== null && Object.prototype.hasOwnProperty.call(m, k) ? m[k]! : 0;
+}
+
 /** The offsets in a stored text: each NORAD-numbered key with a finite number, made safe (clampOffset), zeros left out, the
- *  first 200 at most; anything that is not such an object gives none. */
+ *  first 200 at most; anything that is not such an object gives none. A key with a leading zero is left out too: withOffset
+ *  never writes one, and taking it would leave "07530" and "7530" to fight over one spacecraft. */
 export function readOffsets(raw: string | null): Record<string, number> {
   const out: Record<string, number> = {};
   if (raw === null) return out;
@@ -219,10 +267,12 @@ export function readOffsets(raw: string | null): Record<string, number> {
 }
 
 /** A copy of the offsets with one spacecraft's set to `hz` (made safe), or taken out when that is 0; the original untouched.
- *  A key that is not a NORAD number changes nothing. */
-export function withOffset(m: Readonly<Record<string, number>>, key: string, hz: number): Record<string, number> {
+ *  The spacecraft is named as offsetKey takes it, so the catalogue's "07530" is kept under "7530". Null, nothing to keep, for
+ *  a satnum that is not a NORAD number: the caller says so rather than report an offset kept. */
+export function withOffset(m: Readonly<Record<string, number>>, satnum: string | number, hz: number): Record<string, number> | null {
+  const key = offsetKey(satnum);
+  if (key === null) return null;
   const out: Record<string, number> = { ...m };
-  if (!NORAD_KEY.test(key)) return out;
   const c = clampOffset(hz);
   if (c === 0) delete out[key];
   else out[key] = c;

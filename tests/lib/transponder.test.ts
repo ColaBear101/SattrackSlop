@@ -4,8 +4,9 @@ import { makeTransponders, type TransponderData } from '../../src/lib/data/trans
 import { rxHz, txHz, tuneAt } from '../../src/lib/analysis/tune';
 import { freqGrouped } from '../../src/lib/text/fmt';
 import {
-  atSpacecraft, calibrate, calShift, centreFor, clampOffset, defaultHold, dialFor, heardFor, legsFor, mapDown, mapUp,
-  OFFSET_MAX, pairLegs, pairMode, parseMHz, readOffsets, sendFor, withOffset, type Legs, type Passband
+  atSpacecraft, calibrate, calShift, centreFor, clampOffset, defaultHold, dialFor, GUARD_MAX, heardFor, legsFor, mapDown, mapUp,
+  OFFSET_MAX, offsetKey, offsetOf, pairLegs, pairMode, parseMHz, passbandOf, readOffsets, sendFor, withOffset, type Legs,
+  type Passband
 } from '../../src/lib/analysis/transponder';
 import { byName, world } from './helpers';
 
@@ -282,6 +283,80 @@ describe('the passband flag', () => {
   });
 });
 
+describe('the whole transponder a record belongs to', () => {
+  const bare = (p: Passband): Passband => ({ ulLo: p.ulLo, ulHi: p.ulHi, dlLo: p.dlLo, dlHi: p.dlHi, inv: p.inv, linear: p.linear });
+  const qo = TABLE.forSat('43700');
+  const QO_ALL = lin(2_400_005_000, 2_400_495_000, 10_489_505_000, 10_489_995_000, false);
+  it('is QO-100\'s one passband, 2400.005-2400.495 MHz, from any of the six segments the table files it as; its pair stays a pair', () => {
+    expect(qo.filter(t => t.linear).length).toBe(6);
+    for (const t of qo) {
+      if (t.linear) expect(passbandOf(t, qo)).toEqual(QO_ALL);
+      else expect(passbandOf(t, qo)).toBe(t);
+    }
+  });
+  it('relays a dial in the SSB segment while the CW record is chosen, and in the guard round the middle beacon', () => {
+    const cw = qo[0]!;
+    expect([cw.ulLo, cw.ulHi, cw.mode]).toEqual([2_400_005_000, 2_400_040_000, 'CW']);
+    /* against the CW record alone, 2400.300 MHz would be 260 kHz above a 35 kHz passband: too far to show */
+    expect(heardFor(cw, 2_400_300_000, 0, eng).far).toBe(true);
+    const whole = passbandOf(cw, qo);
+    expect(heardFor(whole, 2_400_300_000, 0, eng)).toMatchObject({ inside: true, below: 0, above: 0, far: false });
+    expect(heardFor(whole, 2_400_250_000, 0, eng)).toMatchObject({ inside: true, far: false });
+    expect(heardFor(whole, 2_400_055_000, 0, eng).inside).toBe(true);
+    expect(heardFor(whole, 2_400_495_001, 0, eng)).toMatchObject({ inside: false, above: 1, far: false });
+    expect(heardFor(whole, 2_400_004_999, 0, eng)).toMatchObject({ inside: false, below: 1, far: false });
+  });
+  it('moves no figure: the whole span has the record\'s own map, to the bit', () => {
+    for (const p of qo.filter(t => t.linear)) {
+      const whole = passbandOf(p, qo);
+      for (const rr of [-0.003, 0, 0.002, RR]) {
+        for (const hz of [2_400_100_000, 2_400_300_123]) {
+          for (const f of [heardFor, atSpacecraft]) {
+            const a = f(p, hz, rr, eng, 250), b = f(whole, hz, rr, eng, 250);
+            expect([b.tx, b.fu, b.fd, b.rx]).toEqual([a.tx, a.fu, a.fd, a.rx]);
+          }
+          const a = sendFor(p, hz + 8_089_500_000, rr, eng, 250), b = sendFor(whole, hz + 8_089_500_000, rr, eng, 250);
+          expect([b.tx, b.fu, b.fd, b.rx]).toEqual([a.tx, a.fu, a.fd, a.rx]);
+        }
+      }
+    }
+  });
+  it('is the record itself for every other spacecraft in the table (AO-7 Mode A\'s two records, one passband, give that one)', () => {
+    let seen = 0;
+    for (const k of Object.keys((raw as unknown as TransponderData).x)) {
+      if (k === '43700') continue;
+      const list = TABLE.forSat(k);
+      for (const t of list) {
+        if (!t.linear) continue;
+        expect(passbandOf(t, list), `${k} ${t.ulLo}`).toEqual(bare(t));
+        seen++;
+      }
+    }
+    expect(seen).toBe(11);
+  });
+  it('joins segments that share the map\'s constant and touch, overlap or leave at most 25 kHz, in any order, and nothing else', () => {
+    expect(GUARD_MAX).toBe(25_000);
+    /* FO-29 cut in two halves: inverting, the same S */
+    const lowHalf = lin(145_900_000, 145_950_000, 435_850_000, 435_900_000, true);
+    const highHalf = lin(145_950_000, 146_000_000, 435_800_000, 435_850_000, true);
+    expect(passbandOf(lowHalf, [highHalf, lowHalf])).toEqual(FO29);
+    expect(passbandOf(highHalf, [lowHalf])).toEqual(FO29);
+    /* a chain reached only through its middle, listed far end first */
+    const a = lin(1_000_000, 2_000_000, 11_000_000, 12_000_000, false);
+    const b = lin(2_025_000, 3_000_000, 12_025_000, 13_000_000, false);
+    const c = lin(2_900_000, 4_000_000, 12_900_000, 14_000_000, false);
+    expect(passbandOf(a, [c, b])).toEqual(lin(1_000_000, 4_000_000, 11_000_000, 14_000_000, false));
+    /* a gap of 25,001 Hz, another D, the other kind with the same constant, or a pair: not joined */
+    const gap = lin(2_025_001, 3_000_000, 12_025_001, 13_000_000, false);
+    expect(passbandOf(a, [gap])).toEqual(a);
+    expect(passbandOf(a, [lin(2_000_000, 3_000_000, 12_000_001, 13_000_001, false)])).toEqual(a);
+    expect(passbandOf(a, [lin(2_000_000, 3_000_000, 7_000_000, 8_000_000, true)])).toEqual(a);   // S = 10,000,000 = a's D
+    expect(passbandOf(a, [{ ulLo: 2_000_000, ulHi: 2_000_000, dlLo: 12_000_000, dlHi: 12_000_000, inv: false, linear: false }])).toEqual(a);
+    expect(passbandOf(a, [])).toEqual(a);
+    expect(passbandOf(ISS, [ISS, a])).toBe(ISS);
+  });
+});
+
 describe('holding', () => {
   it('holds the lower-frequency leg when a passband is chosen: FO-29, RS-44 and QO-100 the transmitter; AO-73 and AO-7 the receiver', () => {
     expect([FO29, RS44, QO100].map(defaultHold)).toEqual(['tx', 'tx', 'tx']);
@@ -416,10 +491,35 @@ describe('the kept offsets', () => {
     expect(withOffset(m, '7530', 0.3)).toEqual({});
     expect(withOffset(m, '7530', 60_000)).toEqual({ 7530: 50_000 });
     expect(withOffset(m, '7530', -99.5)).toEqual({ 7530: -99 });
-    expect(withOffset(m, '07530', 5)).toEqual({ 7530: 200 });
-    expect(withOffset(m, 'O0001', 5)).toEqual({ 7530: 200 });
     expect(withOffset(m, '7530', 200)).not.toBe(m);
     expect(m).toEqual({ 7530: 200 });
     expect(readOffsets(JSON.stringify(withOffset(m, '24278', 400)))).toEqual({ 7530: 200, 24278: 400 });
+  });
+  it('take the satnum the app carries: the catalogue\'s "07530" for OSCAR 7 is kept, and found, under "7530"', () => {
+    const ao7 = byName('OSCAR 7');
+    expect(ao7.satnum).toBe('07530');
+    expect(TABLE.forSat(ao7.satnum).length).toBe(3);
+    const m = Object.freeze({ 24278: 400 }) as Readonly<Record<string, number>>;
+    const kept = withOffset(m, ao7.satnum, 5);
+    expect(kept).toEqual({ 7530: 5, 24278: 400 });
+    expect(readOffsets(JSON.stringify(kept))).toEqual({ 7530: 5, 24278: 400 });
+    expect(offsetOf(kept!, ao7.satnum)).toBe(5);
+    expect(offsetOf(kept!, 7530)).toBe(5);
+    expect(offsetOf(kept!, ' 7530 ')).toBe(5);
+    expect(withOffset(kept!, '07530', 0)).toEqual({ 24278: 400 });
+    expect(withOffset(m, 24278, -3)).toEqual({ 24278: -3 });
+    expect(offsetKey('07530')).toBe('7530');
+    expect(offsetKey(24278)).toBe('24278');
+    expect(offsetKey('000024278')).toBe('24278');
+  });
+  it('refuse a satnum that is not a NORAD number, so a press on one cannot say it was kept', () => {
+    const m = Object.freeze({ 7530: 200 }) as Readonly<Record<string, number>>;
+    for (const s of ['O0001', '0', '00000', '', ' ', '7530x', '-7530', '7.5', '1234567890', 'constructor', '__proto__']) {
+      expect(offsetKey(s), JSON.stringify(s)).toBeNull();
+      expect(withOffset(m, s, 5), JSON.stringify(s)).toBeNull();
+      expect(offsetOf(m, s), JSON.stringify(s)).toBe(0);
+    }
+    expect(offsetOf(m, '24278')).toBe(0);
+    expect(m).toEqual({ 7530: 200 });
   });
 });

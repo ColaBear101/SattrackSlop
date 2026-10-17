@@ -107,8 +107,40 @@ const VIEWS = [
           await page.evaluate(() => document.getElementById('planopen').click());
           await page.waitForFunction(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; }, null, { timeout: 20000 });
           await page.waitForTimeout(400);
+        }],
+        /* the transponder calculator (CHANGES-FROM-LEGACY.md, L63): "Uplink and transponders", the disclosure that ends the live line in the
+           rail, opened (its panel a chunk of its own, mounted at the first opening, with its table) on FO-29 (JAS 2), an inverting linear
+           passband: a select, a three-way hold (a labelled group of aria-pressed buttons), two text boxes labelled with their units, the
+           nudges, Set offset saying it cannot be pressed now (aria-disabled, the hint under it, which it names), status lines. A page of its
+           own for the spacecraft, opened from its address; on a phone inside the answer sheet. */
+        ['xpdr', async () => { await xpdrOn('24278'); }],
+        /* ...with a frequency the spacecraft hears outside the passband: the warning, in --warn with its glyph, a status line */
+        ['xpdr-out', async () => {
+          await page.fill('#xpdr-dial', '145.890');
+          await page.press('#xpdr-dial', 'Enter');
+          await page.waitForFunction(() => (document.getElementById('xpdr-out') || {}).textContent, null, { timeout: 5000 });
+          await page.waitForTimeout(200);
+        }],
+        /* ...and a pair, the ISS's voice repeater: nothing to hold, the two figures, the mode and the tone */
+        ['xpdr-pair', async () => {
+          await xpdrOn('25544');
+          await page.evaluate(() => { const s = document.getElementById('xpdrsel'); s.value = '3'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+          await page.waitForFunction(() => /CTCSS/.test((document.getElementById('xpdr-mode') || {}).textContent || ''), null, { timeout: 5000 });
+          await page.waitForTimeout(200);
         }]
       ];
+      /* a spacecraft's page from its address, as the start of this context opened the default one, and its calculator opened */
+      async function xpdrOn(sat) {
+        await page.goto(srv.page + '?sat=' + sat, { waitUntil: 'load' });
+        await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });
+        await page.evaluate(() => document.fonts.ready);
+        await page.evaluate(() => { const b = document.getElementById('tpplay'); if (b.getAttribute('aria-label') === 'Pause') b.click(); });
+        await page.evaluate(() => { const p = document.querySelector('.rail .peek'); if (p && p.getAttribute('aria-expanded') !== 'true') p.click(); });
+        await page.waitForSelector('#xpdr summary', { state: 'attached', timeout: 15000 });
+        await page.click('#xpdr summary');
+        await page.waitForSelector('#xpdrsel', { state: 'visible', timeout: 15000 });
+        await page.waitForTimeout(400);
+      }
       if (v.id === 'phone') states.splice(1, 0, ['answer', async () => { await page.evaluate(() => document.querySelector('.peek').click()); await page.waitForTimeout(250); }]);
 
       for (const [name, go] of states) {

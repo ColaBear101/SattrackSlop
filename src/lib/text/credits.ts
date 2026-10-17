@@ -4,11 +4,12 @@
  *
  * New in the rebuild (CHANGES-FROM-LEGACY.md, L49); the old page said none of it. The version is an argument, so this
  * layer stays free of globals: the component passes the one Vite writes in from package.json (`__APP_VERSION__`,
- * vite.config.ts). Three things the page carries are SatNOGS DB's: the 1,437 of the catalogue's element sets that came
- * from its TLE list (data/catalogue.txt); the downlink table (data/transmitters.json), an adaptation of its transmitter
- * list; and the picker's table of other names (data/aliases.json, L61), an adaptation of its satellite list. Libre Space
+ * vite.config.ts). Four things the page carries are SatNOGS DB's: the 1,437 of the catalogue's element sets that came
+ * from its TLE list (data/catalogue.txt); the downlink table (data/transmitters.json) and the uplink and transponder table
+ * (data/transponders.json, L62), two adaptations of its transmitter list, which the line's "transmitters" covers both of;
+ * and the picker's table of other names (data/aliases.json, L61), an adaptation of its satellite list. Libre Space
  * Foundation publishes the database under CC BY-SA 4.0: the licence asks for the credit, a link to the licence and the
- * same licence on what is made from it, so the line names all three and the README says which files it covers. */
+ * same licence on what is made from it, so the line names all three lists and the README says which files it covers. */
 import { link, type Inline } from './rich';
 
 /** The repository. The cache API's OpenAPI page names the same one (server/config.ts, REPO_URL); a test holds them equal. */

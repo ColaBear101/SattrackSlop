@@ -91,7 +91,7 @@ The camera, motion sensors and your location are used only when you tap the butt
 |---|---|
 | `src/` | the console: `lib/` the maths and the sentences, `state/` the stores, `components/` the screens, `scene/` the 3D globe |
 | `server/`, `shared/` | the optional cache API |
-| `data/` | the catalogue, the coastlines, the radio table, the magnetic model |
+| `data/` | the catalogue, the coastlines, the radio tables, the magnetic model |
 | `public/` | the two Moon pages, as they always were |
 | `verification/`, `tests/` | the checks |
 | [`CHANGES-FROM-LEGACY.md`](CHANGES-FROM-LEGACY.md) | every difference from the original page, with its reason |
@@ -198,8 +198,9 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                         mirror, as the old page asked them) and the decay histories (the API,
                         then CelesTrak)
     export/             the CSV and the calendar, and one pass's calendar on its own
-    data/               the downlink table's lookups (the table is data/transmitters.json), and the
-                        loader of the other names (data/aliases.json)
+    data/               the downlink table's lookups (the table is data/transmitters.json), the
+                        loader of the other names (data/aliases.json), and the uplink and
+                        transponder table's (data/transponders.json)
     shims/              the entries scripts/build-shims.mjs bundles for the Node suites
     planner/            the planner, the Professor and the decay model, moved from the old page's
                         files with their arithmetic untouched
@@ -270,9 +271,9 @@ server/, shared/    the cache API (Elysia): GET /api/health, /api/tle/:norad and
                     /api/history/:norad; and the code the browser and the server share
 serve.ts            runs the API on a port (3001 unless PORT says otherwise)
 data/               catalogue.txt (+ .meta.json): the 2,158 element sets; world.json: the
-                    coastlines; transmitters.json: downlink frequencies; aliases.json: the
-                    spacecraft's other names (both from SatNOGS DB); WMM.COF: NOAA's
-                    magnetic model
+                    coastlines; transmitters.json: downlink frequencies; transponders.json:
+                    uplinks, passbands and tones; aliases.json: the spacecraft's other names
+                    (all three from SatNOGS DB); WMM.COF: NOAA's magnetic model
 
 scripts/            extract-data (the data files, from what the old page carried inline),
                     build-shims (esbuild bundles of the library for the Node suites),
@@ -876,7 +877,8 @@ names no licence for the page's code: its author has not licensed it for reuse, 
 The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
 `vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
 only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
-*The frequency is the one thing that cannot be derived* and *Other names, from the same database*.
+*The frequency is the one thing that cannot be derived*, *Other names, from the same database* and
+*Uplinks and transponders, from the same table* (whose file the line's "transmitters" covers).
 The old page said none of this.
 
 Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
@@ -3151,13 +3153,15 @@ SatNOGS DB is a Libre Space Foundation project, and its data is published under 
 Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 `data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
 licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
-licence, say what was changed, and license it under CC BY-SA 4.0 too. The same goes for the
-1,437 of the 2,158 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint
-(see *Data provenance*; the other 721 are CelesTrak's), and for the picker's table of other names
-(below): the owner decided that the database's licence reaches them as well. The page gives the
-credit in the footer's last line, *Data: SatNOGS DB (element sets, transmitters, alternative
-names), CC BY-SA 4.0*, with a link to each. The share-alike reaches that data and what is made from
-it, not the project's own code, which its author has not licensed for reuse.
+licence, say what was changed, and license it under CC BY-SA 4.0 too. So does
+`data/transponders.json`, the uplink and transponder table (below), a second adaptation of the
+same transmitter list. The same goes for the 1,437 of the 2,158 element sets in
+`data/catalogue.txt` that came from SatNOGS DB's TLE endpoint (see *Data provenance*; the other 721
+are CelesTrak's), and for the picker's table of other names, `data/aliases.json` (below): the owner
+decided that the database's licence reaches them as well. The page gives the credit in the footer's last line, *Data: SatNOGS
+DB (element sets, transmitters, alternative names), CC BY-SA 4.0*, with a link to each; its
+"transmitters" covers both adaptations of the transmitter list. The share-alike reaches that data
+and what is made from it, not the project's own code, which its author has not licensed for reuse.
 
 | | |
 |---|---|
@@ -3219,6 +3223,102 @@ too, and the footer's line credits it with the transmitters and the catalogue's 
 node verification/tools/fetch-aliases.js                    # re-bake data/aliases.json (one request)
 node verification/tools/fetch-aliases.js --save <file>      # ...and keep the answer
 node verification/tools/fetch-aliases.js --from <file>      # re-bake from a kept answer, no request
+```
+
+##### Uplinks and transponders, from the same table
+
+The downlink table above is for listening: it keeps no uplink, and at most four records an object,
+lowest first. Working a spacecraft needs what it leaves out on purpose: the frequency the spacecraft
+listens on, the edges of a linear transponder's passband, whether the passband inverts, the mode to
+send in and the CTCSS tone a repeater wants. `data/transponders.json` holds them, from the same
+SatNOGS DB transmitter records, adapted a second time. `data/transmitters.json` is not touched (the
+same bytes, still 2,037 records on 1,213 objects, four at most), so the downlink box, its options and
+the Doppler rows read from it are as they were.
+
+It was baked from SatNOGS DB's transmitter endpoint, `db.satnogs.org/api/transmitters/`, which
+answered on **17 October 2026** (05:01 UTC) with all 5,118 of its records in one unpaginated request.
+That answer was kept, and the file is baked from it with `--from`, no further request
+(`verification/tools/fetch-transponders.js`, which names the repository in its User-Agent and would
+follow a paginated answer one page at a time). The two tables are a month apart (the downlink table
+is of 14 September), and each carries its own date. Of the 5,118 records:
+
+| step | records |
+|---|---|
+| of objects in the catalogue | 2,418 (2,700 are not) |
+| active | 2,228 (190 are not) |
+| with an uplink | 83 (2,145 have none) |
+| ...and a downlink | 81 (CHUBUSAT 2 and 3 are uplink-only) |
+| every edge in an amateur band | 72 (9 out) |
+| a linear passband or a single-frequency pair | 71 (KOSEN-1 is neither) |
+| exact duplicates | 0 |
+| **kept** | **71 records on 47 objects** |
+
+The bands are the amateur service's, in any ITU region (420–450 MHz, say), each leg inside one of
+them, not the narrower amateur-satellite sub-bands: AO-7's Mode B uplink at 432.125 MHz is older than
+those and would be lost. That drops what no amateur station is meant to transmit to: the S-band
+TT&C links of two cubesats, NORSAT 2's maritime VDES link at 157/161 MHz, ORSTED's Radio B, a
+laser retroreflector on LARES-2 filed at 40 GHz, and four links of two launch objects at 401 MHz
+and in S-band. A **linear passband** is a `Transponder` record with a range on both legs of equal
+width, which is what lets the transponder map one onto the other point for point; a **pair** has a
+single frequency on each leg (an FM repeater, a digipeater, a transceiver). KOSEN-1's record, an HF
+receive range of 21.125–21.150 MHz reporting on one UHF frequency, is neither, and is left out.
+There is no cap per object, and records equal in everything the page works with (the four edges,
+the invert flag, both modes, the tone) are kept once (none today).
+
+**17 linear passbands on 9 objects**: AO-7 (OSCAR 7) Mode A, 145.850–145.950 MHz up to
+29.400–29.500 MHz, filed twice for CW and SSB, and Mode B, 432.125–432.175 to 145.925–145.975 MHz,
+inverting; FO-29 (JAS 2), 145.900–146.000 to 435.800–435.900 MHz, inverting, LSB up and USB down;
+AO-73 (FUNCUBE 1), EO-79 (QB50P1), UKUBE 1, JO-97 (JY1SAT) and CAS-6 (OBJECT C), U/V and inverting;
+RS-44 (BREEZE-KM R/B), 145.935–145.995 to 435.610–435.670 MHz, inverting; and QO-100 (ES'HAIL 2), the
+geostationary narrowband transponder, in six segments from 2,400.005 to 2,400.495 MHz, each brought
+down by the same 8,089.500 MHz. **54 pairs on 39 objects**: SO-50, the ISS's voice repeater
+(145.990 to 437.800 MHz), AO-91, PO-101, IO-86, TAURUS-1, the nine TEVEL-2 cubesats, the Tiangong
+core module's eight channels, ESEO's 23 cm uplink, and 18 records on 15 objects that send on the
+frequency they hear, digipeaters most of them. The ISS's 145.800 MHz, which the downlink table's cap
+leaves out, is here as the downlink of the crew's two FM channels (144.490 MHz up in Regions 2 and
+3, 145.200 MHz in Region 1), from SatNOGS's own records. Some well-known transponders are not here:
+XW-2A to F and CAS-4A and B are not in the catalogue, and XW-3 (CAS-9) is, but its transponder
+record is inactive.
+
+Three things SatNOGS DB files are corrected, and the tool says each one it corrects:
+
+- **One invert flag a passband.** A transponder is one piece of hardware, so every record of an
+  object on the same four edges must agree on whether it inverts. JO-97's do not: its CW record is
+  filed non-inverting beside its inverting SSB record (LSB up, USB down) on the same 435.100–435.120
+  to 145.855–145.875 MHz. Through the CW record, 435.105 MHz on board would come down on 145.860 MHz
+  instead of 145.870 MHz, 10 kHz out. Where the sidebands of one record show the inversion, every
+  record of the passband is made inverting (*invert reconciled*: JO-97's CW record); where the flags
+  disagree and nothing shows which is right, the passband is left out; and a record whose own
+  sidebands contradict its own flag is left out too (none today).
+- **No FM on a linear passband.** SatNOGS files five of QO-100's six segments, the SSB-only and
+  digimode ones among them, as FM, the one mode its band plan excludes. A passband relays whatever
+  is put into it, so a linear record's FM is written as no mode, and the description (*SSB Only
+  Transpoder*, as SatNOGS spells it) says what the segment is for.
+- **Ranges in order.** A range filed high to low is sorted into ascending order before anything else
+  (*range normalised*; none today), and its invert flag is kept as filed.
+
+A tone is read from the description (*CTCSS 67.0 Hz*, *PL 88.5Hz*, *67.0 PL*) and kept only when it
+is one of the 50 tones of EIA/TIA-603: 67.0 Hz on the ISS's voice repeater, SO-50, TAURUS-1 and
+QMR-KWT 2, 88.5 Hz on IO-86's two records, none on AO-91 (*no CTCSS any longer*). SatNOGS's drift
+figures (parts per billion, on AO-27 and SO-50) are not used, as the downlink box does not use them.
+
+Each record is nine fields, `[ulLo, ulHi, dlLo, dlHi, inv, mode, upMode, tone, desc]`: the uplink and
+downlink edges in whole hertz (a pair has each leg's two equal), 1 for an inverting passband (never
+for a pair), SatNOGS's downlink mode, its uplink mode where it gives a different one, the tone (0 for
+none) and the description cut to 44 characters. Each object lists its passbands first, then its
+pairs, each by uplink. The file is 6.4 KB (6,521 bytes), 1.6 KB gzipped, keyed by the NORAD number
+without its leading zeros. Nothing on the page reads it yet: it is the table a transponder
+calculator will be built on, and its loader (`src/lib/data/transponders.ts`, with the 50 tones as
+`CTCSS_HZ`) asks for it as a chunk of its own, so no visit that does not want it will fetch it. The
+page asks SatNOGS nothing, so the table in *Data and privacy* is unchanged.
+`tests/lib/transponders-data.test.ts` holds the file to these rules record by record, checks the
+birds above, feeds the tool's rules records of its own (a reversed range, JO-97's two flags, a
+linear FM, a duplicate), and checks that `data/transmitters.json` is the same bytes as before.
+
+```
+node verification/tools/fetch-transponders.js                  # re-bake data/transponders.json (one request)
+node verification/tools/fetch-transponders.js --save <file>    # ...and keep the answer
+node verification/tools/fetch-transponders.js --from <file>    # re-bake from a kept answer, no request
 ```
 
 ##### Tuning while it is up

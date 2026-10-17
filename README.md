@@ -2045,7 +2045,8 @@ are also the two with e above 0.9, and one with a B* of −0.27, and the Profess
 they are), and the passes it quotes are the page’s own run. It has no buttons and none of the notes
 that talk about what was typed; it leaves lifetime to the forecast fitted to the spacecraft’s own
 history under *Orbital decay* (*Lifetime: see Orbital decay* links there), because an assumed drag
-set beside that forecast would contradict it. It is built once the planner has arrived (*Opening
+set beside that forecast would contradict it; that link, on a line of its own, is 44 px tall under a
+finger, as the page's other small links are. It is built once the planner has arrived (*Opening
 it*) and the spacecraft has loaded, in an idle moment (the median is 0.6 ms and the slowest of the
 2,158 sets 6 ms, so nothing the console computes waits for it), and it is hidden until then, for a
 designed orbit (the planner is that orbit’s panel), in the assignment snapshot (`?tle=embedded`,

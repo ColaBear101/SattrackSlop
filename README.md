@@ -3239,7 +3239,8 @@ It was baked from SatNOGS DB's transmitter endpoint, `db.satnogs.org/api/transmi
 answered on **17 October 2026** (05:01 UTC) with all 5,118 of its records in one unpaginated request.
 That answer was kept, and the file is baked from it with `--from`, no further request
 (`verification/tools/fetch-transponders.js`, which names the repository in its User-Agent and would
-follow a paginated answer one page at a time). The two tables are a month apart (the downlink table
+follow a paginated answer one page at a time, writing nothing if pages are still to come after 50 or
+the pages hold other than the count they give). The two tables are a month apart (the downlink table
 is of 14 September), and each carries its own date. Of the 5,118 records:
 
 | step | records |
@@ -3286,10 +3287,12 @@ Three things SatNOGS DB files are corrected, and the tool says each one it corre
   object on the same four edges must agree on whether it inverts. JO-97's do not: its CW record is
   filed non-inverting beside its inverting SSB record (LSB up, USB down) on the same 435.100–435.120
   to 145.855–145.875 MHz. Through the CW record, 435.105 MHz on board would come down on 145.860 MHz
-  instead of 145.870 MHz, 10 kHz out. Where the sidebands of one record show the inversion, every
-  record of the passband is made inverting (*invert reconciled*: JO-97's CW record); where the flags
-  disagree and nothing shows which is right, the passband is left out; and a record whose own
-  sidebands contradict its own flag is left out too (none today).
+  instead of 145.870 MHz, 10 kHz out. A record whose sidebands bear out its own flag settles it:
+  one filed inverting with LSB up and USB down (or the other way) makes every record of the passband
+  inverting (*invert reconciled*: JO-97's CW record), and one filed non-inverting with the same
+  sideband up and down makes every record non-inverting. Where the flags disagree and no record
+  settles them, or records settle them both ways, the passband is left out; and a record whose own
+  sidebands contradict its own flag is no evidence, and is left out too (none today).
 - **No FM on a linear passband.** SatNOGS files five of QO-100's six segments, the SSB-only and
   digimode ones among them, as FM, the one mode its band plan excludes. A passband relays whatever
   is put into it, so a linear record's FM is written as no mode, and the description (*SSB Only
@@ -3313,7 +3316,8 @@ calculator will be built on, and its loader (`src/lib/data/transponders.ts`, wit
 page asks SatNOGS nothing, so the table in *Data and privacy* is unchanged.
 `tests/lib/transponders-data.test.ts` holds the file to these rules record by record, checks the
 birds above, feeds the tool's rules records of its own (a reversed range, JO-97's two flags, a
-linear FM, a duplicate), and checks that `data/transmitters.json` is the same bytes as before.
+passband a non-inverting record settles, one shown both ways, a linear FM, a duplicate), and checks
+that `data/transmitters.json` is the same bytes as before.
 
 ```
 node verification/tools/fetch-transponders.js                  # re-bake data/transponders.json (one request)

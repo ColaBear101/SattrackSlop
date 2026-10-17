@@ -151,7 +151,8 @@ describe('data/transponders.json', () => {
     /* RS-44, filed as its rocket stage (BREEZE-KM R/B), and AO-73 (FUNCUBE 1) */
     expect(lin('44909').map(t => t.slice(0, 5))).toEqual([[145935000, 145995000, 435610000, 435670000, 1]]);
     expect(lin('39444').map(t => t.slice(0, 5))).toEqual([[435130000, 435150000, 145950000, 145970000, 1]]);
-    /* QO-100 (ES'HAIL 2): six segments, each moved by the same 8,089.5 MHz, and the emergency frequency as a pair in the fifth */
+    /* QO-100 (ES'HAIL 2): six segments, each moved by the same 8,089.5 MHz, and the emergency frequency as a pair inside the sixth
+       (2400.350-2400.495 MHz, mixed modes) */
     const qo = D.x['43700']!;
     expect(qo.filter(linear).length).toBe(6);
     for (const t of qo.filter(linear)) { expect(t[2] - t[0]).toBe(8_089_500_000); expect(t[4]).toBe(0); }
@@ -309,6 +310,24 @@ describe('the baker', () => {
     expect(b.notes.reconciled![0]).toMatch(/^99001 ONE: .* CW: filed non-inverting beside an inverting record, LSB in, USB out/);
     expect(b.x['99003']).toBeUndefined();
     expect(b.dropped.invert!.length).toBe(2);
+    expect(b.dropped.invert![0]).toContain('no record shows which is right');
+  });
+  it('makes a passband non-inverting when one of its records shows there is no inversion, the same sideband on both legs (AO-7 Mode A)', () => {
+    /* AO-7's Mode A as filed, SSB on USB in and USB out, beside a CW record wrongly filed inverting: the SSB record settles it */
+    const modeA = (o: Rec) => xp({ norad_cat_id: 7, invert: false, uplink_low: 145850000, uplink_high: 145950000, downlink_low: 29400000, downlink_high: 29500000, ...o });
+    const b = baker.bake([modeA({ mode: 'USB', uplink_mode: 'USB', description: 'SSB' }), modeA({ mode: 'CW', uplink_mode: 'CW', invert: true, description: 'CW' })], cat);
+    expect(b.x['7']!.map(t => t.slice(4, 7))).toEqual([[0, 'CW', ''], [0, 'USB', '']]);
+    expect(b.dropped.invert!.length).toBe(0);
+    expect(b.notes.reconciled!.length).toBe(1);
+    expect(b.notes.reconciled![0]).toMatch(/^ {4}7 SEVEN: .* CW: filed inverting beside a non-inverting record, USB in, USB out/);
+  });
+  it('drops a passband whose records show both, an inversion in one and none in another, and makes nothing of it', () => {
+    const b = baker.bake([xp({ description: 'inverting' }), xp({ uplink_mode: 'USB', invert: false, description: 'not' }), xp({ mode: 'CW', uplink_mode: 'CW', invert: false })], cat);
+    expect(b.x).toEqual({});
+    expect(b.notes.reconciled!.length).toBe(0);
+    expect(b.dropped.sideband!.length).toBe(0);
+    expect(b.dropped.invert!.length).toBe(3);
+    for (const l of b.dropped.invert!) expect(l).toContain('its records show both: LSB in, USB out, filed inverting, and USB in, USB out, filed non-inverting');
   });
   it('drops a passband whose own sidebands contradict its invert flag, not one with no uplink mode, and leaves the flag of a pair at 0', () => {
     const b = baker.bake([

@@ -12,7 +12,9 @@
  * Polite: one request per page of the API, with a User-Agent that names the repository. On 2026-10-17 at 05:01:30
  * UTC it answered with one unpaginated list, 5,118 records (3,947,602 bytes); that answer was kept, and the file
  * is baked from it with --from, no request. A page of a paginated answer ({count, next, results}) would be
- * followed by its `next` link, one page at a time.
+ * followed by its `next` link, one page at a time, up to MAX_PAGES; an answer with pages still to come after
+ * those, or with fewer or more records than the count it gives, writes nothing and exits with an error, as a
+ * partial table would leave spacecraft out without a word.
  *
  * What is kept, and why (each record is one SatNOGS transmitter record):
  *   - objects in the embedded catalogue (data/catalogue.txt) only, by NORAD number. The rest cannot be picked.
@@ -29,11 +31,13 @@
  *     one UHF frequency) is dropped and logged. A range filed high to low is sorted into ascending order first
  *     ("range normalised"); the invert flag is kept as filed.
  *   - the invert flag of a passband, reconciled: a transponder is one piece of hardware, so every record of an
- *     object on the same four edges must agree. When they do not, and one of them is inverting with its sidebands
- *     swapped (USB in, LSB out: the inversion shows), all of them are made inverting ("invert reconciled"; JO-97's
- *     CW record, filed non-inverting beside its inverting SSB record on the same passband). When they disagree
- *     and nothing shows which is right, the passband is dropped. A record whose own sidebands contradict its own
- *     flag (swapped but filed non-inverting, or given the same on both legs but filed inverting) is dropped too.
+ *     object on the same four edges must agree. When they do not, a record whose sidebands bear out its own flag
+ *     settles it: one filed inverting with its sidebands swapped (USB in, LSB out: the inversion shows) makes all of
+ *     them inverting ("invert reconciled"; JO-97's CW record, filed non-inverting beside its inverting SSB record
+ *     on the same passband), and one filed non-inverting with the same sideband on both legs (USB in, USB out)
+ *     makes all of them non-inverting. When no record settles it, or records settle it both ways, the passband is
+ *     dropped. A record whose own sidebands contradict its own flag (swapped but filed non-inverting, or given the
+ *     same on both legs but filed inverting) is no evidence, and is dropped too.
  *   - a linear passband's mode "FM" (or "FMN", ...) is written as no mode ("mode dropped"): SatNOGS files QO-100's
  *     SSB-only and digimode segments as FM, the one mode its band plan excludes, and a passband carries what is
  *     put into it; the description says what the segment is for.
@@ -189,14 +193,24 @@ function bake(list, cat) {
     const gone = new Set();
     for (const g of groups.values()) {
       if (new Set(g.map(c => c.rec[4])).size < 2) continue;
-      const shows = g.find(c => c.rec[4] === 1 && sidebands(c.down, c.up) && c.down !== c.up);
+      /* what settles it: a record whose sidebands bear out its own flag, either way. Swapped (USB in, LSB out) and filed
+         inverting shows the inversion; the same sideband on both legs and filed non-inverting shows there is none. A record
+         whose sidebands contradict its own flag is no evidence (the sideband rule below drops it). */
+      const inv = g.filter(c => c.rec[4] === 1 && sidebands(c.down, c.up) && c.down !== c.up);
+      const non = g.filter(c => c.rec[4] === 0 && sidebands(c.down, c.up) && c.down === c.up);
+      const shows = (inv.length > 0) !== (non.length > 0) ? (inv[0] || non[0]) : null;
       if (shows) {
-        for (const c of g) if (c.rec[4] === 0) {
-          c.rec[4] = 1;
-          notes.reconciled.push(c.say(c.where + ' ' + (c.down || '-') + ': filed non-inverting beside an inverting record, ' + shows.up + ' in, ' + shows.down + ' out'));
+        const to = shows.rec[4];
+        for (const c of g) if (c.rec[4] !== to) {
+          c.rec[4] = to;
+          notes.reconciled.push(c.say(c.where + ' ' + (c.down || '-') + ': filed ' + (to ? 'non-inverting beside an inverting' : 'inverting beside a non-inverting')
+            + ' record, ' + shows.up + ' in, ' + shows.down + ' out'));
         }
       } else {
-        for (const c of g) { gone.add(c); dropped.invert.push(c.say(c.where + ': invert flags disagree on one passband, and no record shows which is right')); }
+        const why = inv.length
+          ? 'and its records show both: ' + inv[0].up + ' in, ' + inv[0].down + ' out, filed inverting, and ' + non[0].up + ' in, ' + non[0].down + ' out, filed non-inverting'
+          : 'and no record shows which is right';
+        for (const c of g) { gone.add(c); dropped.invert.push(c.say(c.where + ': invert flags disagree on one passband, ' + why)); }
       }
     }
     let list = cands.filter(c => !gone.has(c));
@@ -239,7 +253,7 @@ function catalogue() {
 
 async function download() {
   const out = [];
-  let url = API, pages = 0;
+  let url = API, pages = 0, count = null;
   const t0 = Date.now();
   while (url && pages < MAX_PAGES) {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
@@ -247,8 +261,20 @@ async function download() {
     const body = await res.json();
     pages++;
     if (Array.isArray(body)) { out.push(...body); url = null; }
-    else if (body && Array.isArray(body.results)) { out.push(...body.results); url = body.next || null; }
+    else if (body && Array.isArray(body.results)) {
+      out.push(...body.results); url = body.next || null;
+      if (count === null && Number.isInteger(body.count)) count = body.count;
+    }
     else { console.error('SatNOGS answered with neither a list nor a page of one: ' + JSON.stringify(body).slice(0, 200)); process.exit(1); }
+  }
+  /* a partial list would bake a table with spacecraft missing and say nothing: write nothing instead */
+  if (url) {
+    console.error('SatNOGS has pages still to come after ' + MAX_PAGES + ' (' + out.length + ' records read, next ' + url + '): nothing written');
+    process.exit(1);
+  }
+  if (count !== null && out.length !== count) {
+    console.error('SatNOGS counts ' + count + ' records, and its pages held ' + out.length + ': nothing written');
+    process.exit(1);
   }
   console.log('SatNOGS DB        : ' + out.length + ' transmitter records in ' + pages + ' request(s), ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
   return { fetched: new Date().toISOString(), pages, url: API, transmitters: out };

@@ -5,7 +5,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
 import raw from '../../data/transponders.json';
-import { CTCSS_HZ, makeTransponders, retrying, tableLoader, type TransponderData, type XpRecord } from '../../src/lib/data/transponders';
+import { CTCSS_HZ, makeTransponders, tableLoader, type TransponderData, type XpRecord } from '../../src/lib/data/transponders';
+import { retrying } from '../../src/lib/net/file';
 import { CATALOGUE } from './helpers';
 
 /* The uplink and transponder table (CHANGES-FROM-LEGACY.md, L62): every active SatNOGS DB record of a catalogue object with both an

@@ -82,11 +82,15 @@ const HOLD = 3000;                 // group 8: how long the catalogue is kept ba
 /* The planner's own chunks. `lifetime` is also the Decay panel's (the drag integrator is shared), so on a desktop it is fetched at boot, with
    the Decay panel, and not by the planner: it is counted once for the whole visit and not ordered. */
 const FAMILY = ['planner', 'plannerui', 'advisor', 'advisor-copy', 'parts'];
-const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client', 'xpdr']);
+const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'surface', 'Report', 'reporter', 'treaty2', 'index-client', 'xpdr']);
 /* The transponder calculator (CHANGES-FROM-LEGACY.md, L63): its chunk, xpdr (in EXPECTED), and its table, a file of the page's own
    (assets/transponders-<hash>.json, fetched, not imported: a browser keeps a failed import() for the life of the page), are asked for
    when "Uplink and transponders" is first opened, never by a visit that does not open it. */
 const XPDR_TABLE = /^\/assets\/transponders-[A-Za-z0-9_-]{8}\.json$/;
+/* The downlink table and the picker's other names are files of the page's own too, fetched, not imported (L65): the downlink table once by
+   every visit, after its first analysis (the box under the sky plot lists its downlinks), the other names only once something is typed
+   into the picker, which a plain visit does not do. */
+const TX_TABLE = /^\/assets\/transmitters-[A-Za-z0-9_-]{8}\.json$/, ALIAS_TABLE = /^\/assets\/aliases-[A-Za-z0-9_-]{8}\.json$/;
 const pathOf = u => { try { return new URL(u, 'http://x').pathname; } catch (e) { return ''; } };
 /* ...and the six files whose refusal takes the planner away (group 5). */
 const REFUSED = FAMILY.concat(['lifetime']);
@@ -265,8 +269,8 @@ const isApi = (srv, u) => u.startsWith(srv.origin + '/') && /^\/api\//.test(new 
    page cannot start without: the entry chunk, the Svelte runtime it shares with the lazy chunks (index-client) and the tiny shared chunk of
    the rich-text renderer; the 90 KB budget is for that sum (the report below the first screen, the element-set client and the planner are
    chunks of their own). */
-/* total: index, scene, sky-data, transmitters, lifetime, and the Decay panel's own life and draw-life (counted whether or not the visit fetched
-   them: see DECAY_OWN). */
+/* total: index, scene, sky-data, lifetime, and the Decay panel's own life and draw-life (counted whether or not the visit fetched them: see
+   DECAY_OWN). The downlink table was a chunk counted here until it became a file of its own (L65): it is data now, weighed under all. */
 const ENTRY_GRAPH = ['index', 'index-client', 'rich'];
 /* fetched when the section is near, or at idle, or on the first ask of the API: which comes first depends on the layout and the machine, so
    each is counted whether or not the visit fetched it */
@@ -306,6 +310,10 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
         EXPECTED.every(n => (byName[n] || []).length === 1), EXPECTED.map(n => n + ' ' + ((byName[n] || []).join(',') || 'MISSING')).join('  '));
       const tables = fs.readdirSync(path.join(srv.root, 'assets')).filter(f => XPDR_TABLE.test('/assets/' + f));
       chk('...and the transponder table is one file of its own (assets/transponders-<hash>.json), so that "not requested" below means something', tables.length === 1, tables.join(', ') || 'MISSING');
+      const files = re => fs.readdirSync(path.join(srv.root, 'assets')).filter(f => re.test('/assets/' + f));
+      chk('...and so are the downlink table and the other names (assets/transmitters-<hash>.json, assets/aliases-<hash>.json), with no chunk of either',
+        files(TX_TABLE).length === 1 && files(ALIAS_TABLE).length === 1 && !byName.transmitters && !byName.aliases,
+        files(TX_TABLE).concat(files(ALIAS_TABLE)).join(', ') + '; chunks: ' + ((byName.transmitters || []).concat(byName.aliases || []).join(', ') || 'none'));
     } else note('(GT_URL: the build\'s files cannot be listed; the "requested once" checks prove the names on the wire)');
   }
 
@@ -365,6 +373,9 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       const tablesAsked = w.reqs.filter(u => XPDR_TABLE.test(pathOf(u))).length;
       chk('the transponder calculator\'s chunk (xpdr) and its table (transponders) are not requested: nobody opened "Uplink and transponders" (L63)', count(w, 'xpdr') === 0 && tablesAsked === 0,
         'xpdr requests: ' + count(w, 'xpdr') + ', transponders requests: ' + tablesAsked);
+      const txAsked = w.reqs.filter(u => TX_TABLE.test(pathOf(u))).length, aliasAsked = w.reqs.filter(u => ALIAS_TABLE.test(pathOf(u))).length;
+      chk('the downlink table is fetched once (a file of its own, L65), and the other names and their finder not at all: nobody typed into the picker',
+        txAsked === 1 && aliasAsked === 0 && count(w, 'alias') === 0, 'transmitters ' + txAsked + ', aliases ' + aliasAsked + ', alias ' + count(w, 'alias'));
       const win = await w.page.evaluate(n => n.map(k => k + ':' + typeof window[k]), FACADE);
       chk('nothing of the facade is on the window (' + FACADE.join(', ') + ')', win.every(s => /:undefined$/.test(s)), win.filter(s => !/:undefined$/.test(s)).join(' ') || 'all undefined');
       chk('#arbtn is not visible, and the AR view is not in the page at all', !(await visible(w.page, '#arbtn')) && (await w.page.evaluate(() => document.getElementById('arview') === null)));

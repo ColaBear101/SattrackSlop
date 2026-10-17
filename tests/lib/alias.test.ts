@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -173,8 +173,13 @@ describe('byAlias', () => {
 });
 
 describe('the finder the picker calls', () => {
-  it('loads the baked table once, as a chunk of its own, and words each row as its option says it', async () => {
+  afterEach(() => vi.unstubAllGlobals());
+  /* the table is a file of the page's own, fetched (L65; a failure asked again is tests/net/file.test.ts's): the fetch is stood in for */
+  it('loads the baked table once, as a file of its own, and words each row as its option says it', async () => {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'aliases.json'), 'utf8')) as unknown }));
+    vi.stubGlobal('fetch', fetch);
     const [a, b] = [await loadAliases(), await loadAliases()];
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(a).toBe(b);
     expect(a.a['44909']).toEqual(T['44909']);
     const f = aliasFinder(a.a);

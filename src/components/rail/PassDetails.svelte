@@ -1,11 +1,15 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { app } from '../../state/app.svelte';
   import { doppler } from '../../state/doppler.svelte';
   import { getEngine, getOptics } from '../../state/engine';
   import { dopRows, opticalRows } from '../../lib/analysis/doppler';
   import { passFacts, siteClock } from '../../lib/text/passfacts';
+  import { EXPORT_NOT_LOADED, PASS_ICS, PASS_ICS_TITLE } from '../../lib/text/pass-ics';
   import type { Row } from '../../lib/text/rich';
+  import Button from '../ui/Button.svelte';
   import Rich from '../ui/Rich.svelte';
+  import DopplerLive from './DopplerLive.svelte';
 
   /* The facts about the selected pass, under its sky plot: when it rises, peaks and sets, how long, whether it can be
      seen with the eye, and the Doppler shift at the downlink you have tuned to. The frequency is the one thing this
@@ -51,6 +55,34 @@
     const v = parseFloat((e.currentTarget as HTMLInputElement).value);
     doppler.setHz(isFinite(v) && v > 0 ? v * 1e6 : null);
   }
+
+  /* This pass alone, to a calendar (CHANGES-FROM-LEGACY.md, L57): the pass selected at the press, of the analysis on screen then. The work
+     is a chunk of its own with the export writers (pass-ics.ts), fetched on the first press; one that does not arrive says so, as the full
+     export does. What a press comes to is said beside the button for six seconds.
+     One press at a time, as the AR view's Snap: a second tap while the chunks arrive or the share sheet is up would ask the browser for a
+     second sheet, which it refuses, and a refused sheet is a download, so the reader would get the sheet and a stray file. The button is
+     disabled until the press is done, and the focus, which a disabled button drops, comes back to it. */
+  let said = $state('');
+  let busy = $state(false);
+  let sayT: ReturnType<typeof setTimeout> | undefined;
+  async function toCalendar(e: MouseEvent) {
+    const A = D, i = app.selPass;
+    if (!A || busy) return;
+    const btn = e.currentTarget as HTMLButtonElement, held = document.activeElement === btn;
+    busy = true;
+    try {
+      let go: typeof import('./pass-ics')['passToCalendar'] | null = null;
+      try { ({ passToCalendar: go } = await import('./pass-ics')); } catch { /* said below */ }
+      said = go ? await go(A, i) : EXPORT_NOT_LOADED;
+      clearTimeout(sayT); sayT = setTimeout(() => { said = ''; }, 6000);
+    } finally {
+      busy = false;
+      if (held) {
+        await tick();      // the button is enabled again only once Svelte has written busy to it
+        if (btn.isConnected && !btn.disabled && (!document.activeElement || document.activeElement === document.body)) btn.focus();
+      }
+    }
+  }
 </script>
 
 <dl id="skyfacts" class="facts">
@@ -58,6 +90,13 @@
     <div class="row"><dt class="k"><Rich value={k} /></dt><dd class="v"><Rich value={v} /></dd></div>
   {/each}
 </dl>
+
+{#if pass}
+  <div id="passcal" class="passcal">
+    <Button id="exp-pass" size="sm" title={PASS_ICS_TITLE} disabled={busy} onclick={toCalendar}>{PASS_ICS}</Button>
+    <span id="exp-passhint" class="said" role="status">{said}</span>
+  </div>
+{/if}
 
 <div id="dopbar" class="dopbar">
   {#if list.length}
@@ -77,11 +116,15 @@
   <span class="u">MHz</span>
 </div>
 
+<DopplerLive />
+
 <style>
   .facts { margin: 0; display: grid; }
   .row { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--rule); font-size: var(--fs-1); }
   dt { color: var(--muted); }
   dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .passcal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+  .said { color: var(--muted); font-size: var(--fs-1); }
   .dopbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--fs-1); }
   .none { color: var(--muted); }
   select, input {

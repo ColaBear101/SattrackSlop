@@ -14,6 +14,7 @@ import { buildExports } from '../lib/export';
 import { tleSourceText } from '../lib/export/source';
 import { tzAt } from '../lib/places';
 import { globe } from '../components/stage/globe-state.svelte';
+import { clock } from '../state/clock.svelte';
 
 /* The test surface: what the verification suites reach into. It exists only when the harness set
    window.__GT_TEST__ before the page loaded, and main.ts loads this file as a separate chunk then, so a
@@ -50,6 +51,12 @@ export async function install(): Promise<void> {
     passOptical: (...a: Parameters<ReturnType<typeof o>['passOptical']>) => o().passOptical(...a),
     estMagnitude: (...a: Parameters<ReturnType<typeof o>['estMagnitude']>) => o().estMagnitude(...a),
     stdMagOf: (...a: Parameters<ReturnType<typeof o>['stdMagOf']>) => o().stdMagOf(...a),
+    /** the current optics itself, the live object the app calls (never a copy): a suite counts the shadow tests the rail's
+     *  "now" section makes by wrapping its sunlitState for a moment (verify-optical.js, L53). The section's own code
+     *  (lib/analysis/live-state.ts) is not on this surface: imported here as well as by the section, it would be split
+     *  into a chunk of its own, one more request for every visitor; the suite checks the section against the engine
+     *  and the optics instead. */
+    get optics() { return o(); },
     get STD_MAG() { return o().STD_MAG; },
     get NAKED_EYE_MAG() { return o().NAKED_EYE_MAG; },
     get DARK_SUN_EL() { return o().DARK_SUN_EL; },
@@ -93,7 +100,12 @@ export async function install(): Promise<void> {
     runLife: (entry: Parameters<typeof life.run>[0], my: number) => life.run(entry, my),
     get lifeReq() { return life.seq; },
 
+    /** put the clock at an instant and stop it there, as a scrub does, but to the millisecond (the scrubber moves in samples) */
+    seek: (ms: number) => clock.seek(ms, true),
     get C_KMS() { return e().C_KMS; },
+    /** the current engine itself, the live object the app calls (never a copy): a suite counts the calls made to one of its
+     *  members by wrapping it for a moment (verify-doppler.js, the live line's work while the clock is paused) */
+    get eng() { return e(); },
     get OBS() { return getObs(); },
     MASK,
     get RE() { return e().RE; },

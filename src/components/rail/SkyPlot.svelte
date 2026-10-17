@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { app } from '../../state/app.svelte';
+  import { clock } from '../../state/clock.svelte';
   import { prefs } from '../../state/prefs.svelte';
   import { MASK } from '../../state/engine';
   import { compass } from '../../lib/text/fmt';
@@ -26,7 +27,16 @@
     return () => ro.disconnect();
   });
   $effect(() => { prefs.resolved; colors = readSkyColors(); });
-  $effect(() => { resized; if (colors) drawSky(canvas, pass, MASK, colors); });
+
+  /* While the clock is inside this pass, the spacecraft is on the plot and the stretch behind it is faint (CHANGES-FROM-LEGACY.md,
+     L54): sky-live.ts draws it, a chunk of its own asked for the first time the clock is inside the pass shown (again at the next
+     time, if that fails). `at` is the clock's instant while it is inside the pass and null otherwise, so a tick outside the pass
+     redraws nothing; the clock publishes no ticks while it is paused. */
+  let live = $state.raw<typeof import('./sky-live') | null>(null);
+  const at = $derived(pass && clock.tick.ms >= pass.t0ms && clock.tick.ms <= pass.t1ms ? clock.tick.ms : null);
+  const inside = $derived(at !== null);
+  $effect(() => { if (inside && !live) import('./sky-live').then(m => { live = m; }, () => {}); });
+  $effect(() => { resized; if (colors) { if (live) live.paintSky(canvas, pass, MASK, colors, at); else drawSky(canvas, pass, MASK, colors); } });
 
   const words = $derived(pass
     ? 'Pass ' + (app.selPass + 1) + ' of ' + n + ': rises ' + compass(pass.aosAz) + ', peaks at ' +

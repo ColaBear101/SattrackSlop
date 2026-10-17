@@ -1,19 +1,21 @@
 import type { Pass } from '../../lib/types';
 
 /* The sky track of one pass: a polar plot, north up, the horizon at the rim and the zenith at the centre. The
-   old page's drawSky, with the colours read once per theme instead of once per stroke. */
+   old page's drawSky, with the colours read once per theme instead of once per stroke. `flown`, new in the rebuild
+   (CHANGES-FROM-LEGACY.md, L54): while the clock is inside the pass, the first `flown` samples of its arc, the stretch
+   already behind the spacecraft, are drawn faint (sky-live.ts draws the spacecraft over them); 0 draws the old plot. */
 
-export interface SkyColors { sunk: string; ring: string; observer: string; ink2: string; panel: string; muted: string; contact: string }
+export interface SkyColors { sunk: string; ring: string; observer: string; ink: string; ink2: string; panel: string; muted: string; contact: string }
 
 export function readSkyColors(): SkyColors {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string) => cs.getPropertyValue('--' + n).trim();
-  return { sunk: v('sunk'), ring: v('ring'), observer: v('observer'), ink2: v('ink2'), panel: v('panel'), muted: v('muted'), contact: v('contact') };
+  return { sunk: v('sunk'), ring: v('ring'), observer: v('observer'), ink: v('ink'), ink2: v('ink2'), panel: v('panel'), muted: v('muted'), contact: v('contact') };
 }
 
 const RAD = Math.PI / 180;
 
-export function drawSky(c: HTMLCanvasElement, p: Pass | null, mask: number, col: SkyColors): void {
+export function drawSky(c: HTMLCanvasElement, p: Pass | null, mask: number, col: SkyColors, flown = 0): void {
   const g = c.getContext('2d')!;
   // size the backing store to the CSS box so the labels stay crisp at any device pixel ratio
   const S = Math.round(c.getBoundingClientRect().width) || 268;
@@ -45,7 +47,10 @@ export function drawSky(c: HTMLCanvasElement, p: Pass | null, mask: number, col:
 
   const pt = (s: { el: number; az: number }): [number, number] => { const r = R * (90 - s.el) / 90, a = s.az * RAD; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; };
   g.strokeStyle = col.contact; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
-  g.beginPath(); p.arc.forEach((s, i) => { const q = pt(s); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke();
+  const line = (a: number, b: number) => { g.beginPath(); for (let i = a; i <= b; i++) { const q = pt(p.arc[i]!); i > a ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); } g.stroke(); };
+  // the flown stretch at the AR radar's .45 (radar.ts paintPass)
+  if (flown) { g.globalAlpha = .45; line(0, flown); g.globalAlpha = 1; }
+  line(flown, p.arc.length - 1);
   const A = pt(p.arc[0]!), L = pt(p.arc[p.arc.length - 1]!), M = pt({ el: p.maxEl, az: p.maxAz });
   g.fillStyle = col.contact; g.beginPath(); g.arc(M[0], M[1], 5, 0, 7); g.fill();
   g.lineWidth = 2; g.strokeStyle = col.panel; g.stroke();

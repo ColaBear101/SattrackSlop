@@ -1,9 +1,8 @@
 <script lang="ts">
   import { app } from '../../state/app.svelte';
-  import { doppler } from '../../state/doppler.svelte';
-  import { live } from '../../state/live.svelte';
-  import { getEngine, getOptics, MASK } from '../../state/engine';
-  import { tleSourceText } from '../../lib/export/source';
+  import { getEngine } from '../../state/engine';
+  import { exportCtx } from '../../state/export-ctx';
+  import { EXPORT_NOT_LOADED } from '../../lib/text/pass-ics';
   import type { ExportFile } from '../../lib/export';
   import Button from '../ui/Button.svelte';
 
@@ -28,10 +27,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);       // revoking immediately can beat the download in some browsers
   }
 
-  function cached(satnum: string) {
-    try { return JSON.parse(localStorage.getItem('tle:' + satnum) || 'null'); } catch { return null; }
-  }
-
   async function go(kind: 'csv' | 'ics') {
     const D = app.analysis, entry = app.entry;
     if (!D || !entry || !D.passes.length) { say('No passes in this window to export.'); return; }
@@ -43,15 +38,8 @@
        not leave a press that does nothing */
     let buildExports: typeof import('../../lib/export')['buildExports'];
     try { ({ buildExports } = await import('../../lib/export')); }
-    catch { say('Not exported — the code that writes the file could not be loaded. Check the connection and press again.'); return; }
-    const x = buildExports({
-      D, OBS: app.site, MASK, dopHz: doppler.hz, eng: getEngine(), optics: getOptics(),
-      sourceText: tleSourceText({
-        custom: !!(entry as { custom?: boolean }).custom, prov: live.provOf(entry.satnum), embedded: app.isEmbedded(entry),
-        l1: entry.l1, l2: entry.l2, cached: cached(entry.satnum)
-      }),
-      stampAt: new Date()
-    });
+    catch { say(EXPORT_NOT_LOADED); return; }
+    const x = buildExports(exportCtx(D, entry));
     const f: ExportFile = kind === 'csv' ? x.exportCSV() : x.exportICS();
     download(f.text, f.name, f.mime);
     say(f.hint);

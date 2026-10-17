@@ -57,7 +57,8 @@ class AppState {
   startMs = $state<number | null>(null);
   hours = $state(24);
   selPass = $state(0);
-  /** What the last load that did not go through said (cleared by the next one that does): the old #loadnote. */
+  /** What the last load that did not go through said (cleared by the next one that does): the old #loadnote. The watchlist's star
+   *  says its refusal at the cap here too (state/watch-press.ts, L60), where a refused load is said. */
   note = $state('');
   /** A fatal problem: the catalogue could not be read at all. */
   error = $state<string | null>(null);
@@ -211,9 +212,10 @@ class AppState {
   /* ---- loading an analysis ---------------------------------------------------------------------------------- */
 
   /* load() says whether it loaded. compute() throws when SGP4 cannot propagate an object anywhere in the window - by
-     late September 2026, fourteen catalogue entries that SGP4 has decayed and one whose elements it rejects
-     outright. The new analysis is computed before anything is touched. If it cannot be, everything stays as the
-     analysis still on screen was computed (nothing is committed until it works), and the page says why. */
+     late September 2026, fourteen catalogue entries that SGP4 has decayed and one (STARLINK-2342) whose drag terms
+     it has run past what they model, error 1 from 11 August 2026, two days after its epoch. The new analysis is
+     computed before anything is touched. If it cannot be, everything stays as the analysis still on screen was
+     computed (nothing is committed until it works), and the page says why. */
   load(entry: CatalogueEntry, o: LoadOptions = {}): boolean {
     const D = this.analysis, eng = getEngine();
     /* The same spacecraft is the same number - the entry on screen may carry a live set's lines - except for an orbit of the reader's

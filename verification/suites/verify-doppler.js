@@ -27,13 +27,22 @@
  * flipping sign as it went, and matched eps/(2h) at every step. h is chosen
  * where that noise and the stencil's own truncation balance.
  *
+ * Last, the live line under the downlink box (#doplive, CHANGES-FROM-LEGACY.md
+ * L52): scrubbed into a pass, with a downlink and an uplink typed in, and then
+ * live, its figures are worked out again here from the range rate and the law
+ * written out, and it must say which instant they are for. Paused, it must do
+ * no work (counted, not read off the text), and Go live must leave the focus in
+ * it. The old page has no such line, so with GT_TARGET=legacy this part says so
+ * and is skipped; the range-rate checks above run on either page.
+ *
  *   node verification/suites/verify-doppler.js
  */
 const H = require('../lib/harness');
 const path = require('path');
 const { chromium } = H.playwright();
+const NEW = H.targetName() === 'new';   // the live line under the downlink box is the rebuilt page's alone (L52)
 
-let PAGE = null;   // an http URL from H.up(): the bundled app cannot be opened from file://
+let PAGE = null;  // an http URL from H.up(): the bundled app cannot be opened from file://
 
 let fails = 0;
 const chk = (name, ok, detail) => {
@@ -181,6 +190,153 @@ const chk = (name, ok, detail) => {
   const culm = whole.every(p => Math.abs(p.culRR) < Math.abs(p.aosRR));
   chk('  range rate is smallest at culmination', culm,
       'the closing speed passes through zero near closest approach');
+
+  if (NEW) {
+    /* ---- the live line under the downlink box (CHANGES-FROM-LEGACY.md, L52) ----------------------------------------------
+       #doplive gives the frequency to receive on at one instant, for the downlink chosen above it, and the frequency to send
+       on for an uplink typed into it. The page computes them with lib/analysis/tune.ts; here they are worked out again from
+       the range rate the test surface gives, with the law written out, f (1 - rr/c) down and f / (1 - rr/c) up, at the
+       instant the line says it is for (data-ms). The figure is printed to the hertz, so it must be within half of one.
+       The clock is put 30 % of the way into a pass, where the range rate is several km/s and the shift several kHz: at
+       culmination it is near nought, and a line that ignored it would pass. */
+    console.log('\n  the live line under the downlink box');
+    await page.waitForSelector('#doplive', { timeout: 15000 });
+    const HZ = s => { const m = /^(\d+)\.(\d{3}) (\d{3}) MHz$/.exec(s || ''); return m ? +m[1] * 1e6 + +(m[2] + m[3]) : null; };
+    const KHZ = s => { const m = /^([+−])(\d+\.\d{3}) kHz$/.exec(s || ''); return m ? (m[1] === '−' ? -1 : 1) * +m[2] : null; };
+    const lineNow = () => page.evaluate(() => {
+      const gt = window.__gt, el = document.getElementById('doplive'), ms = +el.dataset.ms;
+      const t = id => { const e = document.getElementById(id); return e ? e.textContent : null; };
+      const s = gt.stateAt(gt.D.track, ms);
+      const shift = id => { const e = document.getElementById(id); return e && e.nextElementSibling ? e.nextElementSibling.textContent : null; };
+      return { ms, wall: Date.now(), at: t('doplive-at'), go: !!document.getElementById('doplive-go'), rx: t('doplive-rx'), rxd: shift('doplive-rx'),
+               tx: t('doplive-tx'), txd: shift('doplive-tx'), up: document.getElementById('dopup').value,
+               rr: gt.rangeRateMs(gt.D.track, ms), el: s ? s.el : null, C: gt.C_KMS, MASK: gt.MASK,
+               sel: (() => { const o = document.querySelector('#dopsel option:checked'); return o && o.value !== 'c' ? +o.value : null; })(),
+               playing: document.getElementById('tpplay').getAttribute('aria-label') === 'Pause' };
+    });
+    /* the line's figure against the law, at its own instant: within half a hertz, the printed figure's rounding */
+    const law = (L, f) => f * (1 - L.rr / L.C);
+    const lawUp = (L, f) => f / (1 - L.rr / L.C);
+    const near = (shown, want) => shown !== null && Math.abs(shown - want) <= 0.5 + 1e-6;
+
+    const mid = await page.evaluate(() => {
+      const D = window.__gt.D, t0 = D.start.getTime(), st = D.step * 1000;
+      const p = D.passes.find(q => q.t0ms > t0 + st && q.t1ms < D.end.getTime() - st) || D.passes[0];
+      const k = Math.round((p.t0ms + 0.3 * (p.t1ms - p.t0ms) - t0) / st);
+      const r = document.getElementById('time');
+      r.value = String(k);
+      r.dispatchEvent(new Event('input', { bubbles: true }));
+      return { ms: t0 + k * st, aos: p.aos.toISOString() };
+    });
+    await page.waitForTimeout(400);
+    let L = await lineNow();
+    const iso = ms => new Date(ms).toISOString();
+    const whenZ = ms => iso(ms).slice(5, 10) + ' ' + iso(ms).slice(11, 19) + 'Z';
+    chk('scrubbed 30 % into the pass from ' + mid.aos + ', the line is for the clock\'s instant and says so',
+        L.ms === mid.ms && L.at === 'Tune at sim time ' + whenZ(mid.ms) && L.go && !L.playing,
+        JSON.stringify({ at: L.at, ms: iso(L.ms), go: L.go }));
+    chk('...and the spacecraft is above the mask there, so the line does not say it is below', L.el >= L.MASK && !/below/.test(L.at), 'el ' + (L.el === null ? null : L.el.toFixed(1)) + '°');
+    if (L.sel !== null) {
+      chk('the frequency to receive on is the downlink chosen in the box, ' + (L.sel / 1e6).toFixed(3) + ' MHz, times (1 - rr/c), to the hertz',
+          near(HZ(L.rx), law(L, L.sel)), L.rx + ' vs ' + law(L, L.sel).toFixed(2) + ' Hz  (rr ' + L.rr.toFixed(4) + ' km/s)');
+    } else chk('the spacecraft on screen has a downlink chosen from the table to check the line against', false, 'no #dopsel selection');
+
+    /* a frequency typed into the box: the line follows the store, not the table */
+    const F = await page.evaluate(() => {
+      const i = document.getElementById('dopfreq');
+      i.value = '437.1'; i.dispatchEvent(new Event('change', { bubbles: true }));
+      return parseFloat('437.1') * 1e6;
+    });
+    await page.waitForTimeout(300);
+    L = await lineNow();
+    chk('typed 437.100 MHz, the line receives on f (1 - rr/c) with f the typed frequency, to the hertz',
+        near(HZ(L.rx), law(L, F)), L.rx + ' vs ' + law(L, F).toFixed(2) + ' Hz');
+    chk('...the range rate there is large enough for that to mean something (|rr| > 1 km/s, a shift of more than 1.4 kHz)',
+        Math.abs(L.rr) > 1 && Math.abs(HZ(L.rx) - F) > 1400, 'rr ' + L.rr.toFixed(4) + ' km/s');
+    chk('...and the shift beside it is the figure less the downlink, to the hertz',
+        KHZ(L.rxd) !== null && Math.abs(KHZ(L.rxd) * 1000 - Math.round(law(L, F) - F)) <= 1, L.rxd);
+    const pausedBefore = { rx: L.rx, ms: L.ms };
+
+    /* an uplink: the frequency to send on is f / (1 - rr/c), which the same law brings back to exactly f on board */
+    const U = await page.evaluate(() => {
+      const i = document.getElementById('dopup');
+      i.value = '145.9'; i.dispatchEvent(new Event('change', { bubbles: true }));
+      return parseFloat('145.9') * 1e6;
+    });
+    await page.waitForTimeout(300);
+    L = await lineNow();
+    chk('an uplink of 145.900 MHz typed in: the line says to transmit on f / (1 - rr/c), to the hertz',
+        near(HZ(L.tx), lawUp(L, U)), L.tx + ' vs ' + lawUp(L, U).toFixed(2) + ' Hz');
+    chk('...which the spacecraft, ' + (L.rr < 0 ? 'approaching' : 'receding') + ', hears as 145.900 MHz (to the hertz), and its shift has the opposite sign to the downlink\'s',
+        Math.abs(HZ(L.tx) * (1 - L.rr / L.C) - U) <= 1 && Math.sign(KHZ(L.txd)) === -Math.sign(KHZ(L.rxd)), L.txd + ' against ' + L.rxd);
+
+    /* Paused, the line does no work. Its text cannot show that: worked out again at the same instant it would read the
+       same, and Svelte does not rewrite a text or an attribute that has not changed. So the work is counted: the line's
+       one way to the orbit is the engine's stateAt (lib/analysis/tune.ts), and the engine is a live object the test
+       surface hands out (__gt.eng), so stateAt is wrapped with a counter while the clock stands still (nothing else
+       calls it through the engine while the AR view is shut, and the counter is read before this suite asks it
+       anything), and then while the clock is moved one step, which must be counted at once: a counter that never moved
+       would prove nothing either. */
+    await page.evaluate(() => {
+      const eng = window.__gt.eng, own = eng.stateAt;
+      const w = window.__tuneWork = { calls: 0, undo: () => { eng.stateAt = own; } };
+      eng.stateAt = function (...a) { w.calls++; return own.apply(this, a); };
+    });
+    await page.waitForTimeout(700);
+    const pausedCalls = await page.evaluate(() => window.__tuneWork.calls);
+    L = await lineNow();
+    chk('paused for 0.7 s, the line asks the engine for nothing (no state is worked out while the clock stands still)', pausedCalls === 0, pausedCalls + ' calls');
+    chk('...and it stays on the clock\'s instant, with the same figure (it does not drift to the wall clock)', L.rx === pausedBefore.rx && L.ms === pausedBefore.ms, L.rx);
+    const stepped = await page.evaluate(async () => {
+      const w = window.__tuneWork, r = document.getElementById('time'), t0 = performance.now();
+      w.calls = 0;
+      r.value = String(+r.value + 1);
+      r.dispatchEvent(new Event('input', { bubbles: true }));
+      while (!w.calls && performance.now() - t0 < 2000) await new Promise(f => setTimeout(f, 10));
+      const out = { calls: w.calls, after: Math.round(performance.now() - t0), step: window.__gt.D.step * 1000 };
+      w.undo();
+      return out;
+    });
+    L = await lineNow();
+    chk('...and moved one step, it is worked out again at once, for the new instant',
+        stepped.calls >= 1 && stepped.after <= 200 && L.ms === pausedBefore.ms + stepped.step,
+        stepped.calls + ' call(s) within ' + stepped.after + ' ms; ' + iso(pausedBefore.ms) + ' -> ' + iso(L.ms));
+
+    /* Go live: real time, running, at the wall clock. The line then says "now" and is worked out for the wall clock. It is
+       pressed from the keyboard: the button goes as the line turns live, and the focus it had must stay in the line (on its
+       caption) rather than fall to the page. Chromium alone would send the next Tab on from where the button was (it keeps
+       a starting point for it), so it is where the focus is at once that is checked; the Tab after it is checked too. */
+    await page.focus('#doplive-go');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    L = await lineNow();
+    chk('Go live, pressed with Enter, runs the clock and the line says "now", with no Go live button',
+        /^Tune now( · below the \d+° mask)?$/.test(L.at) && !L.go && L.playing, L.at);
+    const focusAt = () => page.evaluate(() => { const a = document.activeElement; return a && a !== document.body ? (a.id || a.tagName) : 'body'; });
+    const fGo = await focusAt();
+    await page.keyboard.press('Tab');
+    const fTab = await focusAt();
+    chk('...the focus stays in the line, on the caption that says "now", and the next Tab goes on to the Uplink box',
+        fGo === 'doplive-at' && fTab === 'dopup', fGo + ', then ' + fTab);
+    chk('...its instant is the wall clock (within a second of the page\'s Date.now())', Math.abs(L.wall - L.ms) <= 1000, (L.wall - L.ms) + ' ms');
+    chk('...and it is right there too: receive f (1 - rr/c), transmit f / (1 - rr/c), to the hertz',
+        near(HZ(L.rx), law(L, F)) && near(HZ(L.tx), lawUp(L, U)), L.rx + ', ' + L.tx);
+    chk('...and it says "below the mask" exactly when the spacecraft is under it at that instant',
+        /below the 5° mask/.test(L.at) === (L.el < L.MASK), L.at + ' (el ' + L.el.toFixed(1) + '°)');
+    await page.waitForTimeout(600);
+    const L2 = await lineNow();
+    chk('...and, running, it moves with the clock', L2.ms > L.ms, (L2.ms - L.ms) + ' ms later');
+
+    /* the uplink is the spacecraft's it was typed for: another spacecraft has an empty box and no transmit line */
+    await H.pickExact(page, 'ISS (ZARYA)');
+    await page.waitForFunction(() => window.__gt.D.entry.name === 'ISS (ZARYA)', null, { timeout: 15000 });
+    await page.waitForTimeout(400);
+    L = await lineNow();
+    chk('another spacecraft: the uplink box is empty and there is no transmit line', L.up === '' && L.tx === null, JSON.stringify({ up: L.up, tx: L.tx }));
+  } else {
+    /* the old page has the range rate the checks above use, but no line under its downlink box (it is new in the rebuild) */
+    console.log('\n  the live line under the downlink box: not on the old page, which has none (CHANGES-FROM-LEGACY.md, L52); not checked');
+  }
 
   console.log('\npage errors: ' + (errs.length ? errs.join(' | ') : 'none'));
   console.log('\n' + (fails ? fails + ' CHECK(S) FAILED' : 'ALL CHECKS PASS'));

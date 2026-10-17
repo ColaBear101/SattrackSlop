@@ -11,8 +11,9 @@
  * 768x1024 (a tablet), 390x844 and 844x390 (a phone upright and sideways), 915x412 and 932x430 (the largest phones sideways: wider than 900 px),
  * 360x640 and 320x568 (the smallest). From the tablet down the context has a touch screen as its primary pointer, so (pointer: coarse) is true there.
  * Each size is visited once, in these states, and every sweep runs in each of them, in light and in dark:
- *   default . the Layers panel . the spacecraft picker . the observer form . the window popover . the Map tab . the answer rail (its three tabs,
- *   and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
+ *   default . the Layers panel . the spacecraft picker (and on a query whose rows are marked "decayed now") . the observer form . the window
+ *   popover . the Map tab . the answer rail (its three tabs,
+ *   the pass list's filter open, and folded, where it folds) . the orbit planner (a drawer, a sheet or a panel, by width)
  *
  *   1  The page does not scroll sideways (documentElement.scrollWidth <= the window's width, as the context was given it: in a mobile context innerWidth
  *      itself grows with a wide page), in every state.
@@ -31,7 +32,8 @@
  *      so a row of 40 px buttons with no gap between them is under this rule and over WCAG's. The exemptions are the criterion's own: a link inside a
  *      sentence, and a range slider the page does not restyle. The controls that rely on the 24 px + 8 px exception are listed, with their clearance.
  *   5  What the design promises: the header is one row of fixed height from 1100 px and the identity line is whole (the age chip, also under
- *      ?tle=embedded, with the longest names in the catalogue); under 720 px the header's name wraps and never widens the page; the globe and the
+ *      ?tle=embedded, with the longest names in the catalogue, and the watchlist's star beside the name, on its row, or on a phone after
+ *      the age chip); under 720 px the header's name wraps and never widens the page; the globe and the
  *      map are never slivers (200 x 150 for the globe, 200 x 100 for the 2:1 map); the answer rail is a column / a panel / a sheet and its peek says whether it is open; the AR opener
  *      exists on touch and only there; the Source tab does not widen its rail; with the planner open at 901 px and wider the rail is gone and the
  *      planner is inside the viewport; the skip links exist and are on screen when focused; the report's sub-navigation is sticky and does not
@@ -180,9 +182,28 @@ function statesFor(page, size, assertPlanner) {
   S.push({ id: 'default', overlay: null, enter: async () => {}, exit: async () => {} });
   S.push({ id: 'layers', overlay: POP('Scene layers'), enter: async () => { await page.click('#layerstoggle'); await shownSel('#layersMenu'); await raf2(page); }, exit: () => esc('#layersMenu') });
   S.push({ id: 'picker', overlay: POP('Choose a spacecraft'), enter: async () => { await page.click('button.title'); await shownSel('#satsearch'); await raf2(page); }, exit: () => esc('#satsearch') });
+  /* ...on a query whose rows include some SGP4 has down at NOW, marked "decayed now" beside their numbers, with the line under the list that
+     says what the mark is (CHANGES-FROM-LEGACY.md, L59): the mark is worked out in a chunk of its own when the list first opens.
+     "jilin-01 gaofen 3" lists six rows, three of them marked at NOW (JILIN-01 GAOFEN 3D 27, 3D 28 and 3G: long names beside the mark). */
+  S.push({ id: 'picker-decayed', overlay: POP('Choose a spacecraft'), enter: async () => {
+    await page.click('button.title'); await shownSel('#satsearch');
+    await page.fill('#satsearch', 'jilin-01 gaofen 3'); await shownSel('#satdecayed'); await raf2(page);
+  }, exit: () => esc('#satsearch') });
+  /* ...on a query only an other name matches (CHANGES-FROM-LEGACY.md, L61), the longest line of the kind beside a long name: "heo-09" lists
+     IRIDE-MS2-HEO-9, "matches HEO-09 (a.k.a Ornella Vanono)" (the table is a chunk of its own, asked for at the first query) */
+  S.push({ id: 'picker-alias', overlay: POP('Choose a spacecraft'), enter: async () => {
+    await page.click('button.title'); await shownSel('#satsearch');
+    await page.fill('#satsearch', 'heo-09'); await shownSel('#satlist .al'); await raf2(page);
+  }, exit: () => esc('#satsearch') });
   S.push({ id: 'observer', overlay: POP('Observer'), enter: async () => {
     await page.click('#siteopen'); await shownSel('#s-search');
     await page.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });   // the coordinate fields: the form at its tallest
+    /* ...with the site's grid square at its head and a four-character square in the list, with the button to the place search under it
+       (CHANGES-FROM-LEGACY.md, L51): typed and found on the page, no request. The field gives up the focus, so that Escape closes the form
+       (in the field, with the list open, Escape closes the list and stops there). */
+    await page.fill('#s-search', 'OK03'); await page.press('#s-search', 'Enter');
+    await shownSel('#s-gridplaces'); await shownSel('#s-grid');
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await raf2(page);
   }, exit: () => esc('#s-search') });
   S.push({ id: 'window', overlay: POP('Analysis window'), enter: async () => { await page.click('#winOpen'); await shownSel('#winStartIn'); await raf2(page); }, exit: () => esc('#winStartIn') });
@@ -194,6 +215,12 @@ function statesFor(page, size, assertPlanner) {
     S.push({ id, overlay: ov, enter: () => railTab(tab), exit: async () => {} });
   }
   S[S.length - 1].exit = async () => { await railTab('Passes'); await peekTo(rm !== 'sheet'); };
+  /* the pass list's filter, open (CHANGES-FROM-LEGACY.md, L56): a popover in the rail, whose panel is a chunk of its own asked for at the first
+     press; on a phone it opens inside the sheet, over the sheet's own rows, so both are overlays there. Escape shuts it and leaves the sheet open. */
+  const pf = POP('Filter the pass list');
+  S.push({ id: 'rail-filter', overlay: rm === 'sheet' ? ['.rail.sheet', pf] : pf,
+    enter: async () => { await railTab('Passes'); await page.click('#passfilterbtn'); await shownSel('#passfilter'); await raf2(page); },
+    exit: async () => { await esc('#passfilter'); await peekTo(rm !== 'sheet'); } });
   if (rm === 'panel') S.push({ id: 'rail-folded', overlay: null, enter: () => peekTo(false), exit: () => peekTo(true) });
   S.push({ id: 'planner-' + pm, overlay: pm === 'sheet' ? '#planner' : null,
     enter: async () => {
@@ -475,6 +502,11 @@ const HEADER = () => {
   const lh = parseFloat(getComputedStyle(nm).lineHeight) || parseFloat(getComputedStyle(nm).fontSize) * 1.15;
   o.lines = Math.round(R(nm).h / lh);
   o.titleCut = title.scrollWidth - title.clientWidth;
+  /* the watchlist's star (CHANGES-FROM-LEGACY.md, L60), the one of its two that is displayed: beside the name from 720 px (the title gives
+     way to it), after the age chip on a phone; and how many are displayed (one) */
+  const stars = [...bar.querySelectorAll('.star')].filter(e => window.__L.shown(e));
+  o.star = stars.length ? Object.assign(R(stars[0]), { inIds: !!stars[0].closest('.ids') }) : null;
+  o.stars = stars.length;
   if (ids && chip) {
     o.ids = R(ids); o.chip = R(chip); o.idsClip = ids.scrollWidth - ids.clientWidth;
     const cr = document.createRange(); cr.selectNodeContents(txt); const tr = cr.getBoundingClientRect();
@@ -516,12 +548,19 @@ async function headerChecks(browser, srv, size) {
       let ok = chipWhole && !h.out.length && h.page <= 0 && h.titleCut <= 0 && h.name.r <= h.tools.l + 0.5 + (phone ? 1e9 : 0);
       if (wide) ok = ok && Math.abs(h.barH - h.barVar) < 0.5 && h.title.r <= h.tools.l + 0.5;
       if (phone) ok = ok && h.title.r <= h.theme.l + 0.5 && h.name.r <= size.w;
+      /* ...and one star: from 720 px after the name, on its row, clear of the tools beside the row; on a phone after the age chip, inside
+         the line of ids */
+      const mid = h.star ? (h.star.t + h.star.b) / 2 : 0;
+      const starOk = h.stars === 1 && (phone
+        ? h.star.inIds && !!h.chip && h.star.l >= h.chip.r - 0.5 && h.star.r <= h.ids.r + 0.5 && mid > h.chip.t && mid < h.chip.b
+        : !h.star.inIds && h.star.l >= h.title.r - 0.5 && h.star.r <= h.id.r + 0.5 && h.star.r <= h.tools.l + 0.5 && mid > h.title.t && mid < h.title.b);
+      ok = ok && starOk;
       if (!ok) okAll = false;
-      rows.push(nm + ' (' + names[i].norad + '): header ' + Math.round(h.barH) + ' px, name ' + h.lines + ' line' + (h.lines === 1 ? '' : 's') + ' ' + Math.round(h.name.l) + '..' + Math.round(h.name.r) + ', ' + (phone ? 'toggle at ' + Math.round(h.theme.l) : 'tools at ' + Math.round(h.tools.l)) + (h.chip ? ', age chip ' + (chipWhole ? 'whole' : 'CUT') : ', no age chip') + (h.page > 0 ? ', page ' + h.page + ' px too wide' : '') + (h.out.length ? ', sticks out: ' + h.out.join(', ') : '') + (h.titleCut > 0 ? ', title cut by ' + h.titleCut + ' px' : ''));
+      rows.push(nm + ' (' + names[i].norad + '): header ' + Math.round(h.barH) + ' px, name ' + h.lines + ' line' + (h.lines === 1 ? '' : 's') + ' ' + Math.round(h.name.l) + '..' + Math.round(h.name.r) + ', ' + (phone ? 'toggle at ' + Math.round(h.theme.l) : 'tools at ' + Math.round(h.tools.l)) + (h.chip ? ', age chip ' + (chipWhole ? 'whole' : 'CUT') : ', no age chip') + (h.page > 0 ? ', page ' + h.page + ' px too wide' : '') + (h.out.length ? ', sticks out: ' + h.out.join(', ') : '') + (h.titleCut > 0 ? ', title cut by ' + h.titleCut + ' px' : '') + (h.star ? ', star ' + Math.round(h.star.l) + '..' + Math.round(h.star.r) + (starOk ? '' : ' OUT OF PLACE') : ', NO STAR'));
     }
     if (!okAll) await shot(page, size, 'light', 'header-longname', 'header', 0);
     await ctx.close();
-    chk(5, size.id + ': ' + (wide ? 'the header stays one row of fixed height and the identity line whole' : phone ? 'the header\'s name wraps in its own column and never widens the page' : 'the header wraps its rows and never widens the page') + ' with the longest names in the catalogue',
+    chk(5, size.id + ': ' + (wide ? 'the header stays one row of fixed height and the identity line whole' : phone ? 'the header\'s name wraps in its own column and never widens the page' : 'the header wraps its rows and never widens the page') + ' with the longest names in the catalogue, and one watchlist star, ' + (phone ? 'after the age chip' : 'beside the name and clear of the tools'),
         okAll, rows.join(' | '));
   }
 }

@@ -3,6 +3,10 @@
   import { custom } from '../../state/custom.svelte';
   import { isCustom } from '../../lib/planner/custom';
   import { rank, SHOWN_MAX } from '../../lib/catalogue/rank';
+  import { watchedFirst } from '../../lib/catalogue/watch';
+  import { watch } from '../../state/watch.svelte';
+  import { WATCHED } from '../../lib/text/watch';
+  import { loadAliases } from '../../lib/data/aliases';
   import { session } from '../planner/session.svelte';
   import Popover from '../ui/Popover.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -15,21 +19,51 @@
   let query = $state('');
   let active = $state(0);
 
-  const hits = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
+  /* The watched spacecraft (CHANGES-FROM-LEGACY.md, L60), by their catalogue index in the order they were starred: on the empty query
+     they lead the list, in a group of their own, and rank()'s rows follow without them. What is typed is answered in rank()'s order.
+     The catalogue is read so that the indices are taken again once it has come (catIndex's map is not itself reactive). */
+  const lead = $derived(query.trim() || !app.catalogue.length ? [] : watch.list.map(n => app.catIndex({ satnum: n })).filter(i => i >= 0));
+  /* The other names (CHANGES-FROM-LEGACY.md, L61): SatNOGS DB's for the catalogue's spacecraft (RS-44 for BREEZE-KM R/B), in a chunk of
+     their own asked for the first time something is typed. What rank() did not list that one of them matches comes after rank()'s rows,
+     and its option says which name matched. A wrapper: rank() is not touched, and only the catalogue is searched this way. The finder's
+     chunk and the table's are asked for together, one round trip. Rows that come in after the first query has been answered go before
+     the Plan row: if that row was the one chosen, it stays chosen. `alDone`: the table has come, or will not. */
+  let al = $state.raw<import('../../lib/catalogue/alias').AliasFinder | null>(null);
+  let alDone = $state(false);
+  let alp: Promise<void> | null = null;
+  const aliases = () => (alp ??= Promise.all([import('../../lib/catalogue/alias'), loadAliases()]).then(([m, d]) => {
+    const keep = planOn && shown.length > 0 && active === shown.length;
+    al = m.aliasFinder(d.a);
+    alDone = true;
+    if (keep) active = shown.length;
+  }, () => { alDone = true; }));
+  const ranked = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
+  const said = $derived(al && query.trim() ? al(app.catalogue, query, ranked) : null);
+  const hits = $derived(watchedFirst(said?.size ? ranked.concat([...said.keys()]) : ranked, lead));
   const shown = $derived(hits.slice(0, SHOWN_MAX));
   const more = $derived(hits.length - shown.length);
   /* the row in the list that is on screen: the entry may carry a live set's lines, so a spacecraft is its number, an orbit its object */
   const here = $derived.by(() => { void app.rev; void custom.rev; return custom.indexOf(app.entry); });
-  /* Two group rows, on the empty query only and only when there is something of the reader's to separate from the catalogue. They are
-     presentation: not options, not in `shown`, so every index below is still a position in it. */
-  const groups = $derived(!query.trim() && custom.count > 0);
+  /* Group rows, on the empty query only and only when there is something of the reader's to separate from the catalogue: what they
+     watch, their orbits, then the catalogue. They are presentation: not options, not in `shown`, so every index below is still a
+     position in it. The empty query lists the watched, then every orbit of the reader's, then the catalogue, so a group starts at a
+     count of rows. */
+  const groups = $derived(!query.trim() && custom.count + lead.length > 0);
+  const head = (k: number): string => !groups ? '' : k === 0 && lead.length ? WATCHED : k === lead.length && custom.count ? 'Your orbits'
+    : k === lead.length + custom.count ? 'Catalogue' : '';
   /* Only a planner that is up may be offered: not before it has been built, not after a failed build, and not in the snapshot, where the
      pill says why instead. */
   const planOn = $derived(session.enabled && !PINNED);
   const last = $derived(shown.length + (planOn ? 1 : 0) - 1);
+  /* The first query, nothing listed, and the other names still on their way: not yet answered. The list does not say that nothing
+     matches, and the Plan row is not offered as the choice, until they have come (Enter waits for them, below). */
+  const wait = $derived(!alDone && !shown.length && !!query.trim());
+  /* What SGP4 has down at this moment is marked "decayed now" (CHANGES-FROM-LEGACY.md, L59), in words the list carries: worked out in a
+     chunk of its own the first time the list opens, and never in the snapshot (?tle=embedded). A mark only: no row is taken away. */
+  let dk = $state.raw<typeof import('../../state/decayed.svelte')['decayed'] | null>(null);
 
-  $effect(() => { if (open) { query = ''; active = 0; } });
-  $effect(() => { query; active = 0; });
+  $effect(() => { if (open) { query = ''; active = 0; if (!PINNED) import('../../state/decayed.svelte').then(m => { dk = m.decayed.ensure(app.catalogue); }, () => {}); } });
+  $effect(() => { active = 0; if (query.trim()) void aliases(); });
 
   /* Closed whether or not it loaded: the title names the spacecraft on screen, and a refusal is said in the note under the bar
      (the old combobox put the current name back in its field; here there is no field to put it in). */
@@ -53,14 +87,22 @@
     /* Tab leaves the field and the list with it: a list left open behind the next stop is a list nobody is using */
     else if (e.key === 'Tab') open = false;
     else if (e.key === 'Enter') {
-      if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
+      /* nothing listed while the other names are still on their way (the first query): Enter waits for them, then picks the first row
+         they bring, or opens the planner as it would have; but only for the query it was pressed on, in the list it was pressed in. If
+         the reader has typed on, or closed the list, it does nothing: the next Enter decides. */
+      if (wait) {
+        e.preventDefault();
+        const q = query;
+        void aliases().then(() => { if (!open || query !== q) return; if (shown.length) choose(shown[0]!); else if (planOn) plan(); });
+      }
+      else if (active < shown.length && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]!); }
       else if (planOn && active === shown.length) { e.preventDefault(); plan(); }
       else if (shown.length) { e.preventDefault(); choose(shown[0]!); }
       else if (planOn && query.trim()) { e.preventDefault(); plan(); }
     }
   }
 
-  const activeId = $derived(planOn && active === shown.length ? 'soptplan' : shown.length ? 'sopt' + active : undefined);
+  const activeId = $derived(wait ? undefined : planOn && active === shown.length ? 'soptplan' : shown.length ? 'sopt' + active : undefined);
   $effect(() => { document.getElementById(activeId ?? '')?.scrollIntoView({ block: 'nearest' }); });
 
   /* "/" focuses the picker from anywhere that is not a text field */
@@ -99,25 +141,26 @@
       {#each shown as idx, k (idx)}
         {@const c = custom.entryAt(idx)!}
         {@const mine = isCustom(c)}
-        {#if groups && mine && !isCustom(custom.entryAt(shown[k - 1]!))}<li class="grp" role="presentation">Your orbits</li>{/if}
-        {#if groups && !mine && (k === 0 || isCustom(custom.entryAt(shown[k - 1]!)))}<li class="grp" role="presentation">Catalogue</li>{/if}
+        {@const g = head(k)}
+        {#if g}<li class="grp" role="presentation">{g}</li>{/if}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li role="option" id="sopt{k}" data-idx={idx} aria-selected={idx === here} class:on={k === active} class:cu={mine}
             onclick={() => choose(idx)} onpointermove={() => (active = k)}>
-          <span class="nm">{c.name}</span>{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
+          <span class="nm">{c.name}</span>{#if said?.has(idx)}<span class="al">{said.get(idx)}</span>{/if}{#if dk?.has(idx)}<span class="dk">{dk.label}</span>{/if}{#if mine}<span class="id tag">custom</span>{:else}<span class="id mono">{c.satnum}</span>{/if}
         </li>
       {/each}
       <!-- One option after the real ones: the arrow keys reach it, Enter or a press opens the planner. It is a constant string; nothing typed
            reaches it. The press does not move focus (the list would take it back when it closes), the planner takes it. -->
       {#if planOn}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <li role="option" id="soptplan" class="plan" class:on={active === shown.length} data-plan="1" aria-selected="false"
+        <li role="option" id="soptplan" class="plan" class:on={!wait && active === shown.length} data-plan="1" aria-selected="false"
             onmousedown={e => e.preventDefault()} onclick={plan} onpointermove={() => (active = shown.length)}>+ Plan a custom orbit…</li>
       {/if}
     </ul>
   {/if}
-  {#if !shown.length}<p class="note">Nothing in the catalogue matches that.</p>{/if}
+  {#if !shown.length && !wait}<p class="note">Nothing in the catalogue matches that.</p>{/if}
   {#if more > 0}<p class="note">{more.toLocaleString('en-US')} more match. Keep typing to narrow them.</p>{/if}
+  {#if dk?.any(shown)}<p id="satdecayed" class="dkn">{dk.note}</p>{/if}
   <p id="satcount" class="count mono">{app.catalogue.length.toLocaleString('en-US')}{custom.count ? ' + ' + custom.count + ' of yours' : ' spacecraft'}</p>
 </Popover>
 
@@ -157,6 +200,10 @@
   li.plan { margin-top: var(--space-1); border-top: 1px solid var(--rule); border-radius: 0 0 var(--r-2) var(--r-2); padding-top: var(--space-3); justify-content: flex-start; }
   li[aria-selected='true'] .nm { font-weight: 600; }
   .id { color: var(--muted); font-size: var(--fs-0); }
-  .note { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
+  /* "decayed now" (L59): plain text in the option, in the re-entry notice's colour, by the number; and the line that says what it means */
+  li .dk { flex: none; margin-left: auto; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--r-pill); color: var(--bad); font-size: var(--fs-0); white-space: nowrap; }
+  /* the other name a search matched (L61): plain text in the option, after the name, in the muted ink of the number */
+  li .al { margin-right: auto; color: var(--muted); font-size: var(--fs-0); overflow-wrap: anywhere; }
+  .note, .dkn { padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
   .count { margin: var(--space-2) 0 0; padding: 0 var(--space-3); color: var(--muted); font-size: var(--fs-0); }
 </style>

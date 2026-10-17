@@ -99,8 +99,13 @@ export interface Engine {
   sample(track: Track, start: Date, k: number, step: number): Sample | null;
   sampleMs(track: Track, ms: number): Sample | null;
   fix(track: Track, ms: number): Fix | null;
+  /** The sub-satellite point and the look from the observer, from a state fix() gave (sampleMs is fix, then this). */
+  subPoint(track: Track, s: Fix): Sample;
   elevationAt(track: Track, ms: number): number;
   stateAt(track: Track, ms: number): Look | null;
+  /** Range rate from a state fix() gave: km/s, + receding, body-fixed; null for a body that declares no rotation
+   *  (rangeRateMs is fix, then this). */
+  rangeRateAt(track: Track, s: Fix): number | null;
   rangeRateMs(track: Track, ms: number): number | null;
   dopplerHz(freqHz: number | null, rrKms: number | null): number | null;
   findPasses(track: Track, t0: number, t1: number, stepS: number): Pass[];

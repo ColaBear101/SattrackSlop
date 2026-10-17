@@ -16,14 +16,15 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 
 ## What you can do
 
-- **Search 2,158 spacecraft** by name or NORAD number and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot.
+- **Search 2,158 spacecraft** by name (its words in any order), NORAD number, or another name it goes by (AO-7, SO-50, RS-44), and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot. Star the ones you follow, and they head the list when you open the search.
+- **Read the passes by your own day.** They come under each date at your place, with that day's sunrise, sunset and hours of darkness; the passes already flown turn grey, and while the selected pass is flown, its sky plot shows where the spacecraft is on it. *Filter* can keep only the passes that peak high enough, that the naked eye can see, or that rise in the hours you choose.
 - **Watch it move.** A 3D globe and a flat map, a clock you can run up to 3,600× or scrub, trails, the footprint on the ground, and a camera that can ride on the satellite or look from your site.
-- **Set your own place.** Bangkok is the default; search for a town, use your location, or type coordinates. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates, the nearest hour of solar time unless you enter an offset).
-- **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar; the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
+- **Set your own place.** Bangkok is the default; search for a town, use your location, type coordinates, or type a Maidenhead grid square such as OK03gs, which the page reads itself and sends nowhere. The form names your site's own square too. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates or a grid square, the nearest hour of solar time unless you enter an offset).
+- **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar, every pass at once or the selected one alone (on a phone, offered to the share sheet); the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
-- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why.
+- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down.
 - **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
-- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, and a naked-eye verdict for each pass.
+- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
 
 <p align="center">
   <img src="docs/img/console-dark-map.jpg" alt="Dark theme, flat map: the ISS ground track over a day with Bangkok's visibility circle" width="49%">
@@ -78,6 +79,10 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
 
+A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
+
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the spacecraft you watch, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
 ## Where things are
@@ -97,7 +102,7 @@ The camera, motion sensors and your location are used only when you tap the butt
 The long account of the project (the orbit maths worked through for the assignment, the decay model, the planner and the Professor, the AR view, the Moon pages, how every check works) is below, folded away. It was written with AI assistance.
 
 <details>
-<summary><b>Open the full technical README</b> <i>(about 2,700 lines)</i></summary>
+<summary><b>Open the full technical README</b> <i>(about 3,600 lines)</i></summary>
 
 ### Ground Track Console
 
@@ -143,7 +148,8 @@ pages. What they fetch, and what happens without it:
 - **Only when asked:** an object's element-set history for the decay forecast, from the page's own
   cache API, `/api/history/<n>`, if one answers as itself (see **Staying current**), and
   otherwise from CelesTrak's `graph-orbit-data.php`; a place-name search from Open-Meteo's
-  geocoder; and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
+  geocoder (a Maidenhead grid square typed into the same box is read on the page and asks
+  nobody); and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
   (the drawn coastlines otherwise). The default globe asks nobody for anything: the Blue Marble
   and the city lights (`citylights-2048.jpg`, the VIIRS 2012 night-lights mosaic, saved once from
   GIBS on 2026-10-08) ship with the page. On a phone or tablet, the AR view asks the device, not a
@@ -185,13 +191,15 @@ src/                the Earth console's source: Svelte 5 + TypeScript
       sun.ts              where the Sun is, and where it is overhead (from the old
                           page's inline script, not from public/core/)
     analysis/           elements, ground track, passes, the optics, the Doppler shift
-    catalogue/          reading the catalogue; ranking what the picker offers
+    catalogue/          reading the catalogue; ranking what the picker offers; its other names; the
+                        watchlist
     text/               the sentences the page builds from its numbers, and the glossary, as data
     net/                the element sets (the page's own cache API first, then CelesTrak and its
                         mirror, as the old page asked them) and the decay histories (the API,
                         then CelesTrak)
-    export/             the CSV and the calendar
-    data/               the downlink table's lookups (the table is data/transmitters.json)
+    export/             the CSV and the calendar, and one pass's calendar on its own
+    data/               the downlink table's lookups (the table is data/transmitters.json), and the
+                        loader of the other names (data/aliases.json)
     shims/              the entries scripts/build-shims.mjs bundles for the Node suites
     planner/            the planner, the Professor and the decay model, moved from the old page's
                         files with their arithmetic untouched
@@ -214,10 +222,13 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                           radar view
       snap.ts             Snap: one picture of what the screen shows, made when the
                           reader presses the button and handed to the share sheet or
-                          to a download
+                          to a download (share.ts, which the one-pass calendar file
+                          uses too)
       arview.ts           the AR view and the radar view: the motion sensors, the rear
                           camera (not in the radar view), and the sky drawn over the
                           picture
+    share.ts            handing a file the page made to the reader: the share sheet
+                        where the browser takes it, a download where it does not
     places.ts           finding the observer: place search, this device, timezones
     observer.ts         where the observer is, and how that is remembered
     gt.ts               the DOM-free half of the test surface, which the gate measures
@@ -259,7 +270,8 @@ server/, shared/    the cache API (Elysia): GET /api/health, /api/tle/:norad and
                     /api/history/:norad; and the code the browser and the server share
 serve.ts            runs the API on a port (3001 unless PORT says otherwise)
 data/               catalogue.txt (+ .meta.json): the 2,158 element sets; world.json: the
-                    coastlines; transmitters.json: downlink frequencies; WMM.COF: NOAA's
+                    coastlines; transmitters.json: downlink frequencies; aliases.json: the
+                    spacecraft's other names (both from SatNOGS DB); WMM.COF: NOAA's
                     magnetic model
 
 scripts/            extract-data (the data files, from what the old page carried inline),
@@ -359,8 +371,51 @@ epoch 2026-09-12 07:29Z, embedded").
 `verification/suites/verify-refresh.js` checks it, with a newer set on offer that must not be asked for.
 
 The picker is the page's title, at the top left: press the name and it opens a search over **2,158
-spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. Everything on the page
-recomputes on selection.
+spacecraft** by name or NORAD ID — type `knack`, `noaa`, `iss`, or `25544`. A name or number that
+starts with what was typed comes first, then one that merely contains it, as on the old page. After
+them come the ones found word by word: each word typed, with everything but letters and digits taken
+out, is looked for in the name taken apart the same way, so `iss zarya` finds ISS (ZARYA), `ao91`
+AO-91 and `knacksat 2` KNACKSAT-2; a word of digits may also be the whole NORAD number without its
+leading zeros, so `007530` and `oscar 7530` find OSCAR 7 (07530), and `landsat 9` does not list
+LANDSAT 8 for the 9 in its 39084. A letter or digit of any script counts, and full-width letters
+read as the plain ones: a Thai or Cyrillic word must be in the name like any other, so `ดาวเทียม 2`
+finds nothing in the catalogue, whose names are all in Latin letters, and Enter opens the planner
+with it as the orbit's name, while your own orbit ดาวเทียม-ไทย is found by `ดาวเทียม ไทย`. These
+come in the same order as the rest: a name that starts with the first word before one that only
+holds the words, so `iss.` lists the two ISS modules before AAC-AIS-SAT-1. Last come the ones
+found by **another name**: many spacecraft are known by a name the catalogue does not carry, an
+AMSAT designator or a mission's own (AO-7 is listed as OSCAR 7, SO-50 as SAUDISAT 1C, FO-29 as
+JAS 2, and RS-44 under the rocket stage it rode on, BREEZE-KM R/B), and the picker also looks in
+the names SatNOGS DB keeps for them, so `rs44`, `rs-44` or `RS 44` finds BREEZE-KM R/B and `so50`
+SAUDISAT 1C. There, each word typed must begin a word of the name (`iss` is not looked for inside
+*Mission*), and a name that is the whole query comes first, so `ao7` lists OSCAR 7 (AO-7) before
+FUNCUBE 1 (AO-73). The row says which name matched, *matches RS-44*, in the option, after the
+catalogue's name. The names are a file of the page's own (see *Other names, from the same
+database*), asked for the first time something is typed, and nobody else is asked anything. Until
+they have come, a first query nothing else matches is not yet answered: the list does not say that
+nothing matches, and does not offer the Plan row as the choice. Enter on it waits for them, and then
+acts on that query only: if you have typed on, or closed the list, it does nothing, and your next
+Enter decides. Rows they bring after a query has been answered come before the Plan row, which
+stays chosen if you had chosen it. Your own orbits are found by name,
+never by their placeholder number, and never by another name. A spacecraft
+SGP4 has down at the clock's instant when the list is opened carries a mark beside its number,
+*decayed now*; it is still listed, and still picked like any other (see *When the object is no
+longer there*).
+Everything on the page recomputes on selection.
+
+The star beside the name (on a phone, at the end of the line under it, after the age chip) puts
+the spacecraft on screen on your **watchlist**: press it (from the name, Tab reaches it, and Space
+or Enter presses it), and the picker, opened with nothing typed, lists the spacecraft you watch
+first, under *Watched*, in
+the order you starred them, then your own orbits, then the catalogue without them. What you type
+is still answered in the search's own order, with no group. The star is a toggle button named
+*Watch*, so a screen reader says whether it is pressed; pressed again, it takes the spacecraft off.
+Up to 50 are kept, and a press on a 51st puts nothing on and says so under the bar. Your own
+orbits have no NORAD number, so they have no star. The list is kept in your browser under
+`gt.watch`, as the NORAD numbers, written when you press the star and at no other time; the last
+one taken off leaves nothing stored. Another tab of the page follows a change at once (the browser
+tells it). Nothing is fetched for a watched spacecraft: the list only orders the picker. The
+press is a chunk of its own, asked for at the first one; reading the list is in the entry.
 
 #### (a) Orbital elements at epoch
 
@@ -498,6 +553,92 @@ window end rather than that it sets. After the window's last pass the countdown 
 beyond the window for the real next pass. It used to count down to the window's first pass as if
 the ground track repeated every window, which in the case that found it was 66.6 minutes late and
 promised 74.2° for a 19.7° pass.
+
+In the rail the pass list is grouped by the observer's own calendar day of each pass's AOS, under
+a header that stays at the top of the rail (or of a phone's sheet) while that day's passes scroll
+under it. The rows still lead with the UTC date, so the header says it is the local date and names
+the offset: "Thu 15 Oct local date, UTC+7". Each time under it is at the offset in force at that
+time, so on the day a site's clock changes the header names both, with the wall time the second
+starts: "UTC+0, then UTC+1 from 02:00" in London on 29 March. Where summer time starts at midnight,
+as at Santiago, Havana or Beirut, the wall clock never reads 00:00 that night, and the day starts at
+the change. Under it is the Sun at the site that day, "Dark until
+05:47 · Sunrise 06:09 · Sunset 17:59 · Dark from 18:20" for Bangkok in mid-October. Dark means the
+Sun 6° or more below the horizon, the end of civil twilight, which is where the naked-eye test below
+calls the sky dark: a pass outside those hours is radio only whatever the spacecraft does, which is
+most of any list, and the header shows why at a glance. Near the poles it says "Sun up all day",
+"Sun down all day", "Dark all day" or "Never dark" rather than leave a gap. The times come from the
+page's own Sun, the almanac model the shadow test uses: its elevation is read every 10 minutes and
+each crossing of 0.833° below the horizon (sunrise and sunset, which allow for refraction and the
+Sun's half-width) or of 6° below is bisected to a second. The Sun's highest and lowest points of the
+day are found as well, so a Sun that dips through the horizon and back between two readings, as it
+does at Svalbard in the days the midnight sun ends, is not missed. They are shown to the minute, for
+a level horizon: against the NOAA Solar Calculator's equations they agree to within 11 s at Bangkok
+and at Svalbard (78° N) on every date tested (`tests/lib/sun-times.test.ts` holds a table of NOAA's
+values, and `verify-timeline.js` checks each day of a week against
+`verification/reference/noaa-sun.js`, the same equations). The code and its words are a chunk of
+their own, 1.5 KB gzipped, fetched once there are passes.
+
+With the clock inside the window, the rows of passes already flown at the clock's instant are grey
+and the pass in view at it has its number ringed, and a line under the list says what they mean.
+The clock is the transport's, which can be scrubbed, sped up or paused, so unless it is running at
+real time within 5 s of the wall clock (the live Doppler line's rule) the line says the grey rows
+were "flown before the clock's instant" and "The clock is on sim time, not now." A paused clock is
+never now, however close to it it stopped, since nothing repaints a paused page: the line turns at
+the pause. A screen reader hears the same words on each grey or ringed row, as its description,
+since the grey and the ring are colour and shape. A row given the focus under a day's header is
+scrolled out from under it. Nothing in a row's own text, label or title changes, so the
+old page's words are still compared as they were.
+
+The list can be filtered. *Filter*, over it, opens a panel with three tests, each off until it is
+chosen: the lowest peak shown (any, 10°, 20°, 30° or 45°, compared as the row shows the peak, to the
+whole degree, so a row that reads 30° is kept by 30°), only the passes the naked eye can see
+(the verdict the facts under the sky plot give the whole pass, "Naked eye: yes": fully sunlit
+against a dark sky at magnitude +6 or brighter; a pass bright enough only in partial shadow is left
+out), and only the passes that rise between two times of the site's day, or outside them. The hour
+is the AOS at the site's offset at that instant, so it follows a change of summer time; the offset
+printed beside the time fields names both when the site's clock changes inside the window ("UTC+1,
+then UTC+0 from 10-25"). A span that ends earlier than it starts runs past midnight: 18:00 to 06:00
+is the night. A time field left empty shows the time still in force once it is left. It filters the
+list and nothing else. The mask stays at 5° and the analysis is the same one: the minutes in view,
+the count, the countdown, the passes marked on the timeline, the report's table and the exports
+still count every pass, and a row shown keeps its number and selects the same pass. The line under
+the list speaks only of the grey and ringed rows that are shown. A line under the button says how
+many passes are shown and by what ("Showing 6 of 25 passes: peaking at 30° or more."), and says so
+when the selected pass is one of those hidden, whose sky plot and facts stay on screen. The choice
+is kept in the browser, written only when it is changed; *Show every pass* removes it. On a phone
+the panel opens inside the answer sheet, and Escape shuts the panel first and the sheet only at the
+next press. The bar is a chunk of its own, 2.2 KB gzipped, fetched once there are passes, and the
+panel another, 1.8 KB, fetched at the first press. `tests/lib/pass-filter.test.ts` holds the rows
+kept to the peaks the rows show and the passes' own verdicts and hours, and `verify-timeline.js`
+checks the rows on the page against the analysis for each test, by their own index.
+
+The selected pass is drawn on a sky plot, in the rail under the pass list and beside the pass table
+in the report: a polar plot, north up, the zenith at the centre and the horizon at the rim, with the
+arc from AOS to LOS and a dot at its highest point. While the clock is inside that pass the plot
+also shows where the spacecraft is, a dot in ink ringed as the map rings it, and draws the stretch
+already flown faint, as the AR view's radar does. Press a pass in the list, which stops the clock at
+its culmination, or scrub into one, and the dot is there; play the clock and it moves along the
+arc. The dot is where the engine puts the spacecraft at the clock's instant: propagated to that
+instant, as the "Elevation at … now" figure is, not read off the stored samples, which near the top
+of a pass are degrees apart. The flown stretch is counted in the arc's 91 samples, so it grows a
+ninetieth of the pass at a time, about every 5 s for a seven-minute pass at real time. Outside the
+pass the plot is the old page's, pixel for pixel. Nothing is drawn that does not change: the plot is
+drawn once and kept, and each tick of the clock (ten a second while it plays) lays it down again and
+draws only the dot; it is drawn afresh only when the flown stretch grows by a sample. A plot out of
+view, the report's copy below the fold or the rail's in a closed sheet or behind another tab, is not
+drawn until it comes into view. The clock publishes no ticks while it is paused, so nothing is drawn
+again while it stays paused: a paused plot is drawn once, when a pass is chosen or the clock is
+moved, and again only when it comes into view or changes size or colours. The code is a
+chunk of its own, under 1 KB gzipped, which the page fetches the first time the clock is inside the
+pass on screen. `verify-timeline.js` stops the clock 60 % of the way through a pass and reads the
+canvas: the dot's pixel in ink where the plot's projection puts the engine's azimuth and elevation,
+the flown stretch no longer in the arc's colour, the stretch still to come unchanged, and no other
+pixel different from the plot outside the pass, which it is again once the clock leaves (a pixel at
+the edge of the stretch still to come may be up to 5 levels off: that stretch is drawn as a path of
+its own, and its anti-aliasing can come out a level or three apart). It counts
+the drawing calls too: none in a second paused, and playing at real time one laid-down picture and
+one dot a tick, with the plot itself drawn only as the stretch grows and the report's copy, out of
+view, not drawn at all. The old page drew the arc alone.
 
 Geometry only — no refraction, terrain or link budget, and no daylight/eclipse condition (this is
 radio visibility, not naked-eye). Refraction is the largest unmodelled term: at 5° it is about
@@ -727,18 +868,64 @@ lands. The abbreviations in the header, over the globe, in the rail, in the sky 
 pass table carry their expansion as a tooltip, and the notes that lean on a term, the re-entry
 warning and the Professor's notes, link to its entry.
 
+Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 ·
+github.com/ColaBear101/SattrackSlop · Data: SatNOGS DB (element sets, transmitters, alternative
+names), CC BY-SA 4.0*, with links to the repository, to SatNOGS DB and to the data's licence. It
+names no licence for the page's code: its author has not licensed it for reuse, so there is no
+`LICENSE` file and `package.json` says `"license": "UNLICENSED"`, npm's word for that.
+The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
+`vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
+only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
+*The frequency is the one thing that cannot be derived* and *Other names, from the same database*.
+The old page said none of this.
+
+Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
+the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB or a service
+worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the saved site and the
+last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
+`gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
+read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
+filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"); and
+two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
+cached copy is used for three hours or twelve, but nothing removes an old one: it stays until that
+object's is fetched again or it is forgotten here, so the caches are also a list of the objects you
+looked at.
+The first press reads the store, writes nothing, and says what the second will
+forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
+places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
+be brought back.* The button then reads *Forget and reload*; Escape, the focus leaving it or a
+press anywhere else stands it down. Escape is heard wherever the focus is, since Safari and Firefox
+on macOS do not focus a button that is clicked. The second press has to be a press of its own: one
+that comes within 0.6 s of the first (the second click of a double-click, or a double tap) is
+ignored, and so are the repeats of a held Enter, so the first press's words are always on screen
+before anything goes. The second press removes every key in those four namespaces,
+and no other key the origin holds, and opens the page again, so that nothing held in memory from
+what was stored (the site, the orbits, the theme) outlives it. It opens the same address without
+`site` and `tab`: the first is the observer's position, which the page writes into the address
+itself, and a page opened with the second saves it as a choice at once. With nothing stored the
+press says so and arms nothing, and where the browser refuses site data it says there is nothing
+to forget. Two limits: a live visit keeps the element set it fetches for the spacecraft on screen,
+so the page that opens afterwards keeps one again as soon as it has fetched it (not under
+`?tle=embedded`, which fetches nothing); and another tab of the page that is still open keeps what
+it holds in memory, and stores it again when something is changed there.
+`tests/lib/forget.test.ts` scans the source for every key handed to `getItem`, `setItem` and
+`removeItem` and fails on one that `src/lib/forget.ts` does not cover, or on a key it lists that
+the code no longer uses; `verify-visitor.js` (group 10) shows that a double-click and a held Enter
+only arm the button, and forgets a store holding one key of every kind and one of somebody else's.
+The old page had no such button.
+
 `npm run layout` checks all of this on the production build, in light and in dark, at 1440×900 and
 1280×720, at 1100 and 1099 px wide (the one-row header's narrowest and the panel's widest), at
 1024×650, on a tablet, on a phone held upright and sideways, on the two largest phones held
 sideways, 915×412 and 932×430, and on the two smallest, 360×640 and 320×568, and in the states that
 change what is on screen: the Layers panel, the picker, the observer's form, the window popover, the
-Map tab, the answer rail's three tabs and the planner. It tests whether a button or a layer switch
-is covered with `elementFromPoint` at its centre, with the layers panel, or any panel that scrolls,
-scrolled to the control, with the page at its top, with the stage's foot at the foot of the screen,
-with the stage's top at the top, at the foot of the page and with each control brought to the
-middle of the screen, rather than by reading z-indices. The reasons for each difference from the
-old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3, L5, L17, L21, L26 and L35 are the ones
-this section describes).
+Map tab, the answer rail's three tabs, the pass list's filter open and the planner. It tests
+whether a button or a layer switch is covered with `elementFromPoint` at its centre, with the layers
+panel, or any panel that scrolls, scrolled to the control, with the page at its top, with the
+stage's foot at the foot of the screen, with the stage's top at the top, at the foot of the page
+and with each control brought to the middle of the screen, rather than by reading z-indices. The
+reasons for each difference from the old page's layout are in `CHANGES-FROM-LEGACY.md` (L1 to L3,
+L5, L17, L21, L26 and L35 are the ones this section describes).
 
 #### The sky through the phone
 
@@ -1873,8 +2060,10 @@ and the TLE is rebuilt on every read. At most **12** orbits and 24 code points o
 thirteenth Add is refused and nothing is evicted. A page opened with nothing saved writes nothing and
 adds no request of its own, and it opens on the catalogue default, never on a saved orbit. The
 saved orbits are read when the planner arrives, so for the first moments of a visit the picker lists
-the catalogue only (`CHANGES-FROM-LEGACY.md`, L33). If storage is blocked or full the orbit works
-for the visit and the form says that it will not be remembered.
+none of them and no Plan row: only the catalogue, after the spacecraft you watch if there are any
+(the *Watched* and *Catalogue* group rows do not wait for the planner; `CHANGES-FROM-LEGACY.md`, L33
+and L60). If storage is blocked or full the orbit works for the visit and the form says that it will
+not be remembered.
 
 **Validated on read.** `Planner.sanitizeStore` treats a stored record as hostile. Above 65,536
 characters it is refused before parsing and dropped unread; a record that is not JSON or is of
@@ -2052,11 +2241,13 @@ behind a tested first one, survive as listed (25 to 35 minutes; not in `npm run 
 that page's text, so it cannot be pointed at a bundle, and runs only with the old page checked out
 as `legacy/` (`git worktree add legacy legacy-earth-console`). For the rebuilt page there is
 `npm run mutate` (`verification/tools/mutate-new.js`; 36 minutes at one job, about 20 at two): each of the
-85 mutants in `verification/fixtures/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
+86 mutants in `verification/fixtures/mutants-new.json` is an exact-text edit of one file of `src/`, made in a
 scratch copy that is built and run through `verify-custom.js` on the groups meant to catch it, and 3
-of them are equivalents that must survive. Its first full run caught 81 of the other 82 and let one
-through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
-either build; group 13 has the check now. `--list` checks that every edit's anchor still matches
+of them are equivalents that must survive. Its first full run, of the first 85, caught 81 of the other 82
+and let one through, the twelve-orbit cap in the merge of another tab's record, which no check looked at in
+either build; group 13 has the check now. The 86th, `rank-words-number`, came with the picker's search by
+the words of a query: it lets that search find an orbit of the reader's own by its placeholder number,
+and group 4's check that `O0001` lists nothing catches it. `--list` checks that every edit's anchor still matches
 exactly once. `verification/fixtures/behaviours-custom.json` maps each of the 79 old mutants, the 3
 equivalents and the 24 groups to the check, or the Vitest test, that guards the same behaviour here,
 and `node verification/tools/check-behaviours-custom.js` keeps that map honest.
@@ -2488,7 +2679,9 @@ opens, with `data/catalogue.meta.json` beside it recording when it was fetched a
 
 1. **SatNOGS DB** — `https://db.satnogs.org/api/tle/?format=json`, which serves anonymously
    (no API key). 1,437 satellites kept. KNACKSAT-2 comes from here; SatNOGS records its own
-   `tle_source` for that object as **Space-Track.org**.
+   `tle_source` for that object as **Space-Track.org**. SatNOGS DB publishes its data under
+   CC BY-SA 4.0, and these element sets carry that licence; the footer credits them (see *The
+   frequency is the one thing that cannot be derived*).
 2. **CelesTrak** groups (geo, resource, weather, science, military, stations) — 721 satellites,
    via a GitHub Actions mirror, because celestrak.org was timing out from the build machine on
    both :80 and :443 at the time (it answers now — the block appears to have been transient or
@@ -2497,8 +2690,8 @@ opens, with `data/catalogue.meta.json` beside it recording when it was fetched a
    anyway — six STARLINK and ONEWEB-0639 — because they came in with the SatNOGS list, where each
    has a published downlink, and nothing filtered that list by constellation. Dropping them belongs
    to the next rebuild: done by hand it would change the catalogue count the regression gate
-   compares. One, STARLINK-2342, is among the objects the page refuses, because SGP4 rejects its
-   elements (see *When the object is no longer there*).
+   compares. One, STARLINK-2342, is among the objects the page refuses: SGP4 reads its set, but its
+   drag terms run out two days after the epoch (error 1; see *When the object is no longer there*).
 
 Every block was validated before embedding: 69-character lines, matching NORAD IDs across lines 1
 and 2, correct mod-10 checksums, and no epoch older than 60 days. 202 duplicates were resolved by
@@ -2537,6 +2730,31 @@ regression baseline's 72-hour window).
 
 Both are built in the page and handed over as a Blob, so nothing is sent anywhere and no server is
 needed to make them; the code that writes them is a chunk of its own, fetched at the first press.
+
+**One pass on its own.** Under the selected pass's facts in the rail, *Add this pass to your
+calendar* (`#exp-pass`) writes that pass by itself. It is the same calendar writer, handed the
+analysis with that one pass in it and nothing else changed (a shallow copy, so the analysis on screen
+is not touched), so the file is the whole window's calendar cut down to that pass's event: the same
+summary, description and 10-minute alarm, and the same `UID`, which is the spacecraft's number and
+the AOS instant in milliseconds, so a calendar that takes both files, written from the same analysis
+on screen, holds the pass once. Written from another analysis it may not: the AOS is narrowed to
+the millisecond by halving one step of a scan that starts at the window's opening, so after a
+reload or with the window moved the same pass can come out a millisecond apart, under another `UID`,
+and a calendar given both files shows it twice (the `UID` is the verbatim writer's). It is named for the
+spacecraft and the pass's AOS in UTC, `sattrack-knacksat-2-pass-20260914T181233Z.ics`, so two passes
+saved one after the other are two files. On a phone or a tablet (a coarse pointer, the AR view's own
+test) the file goes to the share sheet when the browser says its sheet takes it (`navigator.canShare`
+with the file), so that a calendar app can be picked from it; anywhere else, and where the sheet does
+not take a calendar file, it is a download, as Snap's picture is (`src/lib/share.ts`, the AR view's
+helper moved where both can use it). A closed sheet is a cancel and says nothing; otherwise a line
+beside the button says which pass was written and the file's name, or that it was shared. The
+button takes one press at a time, as Snap does: it is disabled until the press is done (the focus
+comes back to it), because a second share sheet asked for while one is up is refused, and the
+refused file would be downloaded beside the sheet. iOS Safari
+keeps a downloaded `.ics` in Files until it is opened, and Google Calendar for Android imports none,
+which is why a phone is offered the sheet first. An object SGP4 takes below the entry interface is
+refused as the full export refuses it. The button comes with the page; what it runs is the
+export's chunk and a small one of its own, fetched at the first press.
 
 A pass cut by the window edge is flagged in both, because its AOS or LOS is where the analysis
 stopped and the files otherwise present it as a horizon crossing. The CSV's `aos_clipped` and
@@ -2606,12 +2824,48 @@ Two things make that safe rather than merely possible:
   and `snapshot.js` runs in a fresh browser context with empty `localStorage`, so a stored site
   cannot leak into it. Reset restores the assignment's own total to the bit.
 
-Three ways in, because the observer used to be five numbers you had to already know:
+Four ways in, because the observer used to be five numbers you had to already know:
 
 - **Search a place name.** One request to Open-Meteo's geocoder — no key, CORS open — returns the
   position, the *ground elevation*, and a real IANA timezone. Results carry their coordinates
   because two places share a name more often than not; searching "Chiang Mai" offers the city, the
   airport, and a village of the same name in Chiang Rai.
+- **Type a grid square.** A Maidenhead locator, the square radio amateurs give for where a station
+  stands, typed into the same box (`OK03gs`, in either case) is read on the page and asks nobody:
+  `src/lib/maidenhead.ts`, written from the IARU's definition of the system (field A–R of 20° of
+  longitude by 10° of latitude, square 0–9 of 2° by 1°, subsquare a–x of 5′ by 2.5′, extended
+  square 0–9 of 0.5′ by 0.25′, longitude first in each pair). It takes 4, 6 or 8 characters and
+  offers the square as the one result, with its size and the centre that will stand for it; the
+  note says how far a station in a corner can be from that centre (5.1 km for a six-character
+  square at Bangkok's latitude, 122 km for a four-character one). Picked, the centre is the site,
+  at sea level, with the solar-time offset a bare coordinate gets; the height and the offset can be
+  corrected under *Enter coordinates*. A locator half typed (`OK03g`) is sent nowhere either, nor
+  is one with a fifth pair, a–x, which some loggers and GPS units give (`OK03gs01ab`, a square
+  about 40 m by 20 m, and its nine-character half): the page reads 8 characters at most, and the
+  note says to type the first eight. A four-character square has the shape of a British postcode
+  district (BN11), so under it the list offers *Search places for “BN11” instead*, which asks the
+  geocoder only when pressed. The head of the form names the current site's own six-character
+  square, whichever way the site was set (Bangkok is OK03gs), on a line of its own under the
+  coordinates; a site picked as a square, while it is still that square's centre, is named by the
+  square as it was given (OK03, whose centre is the corner of four subsquares and would otherwise
+  be named OK03mm, one of them). That line is there, blank, from the moment the form opens, so the
+  fields and *Apply* under it do not move when the square arrives; and a field pressed or typed
+  into before the form's first frame keeps the focus (the form, like every popover of the page,
+  puts the focus in itself in that frame, but not when one of its own fields has it). The code and
+  its words (`src/lib/text/grid.ts`, and
+  `maidenhead.ts`, a chunk of its own that the rail's state now shares, below under "Sunlit or
+  eclipsed now") are two chunks, about 1.7 KB gzipped together, fetched from the page's own origin
+  when the form first opens (the locator's code may be there already, brought by the rail). The
+  entry carries only a locator's shape (`src/lib/gridshape.ts`, two patterns), so that text with that shape waits
+  for the chunk instead of going to the geocoder, and if the chunk cannot be fetched at all (a
+  tab left open across a new release asks for one the server no longer has) it is held back
+  under a note that says so, a four-character postcode district with it, until the page is
+  reloaded. Anything else goes to the geocoder at once. A position is turned into a whole number
+  of extended squares once, with one floor, and the characters are its digits, so a point on a
+  cell's edge cannot fall in on one level and out on the next; 90° of latitude and 180° of
+  longitude are counted in the last cell (R, 9, x, 9), since there is no nineteenth field. The
+  size in the result is in whole metres under 100 m, so a square a few metres from a pole is not
+  called nought wide.
 - **Use my location.** The browser's own coordinates and accuracy, with the zone the device is set
   to — which for the device in your hand is the right answer and needs no request.
 - **Coordinates.** Folded away behind a disclosure, and kept: an arbitrary point on the Earth
@@ -2788,6 +3042,62 @@ expressed in terms of it. Merging the two was planned for the rewrite and declin
 (`CHANGES-FROM-LEGACY.md`, row 2): the globe is held to the old page's pixels, and its light is
 part of them.
 
+##### Sunlit or eclipsed now
+
+The pass facts give the shadow at mid-pass. The answer rail gives it at any instant: under
+*Elevation at Bangkok now* and the countdown, the rail's "now" section has a block of four figures
+at the clock's instant (`#nowstate`, `src/components/rail/NowState.svelte`), each with a word on
+what it is:
+
+- **Sunlight**: *Sunlit*, the whole Sun in view; *Penumbra*, part of the Sun hidden; or
+  *Eclipsed*, in the Earth's shadow. This is what explains a spacecraft that fades in the middle
+  of a pass and is gone before it sets: it has gone into the umbra.
+- **Range rate**: how fast the distance from the observer is growing, *+3.982 km/s receding*, or
+  shrinking, *−0.188 km/s approaching*. It is the figure the Doppler shift is worked out from.
+- **Speed**: the length of the velocity SGP4 gives, in its own inertial frame (TEME), *7.700 km/s
+  relative to the stars*: the figure the globe's orbital elements layer draws as v, which a reader
+  without WebGL now has too. It is not the speed relative to the turning Earth, which is lower for a prograde
+  orbit and higher for a retrograde one by up to the frame's own speed there, ωr, 0.49 km/s at
+  400 km over the equator.
+- **Below it**: the Maidenhead grid square of the sub-satellite point, six characters, with its
+  latitude and longitude (*CI53rl, 6.51° S 128.55° W*).
+
+Nothing in it is new arithmetic (`src/lib/analysis/live-state.ts`). The engine propagates once,
+with `fix`, and every figure is read from that state by code the page already runs: the
+sub-satellite point by the engine's `subPoint` (what `sampleMs` does after the same `fix`), the
+range rate by its `rangeRateAt` (what `rangeRateMs` does), the grid square by the observer form's
+`toLocator`, and the shadow by the optical code's `sunlitState`, which is what `opticalAt` asks of
+the same state. While the clock plays, the shadow is tested at most once a second of the clock: at
+real time, once a second, while the figures beside it follow every tick. A LEO spacecraft takes 8 s
+or more to cross the penumbra (the Sun is half a degree across, and the orbit turns about 0.065° a
+second), so a second is finer than the state changes; a seek of a second or more, or another
+spacecraft, tests it again at once. A paused clock's instant is always tested itself: what a pause
+shows stays on the page for as long as the pause lasts, and a student who stops the clock to see the
+moment a spacecraft fades must not be shown the shadow of up to a second before it. Like the
+elevation beside it, the block is repainted on the clock's tick, ten times a second while the clock
+plays and never while it is paused.
+
+The block, its words (`src/lib/text/now-state.ts`) and its code are a chunk of their own, 1.1 KB
+gzipped with 0.2 KB of stylesheet, which shares the grid square's code (`maidenhead.ts`, 0.7 KB)
+with the observer form. It is asked for when its place in the rail first comes into view: at once
+on a desktop, when the sheet is first opened on a phone. Its height is kept while it is on its
+way, so nothing under it moves when it comes. The entry grew by under 0.2 KB gzipped, for the place
+and the request.
+
+`verify-optical.js` puts the clock, to the millisecond, in the middle of the longest umbra in the
+window, of the longest sunlit stretch and of a penumbra crossing (found at 10 s and then 0.25 s
+steps; the test surface's `seek`), and the block must name the state `opticalAt` gives there, in
+its words, tested at the clock's own instant. Its range rate and speed are worked out again from the
+test surface at that instant, and its grid square by a Maidenhead encoder written in the suite. The
+shadow test is counted through the optics the page calls (the test surface hands out the live
+object, `__gt.optics`): none while the clock is paused, and no more than one a second of the clock
+while it plays at real time, with the figures following the ticks. A pause pressed while it plays,
+and a scrub of a third of a second while it is paused, must each leave the shadow tested at the
+paused instant itself, the state `opticalAt` gives there. The block's own code is not on
+the test surface: imported there as well, it would be split into a chunk of its own, one more
+request for every visitor. `tests/lib/live-state.test.ts` holds it to the engine's and the optics'
+own calls instead.
+
 #### Doppler, and where the frequency comes from
 
 Range rate is what the pass table was missing. It is taken in the **body-fixed frame**, because
@@ -2837,6 +3147,18 @@ first answer has been computed, so the entry the page cannot start without does 
 Kept: **active** transmitters only, with a published downlink, deduplicated on frequency and mode,
 at most four per object, and only for objects actually in the catalogue.
 
+SatNOGS DB is a Libre Space Foundation project, and its data is published under the Creative
+Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
+`data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
+licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
+licence, say what was changed, and license it under CC BY-SA 4.0 too. The same goes for the
+1,437 of the 2,158 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint
+(see *Data provenance*; the other 721 are CelesTrak's), and for the picker's table of other names
+(below): the owner decided that the database's licence reaches them as well. The page gives the
+credit in the footer's last line, *Data: SatNOGS DB (element sets, transmitters, alternative
+names), CC BY-SA 4.0*, with a link to each. The share-alike reaches that data and what is made from
+it, not the project's own code, which its author has not licensed for reuse.
+
 | | |
 |---|---|
 | Transmitters | **2,037** on **1,213** objects |
@@ -2855,6 +3177,100 @@ window, those give a swing of **6.77 kHz** and **18.59 kHz**.
 ```
 node verification/tools/fetch-transmitters.js   # re-bake data/transmitters.json
 ```
+
+##### Other names, from the same database
+
+The catalogue names an object as its element-set source does, and that is often not the name a
+radio amateur knows it by. `data/aliases.json` holds the other names of **494** of the 2,158
+spacecraft, **712** names in all: the name SatNOGS DB gives each, and its alternative names, where
+a search of the catalogue's own name would not find them. AO-7 for OSCAR 7, SO-50 for SAUDISAT 1C,
+FO-29 for JAS 2, PO-101 for DIWATA 2B, QO-100 for ES'HAIL 2, RS-44 and DOSAAF-85 for BREEZE-KM R/B,
+call signs such as DP0BEE, and the names of launch objects the catalogue still calls OBJECT G or
+OBJECT AY (MESAT-1, MO-122; ASRTU-1, AO-123). The picker matches a search against them after its own
+rows (see *Satellite*).
+
+It was baked on **16 October 2026** (13:16 UTC) from SatNOGS DB's satellite endpoint,
+`db.satnogs.org/api/satellites/`, which is anonymous and answered with all 2,839 of its records in
+one unpaginated request (`verification/tools/fetch-aliases.js`, which names the repository in its
+User-Agent and would follow a paginated answer one page at a time). Kept: catalogue objects only, by
+NORAD number, and of each one's names (the SatNOGS name, and the alternative names, split at commas
+and semicolons) only those a search would miss. Both sides are stripped of everything but letters,
+marks and digits, as the search strips them, and a name is dropped when it is the catalogue number
+or is held in the catalogue's own name (ISS for ISS (ZARYA)), when it is a spelling of one already
+kept, when it is not a name at all (an international designator or a date given as one, the
+placeholders *Object A* and *Unknown Satellite*: 399 of them), when it is over 30 characters (an
+acronym spelled out, *Television Infrared Observation Satellite-N* for TIROS N: 32), or when it is
+another object's name in the catalogue. That last is where SatNOGS DB and the catalogue disagree on
+which object is which: SatNOGS gives CBERS-4A to 44879, which the catalogue calls OBJECT A, while
+the catalogue's CBERS 4A is 44883, and GRUS-1D to 47935, the catalogue's GRUS-1E (2 names; kept,
+they would list a second spacecraft under a name that is another's). The file is 14.0 KB (14,021
+bytes), 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a chunk of its
+own that the picker asks for the first time something is typed into it, not at boot and not when
+the list opens, so a visit that never searches never loads it. The code that searches it is a
+chunk of its own too (0.5 KB), asked for in the same moment, so the two come in one round trip.
+The page asks SatNOGS nothing: the names are a file of the page's own, so the table in *Data and
+privacy* is unchanged.
+
+Like the transmitter table, it is an adaptation of SatNOGS DB's data, so it is under CC BY-SA 4.0
+too, and the footer's line credits it with the transmitters and the catalogue's element sets:
+*Data: SatNOGS DB (element sets, transmitters, alternative names), CC BY-SA 4.0*.
+
+```
+node verification/tools/fetch-aliases.js                    # re-bake data/aliases.json (one request)
+node verification/tools/fetch-aliases.js --save <file>      # ...and keep the answer
+node verification/tools/fetch-aliases.js --from <file>      # re-bake from a kept answer, no request
+```
+
+##### Tuning while it is up
+
+The rows above give the shift at three instants. Under the downlink box a line of its own
+(`#doplive`) gives it at one instant, as the frequency to tune to: the downlink chosen in the box
+as a receiver on the ground hears it, to the hertz, and how far that is from the published figure
+— *Receive 145.827 627 MHz +2.627 kHz*. Type the frequency a spacecraft listens on into the
+**Uplink** box beside it and a second figure says what to send on: *Transmit 145.897 372 MHz
+−2.628 kHz*.
+
+Both come from the range rate and nothing else (`src/lib/analysis/tune.ts`, which only calls the
+engine, so the gate has nothing new to compare). Down is the engine's own first-order law,
+f (1 − ṙ/c), the same call the Doppler rows make, so the line and the rows agree at AOS,
+culmination and LOS. Up is f / (1 − ṙ/c). The spacecraft hears what the ground sends shifted by
+that same law, so this is the frequency it brings to exactly f on board, and the round trip
+closes. The usual first-order form, f (1 + ṙ/c), falls short of it by f (ṙ/c)²: at 7.5 km/s a
+quarter of a hertz at 435 MHz and 1.5 Hz at 2.4 GHz, the size of the second-order terms
+(relativistic among them) that a first-order law leaves out either way. The hertz digit is exact
+arithmetic, not an exact orbit. Near culmination on a high pass the shift at 435 MHz moves by more
+than 100 Hz a second, so an element set one second out along the track puts the figure that far
+out too.
+
+"Now" has to mean now. The line says **Tune now**, and is worked out for the wall clock, only
+while the page's clock is running at real time within 5 s of it: the countdown's test, with
+running added, because a paused clock stays within 5 s for five more seconds and a paused page is
+not repainted. At any other instant — scrubbed, paused, sped up, or left behind while the tab was
+hidden and the browser stopped the frame loop — it is worked out for the clock's instant and says
+which, *Tune at sim time 10-14 19:57:53Z*, beside a **Go live** button that runs the clock at
+real time from now, as the AR view does (a window that does not hold now is opened at it). The
+button goes once the line is live; a press that had the focus leaves it on the caption, which now
+says *Tune now*, so it does not fall to the page, and the next Tab goes on to the Uplink box. While
+the spacecraft is under the 5° mask the passes are found with, the line adds *below the 5° mask*.
+It is repainted on the clock's tick, ten times a second while the clock plays and never while it is
+paused.
+
+The uplink is held in memory for the spacecraft it was typed for: another spacecraft shows an empty
+box, and a reload forgets it. It is not stored and not sent anywhere. A screen reader names the box
+with its unit, *Uplink frequency in MHz*, as it names the downlink box beside it.
+
+`verify-doppler.js` scrubs 30 % of the way into a pass, where the range rate is several km/s, and
+works the line's figures out again from the test surface's range rate at the instant the line
+names, with the law written out: for the downlink chosen from the table, for 437.100 MHz typed in,
+and for a 145.900 MHz uplink, which must come back to 145.900 MHz on board. That a paused line
+does no work cannot be read off its text, which would come out the same, so the suite counts it:
+the test surface hands out the engine (`__gt.eng`), and while the clock stands still for 0.7 s the
+line must not call its `stateAt` once, then must call it at once when the clock is moved a step;
+the paused line must also stay on the clock's instant. It checks that after Go live, pressed with
+Enter, the line says now, keeps the focus on its caption, is within a second of the wall clock, is
+still right and moves with the clock; and that another spacecraft has an empty uplink box. The old
+page has no such line, so with `GT_TARGET=legacy` the suite runs its range-rate checks and says
+the line is not checked.
 
 #### Staying current
 
@@ -2946,17 +3362,19 @@ object in one of two ways, and the page used to handle neither.
 - **SGP4 refuses it.** Once the drag terms put the orbit inside the Earth, SGP4 returns error 6
   ("decayed") for every instant and there is nothing to analyse. By late September 2026 that is
   fourteen catalogue entries — COSMOS 2558, ODIN and DUCHIFAT 1 among them, all three recorded as
-  re-entered in the CelesTrak SATCAT — plus STARLINK-2342, whose elements SGP4 rejects outright
-  (error 1). Picking one threw after the picker had already moved: the masthead, passes and globe
-  stayed on the previous spacecraft under a picker naming the new one, and every later change of
-  span or window threw again. The new analysis is now computed before anything on screen is
-  touched. If it cannot be, the picker, window and span go back to what is still on screen, and a
-  note under the picker gives SGP4's reason — "ODIN not loaded: SGP4 cannot propagate it anywhere
-  in this window (error 6: decayed)". A window SGP4 cannot fill is refused the same way, playback
-  that runs into one stops at its edge, and a default spacecraft that has itself come down falls
-  back to the next in the preference list rather than opening a blank page. To make the reason
-  available at all, the propagator keeps SGP4's error code (`track.lastError`) where it used to
-  flatten it to `null`; the success path, and the `r` and `v` it hands through, are untouched.
+  re-entered in the CelesTrak SATCAT — plus STARLINK-2342, whose set SGP4 reads cleanly but refuses
+  with error 1 from 11 August, two days after its epoch, once its drag terms have taken the mean
+  eccentricity below SGP4's floor. Picking one threw after the picker had already moved: the
+  masthead, passes and globe stayed on the previous spacecraft under a picker naming the new one,
+  and every later change of span or window threw again. The new analysis is now computed before
+  anything on screen is touched. If it cannot be, the picker, window and span go back to what is
+  still on screen, and a note under the picker gives SGP4's reason — "ODIN not loaded: SGP4 cannot
+  propagate it anywhere in this window (error 6: decayed)". A window SGP4 cannot fill is refused the
+  same way, playback that runs into one stops at its edge, and a default spacecraft that has itself
+  come down falls back to the next in the preference list rather than opening a blank page. To make
+  the reason available at all, the propagator keeps SGP4's error code (`track.lastError`) where it
+  used to flatten it to `null`; the success path, and the `r` and `v` it hands through, are
+  untouched.
 - **SGP4 propagates it anyway.** Short of that point it goes on producing positions at 40 km,
   then at 20, and the page quoted passes, naked-eye verdicts and Doppler for them — ICEYE-X34,
   re-entered 14 September, showed a mean altitude of 42.7 km. The analysis now records how low the
@@ -2966,6 +3384,55 @@ object in one of two ways, and the page used to handle neither.
   write the passes: once they are a spreadsheet row or a phone alarm, the warning is no longer
   beside them. The revolution matters on its own account. CLUSTER II-FM8 has a 53 h period, so a
   24 h window can hold nothing but apogee arcs from an object whose perigee is underground.
+
+**The picker marks what SGP4 has down now.** A row of the spacecraft picker whose element set SGP4
+has down at the clock's instant when the list is opened reads *decayed now* beside its number, and
+while one is in the list a line under it says what the mark is: "Decayed now: at the clock's instant
+SGP4 has it below the 120 km entry interface, or refuses it as decayed (error 6), or its drag terms
+have carried it past what they can model (after the set's epoch: refused with error 1 to 4, or put
+above its own apogee). It is still listed; picking it asks SGP4 for its whole window." It is one
+SGP4 sample per entry, at that instant, through the page's own propagator
+(`src/lib/catalogue/decayed.ts`), on the lines a pick would analyse (the live set, where one was
+taken). The instant is the clock's, not the wall clock's: a load puts the clock at the start of the
+window it analyses, so moving the window (to a set's epoch with the Window popover's *Epoch*, say)
+moves the marks with it, and while the clock runs at real time it is now. The mark takes nothing
+away: the list still holds 2,158, and a marked row is picked as any other is (ODIN is then refused
+with SGP4's reason, STARLINK-2342 with its error 1, and COSMOS 2558 on 14 September loads with its
+re-entry note). At 2026-09-14 00:00 UTC it marks fourteen entries, ODIN, COSMOS 2558 and
+STARLINK-2342 among them; at 00:00 UTC on 16 October, twenty-four.
+
+The third way down is SGP4's own arithmetic. In its near-earth theory (periods under 225 minutes)
+only the drag terms change the mean orbit's size and shape over time, and with a positive B* they
+only shrink it after the epoch: the semi-major axis goes as a(1 − C1·t − …)², and the eccentricity
+falls with t. Run far enough, the eccentricity falls through SGP4's floor and SGP4 refuses the set
+(error 1, or 4), or the polynomial passes zero and the orbit grows again, to thousands of
+kilometres. So for a near-earth set SGP4 read without complaint, with a positive B*, after its
+epoch, a refusal with error 1 to 4, or a position more than 1 % over the set's own apogee radius, is
+a decay and not an orbit; SGP4's short-period terms take such a set at most 0.16 % over its apogee
+in this catalogue before the drag runs out. STARLINK-2342 is the first kind: SGP4 reads its set
+(epoch 9 August) cleanly, has it under 120 km 16 hours later and refuses it with error 1 from 11
+August. DUCHIFAT 1 is the second: refused with error 6 from late September, it is put at 2,690 km on
+28 October and at 19,464 km on 1 November. Before a set's epoch (where SGP4 runs the drag backwards,
+to a larger orbit), with a B* of zero or less, or in deep space (where the Sun and the Moon move the
+eccentricity), an error 1 to 4 is not called a decay: the analysis names the reason.
+
+None of this is the analysis's test, which samples the whole window and a revolution. An orbit whose
+perigee SGP4 puts underground can be above 120 km at the instant asked, and a set long gone can, for
+a while, sit between 120 km and its apogee as its drag polynomial passes back through the size it
+had, so a row without the mark can still be refused, and the window's answer is the one that counts.
+Long after a decay the runaway can even be analysed: on 1 November compute() loads DUCHIFAT 1 with
+no re-entry note at a mean height of 22,562 km, which the mark there contradicts; that is the
+analysis's, and older than the mark. The 2,158 propagations take a few tens of milliseconds. They
+are a chunk of their own, asked for the first time the list opens and spread over the browser's idle
+moments, so a visit that never opens the list does none of them, and the marks appear together once
+every entry has been through. They are worked out again at the next opening when a live set has been
+taken or given back since (the check after a pick can adopt one), or when the clock is more than an
+hour from the instant they were worked out for. Under `?tle=embedded` nothing is marked, because
+each window there opens at its own set's epoch and a mark for one instant could contradict a window
+that loads. Nothing is stored and nothing is asked of any host. `verify-catalogue.js` opens the list
+on a clock that starts on 14 September and checks every row it reads against the pinned satellite.js
+run apart from the page, then again with the clock put at KNACKSAT-2's epoch; `axe.js` and
+`verify-layout.js` look at the marked rows too.
 
 The live refresh has three answers of its own that are not a fresher set:
 
@@ -2991,6 +3458,25 @@ doing it by hand would change the catalogue count the regression gate compares.
 `verification/suites/verify-catalogue.js` drives both SGP4 cases through the picker, the window and span
 buttons, the transport and the export buttons, in a fixed window — which objects are decayed
 depends on when you ask — and phases 6 to 8 of `verify-refresh.js` cover the three refresh answers.
+On the rebuilt page it also types `iss zarya`, `ao91`, `007530` and `landsat 9` into the picker and
+reads what it lists, and presses Enter on `oscar 7530`, which picks OSCAR 7 rather than opening the
+planner. It types the other names, on a page of its own: the table not asked for at boot or when
+the list opens; the table and its code, each held back 1.5 s, both asked for at once on the first
+query, and until they come `fo29` saying neither that nothing matches nor offering the Plan row;
+Enter at once on it waiting and then picking JAS 2; on fresh loads, Enter on a first `fo29` then
+`iss` typed, and on a first `tango` then Escape, `/` and `zzqq nothing`, each doing nothing when
+the table comes; `cube` with ArrowUp to the Plan row, which stays the active option when the six
+rows of its other names come, and Enter then opening the planner; `rs44` (and `rs-44`, `RS 44`,
+`RS-44`) listing BREEZE-KM R/B with *matches
+RS-44* in plain text in its option; `ao7` listing OSCAR 7 before FUNCUBE 1; `so50` SAUDISAT 1C, and
+Enter on it picking it; `iss` its seven rows as before, with no line; `o000`, `customs` and the
+empty query as before; the table and its code asked for once each from the page's own origin,
+nothing asked of any SatNOGS host, and nothing stored. It then works the watchlist's star: beside the
+name on its row, reached by Tab from the name, its focus ring whole inside its own box, and pressed
+with Space, nothing stored until then and `gt.watch` written at the press; the picker's *Watched* group on the
+empty query, in the order starred, with the same 80 rows and notes and a query's order untouched;
+a second tab that follows the first without a reload; nothing left stored once the last is off; no
+star for an orbit of your own; and, with 50 watched, a 51st refused with the sentence under the bar.
 The default's fallback is not in the suite: exercising it needs a doctored catalogue.
 
 #### Running it
@@ -3087,14 +3573,22 @@ npm run slice        # the page end to end as a visitor meets it: the assignment
 npm run refresh      # the live TLE refresh, against mocked sources, and the snapshot that pins it
                      # (run.js runs it again as refresh-api, with a mock cache API answering)
 npm run pov          # the POV camera, measured against the propagated state
-npm run doppler      # range rate, against a numerical derivative of the range
-npm run optical      # shadow cone geometry, brightness, and naked-eye passes
+npm run doppler      # range rate, against a numerical derivative of the range; the live line
+                     # under the downlink box, against the law written out (the rebuilt page
+                     # only: the old page has no such line)
+npm run optical      # shadow cone geometry, brightness, and naked-eye passes; the rail's state
+                     # now, in an umbra, in sunlight and in a penumbra (the rebuilt page only)
 npm run site         # moving the observer, and that Bangkok stays the default
-npm run export       # CSV and calendar, parsed back rather than eyeballed
+npm run export       # CSV and calendar, parsed back rather than eyeballed; one pass's calendar
+                     # against the full one, downloaded, and on a phone handed to a share sheet
+                     # one press at a time (the one-pass part on the rebuilt page only)
 npm run catalogue    # objects that have come down: refused, or flagged and kept out of exports
 npm run custom       # what the console does with an orbit that is not in the catalogue: zero
                      # requests, poisoned stores, exports, decay, two tabs (3 to 4 minutes)
-npm run timeline     # the window rolling forward past its end, and the next pass beyond it
+npm run timeline     # the window rolling forward past its end, and the next pass beyond it; the
+                     # sky plot's dot and flown stretch, read off its pixels; the pass list's day
+                     # headers against NOAA's Sun, its grey and ringed rows, and its filter's rows
+                     # against the analysis (the last three the rebuilt page only)
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
@@ -3115,8 +3609,9 @@ npm run layout       # the rebuilt console at twelve sizes, light and dark: noth
 npm run planner-ui   # the planner's own screen, driven as a student drives it: the form, the
                      # Professor's panel, the fixes, the saved list, the layouts, the details
 npm run visitor      # the page with no test flag, as a visitor gets it: how the planner and the
-                     # AR view arrive, what the first screen weighs, and a page that is refused
-                     # what it asks for (site data, the element sets, a chunk)
+                     # AR view arrive, what the first screen weighs, a page that is refused
+                     # what it asks for (site data, the element sets, a chunk), and forgetting
+                     # what the page stored
 npm run axe          # axe-core at five viewports in both colour schemes, in the states that change
                      # what is on screen; --strict fails on anything not listed with its reason
 npm run golden       # the report's words against the old page's, word for word (white space is
@@ -3150,7 +3645,7 @@ GT_TARGET=legacy node verification/suites/verify-site.js
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
 `new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
 files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout` and `ar-snap`
-are about the rebuilt page alone. `npm run extract-data`, which made `data/` from the old page's files, reads
+are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
 that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
 
 Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in

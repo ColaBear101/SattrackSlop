@@ -1909,6 +1909,9 @@ const PRISTINE_HEADER = () => {
       rail: __T.railShown() }));
     chk('50 activating the pill (click, Enter, Space) opens nothing: #planner stays hidden, no drawer, aria-expanded false, the rail stays', o.hidden && o.disp === 'none' && !o.planning && !o.open && o.exp === 'false' && o.rail, JSON.stringify(o));
     await page.click('#satsearch'); await page.fill('#satsearch', 'zzqq nothing');
+    /* The rebuilt picker's first query also asks for the other names (CHANGES-FROM-LEGACY.md, L61), and until they have come it does not
+       say that nothing matches: on this fresh page that is a moment, so the note is read once it is there (the old page's is at once) */
+    await page.waitForFunction(() => __T.note() !== undefined, null, { timeout: 5000 });
     const pk = await ev(page, () => ({ plan: !!document.querySelector('#satlist li.plan'), note: __T.note() }));
     await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');

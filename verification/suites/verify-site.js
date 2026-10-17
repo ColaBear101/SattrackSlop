@@ -22,6 +22,8 @@
  *    a coordinate typed in kept the previous site's UTC offset under a note
  *    calling it solar time. The window-start field was in the browser's zone,
  *    unlabelled, while every other local time is the observer's.
+ *  - A Maidenhead grid square typed into the place search is found on the page
+ *    and must never reach the geocoder (new in the rebuild, L51).
  *
  *   node verification/suites/verify-site.js          (needs playwright)
  */
@@ -419,6 +421,172 @@ const SITE = { name: 'Svalbard', lat: 78.2297, lon: 15.4075, altKm: 0.45, tz: 1 
   chk('...and one click goes back to it',
       Math.abs(wasTokyo.obs.lat - 35.6895) < 1e-6 && wasTokyo.obs.zone === 'Asia/Tokyo',
       wasTokyo.obs.name + ' ' + wasTokyo.obs.lat);
+
+  // ---- a grid square ---------------------------------------------------------
+  /* A Maidenhead locator typed where a place name goes is read on the page (src/lib/maidenhead.ts;
+     CHANGES-FROM-LEGACY.md, L51): the square is the one result and the geocoder is never asked, so
+     the count of requests the route above has answered must not move while one is typed and
+     picked. Only the button under a four-character square, which a postcode district such as BN11
+     can look like, sends anything, and only when pressed. The squares are worked by hand from the
+     IARU definition: Tokyo, where the recents left the site, is PM95uq; OK03gs is centred on
+     13° 46.25' N, 100° 32.5' E. */
+  const searchFor = async text => {
+    await openForm();
+    await page.fill('#s-search', text);
+    await page.waitForTimeout(700);    // past the 250 ms debounce: a request meant to go has gone
+    return page.evaluate(() => ({
+      hits: [...document.querySelectorAll('#s-hits button')].map(b => b.textContent),
+      listHidden: document.getElementById('s-hits').hidden,
+      note: document.getElementById('sitenote').textContent.trim() }));
+  };
+  /* the square at the head of the form comes with a chunk the form asks for when it first opens */
+  const gridShown = async () => {
+    await page.waitForSelector('#s-grid', { timeout: 8000 }).catch(() => {});
+    return page.evaluate(() => ((document.getElementById('s-grid') || {}).textContent || '').trim());
+  };
+  await openForm();
+  const tokyoGrid = await gridShown();
+  chk('the form names the site\'s grid square', /^Grid square PM95uq$/.test(tokyoGrid), tokyoGrid || 'none');
+  const calls0 = geocodeCalls;
+  const half = await searchFor('OK03g');
+  chk('a grid square half typed is nothing yet, and is not sent to the place search',
+      half.listHidden && /start of a Maidenhead grid square/.test(half.note) && geocodeCalls === calls0,
+      half.note + ' · requests ' + (geocodeCalls - calls0));
+  const four = await searchFor('OK03');
+  chk('a four-character square is offered, with the place search one press away and not asked yet',
+      four.hits.length === 2 && /^OK03Maidenhead grid square, 216 km × 111 km/.test(four.hits[0])
+      && /Search places for “OK03” instead/.test(four.hits[1]) && geocodeCalls === calls0,
+      four.hits.join(' | ') + ' · requests ' + (geocodeCalls - calls0));
+  await page.click('#s-gridplaces');
+  await page.waitForFunction(() => /No place matched/.test(document.getElementById('sitenote').textContent),
+    null, { timeout: 8000 }).catch(() => {});
+  const asked = await page.evaluate(() => document.getElementById('sitenote').textContent.trim());
+  chk('...and pressing that asks it, once', geocodeCalls === calls0 + 1 && /No place matched “OK03”/.test(asked),
+      asked + ' · requests ' + (geocodeCalls - calls0));
+  const calls1 = geocodeCalls;
+  const six = await searchFor('OK03gs');
+  chk('typing a grid square offers it as the one result',
+      six.hits.length === 1 && /^OK03gsMaidenhead grid square, 9\.0 km × 4\.6 km · 13\.77° N 100\.54° E$/.test(six.hits[0]),
+      six.hits.join(' | '));
+  chk('...found on the page, and the note says so', /found on this page with no request/.test(six.note), six.note);
+  await page.click('#s-gridhit');
+  await page.waitForTimeout(2000);
+  const sq = await state();
+  chk('picking it puts the observer at the square\'s centre, at sea level, on solar time',
+      sq.obs.name === 'OK03gs' && Math.abs(sq.obs.lat - (13 + 46.25 / 60)) < 1e-9
+      && Math.abs(sq.obs.lon - (100 + 32.5 / 60)) < 1e-9 && sq.obs.altKm === 0 && sq.obs.zone === null
+      && sq.obs.tz === 7 && sq.tz === 'UTC+7', JSON.stringify(sq.obs));
+  chk('...and the page renamed itself', /OK03gs/.test(sq.heading), sq.heading);
+  await openForm();
+  const sqGrid = await gridShown();
+  chk('...and the form names its square', /^Grid square OK03gs$/.test(sqGrid), sqGrid || 'none');
+  chk('typing and picking the square made no request to the place search', geocodeCalls === calls1,
+      (geocodeCalls - calls1) + ' request(s) to geocoding-api.open-meteo.com');
+
+  /* A ten-character locator (a fifth pair, a-x, which some loggers and GPS units give: a square about 40 m by 20 m)
+     is finer than the page reads, and it and its nine-character half went to the place search; now neither does,
+     and the note names the eight characters that are read (review of L51). */
+  const calls2 = geocodeCalls;
+  for (const t of ['OK03gs01a', 'OK03gs01ab']) {
+    const long = await searchFor(t);
+    chk('a locator of ' + t.length + ' characters is not sent to the place search, and the note says what to type',
+        long.listHidden && new RegExp('^' + t + ' has more characters than this page reads: .*Type its first 8, OK03gs01,')
+          .test(long.note) && geocodeCalls === calls2,
+        long.note + ' · requests ' + (geocodeCalls - calls2));
+  }
+  /* A four-character square's centre is the corner of four subsquares, so the head of the form names the square as it
+     was given, not the subsquare the corner rule would pick (OK03mm), which the reader never gave (review of L51). */
+  await searchFor('OK03');
+  await page.click('#s-gridhit');
+  await page.waitForTimeout(2000);
+  const sq4 = await state();
+  await openForm();
+  const sq4Grid = await gridShown();
+  const sq4Title = await page.evaluate(() => (document.getElementById('s-grid') || {}).title || '');
+  chk('a four-character square picked is named as given at the head of the form, not as one of its subsquares',
+      sq4.obs.name === 'OK03' && sq4.obs.lat === 13.5 && sq4.obs.lon === 101 && /^Grid square OK03$/.test(sq4Grid)
+      && /picked as/.test(sq4Title), sq4.obs.name + ' ' + sq4.obs.lat + ', ' + sq4.obs.lon + ' · ' + sq4Grid + ' · ' + sq4Title);
+  chk('...and none of it asked the place search', geocodeCalls === calls2,
+      (geocodeCalls - calls2) + ' request(s) to geocoding-api.open-meteo.com');
+
+  /* The code that reads a square is a chunk of its own. A tab left open across a new release asks for a chunk the
+     server no longer has, and the text typed went to the place search instead; the entry now knows a locator's shape,
+     so such text is held back and the note says why, while a place name still goes straight to the search. A page of
+     its own, in this context, with the chunk refused (review of L51). */
+  const nk = await ctx.newPage({ viewport: { width: 1400, height: 900 } });
+  nk.on('pageerror', e => errs.push('[no grid chunk] ' + e.message));
+  let nkCalls = 0, chunkAsked = 0;
+  await nk.route('**/assets/grid-*.js', r => { chunkAsked++; r.abort(); });
+  await nk.route('**geocoding-api.open-meteo.com/**', r => {
+    nkCalls++;
+    r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+                body: JSON.stringify({ results: [] }) });
+  });
+  await nk.goto(PAGE, { waitUntil: 'load' });
+  await nk.waitForSelector('#siteopen', { timeout: 30000 });
+  await nk.click('#siteopen');
+  const nkSearch = async text => {
+    await nk.fill('#s-search', text);
+    await nk.waitForTimeout(900);
+    return nk.evaluate(() => ({ note: document.getElementById('sitenote').textContent.trim(),
+                                warn: document.getElementById('sitenote').classList.contains('warn'),
+                                listHidden: document.getElementById('s-hits').hidden,
+                                grid: !!document.getElementById('s-grid') }));
+  };
+  const dead6 = await nkSearch('OK03gs');
+  const dead10 = await nkSearch('OK03gs01ab');
+  chk('with the grid chunk refused, a grid square is neither read nor sent to the place search, and the note says so',
+      chunkAsked > 0 && nkCalls === 0 && dead6.listHidden && dead6.warn && !dead6.grid
+      && /^OK03gs has the shape of a Maidenhead grid square, but the page could not load the code/.test(dead6.note)
+      && /^OK03gs01ab has the shape/.test(dead10.note),
+      dead6.note + ' · chunk asked ' + chunkAsked + ' time(s) · requests ' + nkCalls);
+  await nkSearch('Tokyo');
+  chk('...while a place name still goes to the search, once', nkCalls === 1, nkCalls + ' request(s)');
+  await nk.close();
+
+  /* The square's line at the head of the form is held, blank, while its chunk is on the way, so nothing under it moves when the square
+     comes: Apply was once 18 px lower a moment after the form opened, under a press that might be on its way to it (L51). On a page of
+     its own, the chunk is held back until the form has been measured, then let through. */
+  const hold = await ctx.newPage();
+  hold.on('pageerror', e => errs.push('[held grid chunk] ' + e.message));
+  let release = () => {};
+  const held = new Promise(f => { release = f; });
+  await hold.route('**/assets/grid-*.js', async r => { await held; await r.continue(); });
+  await hold.goto(PAGE, { waitUntil: 'load' });
+  await hold.waitForSelector('#siteopen', { timeout: 30000 });
+  await hold.click('#siteopen');
+  await hold.evaluate(() => { const m = document.getElementById('s-manual'); if (m) m.open = true; });
+  const formNow = () => hold.evaluate(() => {
+    const b = document.getElementById('siteapply'), g = document.getElementById('s-grid');
+    return { apply: b ? Math.round(b.getBoundingClientRect().top * 10) / 10 : null, grid: g ? g.textContent.trim() : null };
+  });
+  const waiting = await formNow();
+  release();
+  await hold.waitForSelector('#s-grid', { timeout: 8000 }).catch(() => {});
+  const arrived = await formNow();
+  chk('the form does not move when the grid square comes: Apply is where it was while the square\'s code was held back',
+      waiting.grid === null && /^Grid square [A-R]{2}\d\d/.test(arrived.grid || '') && waiting.apply !== null && waiting.apply === arrived.apply,
+      JSON.stringify({ waiting, arrived }));
+  /* The popover puts the focus in the form in the frame after it opens; a field pressed or typed into before that frame keeps it.
+     It used to be taken to the search box, and the keys that followed went there: H.setSite's latitude, typed the moment the form
+     opened, landed in the search box once in a run, and Bangkok's stayed in the field. Opened, and a field focused as soon as the
+     form is in the page, in the same task (microtasks only: no frame can come between), so the frame is always after it. */
+  await hold.keyboard.press('Escape');
+  await hold.waitForSelector('#s-search', { state: 'detached', timeout: 5000 }).catch(() => {});
+  const kept = await hold.evaluate(async () => {
+    document.getElementById('siteopen').click();
+    let lat = null;
+    for (let i = 0; i < 50 && !(lat = document.getElementById('s-lat')); i++) await Promise.resolve();
+    if (!lat) return { before: null, after: null };
+    const m = document.getElementById('s-manual'); if (m) m.open = true;
+    lat.focus();
+    const before = document.activeElement && document.activeElement.id;
+    await new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f)));
+    return { before, after: document.activeElement && document.activeElement.id };
+  });
+  chk('a field focused the moment the form opens keeps the focus: the form\'s first frame does not take it to the search box',
+      kept.before === 's-lat' && kept.after === 's-lat', JSON.stringify(kept));
+  await hold.close();
 
   // ---- no network ----------------------------------------------------------
   /* Search is a convenience over typing numbers in, so losing it has to cost

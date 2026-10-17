@@ -58,9 +58,52 @@ const VIEWS = [
         ['map', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim() === 'Map').click()); await page.waitForTimeout(400); }],
         ['window', async () => { await page.evaluate(() => document.getElementById('winOpen').click()); await page.waitForTimeout(250); }],
         ['picker', async () => { await page.keyboard.press('Escape'); await page.evaluate(() => document.querySelector('#satname').closest('button').click()); await page.waitForTimeout(250); }],
+        /* ...on a query with rows SGP4 has down at NOW, each marked "decayed now" in plain text inside its option, and the line under the list
+           that says what the mark is (CHANGES-FROM-LEGACY.md, L59; worked out in a chunk of its own when the list first opens) */
+        ['decayed', async () => { await page.fill('#satsearch', 'jilin-01 gaofen 3'); await page.waitForSelector('#satdecayed', { state: 'visible', timeout: 10000 }); }],
+        /* ...on a query only the other names match (CHANGES-FROM-LEGACY.md, L61): OSCAR 7 and FUNCUBE 1, each option saying in plain text which
+           name matched ("matches AO-7"), the first row the active one; the table is a chunk of its own, asked for at the first query */
+        ['alias', async () => { await page.fill('#satsearch', 'ao7'); await page.waitForSelector('#satlist .al', { state: 'visible', timeout: 10000 }); }],
+        /* the watchlist (CHANGES-FROM-LEGACY.md, L60): the star on the identity line pressed (a toggle button, aria-pressed; outside the listbox, so no
+           control sits inside an option), and the list opened again on the empty query, with the group of the watched over the catalogue */
+        ['watched', async () => {
+          await page.keyboard.press('Escape');
+          await page.waitForSelector('#satsearch', { state: 'detached', timeout: 5000 }).catch(() => {});
+          await page.evaluate(() => document.getElementById('watchstar').click());
+          await page.waitForFunction(() => document.getElementById('watchstar').getAttribute('aria-pressed') === 'true', null, { timeout: 10000 });
+          await page.evaluate(() => document.querySelector('#satname').closest('button').click());
+          await page.waitForFunction(() => { const g = document.querySelector('#satlist li.grp'); return !!g && g.textContent === 'Watched'; }, null, { timeout: 5000 });
+          await page.waitForTimeout(250);
+        }],
+        /* the observer form, with a four-character grid square typed: the square and the button to the place search are listed, found on the page
+           with no request (CHANGES-FROM-LEGACY.md, L51). The field is left without the focus, so that the next state's Escape closes the form
+           (in the field, with the list open, Escape closes the list and stops there). */
+        ['observer', async () => {
+          await page.keyboard.press('Escape');
+          await page.evaluate(() => document.getElementById('siteopen').click());
+          await page.waitForSelector('#s-search', { state: 'visible', timeout: 5000 });
+          await page.fill('#s-search', 'OK03');
+          await page.press('#s-search', 'Enter');
+          await page.waitForSelector('#s-gridplaces', { state: 'visible', timeout: 5000 });
+          await page.evaluate(() => document.activeElement && document.activeElement.blur());
+          await page.waitForTimeout(250);
+        }],
+        /* the pass list's filter, open (CHANGES-FROM-LEGACY.md, L56): a popover in the rail, on a phone inside the answer sheet (opened first), whose
+           panel is a chunk of its own asked for at the first press. Escape with it open shuts the panel alone, wherever the focus is, so the next
+           state presses Escape twice: the panel, then (on a phone) the sheet. */
+        ['passfilter', async () => {
+          await page.keyboard.press('Escape');
+          await page.evaluate(() => { const p = document.querySelector('.rail .peek'); if (p && p.getAttribute('aria-expanded') !== 'true') p.click(); });
+          await page.waitForTimeout(250);
+          await page.evaluate(() => document.getElementById('passfilterbtn').click());
+          await page.waitForSelector('#passfilter', { state: 'visible', timeout: 10000 });
+          await page.waitForTimeout(250);     // the popover moves the focus into its panel a frame after it opens
+        }],
         /* the orbit planner: the pill brings its chunk in and opens it (the three presentations - flow, drawer, sheet - are what the viewports are for) */
         ['planner', async () => {
           await page.keyboard.press('Escape');
+          await page.waitForTimeout(100);
+          await page.keyboard.press('Escape');     // the filter's panel above, then the answer sheet it was in
           await page.evaluate(() => document.getElementById('planopen').click());
           await page.waitForFunction(() => { const p = document.getElementById('planner'); return !!p && !p.hidden; }, null, { timeout: 20000 });
           await page.waitForTimeout(400);

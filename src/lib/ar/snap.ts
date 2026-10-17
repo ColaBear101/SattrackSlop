@@ -77,27 +77,7 @@ export function composeSnap(doc: Maker, s: SnapSource): Promise<Blob> {
 }
 
 /** Hands the picture to the reader: the share sheet where the browser has one that takes files, a download otherwise. A reader who closes the
- *  sheet has cancelled, which is not an error. `host` is a node inside the view, since everything else on the page is inert while it is open. */
-export async function deliverSnap(
-  nav: { share?: (d: unknown) => Promise<void>; canShare?: (d: unknown) => boolean } | undefined,
-  doc: Maker,
-  host: { appendChild(n: Node): unknown },
-  blob: Blob,
-  name: string
-): Promise<'shared' | 'saved' | 'cancelled'> {
-  if (nav && typeof nav.share === 'function' && typeof nav.canShare === 'function' && typeof File === 'function') {
-    try {
-      const file = new File([blob], name, { type: blob.type });
-      if (nav.canShare({ files: [file] })) {
-        try { await nav.share({ files: [file], title: name }); return 'shared'; }
-        catch (e) { if (e && (e as { name?: string }).name === 'AbortError') return 'cancelled'; /* refused: save it instead */ }
-      }
-    } catch { /* no File, or a browser that throws on the question: save it instead */ }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = doc.createElement('a') as HTMLAnchorElement;
-  a.href = url; a.download = name; a.rel = 'noopener'; a.hidden = true;
-  host.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-  return 'saved';
-}
+ *  sheet has cancelled, which is not an error. `host` is a node inside the view, since everything else on the page is inert while it is open.
+ *  The code is src/lib/share.ts's deliverFile, moved there unchanged when the one-pass calendar file came to need it too
+ *  (CHANGES-FROM-LEGACY.md, L57). */
+export { deliverFile as deliverSnap } from '../share';

@@ -11,6 +11,8 @@
  *            visually-hidden idiom).
  *   overlay  a selector the state under test declares as covering the page on purpose (an open popover, the expanded answer sheet, the
  *            planner's sheet). A control outside it that is covered BY it is not a defect; a control that is covered by anything else is.
+ *            Or several, for a popover inside the answer sheet (the pass list's filter on a phone): the sheet over the page and the popover
+ *            over the sheet's own rows; each is an overlay to what is outside it.
  */
 'use strict';
 
@@ -100,7 +102,11 @@ function install() {
      screen, and the structure group looks at it by focusing it. */
   L.offCanvas = e => { const r = e.getBoundingClientRect(); return r.bottom + scrollY <= 0 || r.right + scrollX <= 0; };
   L.controls = () => [...document.querySelectorAll(CTRL)].filter(e => L.shown(e) && !L.offCanvas(e));
-  const inOv = (e, ov) => !!ov && !!e.closest(ov);
+  /* the overlays a state declares (one selector, or several); a control covered by one it is not inside is excused; and which of them a
+     control is inside, as a key two controls share only when they are in the same ones */
+  const ovs = ov => (ov ? [].concat(ov) : []);
+  const excused = (h, e, ov) => !!h && ovs(ov).some(s => !!h.closest(s) && !e.closest(s));
+  const inOv = (e, ov) => ovs(ov).map(s => !!e.closest(s)).join();
   /* Where a finger would land on a control: the centre of the largest box it is drawn in. A link that wraps over two lines is two boxes, and the
      centre of the box that holds both can fall in the gap between them, on the paragraph. */
   L.point = e => {
@@ -164,7 +170,7 @@ function install() {
         rec.ok = !!h && (h === e || e.contains(h) || (e.labels && [...e.labels].some(l => l.contains(h))));
         if (!rec.ok) {
           rec.by = h ? L.name(h) : 'nothing';
-          rec.excused = !!(h && overlay && h.closest(overlay) && !e.closest(overlay));
+          rec.excused = excused(h, e, overlay);
         }
       }
       undo();
@@ -209,7 +215,7 @@ function install() {
         n++;
         const h = document.elementFromPoint(cx, cy);
         const ok = !!h && (h === e || e.contains(h) || (e.labels && [...e.labels].some(l => l.contains(h))));
-        if (!ok && !(h && overlay && h.closest(overlay) && !e.closest(overlay))) bad.push({ name: L.name(e), by: h ? L.name(h) : 'nothing' });
+        if (!ok && !excused(h, e, overlay)) bad.push({ name: L.name(e), by: h ? L.name(h) : 'nothing' });
       }
       undo();
     }

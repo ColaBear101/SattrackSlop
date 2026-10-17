@@ -46,7 +46,10 @@
   const cd = $derived(a ? countdown(a, clock.tick.ms, Date.now(), MASK, siteClock(app.site), () => app.passAfterWindow()) : null);
 </script>
 
-<svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open) open = false; }} />
+<!-- Escape while a popover of the sheet's own is open (the pass list's filter: CHANGES-FROM-LEGACY.md, L56) closes that popover and
+     leaves the sheet open, wherever the focus is (in the panel, back on its button, or on nothing after a press on the panel's text);
+     this hears it first, so it looks for an open one. The next Escape shuts the sheet. -->
+<svelte:window onkeydown={e => { if (e.key === 'Escape' && !e.defaultPrevented && mode === 'sheet' && open && !document.querySelector('.rail [role=dialog]:not([hidden])')) open = false; }} />
 
 <aside class="rail {mode}" class:open aria-label="Answer">
   {#if mode !== 'side'}
@@ -86,6 +89,8 @@
     box-shadow: 0 -10px 28px -14px rgba(0, 0, 0, .45); padding-bottom: env(safe-area-inset-bottom);
   }
   .rail.sheet .body { max-height: calc(80dvh - 64px); overflow: auto; overscroll-behavior: contain; padding: var(--space-4); border-top: 1px solid var(--rule); }
+  /* a sticky header in here (the pass list's days) sticks inside this padding: this takes it up to the sheet's edge, so that nothing scrolls past above it */
+  .rail.sheet .body { --sticky-top: calc(-1 * var(--space-4)); }
 
   .peek {
     position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px;

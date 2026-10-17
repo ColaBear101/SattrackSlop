@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Ground track console: TLE to Keplerian elements, a day of SGP4 ground track, and Bangkok visibility above a 5 degree mask. Plus a Moon-centred console and an Earth-Moon libration-point view, which are served unchanged from public/.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "https://github.com/ColaBear101/SattrackSlop.git"

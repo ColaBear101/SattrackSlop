@@ -22,7 +22,7 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 - **Set your own place.** Bangkok is the default; search for a town, use your location, type coordinates, or type a Maidenhead grid square such as OK03gs, which the page reads itself and sends nowhere. The form names your site's own square too. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates or a grid square, the nearest hour of solar time unless you enter an offset).
 - **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar, every pass at once or the selected one alone (on a phone, offered to the share sheet); the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
-- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down.
+- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down. *Compare with other spacecraft* sets as many as you like beside it on a chart of its own, seven of them in colour and the rest in grey, each history fetched only when you ask.
 - **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
 - **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), a calculator for working a linear transponder or an FM repeater (what to send on and where to listen, both legs' Doppler, the passband, the sideband, the tone, your own offset), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
 
@@ -66,7 +66,7 @@ The page takes a satellite's Two-Line Element set, works out its orbit, and runs
 
 ## Can you trust the numbers?
 
-This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 28 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
+This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 29 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
 
 ## Data and privacy
 
@@ -300,7 +300,8 @@ verification/       run.js, which runs every stage and prints one table, and:
   fixtures/         the inputs the suites read: catalog.txt, WMM.COF and NOAA's test values,
                     resource.txt, the behaviour and mutant lists
   tools/            not stages: the data fetchers, the mutation runners, check-behaviours
-  lib/              the harness, the layout probe, the perf server, advisor-copy-checks
+  lib/              the harness, the layout probe, the perf server, advisor-copy-checks,
+                    the decay comparison's seed
 
 vercel.json         frontend-only: the build, immutable /assets, nosniff, no-referrer, a
                     Permissions-Policy, and a report-only CSP that names the page's one
@@ -895,11 +896,12 @@ last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
 filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"; the
 transponder offsets you set, `gt.xpdr`, said among "your display choices", which is not quite what
-they are, but a word of their own would weigh on the report's chunk); and
+they are, but a word of their own would weigh on the report's chunk; the spacecraft you compare
+decay with, `gt.decaycmp`, counted among the display choices); and
 two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
-cached copy is used for three hours or twelve, but nothing removes an old one: it stays until that
-object's is fetched again or it is forgotten here, so the caches are also a list of the objects you
-looked at.
+cached copy is used for three hours or twelve, and an old one stays until that object's is fetched
+again or it is forgotten here (a history past its twelve hours is also taken out when the decay
+comparison next asks for one), so the caches are also a list of the objects you looked at.
 The first press reads the store, writes nothing, and says what the second will
 forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
 places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
@@ -929,7 +931,8 @@ The old page had no such button.
 1024×650, on a tablet, on a phone held upright and sideways, on the two largest phones held
 sideways, 915×412 and 932×430, and on the two smallest, 360×640 and 320×568, and in the states that
 change what is on screen: the Layers panel, the picker, the observer's form, the window popover, the
-Map tab, the answer rail's three tabs, the pass list's filter open and the planner. It tests
+Map tab, the answer rail's three tabs, the pass list's filter open, the planner, and the decay
+comparison open and with its search open (on a second page, whose storage alone is seeded). It tests
 whether a button or a layer switch is covered with `elementFromPoint` at its centre, with the layers
 panel, or any panel that scrolls, scrolled to the control, with the page at its top, with the
 stage's foot at the foot of the screen, with the stage's top at the top, at the foot of the page
@@ -1779,6 +1782,80 @@ ends before its own forecast date is most likely the record of one that has come
 panel read "2026-09-14 — 0 days from the last element set" eleven days after that date, over the
 within-three-weeks backtest line. It now reads **Probably re-entered**, with the forecast date and
 how long ago it was, and no accuracy claim: the backtest measured dates still to come.
+
+##### Comparing with other spacecraft
+
+Under the chart and its panel, which stay as they are, **Compare with other spacecraft** opens a
+panel with a chart of its own: the selected spacecraft and the ones you add, each one's mean
+altitude history and its forecast to 120 km, on one time axis. The button is a disclosure (Tab
+reaches it, Space or Enter opens and shuts it, and it says whether the panel is open); shutting the
+panel keeps the list.
+
+**Add spacecraft** opens a search of the catalogue, the picker's own (words in any order or a NORAD
+number, the spacecraft you watch first when nothing is typed; not the other names, L61). Enter or a
+click adds the highlighted row and leaves the search open with what you typed, so several can be
+added from one search; a row already in the comparison, or the selected one, says so and is not
+added twice. **Add watched (10)** adds every watched spacecraft not yet listed. The list keeps up to
+50.
+
+Up to seven are drawn in colour, besides the selected one in the page's cyan, a heavier line drawn
+last; the rest are thin grey lines, there for context. A row's square turns its colour on or off;
+the eighth is refused with a sentence that says to turn one off first. A spacecraft keeps its colour
+until you turn it off or remove it, and a freed colour goes to the next one turned on, so the lines
+already drawn never change colour. Nothing above 2,000 km of mean altitude is drawn (drag does not
+matter there, and one such line would flatten the others), nor a history too short or with nothing
+in it to fit; the row says which. The chart is fitted to the lines in colour: it shows at least a
+year of their past, or as much past as it shows future, and runs to the latest re-entry drawn; the
+grey ones are cut at its edges.
+With four or fewer lines in colour (the selected one's included) and room for them, each is named at
+its last element set, unless two names would sit too close, in which case none is. Under the
+pointer, a line across the chart and a box beside it give the date and each coloured line's
+altitude there, highest first.
+
+The list under the chart is the table of the same thing, the selected spacecraft first: each row has
+the re-entry date or the verdict (the section's own words, from the same history and code), the mean
+altitude and the decay rate, and what is happening to its history (*Queued, 2nd*, *Fetching… 12 s*,
+*Not received* with *Try again*). Eight rows show; the rest fold under *Show the other 5*, and
+*Show only the first 8* folds them again.
+
+Histories are fetched only when you ask, by the rule above: adding one spacecraft asks for its
+history, turning a colour on asks for that one's, and **Fetch 7 more** or **Fetch the rest (3)**
+asks for the rows that wait. *Add watched* asks only for the ones it puts in colour, and goes once
+the list holds 50. No press starts more than seven requests, the selected spacecraft's own among
+them when it has not been estimated (the same request as the panel's *Estimate* button, and the
+panel above paints from it), and a double-click is one press (its second click would land on
+whatever came under the pointer: the next row's remove button, another *Fetch*). They go one
+at a time, and with the cache API answering, at least seven seconds apart (it allows ten a minute);
+a history cached in the last twelve hours is drawn at once. The comparison and the panel above ask
+through one history source, so the panel's *Estimate* for a spacecraft the comparison is already
+fetching (one you listed, then picked) waits for that same request instead of sending a second;
+its row says *Fetching… 12 s* meanwhile. A request cannot be called back: a spacecraft removed
+while its history is on the way still fills the cache, and the next request waits for it (the line
+under the toolbar says so, also for one added meanwhile). A line under the toolbar says what each
+press did and, once the queue is through, what came in ("6 fetched, 1 not received"). Before its
+first request of a run, the comparison takes the cached histories past their twelve hours out of
+your browser's storage: they would not be used, and a long list asked for over many visits would
+otherwise fill the storage your orbits, stars and choices share.
+
+With a planned orbit selected the panel says only that the comparison is put away (a planned orbit
+has no history and its forecast has no dates) and comes back with a catalogue spacecraft.
+
+The list, which ones are in colour and whether the panel is open are kept in your browser under
+`gt.decaycmp`, written only when you change them; reading it back fetches nothing, and a spacecraft
+not in the cache waits for *Fetch*. Another tab of the page follows a change. The panel is a chunk of
+its own (15.7 KB gzipped), asked for at the first press, or when the section comes near if you left
+the panel open; a visit that never opens it does not download it. If it does not arrive, a line
+beside the button says so and asks for a reload: the browser keeps a failed download for the rest of
+the page, so another press would not bring it.
+
+`npm run decay-compare` drives all of this in a browser with CelesTrak faked per spacecraft,
+counting each one's requests and how many are out at once: nothing asked for on a fresh visit, on a
+reload or for a planned orbit, one request per add, never two at once, seven at most per press (a
+double-click too), the colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure,
+a listed spacecraft picked while its history is on the way, a list nearly full and a phone (about a
+minute).
+`npm run layout` and `npm run axe` look at the panel too, open with nine rows and with its search
+open, on a page of their own whose storage alone holds the list and its histories.
 
 ##### KNACKSAT-2
 
@@ -3474,7 +3551,7 @@ storage keeps it for the visit and the press says so); another tab follows a cha
 *Forget what this page stored* removes it with the rest.
 
 The calculator is a chunk of its own (`xpdr`: the panel, its store, its words and its arithmetic),
-asked for the first time the disclosure is opened and mounted into it, and its table a file of its
+asked for the first time the disclosure is opened and rendered in it, and its table a file of its
 own, fetched then; the entry carries the disclosure and its one line of words. A table that did not
 come is said, with **Try again** (its line goes as the table is asked for again, and a press from
 the keyboard leaves the focus on the disclosure's summary, not on the page). A calculator chunk that
@@ -3826,6 +3903,9 @@ npm run timeline     # the window rolling forward past its end, and the next pas
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
+npm run decay-compare # the decay comparison, the rebuilt page only: what it asks CelesTrak for
+                     # and when, one request at a time, its chart, list, keyboard and a phone
+                     # (about a minute; alone in run.js, since it times Clear's 0.6 s)
 npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
                      # order the tap asks in, every refusal's words, the marker on the
                      # spacecraft, the phone held sideways, the globe paused while covered, the
@@ -3878,8 +3958,8 @@ GT_TARGET=legacy node verification/suites/verify-site.js
 
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
 `new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
-files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout` and `ar-snap`
-are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
+files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout`, `ar-snap` and
+`decay-compare` are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
 that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
 
 Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in

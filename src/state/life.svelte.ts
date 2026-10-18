@@ -1,8 +1,7 @@
-import { createHistorySource } from '../lib/net/history-source';
 import type { CatalogueEntry } from '../lib/catalogue/parse';
 import { isCustom, type CustomEntry } from '../lib/planner/custom';
 import { chunkFailedView, fetchingView, offerView, LIFE_NOTHING, type LifeChartState, type LifeFields, type LifeView } from '../lib/text/life-offer';
-import { historyCtx } from './net';
+import { historySource } from './net';
 import { loadPlannerMods, plannerMods } from './planner-mods';
 
 /* Orbital decay and the remaining-life estimate. The estimate itself is lib/planner/lifetime.ts; this keeps the panel's
@@ -12,7 +11,9 @@ import { loadPlannerMods, plannerMods } from './planner-mods';
  * the history endpoint's answer time is not one number (a few seconds to over a minute), so fetching it does NOT fire on its
  * own when a spacecraft is selected - clicking through the picker could queue a dozen minute-long requests against someone
  * else's server. If the answer is already in the cache it appears at once; otherwise the page asks first. Every request is
- * numbered, so an answer for a spacecraft that is no longer on screen is dropped.
+ * numbered, so an answer for a spacecraft that is no longer on screen is dropped. The history comes through the page's one
+ * history source (state/net.ts), which the decay comparison (L66) asks through too: a second ask for a spacecraft whose history
+ * is on its way, from here or from there, shares that request.
  *
  * The drag model and the sentences that read a history (lib/text/life.ts) are a chunk of their own: nothing here needs them
  * until a forecast is to be painted, and the offer and the wait are in lib/text/life-offer.ts. */
@@ -50,7 +51,7 @@ class LifeState {
     /* An orbit the reader designed first, before anything keyed on its number: no cache to probe, no button, no request. The flag, never
        the number - the test hook's orbit carries a real catalogue number. */
     if (isCustom(entry)) { this.view = LIFE_NOTHING; void this.offerCustom(entry, this.req); return; }
-    const hit = createHistorySource(historyCtx(false)).cached(entry.satnum);
+    const hit = historySource().cached(entry.satnum);
     if (hit) { this.view = LIFE_NOTHING; void this.paint(hit, this.req); return; }
     this.view = offerView();
   }
@@ -113,7 +114,7 @@ class LifeState {
        said when it is known, not after the history has answered or its 75 seconds are up. */
     words.catch(() => { if (current()) { clearInterval(this.timer); this.view = chunkFailedView(); } });
     let got = null;
-    try { got = await createHistorySource(historyCtx(false)).history(entry.satnum); } catch { got = null; }
+    try { got = await historySource().history(entry.satnum); } catch { got = null; }
     if (!current()) return;                                             // the reader moved on, or asked again
     clearInterval(this.timer);
     let L;

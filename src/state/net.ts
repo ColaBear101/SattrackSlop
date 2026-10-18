@@ -1,6 +1,6 @@
 import { createApiClient, resolveApiBase, type ApiClient } from '../lib/net/api';
 import { createBreaker } from '../lib/net/breaker';
-import type { HistoryCtx } from '../lib/net/history-source';
+import { createHistorySource, type HistoryCtx, type HistorySource } from '../lib/net/history-source';
 import type { TleCtx } from '../lib/net/tle-source';
 
 /* The page's network, wired once: the API client (or none), the circuit breaker that stops the page asking an API
@@ -41,3 +41,8 @@ export function historyCtx(isCustom: boolean): HistoryCtx {
   try { storage = window.localStorage; } catch { /* blocked: the code works without it */ }
   return { fetch: (url, init) => window.fetch(url, init), now: () => Date.now(), storage, isCustom, api, breaker };
 }
+
+let hs: HistorySource | undefined;
+/** The page's one source of decay histories, made at its first use: the Decay section and its comparison (L66) both ask through
+ *  it, so two asks for the same spacecraft while its history is on the way share one request. */
+export const historySource = (): HistorySource => (hs ??= createHistorySource(historyCtx(false)));

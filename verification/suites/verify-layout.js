@@ -15,6 +15,8 @@
  *   popover . the Map tab . the answer rail (its three tabs,
  *   the pass list's filter open, and folded, where it folds, and the transponder calculator open on QO-100, L63) . FO-29 with the Professor's
  *   group that holds "Go to Orbital decay" open (L64) . the orbit planner (a drawer, a sheet or a panel, by width)
+ *   and, on a second page whose storage holds a comparison left open (seeded in that page alone), the decay comparison with nine rows and
+ *   its search open
  *
  *   1  The page does not scroll sideways (documentElement.scrollWidth <= the window's width, as the context was given it: in a mobile context innerWidth
  *      itself grows with a wide page), in every state.
@@ -57,6 +59,7 @@ const fs = require('fs');
 const path = require('path');
 const H = require('../lib/harness');
 const probe = require('../lib/layout-probe');
+const CMP = require('../lib/decay-compare-seed');
 
 if (!process.env.GT_TARGET && !process.env.GT_URL) process.env.GT_TARGET = 'new';
 if (!process.env.GT_URL && H.targetName() !== 'new') {
@@ -150,6 +153,7 @@ async function openPage(browser, srv, size, query, o) {
   });
   if (!o.realClock) await ctx.clock.install({ time: NOW });
   const page = await ctx.newPage();
+  if (o.seed) await page.addInitScript(CMP.seedStorage, o.seed);   // this page's storage only (lib/decay-compare-seed.js)
   page.on('pageerror', e => pageErrors.push('[' + size.id + (query || '') + '] ' + e.message));
   await page.goto(urlWith(srv, query), { waitUntil: 'load' });
   await page.evaluate(([w, h]) => window.__L.setWindow(w, h), [size.w, size.h]);
@@ -276,6 +280,33 @@ function statesFor(page, size, assertPlanner) {
   return S;
 }
 
+/* The decay comparison (CHANGES-FROM-LEGACY.md, L66), on a second page of its own: the panel as a reader who has used it finds it on coming
+   back, its record (open) and the histories it drew written into THAT page's storage before its code runs (lib/decay-compare-seed.js; never
+   the context's or the first page's, whose states would all have it), so it opens from the cache as the section comes near, with no request:
+   the selected spacecraft and four more in colour (the catalogue's longest name among them), two grey (one with a mark in its name), one
+   waiting with its Fetch, one too high to draw, its reason beside it, the fold opened to show it; then its search, on a query whose rows
+   carry the marks "in the comparison" and "decayed now" beside long names, with the line under the list that says what the second is. */
+function compareStates(page) {
+  const hidden = sel => waitFor(page, s => { const e = document.querySelector(s); return !e || !e.checkVisibility() || e.hidden; }, sel, 6000);
+  const shownSel = sel => waitFor(page, s => { const e = document.querySelector(s); return !!e && e.checkVisibility() && e.getBoundingClientRect().height > 0; }, sel, 8000);
+  return [
+    { id: 'decay-compare', overlay: null, enter: async () => {
+      await page.evaluate(() => document.getElementById('cmpopen').scrollIntoView({ block: 'center' }));
+      await waitFor(page, () => {
+        const r = document.getElementById('cmprows'), cv = document.getElementById('cmpcv');
+        return !!r && r.children.length === 8 && !/Reading|Queued|Fetching/.test(r.innerText) && !!cv && !cv.hidden && !!document.getElementById('cmpmore');
+      }, undefined, 20000);
+      await page.click('#cmpmore');
+      await waitFor(page, n => document.getElementById('cmprows').children.length === n, CMP.SEED_ROWS, 4000);
+      await raf2(page);
+    }, exit: async () => {} },
+    { id: 'decay-compare-add', overlay: POP('Add a spacecraft to compare'), enter: async () => {
+      await page.click('#cmpadd'); await shownSel('#cmpsearch');
+      await page.fill('#cmpsearch', 'jilin-01 gaofen 3'); await shownSel('#cmpdecayed'); await raf2(page);
+    }, exit: async () => { await page.keyboard.press('Escape'); await hidden('#cmpsearch'); } }
+  ];
+}
+
 /* ---- one size: the walk through the states, every sweep in each ---------------------------------------------------------------------- */
 async function walkSize(browser, srv, size, o) {
   const t0 = Date.now();
@@ -288,74 +319,77 @@ async function walkSize(browser, srv, size, o) {
       (pre.iw === size.w || pre.sw > pre.iw) && (pre.ih === size.h || pre.sw > pre.iw) && pre.coarse === !!size.touch && pre.probe === 'object', JSON.stringify(pre));
   const note = (m, key, detail) => { const k = key + ' :: ' + detail; const e = m.get(k) || { state: key, detail, schemes: new Set() }; m.set(k, e); return e; };
 
-  let flip = false, cur = 'light';
-  const states = o.sweeps ? statesFor(page, size, o.structure) : [];
-  for (const st of states) {
-    try { await timed('enter state', () => st.enter()); } catch (e) { crashes.push(size.id + ' ' + st.id + ': could not enter the state: ' + String(e.message).split('\n')[0]); try { await st.exit(); } catch (_) {} continue; }
-    acc.states.push(st.id);
-    for (const scheme of (flip = !flip) ? SCHEMES : SCHEMES.slice().reverse()) {   // the other way round each state: half the switches
-      if (cur !== scheme) await timed('switch scheme', async () => {
-        await page.emulateMedia({ colorScheme: scheme });
-        await waitFor(page, t => document.documentElement.dataset.theme === t, scheme, 4000).catch(() => {});
-        await raf2(page);
-        cur = scheme;
-      });
-      const theme = await page.evaluate(() => document.documentElement.dataset.theme);
-      if (theme !== scheme) { crashes.push(size.id + ' ' + st.id + ': the page did not take the ' + scheme + ' scheme (data-theme=' + theme + ')'); continue; }
-      const r = await timed('sweeps', () => page.evaluate(a => {
-        const L = window.__L, o = {};
-        scrollTo(0, 0);
-        o.overflow = L.overflow();
-        if (a.g2) { o.reach = L.sweepReach(a.overlay); o.each = L.sweepEach(a.overlay); o.overlaps = L.overlaps(a.overlay); o.panels = L.panels(); }
-        if (a.g3) { o.small = L.smallText(a.min, a.minExcept); o.clipped = L.clippedText(a.clipExcept); }
-        if (a.g4 && L.coarse()) o.taps = L.taps(a.tap);
-        scrollTo(0, 0);
-        return o;
-      }, { overlay: st.overlay, g2: want(2), g3: want(3), g4: want(4) && size.touch, min: MIN_TEXT_PX, minExcept: MIN_TEXT_EXCEPT, clipExcept: CLIP_EXCEPT, tap: { full: TAP_FULL, min: TAP_MIN, clear: TAP_CLEAR } }));
+  /* every state on one page, each in light and dark, every sweep in each; the page is left in light */
+  const sweep = async (page, states) => {
+    let flip = false, cur = 'light';
+    for (const st of states) {
+      try { await timed('enter state', () => st.enter()); } catch (e) { crashes.push(size.id + ' ' + st.id + ': could not enter the state: ' + String(e.message).split('\n')[0]); try { await st.exit(); } catch (_) {} continue; }
+      acc.states.push(st.id);
+      for (const scheme of (flip = !flip) ? SCHEMES : SCHEMES.slice().reverse()) {   // the other way round each state: half the switches
+        if (cur !== scheme) await timed('switch scheme', async () => {
+          await page.emulateMedia({ colorScheme: scheme });
+          await waitFor(page, t => document.documentElement.dataset.theme === t, scheme, 4000).catch(() => {});
+          await raf2(page);
+          cur = scheme;
+        });
+        const theme = await page.evaluate(() => document.documentElement.dataset.theme);
+        if (theme !== scheme) { crashes.push(size.id + ' ' + st.id + ': the page did not take the ' + scheme + ' scheme (data-theme=' + theme + ')'); continue; }
+        const r = await timed('sweeps', () => page.evaluate(a => {
+          const L = window.__L, o = {};
+          scrollTo(0, 0);
+          o.overflow = L.overflow();
+          if (a.g2) { o.reach = L.sweepReach(a.overlay); o.each = L.sweepEach(a.overlay); o.overlaps = L.overlaps(a.overlay); o.panels = L.panels(); }
+          if (a.g3) { o.small = L.smallText(a.min, a.minExcept); o.clipped = L.clippedText(a.clipExcept); }
+          if (a.g4 && L.coarse()) o.taps = L.taps(a.tap);
+          scrollTo(0, 0);
+          return o;
+        }, { overlay: st.overlay, g2: want(2), g3: want(3), g4: want(4) && size.touch, min: MIN_TEXT_PX, minExcept: MIN_TEXT_EXCEPT, clipExcept: CLIP_EXCEPT, tap: { full: TAP_FULL, min: TAP_MIN, clear: TAP_CLEAR } }));
 
-      const sid = st.id;
-      if (r.overflow.sw > r.overflow.iw || r.overflow.bsw > r.overflow.iw) {
-        const d = 'page ' + r.overflow.sw + ' px wide in a ' + r.overflow.iw + ' px window' + (r.overflow.wide.length ? ' (' + r.overflow.wide.join('; ') + ')' : '');
-        const e = note(acc.overflow, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'overflow', 0); e.schemes.add(scheme);
+        const sid = st.id;
+        if (r.overflow.sw > r.overflow.iw || r.overflow.bsw > r.overflow.iw) {
+          const d = 'page ' + r.overflow.sw + ' px wide in a ' + r.overflow.iw + ' px window' + (r.overflow.wide.length ? ' (' + r.overflow.wide.join('; ') + ')' : '');
+          const e = note(acc.overflow, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'overflow', 0); e.schemes.add(scheme);
+        }
+        if (r.reach) {
+          acc.controls = Math.max(acc.controls, r.reach.n);
+          for (const b of r.reach.bad) {
+            const d = b.name + ' is covered by ' + b.by + ' (page at ' + b.pos + ', scrollY ' + b.scrollY + ')';
+            const e = note(acc.reach, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'covered', b.scrollY); e.schemes.add(scheme);
+          }
+          for (const b of r.each.bad) {
+            const d = b.name + ' is covered by ' + b.by + ' (scrolled to the middle of the screen)';
+            const e = note(acc.each, sid, d); if (!e.schemes.size) e.shot = ''; e.schemes.add(scheme);
+          }
+          for (const o of r.overlaps.out) {
+            const d = o.a + ' overlaps ' + o.b + ' by ' + o.w + ' x ' + o.h + ' px';
+            const e = note(acc.overlap, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'overlap', 0); e.schemes.add(scheme);
+          }
+          for (const p of r.panels) {
+            if (!p.inside) { const d = p.name + ' spans ' + p.left + '..' + p.right + ' in a ' + p.iw + ' px window'; const e = note(acc.panels, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'panel', 0); e.schemes.add(scheme); }
+            if (!p.footOk) { const d = p.name + ': its last control, ' + p.foot + ', cannot be reached (covered by ' + p.footBy + ')'; const e = note(acc.panels, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'panelfoot', 0); e.schemes.add(scheme); }
+          }
+        }
+        if (r.small) {
+          acc.textSeen = Math.max(acc.textSeen, r.small.seen);
+          for (const s of r.small.small) { const d = s.fs + ' px "' + s.text + '" (' + s.name + ')'; const e = note(acc.small, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'smalltext', 0); e.schemes.add(scheme); }
+          for (const c of r.clipped) { const d = c.name + ' ' + c.why; const e = note(acc.clipped, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'clipped', 0); e.schemes.add(scheme); }
+        }
+        if (r.taps) {
+          acc.tapFull = Math.max(acc.tapFull, r.taps.full);
+          for (const t of r.taps.fail) {
+            let e = acc.taps.get(t.name);
+            if (!e) { e = { name: t.name, w: t.w, h: t.h, clear: t.clear, states: new Set(), shot: '' }; acc.taps.set(t.name, e); e.shot = await shot(page, size, scheme, sid, 'tap', 0); }
+            e.clear = Math.min(e.clear, t.clear); e.states.add(sid);
+          }
+          for (const t of r.taps.exception) acc.exception.set(t.name, t.w + ' x ' + t.h + ', ' + (t.clear >= 999 ? 'alone' : t.clear + ' px clear'));
+          for (const t of r.taps.exempt) acc.exempt.set(t.name, t.why);
+        }
       }
-      if (r.reach) {
-        acc.controls = Math.max(acc.controls, r.reach.n);
-        for (const b of r.reach.bad) {
-          const d = b.name + ' is covered by ' + b.by + ' (page at ' + b.pos + ', scrollY ' + b.scrollY + ')';
-          const e = note(acc.reach, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'covered', b.scrollY); e.schemes.add(scheme);
-        }
-        for (const b of r.each.bad) {
-          const d = b.name + ' is covered by ' + b.by + ' (scrolled to the middle of the screen)';
-          const e = note(acc.each, sid, d); if (!e.schemes.size) e.shot = ''; e.schemes.add(scheme);
-        }
-        for (const o of r.overlaps.out) {
-          const d = o.a + ' overlaps ' + o.b + ' by ' + o.w + ' x ' + o.h + ' px';
-          const e = note(acc.overlap, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'overlap', 0); e.schemes.add(scheme);
-        }
-        for (const p of r.panels) {
-          if (!p.inside) { const d = p.name + ' spans ' + p.left + '..' + p.right + ' in a ' + p.iw + ' px window'; const e = note(acc.panels, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'panel', 0); e.schemes.add(scheme); }
-          if (!p.footOk) { const d = p.name + ': its last control, ' + p.foot + ', cannot be reached (covered by ' + p.footBy + ')'; const e = note(acc.panels, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'panelfoot', 0); e.schemes.add(scheme); }
-        }
-      }
-      if (r.small) {
-        acc.textSeen = Math.max(acc.textSeen, r.small.seen);
-        for (const s of r.small.small) { const d = s.fs + ' px "' + s.text + '" (' + s.name + ')'; const e = note(acc.small, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'smalltext', 0); e.schemes.add(scheme); }
-        for (const c of r.clipped) { const d = c.name + ' ' + c.why; const e = note(acc.clipped, sid, d); if (!e.schemes.size) e.shot = await shot(page, size, scheme, sid, 'clipped', 0); e.schemes.add(scheme); }
-      }
-      if (r.taps) {
-        acc.tapFull = Math.max(acc.tapFull, r.taps.full);
-        for (const t of r.taps.fail) {
-          let e = acc.taps.get(t.name);
-          if (!e) { e = { name: t.name, w: t.w, h: t.h, clear: t.clear, states: new Set(), shot: '' }; acc.taps.set(t.name, e); e.shot = await shot(page, size, scheme, sid, 'tap', 0); }
-          e.clear = Math.min(e.clear, t.clear); e.states.add(sid);
-        }
-        for (const t of r.taps.exception) acc.exception.set(t.name, t.w + ' x ' + t.h + ', ' + (t.clear >= 999 ? 'alone' : t.clear + ' px clear'));
-        for (const t of r.taps.exempt) acc.exempt.set(t.name, t.why);
-      }
+      try { await timed('leave state', () => st.exit()); } catch (e) { crashes.push(size.id + ' ' + st.id + ': could not leave the state: ' + String(e.message).split('\n')[0]); break; }
     }
-    try { await timed('leave state', () => st.exit()); } catch (e) { crashes.push(size.id + ' ' + st.id + ': could not leave the state: ' + String(e.message).split('\n')[0]); break; }
-  }
-  await page.emulateMedia({ colorScheme: 'light' });
+    await page.emulateMedia({ colorScheme: 'light' });
+  };
+  await sweep(page, o.sweeps ? statesFor(page, size, o.structure) : []);
   if (o.structure) {
     const step = async (what, fn) => { try { await fn(); } catch (e) { crashes.push(size.id + ': ' + what + ': ' + String(e.message).split('\n')[0]); } };
     await step('structure', () => timed('structure', () => structureChecks(page, size)));
@@ -367,6 +401,12 @@ async function walkSize(browser, srv, size, o) {
     });
   }
   await ctx.close();
+  /* the decay comparison, on a page of its own (compareStates) */
+  if (o.sweeps) {
+    const two = await timed('open page', () => openPage(browser, srv, size, '', { seed: CMP.compareSeed(NOW.getTime()) }));
+    await sweep(two.page, compareStates(two.page));
+    await two.ctx.close();
+  }
   return { acc, t: (Date.now() - t0) / 1000 };
 }
 

@@ -13,27 +13,32 @@
   import Segmented from '../ui/Segmented.svelte';
   import type { LiveLine } from './xpdr';
 
-  /* The transponder calculator (CHANGES-FROM-LEGACY.md, L63), mounted into "Uplink and transponders", the disclosure that ends the live line
-     (DopplerLive.svelte), by xpdr.ts. No style of its own: its rules are DopplerLive's, as :global(#xpdr ...), so that this chunk brings no
-     stylesheet the entry would have to name.
+  /* The transponder calculator (CHANGES-FROM-LEGACY.md, L63), rendered inside "Uplink and transponders", the disclosure that ends the live
+     line (DopplerLive.svelte), once its chunk (xpdr.ts) has come; it goes with the disclosure. No style of its own: its rules are
+     DopplerLive's, as :global(#xpdr ...), so that this chunk brings no stylesheet the entry would have to name.
 
      It works only while the disclosure is open: shut, nothing below reads the line, the store or the clock. Open, its figures are for the
      live line's instant and from the range rate the line has already worked out there (the caption above says which instant, and offers
      Go live), so it asks the engine for no state of its own: while the clock stands still, choosing, holding and nudging are arithmetic
      on that one range rate. Nothing it does reaches the downlink box, the Doppler rows or the uplink box above it. */
-  let { details, line, done }: { details: HTMLDetailsElement; line: () => LiveLine | null; done: () => void } = $props();
+  let { line }: { line: () => LiveLine | null } = $props();
 
-  /* open or shut as the disclosure is: at the mount (the toggle that asked for this chunk has been and gone), then at each toggle */
+  /* open or shut as the disclosure is (the panel's parent): when it is rendered (the toggle that asked for this chunk has been and gone),
+     then at each toggle */
+  let root: HTMLDivElement | undefined = $state();
+  let details: HTMLDetailsElement | null = null;
   let open = $state(false);
   $effect(() => {
+    const d = root?.parentElement as HTMLDetailsElement | null | undefined;
+    if (!d) return;
+    details = d;
     const toggled = () => {
-      if (!details.isConnected) { queueMicrotask(done); return; }
-      open = details.open;
-      if (details.open) void xpdr.ensure();
+      open = d.open;
+      if (d.open) void xpdr.ensure();
     };
     toggled();
-    details.addEventListener('toggle', toggled);
-    return () => details.removeEventListener('toggle', toggled);
+    d.addEventListener('toggle', toggled);
+    return () => d.removeEventListener('toggle', toggled);
   });
 
   const entry = $derived(open ? app.entry : null);
@@ -51,9 +56,6 @@
     if (!rec || !band || !pick || rr === null || (rec.linear && pick.hz === null)) return null;
     return legsFor(band, pick.hold, pick.hz ?? 0, rr, getEngine(), off);
   });
-  /* gone if the panel has outlived its disclosure (it was replaced): looked at whenever the line moves while open */
-  $effect(() => { if (L && !details.isConnected) queueMicrotask(done); });
-
   /* far: no figure worth showing for what follows the held frequency */
   const far = $derived(!!legs && legs.far);
   const hold = $derived(pick ? pick.hold : 'tx');
@@ -98,7 +100,7 @@
     const had = document.activeElement === e.currentTarget;
     void xpdr.ensure();
     if (had) void tick().then(() => {
-      const s = details.querySelector('summary'), a = document.activeElement;
+      const s = details?.querySelector('summary'), a = document.activeElement;
       if (s && (a === null || a === document.body)) s.focus({ preventScroll: true });
     });
   }
@@ -166,7 +168,7 @@
   <p class="ln"><span class="k">{k}</span> <span class="f" id="xpdr-{id}">{f === null ? '—' : fig(f)}</span> <span class="d">{f === null || from === null || fig(f) === '—' ? '' : shift(f - from)}</span></p>
 {/snippet}
 
-<div id="xpdr-panel" data-ms={L ? L.ms : undefined} data-pred={shown ? String(shown.pred) : undefined} data-pred-ms={shown ? shown.ms : undefined}>
+<div id="xpdr-panel" bind:this={root} data-ms={L ? L.ms : undefined} data-pred={shown ? String(shown.pred) : undefined} data-pred-ms={shown ? shown.ms : undefined}>
   {#if open}
     {#if xpdr.failed}
       <p id="xpdr-fail" class="ln">{XP_FAILED} <Button size="sm" id="xpdr-retry" onclick={retry}>{XP_RETRY}</Button></p>

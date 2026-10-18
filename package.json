@@ -52,6 +52,7 @@
     "globe": "node verification/suites/verify-globe.js",
     "elements": "node verification/suites/verify-elements.js",
     "lifetime": "node verification/suites/verify-lifetime.js",
+    "decay-compare": "node verification/suites/verify-decay-compare.js",
     "ar": "node verification/suites/verify-ar.js",
     "ar-snap": "node verification/suites/verify-ar-snap.js",
     "layout": "node verification/suites/verify-layout.js",

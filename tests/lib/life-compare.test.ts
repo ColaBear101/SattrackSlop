@@ -131,13 +131,14 @@ describe('the status line', () => {
 });
 
 describe('the chart', () => {
-  it('its name says how many, and which when four or fewer are in colour', () => {
+  it('its name says how many, and which when four or fewer are drawn', () => {
     expect(W.cmpChartName(9, null)).toBe('Mean altitude history and projected decay of 9 spacecraft');
     expect(W.cmpChartName(3, ['KNACKSAT-2', ISS, 'OSCAR 7'])).toBe('Mean altitude history and projected decay of 3 spacecraft: KNACKSAT-2, ISS (ZARYA) and OSCAR 7');
     expect(W.cmpChartName(1, ['KNACKSAT-2'])).toBe('Mean altitude history and projected decay of 1 spacecraft: KNACKSAT-2');
   });
   it('its key, its line and its axis', () => {
     expect([W.CMP_KEY_OBSERVED, W.CMP_KEY_PROJECTED, W.cmpOthers(1), W.cmpOthers(12)]).toEqual(['observed', 'projected', '1 other', '12 others']);
+    expect([W.cmpGrey(1), W.cmpGrey(3)]).toEqual(['1 spacecraft', '3 spacecraft']);     // the grey lines, with none in colour
     expect(W.CMP_REENTRY).toBe('120 km — re-entry');
     const t = Date.UTC(2026, 9, 18, 23, 59);
     expect([W.cmpMonth(t), W.cmpDay(t), W.cmpKm(412.345)]).toEqual(['2026-10', '2026-10-18', '412.3 km']);

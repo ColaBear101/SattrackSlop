@@ -1,7 +1,7 @@
 import type { Geom } from './draw-life';
 import { DAY_MS, drawable, frame, labelPlan, shortName, tipOrder, valueAt, type SeriesShape } from '../../lib/decay/compare';
 import {
-  CMP_KEY_OBSERVED, CMP_KEY_PROJECTED, CMP_REENTRY, cmpChartName, cmpDay, cmpKm, cmpMonth, cmpOthers
+  CMP_KEY_OBSERVED, CMP_KEY_PROJECTED, CMP_REENTRY, cmpChartName, cmpDay, cmpGrey, cmpKm, cmpMonth, cmpOthers
 } from '../../lib/text/life-compare';
 
 /* The decay comparison's chart (CHANGES-FROM-LEGACY.md, L66): many spacecraft's mean altitude histories and projected decay on one
@@ -12,6 +12,7 @@ import {
  * What differs from the single chart, and why:
  * - The frame is fitted to the decay, not to every record (lib/decay/compare.ts frame()): a year or more of the past before the
  *   earliest last element set, to the latest end of a projection. Older history runs in from the left edge, clipped to the plot.
+ *   It is fitted to the lines in colour (to the grey ones only when none is): a grey line is context, clipped like old history.
  * - Up to eight lines are in colour: the selected spacecraft in slot 1, the page's cyan (--track), drawn last and a pixel heavier,
  *   so it can be told apart without its hue; up to seven others in slots 2..8. Every further line with a forecast is a thin grey
  *   context line, drawn first, with no dot and no name. Never a ninth hue.
@@ -61,6 +62,12 @@ const L = 46, R = 30, T = 14, B = 26;     // draw-life's margins: R leaves room 
 const FONT = '11px "IBM Plex Mono",monospace';
 const FLOOR = 120;                        // km: the line where an object stops being in orbit
 
+/** A round step (1, 2 or 5 x 10^k km, 1 km at least) for about five grid lines over `span` km. */
+function tickStep(span: number): number {
+  const raw = span / 5, p = 10 ** Math.floor(Math.log10(raw)), e = raw / p;
+  return Math.max(1, (e >= Math.sqrt(50) ? 10 : e >= Math.sqrt(10) ? 5 : e >= Math.SQRT2 ? 2 : 1) * p);
+}
+
 /** The lines that can be drawn: the grey ones in the order given, and the coloured ones by slot (the selected one first). */
 function sortLines(lines: readonly CmpSeries[]): { grey: CmpSeries[]; col: CmpSeries[] } {
   const S = lines.filter(s => s.P.length && drawable(s.r));
@@ -81,7 +88,9 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
   const all = [...col, ...grey];
   /* the spacecraft are named when they are four or fewer, all of them: a count followed by some of the names would read as all */
   const label = cmpChartName(all.length, all.length > 0 && all.length <= 4 ? all.map(s => s.name) : null);
-  const f = frame(all);
+  /* fitted to the coloured lines when there are any: a grey one is context, clipped to the plot, and a high flat one or a long
+     slow projection would otherwise squeeze every coloured line into a few pixels */
+  const f = frame(col.length ? col : grey);
   if (!f) {
     g.fillStyle = c.muted; g.font = '12px "IBM Plex Mono",monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('—', Wc / 2, Hc / 2);
@@ -91,19 +100,22 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
   const X = (t: number) => L + (t - t0) / (tEnd - t0) * (Wc - L - R);
   const Y = (v: number) => T + (hMax - v) / (hMax - hMin) * (Hc - T - B);
 
-  // grid + y labels
+  // grid + y labels, at round heights
   g.strokeStyle = c.rule; g.lineWidth = 1; g.font = FONT;
   g.fillStyle = c.muted; g.textAlign = 'right'; g.textBaseline = 'middle';
-  for (let i = 0; i <= 5; i++) {
-    const v = hMin + (hMax - hMin) * i / 5, y = Y(v);
+  const step = tickStep(hMax - hMin);
+  for (let v = Math.ceil(hMin / step) * step; v <= hMax; v += step) {
+    const y = Y(v);
     g.globalAlpha = .5; g.beginPath(); g.moveTo(L, y); g.lineTo(Wc - R, y); g.stroke();
     g.globalAlpha = 1; g.fillText(v.toFixed(0), L - 7, y);
   }
-  // x labels, the outer two anchored inward; on the alphabetic baseline, where draw-life's 'top' ones sit
+  /* x labels, the outer two anchored inward; on the alphabetic baseline, where draw-life's 'top' ones sit. Four, or three where four
+     would run into each other (a phone): the first centred one keeps 8 px from the left one */
   g.textBaseline = 'alphabetic';
-  for (let i = 0; i <= 3; i++) {
-    const t = t0 + (tEnd - t0) * i / 3;
-    g.textAlign = i === 0 ? 'left' : i === 3 ? 'right' : 'center';
+  const k = Math.min(3, Math.max(1, Math.floor((Wc - L - R) / (1.5 * g.measureText(cmpMonth(t0)).width + 8))));
+  for (let i = 0; i <= k; i++) {
+    const t = t0 + (tEnd - t0) * i / k;
+    g.textAlign = i === 0 ? 'left' : i === k ? 'right' : 'center';
     g.fillText(cmpMonth(t), X(t), Hc - B + 16);
   }
   // the 120 km line
@@ -175,13 +187,13 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
   return { label, geom: { X, Y, L, R, T, B, Wc, Hc, t0, tEnd, hMin, hMax }, labelled: !!plan };
 }
 
-/** The key under the chart: the coloured lines (the selected one first, then by slot), "N others" for the grey ones, and the two
- *  line styles. Nothing with nothing drawn. */
+/** The key under the chart: the coloured lines (the selected one first, then by slot), "N others" for the grey ones ("N spacecraft"
+ *  when none is in colour), and the two line styles. Nothing with nothing drawn. */
 export function compareKey(lines: readonly CmpSeries[], c: CmpColors): CmpKeyItem[] {
   const { grey, col } = sortLines(lines);
   if (!grey.length && !col.length) return [];
   const key: CmpKeyItem[] = col.map(s => ({ color: colorOf(c, s.slot), text: s.name }));
-  if (grey.length) key.push({ color: c.muted, text: cmpOthers(grey.length), grey: true });
+  if (grey.length) key.push({ color: c.muted, text: col.length ? cmpOthers(grey.length) : cmpGrey(grey.length), grey: true });
   key.push({ color: c.muted, text: CMP_KEY_OBSERVED }, { color: c.muted, text: CMP_KEY_PROJECTED, dashed: true });
   return key;
 }

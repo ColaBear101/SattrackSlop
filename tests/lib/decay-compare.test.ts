@@ -148,15 +148,28 @@ describe('what is drawn, and the frame', () => {
 
 describe('the readout', () => {
   const s = series(10, 0, 400, 390, 20);
-  it('reads the element set at or after the instant inside the record, then the projection, and nothing outside them', () => {
+  it('reads the line as drawn: straight between element sets inside the record, then along the projection, nothing outside', () => {
     expect(valueAt(s, s.P[0]!.t - 1)).toBeNull();
+    expect(valueAt(s, s.P[0]!.t)).toEqual({ h: 400, projected: false });
     expect(valueAt(s, s.P[3]!.t)).toEqual({ h: s.P[3]!.sma, projected: false });
-    expect(valueAt(s, s.P[3]!.t + 1)).toEqual({ h: s.P[4]!.sma, projected: false });
+    const q = valueAt(s, s.P[3]!.t + DAY_MS / 4)!;                      // a quarter of the way to the next set
+    expect(q.projected).toBe(false);
+    expect(q.h).toBeCloseTo(s.P[3]!.sma + (s.P[4]!.sma - s.P[3]!.sma) / 4, 9);
     expect(valueAt(s, s.r.tNow!)).toEqual({ h: 390, projected: false });
-    expect(valueAt(s, s.r.tNow! + 1)).toEqual({ h: s.r.track![1]!.h, projected: true });
+    const p = valueAt(s, s.r.tNow! + DAY_MS)!;                          // halfway between the projection's first two points
+    expect(p.projected).toBe(true);
+    expect(p.h).toBeCloseTo((s.r.track![0]!.h + s.r.track![1]!.h) / 2, 9);
+    expect(valueAt(s, s.r.tNow! + 2 * DAY_MS)).toEqual({ h: s.r.track![1]!.h, projected: true });
     expect(valueAt(s, s.r.tNow! + 20 * DAY_MS)).toEqual({ h: 120, projected: true });
     expect(valueAt(s, s.r.tNow! + 20 * DAY_MS + 1)).toBeNull();
     expect(valueAt(series(10, 0, 400, 390), T + 1)).toBeNull();         // no projection: nothing after the last set
+  });
+  it('reads a slow decayer just past its last set on its line, not at the next point 4 km down', () => {
+    /* the lifetime model samples its projection every 4 km of height: here 4 km in 200 days */
+    const slow: SeriesShape = { P: [{ t: T - DAY_MS, sma: 470.2 }, { t: T, sma: 470 }],
+      r: { tNow: T, hNow: 470, track: [{ t: 0, h: 470 }, { t: 200, h: 466 }, { t: 380, h: 462 }] } };
+    expect(valueAt(slow, T + DAY_MS / 2)!.h).toBeCloseTo(469.99, 9);
+    expect(valueAt(slow, T + 290 * DAY_MS)!.h).toBeCloseTo(464, 9);
   });
   it('lists the values highest first, two at one height in their order', () => {
     expect(tipOrder([{ h: 300, k: 'a' }, { h: 410, k: 'b' }, { h: 300, k: 'c' }, { h: 120, k: 'd' }]).map(x => x.k)).toEqual(['b', 'a', 'c', 'd']);

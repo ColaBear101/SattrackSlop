@@ -128,6 +128,56 @@ describe('drawCompare: the canvas and the frame', () => {
     }
   });
 
+  it('fits the frame to the lines in colour: a high flat grey line or a grey 6,000-day projection does not move it', () => {
+    const iss = line('25544', 1, 'ISS (ZARYA)', 400, 1, 415, 410, 300), cube = line('60001', 2, 'CUBE', 300, 1, 480, 200, 200);
+    const ao7 = line('07530', 0, 'AO-7', 2000, 1, 1450, 1450), slow = line('40020', 0, 'SLOW', 1000, 1, 700, 690, 6000);
+    const only = draw([iss, cube]).geom!, f = frame([iss, cube])!;
+    expect({ t0: only.t0, tEnd: only.tEnd, hMin: only.hMin, hMax: only.hMax }).toEqual(f);
+    for (const greys of [[ao7], [slow], [ao7, slow]]) {
+      const { geom, calls, label } = draw([iss, ...greys, cube]);
+      expect({ t0: geom!.t0, tEnd: geom!.tEnd, hMin: geom!.hMin, hMax: geom!.hMax }).toEqual(f);
+      expect(seriesLines(calls).filter(m => m.color === '#muted').length).toBeGreaterThanOrEqual(greys.length);  // still drawn, clipped
+      expect(label).toMatch(new RegExp('of ' + (2 + greys.length) + ' spacecraft'));
+    }
+    /* with nothing in colour, the grey lines are the frame */
+    const g = draw([ao7, slow]).geom!;
+    expect({ t0: g.t0, tEnd: g.tEnd, hMin: g.hMin, hMax: g.hMax }).toEqual(frame([ao7, slow]));
+  });
+
+  it('puts the grid at round heights, about five of them, each labelled with its height', () => {
+    const yLabels = (calls: Call[]) => texts(calls).filter(t => t.op === 'fillText' && t.align === 'right' && t.base === 'middle');
+    const flat = draw([line('40003', 2, 'FLAT', 400, 1, 500, 500)]);                 // 496..504 km
+    expect(yLabels(flat.calls).map(t => t.args[0])).toEqual(['496', '498', '500', '502', '504']);
+    for (const lines of [three(), [line('25544', 1, 'ISS (ZARYA)', 400, 1, 415, 410, 300), line('60001', 2, 'CUBE', 300, 1, 480, 200, 200)]]) {
+      const { geom, calls } = draw(lines);
+      const v = yLabels(calls).map(t => Number(t.args[0]));
+      const step = v[1]! - v[0]!;
+      expect(String(step)).toMatch(/^[125]0*$/);
+      expect(v.length).toBeGreaterThanOrEqual(3); expect(v.length).toBeLessThanOrEqual(8);
+      v.forEach((h, i) => { expect(h % step).toBe(0); if (i) expect(h - v[i - 1]!).toBe(step); });
+      expect(v[0]! - step).toBeLessThan(geom!.hMin); expect(v[v.length - 1]! + step).toBeGreaterThan(geom!.hMax);
+      const grid = marks(calls).filter(m => m.color === '#rule').map(m => m.pts[0]![1]);
+      expect(grid).toEqual(v.map(h => geom!.Y(h)));
+      yLabels(calls).forEach((t, i) => expect(t.args[2]).toBe(grid[i]));
+    }
+  });
+
+  it('writes four month labels, or three where four would run into each other, never closer than 8 px', () => {
+    const months = (calls: Call[]) => texts(calls).filter(t => t.op === 'fillText' && t.args[2] === 320 - 26 + 16);
+    const span = (t: Call): [number, number] => {
+      const x = t.args[1] as number, w = (t.args[0] as string).length * 6.6;
+      return t.align === 'left' ? [x, x + w] : t.align === 'right' ? [x - w, x] : [x - w / 2, x + w / 2];
+    };
+    for (const [W, n] of [[280, 3], [288, 3], [307, 3], [308, 4], [700, 4]] as const) {
+      const { calls, geom } = draw(three(), W);
+      const m = months(calls);
+      expect(m).toHaveLength(n);
+      expect(m.map(t => t.align)).toEqual(n === 3 ? ['left', 'center', 'right'] : ['left', 'center', 'center', 'right']);
+      expect(m[0]!.args[1]).toBe(L); expect(m[n - 1]!.args[1]).toBeCloseTo(geom!.Wc - R, 9);
+      for (let i = 1; i < n; i++) expect(span(m[i]!)[0] - span(m[i - 1]!)[1]).toBeGreaterThanOrEqual(8);
+    }
+  });
+
   it('names the spacecraft in its name when they are four or fewer, the selected first; past four, only the count', () => {
     const lines = [line('40009', 0, 'GREY ONE', 400, 3, 500, 450, 100), ...three().reverse()];
     expect(draw(lines).label).toBe('Mean altitude history and projected decay of 4 spacecraft: ISS (ZARYA), ALPHA, BRAVO and GREY ONE');
@@ -139,7 +189,7 @@ describe('drawCompare: the lines', () => {
   it('draws the 120 km line in the muted grey, dashed, with its words on the bottom baseline, under every series', () => {
     const { geom, calls } = draw(three());
     const y = geom!.Y(120);
-    const floor = marks(calls).filter(m => m.op === 'stroke' && m.pts.length === 2 && m.pts[0]![1] === y && m.pts[1]![1] === y);
+    const floor = marks(calls).filter(m => m.op === 'stroke' && m.color !== col.rule && m.pts.length === 2 && m.pts[0]![1] === y && m.pts[1]![1] === y);
     expect(floor).toHaveLength(1);
     expect(floor[0]).toMatchObject({ color: '#muted', dash: [4, 3], width: 1.4, pts: [[L, y], [geom!.Wc - R, y]] });
     const words = texts(calls).find(t => t.args[0] === CMP_REENTRY)!;
@@ -269,6 +319,18 @@ describe('the key and the readout', () => {
     expect(compareKey([geo(2)], col)).toEqual([]);
   });
 
+  it('counts the grey lines as "N spacecraft" when none is in colour, not as others', () => {
+    const greys = [line('40011', 0, 'GREY A', 400, 3, 500, 450, 100), line('40012', 0, 'GREY B', 400, 3, 500, 450, 100)];
+    const thin: CmpSeries = { ...three()[0]!, r: {} };                  // the selected one, not estimated yet: not drawn
+    for (const lines of [greys, [thin, ...greys], [geo(2), ...greys]]) {
+      expect(compareKey(lines, col)).toEqual([
+        { color: '#muted', text: '2 spacecraft', grey: true },
+        { color: '#muted', text: 'observed' }, { color: '#muted', text: 'projected', dashed: true }
+      ]);
+    }
+    expect(compareKey([greys[0]!], col)[0]!.text).toBe('1 spacecraft');
+  });
+
   const iss = line('25544', 1, 'ISS (ZARYA)', 400, 1, 460, 410, 300);
   const young = line('67683', 2, 'KNACKSAT-2 WITH A LONG NAME', 200, 2, 520, 470, 150);
   const grey = line('40011', 0, 'GREY A', 400, 1, 900, 880);
@@ -289,10 +351,32 @@ describe('the key and the readout', () => {
   it('flags a value read from a projection, and orders by height whichever it is', () => {
     const t = T - 1.5 * DAY_MS, tip = compareTipAt(geom!, lines, geom!.X(t), col)!;     // past KNACKSAT-2's last set, not the ISS's
     expect(tip.rows.map(r => [r.n, r.projected])).toEqual([['67683', true], ['25544', false]]);
-    expect(tip.rows[0]!.h).toBeCloseTo(470 - 35, 9);
-    expect(tip.rows[1]!.h).toBe(410);
+    expect(tip.rows[0]!.h).toBeCloseTo(470 - 35 * 0.5 / 15, 9);                      // on the line, half a day into a 15-day step
+    expect(tip.rows[1]!.h).toBeCloseTo(410 + 50 / 400 / 2, 9);                         // halfway between two daily sets
     const late = compareTipAt(geom!, lines, geom!.X(T + 200 * DAY_MS), col)!;          // only the ISS's projection runs this far
     expect(late.rows.map(r => [r.n, r.projected])).toEqual([['25544', true]]);
+  });
+
+  it('reads each value off the line drawn under the pointer, so the order is the order the lines are drawn in', () => {
+    /* A decays 4 km in 200 days, B 1 km in its first day: just past their last sets A's line is drawn above B's, while the next
+       4 km point of each projection would rank B first */
+    const A: CmpSeries = { n: '40021', slot: 2, name: 'SLOW A', P: [{ t: T - DAY_MS, sma: 470.2 }, { t: T, sma: 470 }],
+      r: { tNow: T, hNow: 470, track: [{ t: 0, h: 470 }, { t: 200, h: 466 }, { t: 380, h: 462 }] } };
+    const Bs: CmpSeries = { n: '40022', slot: 3, name: 'FAST B', P: [{ t: T - DAY_MS, sma: 470.1 }, { t: T, sma: 469.98 }],
+      r: { tNow: T, hNow: 469.98, track: [{ t: 0, h: 469.98 }, { t: 1, h: 469 }, { t: 2, h: 465 }] } };
+    const { geom: g, calls } = draw([Bs, A]);
+    const x = g!.X(T + DAY_MS / 2), tip = compareTipAt(g!, [Bs, A], x, col)!;
+    expect(tip.rows.map(r => r.n)).toEqual(['40021', '40022']);
+    expect(tip.rows[0]!.h).toBeCloseTo(469.99, 9);
+    /* each row's height is where its drawn projection crosses the pointer's x */
+    const yOn = (pts: [number, number][]) => {
+      const i = pts.findIndex(p => p[0] >= x), [x0, y0] = pts[i - 1]!, [x1, y1] = pts[i]!;
+      return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    };
+    for (const r of tip.rows) {
+      const drawn = seriesLines(calls).find(m => m.color === r.color && m.dash.join() === '6,3')!;
+      expect(g!.Y(r.h)).toBeCloseTo(yOn(drawn.pts), 6);
+    }
   });
 
   it('reads nothing outside the plot', () => {

@@ -181,23 +181,26 @@ export function frame(series: readonly SeriesShape[]): Frame | null {
   return { t0, tEnd: tEnd > t0 ? tEnd : t0 + DAY_MS, hMin: Math.max(0, hMin - pad), hMax: hMax + pad };
 }
 
-/** A series' value at instant t: the element set at or after t while t is inside the record, else the projection's point at or
- *  after it (draw-life's hover reads the single chart the same way); null before the record starts or past the projection's end. */
+/** The height on the straight segment between the points of `xs` either side of x (xs sorted by x; x inside their span). */
+function along<T>(xs: readonly T[], x: number, at: (p: T) => number, h: (p: T) => number): number {
+  let lo = 0, hi = xs.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (at(xs[m]!) < x) lo = m + 1; else hi = m; }
+  const b = xs[lo]!, a = lo > 0 ? xs[lo - 1]! : null;
+  return !a || at(b) === x ? h(b) : h(a) + (h(b) - h(a)) * (x - at(a)) / (at(b) - at(a));
+}
+
+/** A series' value at instant t, read off the line the chart draws there (straight between two element sets, or between two
+ *  points of the projection, which are 4 km of height apart): from the record while t is inside it, else from the projection;
+ *  null before the record starts or past the projection's end. So the readout ranks the lines as they are drawn. */
 export function valueAt(s: SeriesShape, t: number): { h: number; projected: boolean } | null {
   const P = s.P;
   if (!P.length || t < P[0]!.t) return null;
-  if (t <= P[P.length - 1]!.t) {
-    let lo = 0, hi = P.length - 1;
-    while (lo < hi) { const m = (lo + hi) >> 1; if (P[m]!.t < t) lo = m + 1; else hi = m; }
-    return { h: P[lo]!.sma, projected: false };
-  }
+  if (t <= P[P.length - 1]!.t) return { h: along(P, t, p => p.t, p => p.sma), projected: false };
   const A = s.r.track;
   if (!A || !A.length || s.r.tNow === undefined) return null;
   const d = (t - s.r.tNow) / DAY_MS;
   if (d > A[A.length - 1]!.t) return null;
-  let lo = 0, hi = A.length - 1;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (A[m]!.t < d) lo = m + 1; else hi = m; }
-  return { h: A[lo]!.h, projected: true };
+  return { h: along(A, d, p => p.t, p => p.h), projected: true };
 }
 
 /** the most highlighted series that get their names written on the chart, the least plot width for it (px), and the least

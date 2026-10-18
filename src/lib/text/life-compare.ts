@@ -153,13 +153,14 @@ export const CMP_PLANNED = 'The comparison is put away while a planned orbit is 
 
 /* ---- the chart --------------------------------------------------------------------------------------------------- */
 
-/** The canvas's name: how many are drawn, and which, when no more than four are in colour. */
+/** The canvas's name: how many are drawn, and, when four or fewer lines are drawn (grey ones too), all of them. */
 export const cmpChartName = (n: number, named: readonly string[] | null): string =>
   'Mean altitude history and projected decay of ' + count(n, 'spacecraft', 'spacecraft') + (named && named.length ? ': ' + andList(named) : '');
 /** the line where an object stops being in orbit */
 export const CMP_REENTRY = '120 km — re-entry';
-/** the key: the grey lines, and the two line styles */
+/** the key: the grey lines beside lines in colour, the grey lines when none is in colour, and the two line styles */
 export const cmpOthers = (n: number): string => count(n, 'other', 'others');
+export const cmpGrey = (n: number): string => count(n, 'spacecraft', 'spacecraft');
 export const CMP_KEY_OBSERVED = 'observed';
 export const CMP_KEY_PROJECTED = 'projected';
 /** in place of the chart while nothing listed has a forecast to draw */

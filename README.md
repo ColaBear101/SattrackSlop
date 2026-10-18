@@ -1823,8 +1823,10 @@ has no history and its forecast has no dates) and comes back with a catalogue sp
 The list, which ones are in colour and whether the panel is open are kept in your browser under
 `gt.decaycmp`, written only when you change them; reading it back fetches nothing, and a spacecraft
 not in the cache waits for *Fetch*. Another tab of the page follows a change. The panel is a chunk of
-its own (15.4 KB gzipped), asked for at the first press, or when the section comes near if you left
-the panel open; a visit that never opens it does not download it.
+its own (15.7 KB gzipped), asked for at the first press, or when the section comes near if you left
+the panel open; a visit that never opens it does not download it. If it does not arrive, a line
+beside the button says so and asks for a reload: the browser keeps a failed download for the rest of
+the page, so another press would not bring it.
 
 ##### KNACKSAT-2
 

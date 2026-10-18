@@ -9,5 +9,7 @@
 /** the disclosure button; its name stays the same open or shut, and aria-expanded says which */
 export const CMP_OPEN = 'Compare with other spacecraft';
 
-/** beside the button, when the comparison's chunk did not arrive; the button stays pressable */
-export const CMP_OPEN_FAILED = 'The comparison could not be loaded. Press again to retry.';
+/** beside the button, when the comparison's chunk did not arrive at a press. A failed import stays failed for the rest of the page
+ *  (the browser keeps it in its module map), so another press cannot bring it, even with the connection back: a reload can. The
+ *  button stays pressable. */
+export const CMP_OPEN_FAILED = 'The comparison could not be loaded. Reload the page to try again.';

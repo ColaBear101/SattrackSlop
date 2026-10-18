@@ -186,16 +186,25 @@ describe('drawCompare: the canvas and the frame', () => {
 });
 
 describe('drawCompare: the lines', () => {
-  it('draws the 120 km line in the muted grey, dashed, with its words on the bottom baseline, under every series', () => {
+  it('draws the 120 km line in the muted grey, dashed, under every series, and its words over them on the panel\'s halo', () => {
     const { geom, calls } = draw(three());
     const y = geom!.Y(120);
     const floor = marks(calls).filter(m => m.op === 'stroke' && m.color !== col.rule && m.pts.length === 2 && m.pts[0]![1] === y && m.pts[1]![1] === y);
     expect(floor).toHaveLength(1);
     expect(floor[0]).toMatchObject({ color: '#muted', dash: [4, 3], width: 1.4, pts: [[L, y], [geom!.Wc - R, y]] });
-    const words = texts(calls).find(t => t.args[0] === CMP_REENTRY)!;
-    expect(words).toMatchObject({ op: 'fillText', fill: '#muted', base: 'bottom', align: 'left' });
+    const words = texts(calls).find(t => t.args[0] === CMP_REENTRY && t.op === 'fillText')!;
+    const halo = texts(calls).find(t => t.args[0] === CMP_REENTRY && t.op === 'strokeText')!;
+    expect(words).toMatchObject({ fill: '#muted', base: 'bottom', align: 'left', args: [CMP_REENTRY, L + 5, y - 3] });
+    expect(halo).toMatchObject({ stroke: '#panel', width: 3, base: 'bottom', align: 'left', args: [CMP_REENTRY, L + 5, y - 3] });
     const all = marks(calls);
     expect(all.indexOf(floor[0]!)).toBeLessThan(all.findIndex(m => SLOT_COLOURS.has(m.color as string)));
+    /* the words after the lines, which are drawn inside the plot's clip (on a phone the projections that end near the left run
+       through them), the halo first, and before the dots and rings */
+    const lines = calls.findIndex(c => c.op === 'restore');
+    expect(calls.slice(0, lines).filter(c => c.op === 'stroke' && SLOT_COLOURS.has(c.stroke as string))).toHaveLength(6);
+    expect(calls.indexOf(halo)).toBeGreaterThan(lines);
+    expect(calls.indexOf(halo)).toBeLessThan(calls.indexOf(words));
+    expect(calls.indexOf(words)).toBeLessThan(calls.findIndex(c => c.op === 'arc'));
     /* with nothing coming down to it, there is none */
     const high = draw([line('40003', 2, 'HIGH', 400, 1, 900, 880)]);
     expect(high.geom!.hMin).toBeGreaterThan(120);

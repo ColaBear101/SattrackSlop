@@ -80,6 +80,8 @@
   const all = $derived(sel ? [sel, ...compare.shown] : compare.shown);
   let unfold = $state(false);
   const visible = $derived(unfold ? all : all.slice(0, ROWS_SHOWN));
+  /* nothing left to fold, nothing unfolded: a list cleared or cut to 8 and grown again folds again */
+  $effect(() => { if (all.length <= ROWS_SHOWN) unfold = false; });
   const nameOf = (n: string): string => (n === sel && app.entry ? app.entry.name : compare.name(n));
   /** the selected spacecraft's forecast, when it has one that cannot be drawn: why */
   const selNot = $derived(life.chart && !life.chart.custom ? notDrawn(life.chart.r) : null);
@@ -308,7 +310,7 @@
         <Button id="cmpfetch" size="sm" onclick={() => barPress(() => compare.fetchMore())}>{cmpFetchMore(plan.k, plan.more)}</Button>
       {/if}
       {#if compare.items.length}
-        <Button id="cmpclear" variant="ghost" size="sm" aria-describedby="cmpsay" onclick={clearPress} onblur={() => (armed = false)}
+        <Button id="cmpclear" variant="ghost" size="sm" aria-describedby={armed ? 'cmpsay' : undefined} onclick={clearPress} onblur={() => (armed = false)}
                 onkeydown={e => { if (e.key === 'Enter' && e.repeat) e.preventDefault(); }}>{CMP_CLEAR}</Button>
       {/if}
     </div>
@@ -353,7 +355,7 @@
               <span class="box">{#if slot > 0}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{/if}</span>
             </button>
           {/if}
-          <span class="nm"><span class="name">{name}</span> <span class="id mono">{n}</span>{#if me}<span class="selmk">{CMP_SELECTED}</span>{/if}</span>
+          <span class="nm"><span class="name">{name}</span> <span class="id mono">{n}</span>{#if me}{' '}<span class="selmk">{CMP_SELECTED}</span>{/if}</span>
           <span class="in">
             <span class="hd">
               {#if me}<span class="big">{life.view.big}</span> <span class="sub">{life.view.sub}</span>
@@ -361,8 +363,8 @@
               {:else if r?.st === 'failed'}<span class="big">{r.big}</span> <span class="sub">{r.short}</span>{/if}
             </span>
             <span class="fg mono">
-              <span class="sr-only">{CMP_ALT_NAME}</span>{me ? (life.fields.alt ?? '—') : r?.st === 'shown' ? r.alt : '—'}
-              <span class="sr-only">{CMP_RATE_NAME}</span>{me ? (life.fields.rate ?? '—') : r?.st === 'shown' ? r.rate : '—'}
+              <span class="sr-only">{CMP_ALT_NAME}</span> {me ? (life.fields.alt ?? '—') : r?.st === 'shown' ? r.alt : '—'}
+              <span class="sr-only">{CMP_RATE_NAME}</span> {me ? (life.fields.rate ?? '—') : r?.st === 'shown' ? r.rate : '—'}
             </span>
             <span class="st" id="cmpst-{n}" tabindex="-1">
               {#if pos}{cmpQueued(pos)}
@@ -394,6 +396,7 @@
 <style>
   .cmp { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin-top: var(--space-3); min-width: 0; }
   .cmp > p { margin: 0; }
+  .cmp > :global(#cmpmore) { justify-self: start; }
   #cmpplanned, #cmpnone { color: var(--ink2); font-size: var(--fs-1); max-width: 62ch; }
   #cmpsay { color: var(--ink2); font-size: var(--fs-1); }
   #cmpsay:empty { margin-top: calc(-1 * var(--space-3)); }     /* empty, and still in the page: a live region must be there before it speaks */
@@ -452,7 +455,7 @@
   .in { grid-area: in; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); min-width: 0; }
   .name { color: var(--ink); font-weight: 600; }
   .id { color: var(--muted); font-size: var(--fs-0); }
-  .selmk { margin-left: var(--space-2); padding: 0 var(--space-2); border: 1px solid var(--track); border-radius: var(--r-pill); color: var(--ink2); font-size: var(--fs-0); }
+  .selmk { margin-left: var(--space-1); padding: 0 var(--space-2); border: 1px solid var(--track); border-radius: var(--r-pill); color: var(--ink2); font-size: var(--fs-0); }
   .hd { min-width: 0; overflow-wrap: anywhere; }
   .big { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   .sub { color: var(--muted); font-size: var(--fs-0); }
@@ -484,5 +487,5 @@
   .sw { cursor: default; }
   .sw:hover { background: none; }
   .sw i { width: 18px; height: 3px; border-radius: 2px; background: var(--c); }
-  @media (pointer: coarse) { .row { --tgw: var(--tap); } }
+  @media (pointer: coarse) { .row { --tgw: var(--tap); } #cmplist li[role='option'] { min-height: var(--tap); align-items: center; } }
 </style>

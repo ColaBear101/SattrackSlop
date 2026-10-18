@@ -15,7 +15,8 @@ const ISS = 'ISS (ZARYA)';
 describe('the opener', () => {
   it('is one constant name, and one sentence when the comparison does not arrive', () => {
     expect(CMP_OPEN).toBe('Compare with other spacecraft');
-    expect(CMP_OPEN_FAILED).toBe('The comparison could not be loaded. Press again to retry.');
+    /* a reload, not another press: the browser keeps a failed import in its module map for the rest of the page */
+    expect(CMP_OPEN_FAILED).toBe('The comparison could not be loaded. Reload the page to try again.');
   });
   it('is imported by none of the comparison\'s own modules, whose words do not repeat it', () => {
     const root = path.resolve(__dirname, '../..');

@@ -118,12 +118,11 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
     g.textAlign = i === 0 ? 'left' : i === k ? 'right' : 'center';
     g.fillText(cmpMonth(t), X(t), Hc - B + 16);
   }
-  // the 120 km line
-  if (hMin <= FLOOR) {
+  // the 120 km line (its words go over the lines, below)
+  const floor = hMin <= FLOOR;
+  if (floor) {
     g.strokeStyle = c.muted; g.lineWidth = 1.4; g.setLineDash([4, 3]);
     g.beginPath(); g.moveTo(L, Y(FLOOR)); g.lineTo(Wc - R, Y(FLOOR)); g.stroke(); g.setLineDash([]);
-    g.fillStyle = c.muted; g.textAlign = 'left'; g.textBaseline = 'bottom';
-    g.fillText(CMP_REENTRY, L + 5, Y(FLOOR) - 3);
   }
 
   /* The record from the last element set before the frame's start (so the line comes in from the left edge), and the projection. */
@@ -159,6 +158,14 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
     g.setLineDash([]); history(s);
   }
   g.restore();
+
+  /* the 120 km line's words, over the lines on the names' halo of the panel's colour (on a phone the projections that end near the
+     left run through them), under the dots and rings */
+  if (floor) {
+    g.textAlign = 'left'; g.textBaseline = 'bottom';
+    g.lineJoin = 'round'; g.miterLimit = 2; g.lineWidth = 3; g.strokeStyle = c.panel; g.fillStyle = c.muted;
+    g.strokeText(CMP_REENTRY, L + 5, Y(FLOOR) - 3); g.fillText(CMP_REENTRY, L + 5, Y(FLOOR) - 3);
+  }
 
   // the dots at the last element sets, and the rings where a projection reaches the floor
   for (const s of drawn) {

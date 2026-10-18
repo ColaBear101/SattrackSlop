@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { life } from '../../state/life.svelte';
   import { prefs } from '../../state/prefs.svelte';
+  import { localStore } from '../../state/storage';
+  import { CMP_OPEN, CMP_OPEN_FAILED } from '../../lib/text/life-compare-open';
   import type { Geom, KeyItem, LifeColors } from './draw-life';
   import Button from '../ui/Button.svelte';
   import Rich from '../ui/Rich.svelte';
@@ -27,10 +29,20 @@
   let tip = $state.raw<{ text: string; x: number; y: number } | null>(null);
   let tipEl: HTMLElement | undefined = $state();
 
+  /* Other spacecraft's decay beside this one's (CHANGES-FROM-LEGACY.md, L66): a disclosure under the chart, whose panel (the list, its
+     store, its own chart, its words and its style) is a chunk of its own, DecayCompare, asked for at the first press, or when the section
+     comes near with the panel left open in the comparison's record (read here by its key, only for that). The chunk puts the panel in
+     the slot below and from then on keeps the button's aria-expanded and the slot's hidden; nothing here imports the comparison, which
+     would bring it into this chunk, counted on every visit. One that does not come at a press says so, and to reload (the browser
+     keeps a failed import for the rest of the page, so another press cannot bring it); one that does not come when the section comes
+     near says nothing (no one pressed anything), and a press says the same. */
+  let cmpFailed = $state(false);
+  const cmp = (press?: boolean) => import('./DecayCompare.svelte').then(m => { cmpFailed = false; m.attach(press); }, () => { cmpFailed = !!press; });
+
   onMount(() => {
     const ro = new ResizeObserver(() => resized++);
     ro.observe(canvas);
-    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { want().catch(() => {}); io.disconnect(); } }, { rootMargin: '1200px 0px' });
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { want().catch(() => {}); if (/"o":1/.test(localStore().getItem('gt.decaycmp') ?? '')) void cmp(); io.disconnect(); } }, { rootMargin: '1200px 0px' });
     io.observe(canvas);
     life.chartReady = want;                            // a forecast waits for the chart's code, so they arrive together
     return () => { ro.disconnect(); io.disconnect(); life.chartReady = null; };
@@ -84,6 +96,9 @@
       <p class="note" id="lifenote"><Rich value={v.note} />{#if v.action}<br><br><Button id="lifego" size="sm" onclick={() => life.start()}>{v.action === 'retry' ? 'Try again' : 'Estimate remaining life'}</Button>{/if}</p>
     </div>
   </div>
+  <h3><button id="cmpopen" aria-expanded="false" aria-controls="cmppanel" onclick={() => cmp(true)}>{CMP_OPEN}</button></h3>
+  <p id="cmpfail" role="status">{cmpFailed ? CMP_OPEN_FAILED : ''}</p>
+  <div id="cmppanel" hidden></div>
 </section>
 
 <style>
@@ -108,4 +123,15 @@
   .facts { margin: 0; display: grid; gap: var(--space-3); }
   .facts dd { margin: 2px 0 0; font-size: var(--fs-2); }
   .note { color: var(--ink2); font-size: var(--fs-1); line-height: var(--lh-body); max-width: 62ch; }
+  /* the comparison's disclosure (L66): a chevron that turns down while the panel is open */
+  section > :global(h3) { margin-top: var(--space-6); font-size: var(--fs-3); }
+  :global(#cmpopen) {
+    display: inline-flex; align-items: center; gap: var(--space-3); min-height: 32px; margin-left: calc(-1 * var(--space-2)); padding: 0 var(--space-2);
+    border: 0; border-radius: var(--r-2); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  }
+  :global(#cmpopen:hover) { background: var(--hover); }
+  :global(#cmpopen::before) { content: ''; flex: none; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); }
+  :global(#cmpopen[aria-expanded='true']::before) { transform: rotate(45deg); }
+  :global(#cmpfail) { margin: 0; color: var(--ink2); font-size: var(--fs-1); }
+  @media (pointer: coarse) { :global(#cmpopen) { min-height: var(--tap); } }
 </style>

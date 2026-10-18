@@ -4,8 +4,9 @@
  * localStorage (no session storage, cookie, IndexedDB, Cache Storage or service worker), under one of four
  * namespaces: the observer's two keys from the old page (`obs-site`, `obs-recent`), the page's own choices, the
  * spacecraft the reader watches and the reader's orbits (`gt.*`), and the two caches, the element set of an object
- * (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), but nothing removes an old
- * one: it stays until that object's is fetched again, or until it is forgotten here. A key of any of them is the
+ * (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), and an old one
+ * stays until that object's is fetched again, or until it is forgotten here (a history past its twelve hours is also taken out by the decay
+ * comparison, state/decay-compare.svelte.ts, before it asks for one). A key of any of them is the
  * page's; any other key on the origin is somebody else's and is left alone (the page never calls `clear()`).
  *
  * FORGET_KEYS names every fixed key the code uses, so that the words can say what each one is; tests/lib/forget.test.ts
@@ -30,7 +31,8 @@ export const FORGET_KEYS = [
   'gt.custom', 'gt.custom.bak',                            // state/custom.svelte.ts: the reader's orbits, and a record this version could not read
   'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
   'gt.passfilter',                                         // state/passfilter.svelte.ts: the pass list's filter (L56)
-  'gt.watch'                                               // state/watch.svelte.ts: the spacecraft the reader starred (L60)
+  'gt.watch',                                              // state/watch.svelte.ts: the spacecraft the reader starred (L60)
+  'gt.decaycmp'                                            // state/decay-compare.svelte.ts: the decay comparison's list and whether it is open (L66)
 ] as const;
 
 /** The page's namespaces: a key that starts with one of these is the page's. */

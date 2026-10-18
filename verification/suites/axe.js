@@ -7,9 +7,11 @@
  * measured on its default state alone at these ten viewport/scheme pairs it had 293 violating nodes in 7 rules (region, color-contrast,
  * heading-order, html-has-lang, landmark-no-duplicate-contentinfo, landmark-unique, scrollable-region-focusable); this page has the one
  * below, in every state, and nothing else. Colour contrast is checked in both themes, which is where a design system usually slips.
+ * The decay comparison's two states are scanned on a second page, whose storage alone holds a comparison left open (lib/decay-compare-seed.js).
  */
 'use strict';
 const H = require('../lib/harness');
+const CMP = require('../lib/decay-compare-seed');
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const STRICT = process.argv.includes('--strict');
@@ -39,18 +41,36 @@ const VIEWS = [
 
   for (const v of VIEWS) {
     for (const theme of ['light', 'dark']) {
-      const ctx = await browser.newContext({ viewport: { width: v.w, height: v.h }, colorScheme: theme, hasTouch: v.touch, isMobile: v.touch && v.w < 720 });
-      await ctx.addInitScript(t => { try { localStorage.setItem('gt.prefs', JSON.stringify({ theme: t })); } catch (e) {} }, theme);
-      await ctx.clock.install({ time: NOW });
-      const page = await ctx.newPage();
-      await page.goto(srv.page, { waitUntil: 'load' });
-      await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });
-      await page.waitForSelector('#sec-terms', { state: 'attached', timeout: 30000 });    // the report is a chunk of its own, fetched when the browser is idle: scan it too
-      await page.evaluate(() => document.fonts.ready);
-      await page.evaluate(() => document.getElementById('tpplay').click());
-      /* the scene is a chunk of its own and the globe draws a moment after the page: wait for its first label */
-      await page.waitForFunction(() => { const n = document.getElementById('o3name'); return !!n && n.textContent !== '—' && n.style.display === 'block'; }, null, { timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(400);
+      /* the page the states start from, in this view and theme; `seed` is written into this page's storage alone, before its code runs */
+      const open = async seed => {
+        const ctx = await browser.newContext({ viewport: { width: v.w, height: v.h }, colorScheme: theme, hasTouch: v.touch, isMobile: v.touch && v.w < 720 });
+        await ctx.addInitScript(t => { try { localStorage.setItem('gt.prefs', JSON.stringify({ theme: t })); } catch (e) {} }, theme);
+        await ctx.clock.install({ time: NOW });
+        const page = await ctx.newPage();
+        if (seed) await page.addInitScript(CMP.seedStorage, seed);
+        await page.goto(srv.page, { waitUntil: 'load' });
+        await page.waitForSelector('#totalbig', { state: 'attached', timeout: 30000 });
+        await page.waitForSelector('#sec-terms', { state: 'attached', timeout: 30000 });    // the report is a chunk of its own, fetched when the browser is idle: scan it too
+        await page.evaluate(() => document.fonts.ready);
+        await page.evaluate(() => document.getElementById('tpplay').click());
+        /* the scene is a chunk of its own and the globe draws a moment after the page: wait for its first label */
+        await page.waitForFunction(() => { const n = document.getElementById('o3name'); return !!n && n.textContent !== '—' && n.style.display === 'block'; }, null, { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(400);
+        return { ctx, page };
+      };
+      const scan = async (page, name) => {
+        const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
+        const label = v.id + '/' + theme + '/' + name;
+        if (!r.violations.length) { ok++; return; }
+        for (const x of r.violations) {
+          total += x.nodes.length;
+          const g = rules.get(x.id) || { impact: x.impact, help: x.help, nodes: 0, where: new Set(), samples: new Set() };
+          g.nodes += x.nodes.length; g.where.add(label);
+          for (const n of x.nodes.slice(0, 2)) g.samples.add(n.target.join(' ') + '  ' + ((n.failureSummary || '').split('\n')[1] || '').trim());
+          rules.set(x.id, g);
+        }
+      };
+      const { ctx, page } = await open(null);
 
       const states = [
         ['default', async () => {}],
@@ -111,20 +131,36 @@ const VIEWS = [
       ];
       if (v.id === 'phone') states.splice(1, 0, ['answer', async () => { await page.evaluate(() => document.querySelector('.peek').click()); await page.waitForTimeout(250); }]);
 
-      for (const [name, go] of states) {
-        await go();
-        const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
-        const label = v.id + '/' + theme + '/' + name;
-        if (!r.violations.length) { ok++; continue; }
-        for (const x of r.violations) {
-          total += x.nodes.length;
-          const g = rules.get(x.id) || { impact: x.impact, help: x.help, nodes: 0, where: new Set(), samples: new Set() };
-          g.nodes += x.nodes.length; g.where.add(label);
-          for (const n of x.nodes.slice(0, 2)) g.samples.add(n.target.join(' ') + '  ' + ((n.failureSummary || '').split('\n')[1] || '').trim());
-          rules.set(x.id, g);
-        }
-      }
+      for (const [name, go] of states) { await go(); await scan(page, name); }
       await ctx.close();
+
+      /* the decay comparison (CHANGES-FROM-LEGACY.md, L66), on a page of its own whose storage holds a comparison left open (lib/decay-compare-seed.js,
+         that page alone: no other state has it), so it opens from the cache as the section comes near, with no request: nine rows with the fold
+         opened (the selected spacecraft and four more in colour, two grey, one waiting with its Fetch, one too high to draw with its reason), the
+         chart and its key; then its search, on a query whose options carry the marks "in the comparison" and "decayed now" in plain text, the
+         first one active, with the line that says what the second mark is */
+      const two = await open(CMP.compareSeed(NOW.getTime()));
+      const p2 = two.page;
+      for (const [name, go] of [
+        ['decay-compare', async () => {
+          await p2.evaluate(() => document.getElementById('cmpopen').scrollIntoView({ block: 'center' }));
+          await p2.waitForFunction(() => {
+            const r = document.getElementById('cmprows'), cv = document.getElementById('cmpcv');
+            return !!r && r.children.length === 8 && !/Reading|Queued|Fetching/.test(r.innerText) && !!cv && !cv.hidden && !!document.getElementById('cmpmore');
+          }, null, { timeout: 20000 });
+          await p2.evaluate(() => document.getElementById('cmpmore').click());
+          await p2.waitForFunction(n => document.getElementById('cmprows').children.length === n, CMP.SEED_ROWS, { timeout: 5000 });
+          await p2.waitForTimeout(250);
+        }],
+        ['decay-compare-add', async () => {
+          await p2.evaluate(() => document.getElementById('cmpadd').click());
+          await p2.waitForSelector('#cmpsearch', { state: 'visible', timeout: 5000 });
+          await p2.fill('#cmpsearch', 'jilin-01 gaofen 3');
+          await p2.waitForSelector('#cmpdecayed', { state: 'visible', timeout: 10000 });
+          await p2.waitForTimeout(250);
+        }]
+      ]) { await go(); await scan(p2, name); }
+      await two.ctx.close();
     }
   }
   await browser.close();

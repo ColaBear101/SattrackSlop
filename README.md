@@ -3545,7 +3545,7 @@ storage keeps it for the visit and the press says so); another tab follows a cha
 *Forget what this page stored* removes it with the rest.
 
 The calculator is a chunk of its own (`xpdr`: the panel, its store, its words and its arithmetic),
-asked for the first time the disclosure is opened and mounted into it, and its table a file of its
+asked for the first time the disclosure is opened and rendered in it, and its table a file of its
 own, fetched then; the entry carries the disclosure and its one line of words. A table that did not
 come is said, with **Try again** (its line goes as the table is asked for again, and a press from
 the keyboard leaves the focus on the disclosure's summary, not on the page). A calculator chunk that

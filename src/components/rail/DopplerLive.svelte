@@ -15,7 +15,7 @@
      paused page does no work for it. "Now" means the wall clock, and only while the clock runs at real time near it;
      at any other instant the line says which, and offers to go live.
      It ends with "Uplink and transponders" (L63), a disclosure whose panel is a chunk of its own (xpdr.ts), asked for at its first
-     opening and mounted into it; the panel takes the line's instant and range rate from here, so the caption speaks for it too. */
+     opening and rendered in it; the panel takes the line's instant and range rate from here, so the caption speaks for it too. */
 
   /* the uplink, in memory only, for the spacecraft it was typed for: another spacecraft listens on another frequency */
   let up = $state<{ sat: string; hz: number; text: string } | null>(null);
@@ -34,9 +34,10 @@
     up = isFinite(f) && f > 0 && app.entry ? { sat: app.entry.satnum, hz: f * 1e6, text: el.value } : null;
   }
 
-  /* "Uplink and transponders" toggled: the calculator's chunk (xpdr.ts), asked for at the first opening, mounts its panel into the
-     disclosure with a getter for the line; one that does not come leaves the summary as it was */
-  const xpOpen = (e: Event) => { const d = e.currentTarget as HTMLDetailsElement; import('./xpdr').then(m => m.open(d, () => v), () => {}); };
+  /* "Uplink and transponders" toggled: the calculator's chunk (xpdr.ts), asked for at the first opening; its panel is rendered in the
+     disclosure from then on, with a getter for the line, and goes with it. One that does not come leaves the summary as it was. */
+  let Xpdr = $state.raw<typeof import('./xpdr').Panel>();
+  const xpOpen = () => { import('./xpdr').then(m => { Xpdr = m.Panel; }, () => {}); };
 
   /* as the AR view's: real time, running, and the clock at the wall clock; a window that does not hold now is opened at it.
      The button goes as the line turns live, and the focus it held would fall to the page: a screen reader is left on
@@ -76,7 +77,7 @@
       <span class="d">MHz</span>
     </p>
     {#if mine}{@render row('tx', TX, v.r?.tx, mine.hz)}{/if}
-    <details id="xpdr" ontoggle={xpOpen}><summary>{XPDR_OPEN}</summary></details>
+    <details id="xpdr" ontoggle={xpOpen}><summary>{XPDR_OPEN}</summary><Xpdr line={() => v} /></details>
   </div>
 {/if}
 
@@ -92,10 +93,10 @@
   }
   input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   @media (pointer: coarse) { input { height: var(--tap); } }
-  /* the transponder calculator (L63): its panel (TransponderPanel.svelte, mounted by xpdr.ts) has no style of its own, so that its chunk
+  /* the transponder calculator (L63): its panel (TransponderPanel.svelte, rendered here once xpdr.ts has come) has no style of its own, so that its chunk
      brings no stylesheet the entry would have to name; these rules are its */
-  details { margin-top: var(--space-2); }
-  summary { min-height: 32px; padding: 6px 0; color: var(--ink); font-weight: 500; cursor: pointer; }
+  :global(#xpdr) { margin-top: var(--space-2); }
+  :global(#xpdr > summary) { min-height: 32px; padding: 6px 0; color: var(--ink); font-weight: 500; cursor: pointer; }
   :global(#xpdr .ln) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; min-height: 28px; }
   :global(#xpdr p) { margin: var(--space-2) 0 0; }
   :global(#xpdr .k) { width: 6rem; }
@@ -111,5 +112,5 @@
   :global(#xpdr-out) { color: var(--warn); }
   :global(#xpdr-out:empty), :global(#xpdr-offsay:empty) { margin: 0; }
   :global(#xpdr [aria-disabled='true']) { cursor: not-allowed; border-style: dashed; }
-  @media (pointer: coarse) { summary { min-height: var(--tap); } :global(#xpdr input), :global(#xpdr select) { height: var(--tap); } }
+  @media (pointer: coarse) { :global(#xpdr > summary) { min-height: var(--tap); } :global(#xpdr input), :global(#xpdr select) { height: var(--tap); } }
 </style>

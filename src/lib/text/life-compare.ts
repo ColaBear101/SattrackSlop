@@ -49,6 +49,8 @@ export const cmpAdded = (name: string, n: number): string => 'Added ' + name + '
 
 /* ---- the list ---------------------------------------------------------------------------------------------------- */
 
+/** the name of a listed spacecraft the catalogue does not hold, as the Decay section names one ("NORAD 07530") */
+export const cmpUnnamed = (n: string): string => 'NORAD ' + n;
 /** a row's toggle, named for its spacecraft; aria-pressed says whether it is on */
 export const cmpHighlightName = (name: string): string => 'Highlight ' + name;
 export const cmpRemoveName = (name: string): string => 'Remove ' + name + ' from the comparison';
@@ -107,26 +109,36 @@ export const cmpCannotHighlight = (name: string, k: CmpNotDrawn): string => name
 
 export const cmpAddFull = (name: string): string =>
   'The comparison holds ' + COMPARE_MAX + ' spacecraft, the most it keeps: remove one to add ' + name + '.';
-export const cmpHighlightFull = (name: string): string =>
-  (HIGHLIGHT_MAX === 7 ? 'Seven' : String(HIGHLIGHT_MAX)) + ' are highlighted: turn one off to highlight ' + name + '.';
+/** A highlight refused with every colour taken. `held` is a listed spacecraft that has since been selected: its row is not shown,
+ *  and it keeps its colour for when the selection moves on, so it is named. */
+export const cmpHighlightFull = (name: string, held?: string): string =>
+  (HIGHLIGHT_MAX === 7 ? 'Seven' : String(HIGHLIGHT_MAX)) + ' are highlighted' +
+  (held ? ', one of them ' + held + ', now the selected spacecraft' : '') + ': turn one off to highlight ' + name + '.';
 export const cmpRemoved = (name: string, n: number): string => 'Removed ' + name + ' · ' + n + ' in the comparison';
 /** a row removed while its request was out: a request cannot be called back, and the next waits for its answer */
 export const cmpRemovedWaiting = (name: string, n: number): string => cmpRemoved(name, n) +
   '. Its history had already been asked for: the next one waits until that answer is in.';
 export const cmpCleared = (n: number): string => 'Cleared the comparison of ' + count(n, 'spacecraft', 'spacecraft') + '.';
 
-/** What a press that asked for several came to: "12 added: 7 are being fetched one at a time, 5 wait for Fetch." */
-export function cmpBatch(o: { added: number; cached: number; fetching: number; waiting: number; left?: number }): string {
+/** What a press asked for. `first` is the selected spacecraft, not yet estimated, whose own history is asked for first: it is one of
+ *  the seven requests a press starts at most, so it is named. */
+interface Asked { cached: number; fetching: number; waiting: number; first?: string }
+function asked(o: Asked, still: string): string[] {
   const parts: string[] = [];
   if (o.cached) parts.push(o.cached + ' from the cache');
-  if (o.fetching) parts.push(o.fetching === 1 ? '1 is being fetched' : o.fetching + ' are being fetched one at a time');
-  if (o.waiting) parts.push(o.waiting === 1 ? '1 waits for Fetch' : o.waiting + ' wait for Fetch');
+  if (o.first) parts.push(o.first + ' and ' + o.fetching + ' more are being fetched one at a time');
+  else if (o.fetching) parts.push(o.fetching === 1 ? '1 is being fetched' : o.fetching + ' are being fetched one at a time');
+  if (o.waiting) parts.push(o.waiting + (o.waiting === 1 ? still + ' waits' : still + ' wait') + ' for Fetch');
+  return parts;
+}
+/** What a press that added several came to: "12 added: 7 are being fetched one at a time, 5 wait for Fetch." */
+export function cmpBatch(o: Asked & { added: number; left?: number }): string {
+  const parts = asked(o, '');
   const said = o.added + ' added' + (parts.length ? ': ' + parts.join(', ') : '') + '.';
   return o.left ? said + ' ' + count(o.left, 'more did', 'more did') + ' not fit: the comparison holds ' + COMPARE_MAX + '.' : said;
 }
-/** What a press of Fetch asked for. */
-export const cmpFetchingSay = (k: number, left: number): string =>
-  (k === 1 ? '1 is being fetched' : k + ' are being fetched one at a time') + (left ? ', ' + left + ' still wait for Fetch.' : '.');
+/** What a press of Fetch asked for: "7 are being fetched one at a time, 5 still wait for Fetch." */
+export const cmpFetchingSay = (o: Asked): string => asked(o, ' still').join(', ') + '.';
 /** Said once the queue is through: "6 fetched, 1 not received." One alone is named. */
 export function cmpDone(ok: number, failed: number, name?: string): string {
   if (ok + failed === 1 && name) return 'The history of ' + name + (ok ? ' arrived.' : ' was not received.');

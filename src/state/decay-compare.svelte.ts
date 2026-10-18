@@ -7,7 +7,7 @@ import { createHistorySource, type HistoryOutcome } from '../lib/net/history-sou
 import { isCustom } from '../lib/planner/custom';
 import {
   cmpAdded, cmpAddFull, cmpBatch, cmpCannotHighlight, cmpCleared, cmpDone, cmpFailShort, cmpFetchingSay, cmpHighlightFull, cmpRemoved,
-  cmpRemovedWaiting, CMP_CODE_FAILED, type CmpNotDrawn
+  cmpRemovedWaiting, cmpUnnamed, CMP_CODE_FAILED, type CmpNotDrawn
 } from '../lib/text/life-compare';
 import { app } from './app.svelte';
 import { life } from './life.svelte';
@@ -36,8 +36,9 @@ import { watch } from './watch.svelte';
 
    The selected spacecraft is the comparison's first line, from the Decay section's own forecast (life.chart). If that one has not
    been estimated, the first press here that asks for anything asks for it first, with the same request the section's Estimate
-   button makes (life.start()), in the same queue; and when a listed spacecraft's answer comes in while it is the one selected and
-   still not estimated, the section is offered it again (life.offer), so its panel paints from the cache just written.
+   button makes (life.start()), in the same queue, and that request is one of the seven a press starts at most; and when a listed
+   spacecraft's answer comes in while it is the one selected and still not estimated (or its own request failed), the section is
+   offered it again (life.offer), so its panel paints from the cache just written.
 
    A forecast is worked out from a history with the Decay section's own code and words (lib/text/life.ts, the `life` chunk): one per
    task, those in colour first, and kept, so the same history is never worked out twice. The histories and forecasts are held in a
@@ -131,11 +132,14 @@ class DecayCompare {
   private seq = 0;
   private q: Task[] = [];
   private pumping = false;
+  /** the task the queue has started on, until its request goes out (it may wait seven seconds for its turn): still first in `queue` */
+  private head: Task | null = null;
   /** the request out now, even when its row has been removed since */
   private flight: { n: string; tok: number } | null = null;
   private lifeOut = false;
   private lastNet = -Infinity;
-  private tally = { ok: 0, failed: 0, name: '' };
+  /** what the queue has brought in since it last started, by number: said when it is through, for those still listed */
+  private tally = new Map<string, { ok: boolean; name: string }>();
   private cq: string[] = [];
   private computing = false;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -151,7 +155,7 @@ class DecayCompare {
   }
 
   /** a spacecraft's name, from the catalogue */
-  name(n: string): string { return app.embedded(n)?.name ?? 'NORAD ' + Number(n); }
+  name(n: string): string { return app.embedded(n)?.name ?? cmpUnnamed(n); }
   listed(n: string): boolean { return this.items.some(i => i.n === n); }
   /** its colour slot, 0 when it has none */
   slotOf(n: string): number { return this.items.find(i => i.n === n)?.h ?? 0; }
@@ -178,7 +182,8 @@ class DecayCompare {
   }
 
   /** Add every watched catalogue spacecraft not listed, in the order they were starred, up to the list's cap: the free colours go to
-   *  the first of them, and only those are asked for (at most seven); the cached are read at once; the rest wait for Fetch. */
+   *  the first of them, and only those are asked for (seven requests at most, the selected spacecraft's own among them when it is
+   *  asked for first); the cached are read at once; the rest wait for Fetch. */
   addWatched(): void {
     const want = this.watchable;
     if (!want.length) return;
@@ -193,24 +198,27 @@ class DecayCompare {
     }
     this.items = items;
     this.refusal = null;
-    const { queued, cached } = this.ask(lit);
+    const { queued, cached, first, over } = this.ask(lit);
     let fromCache = cached;
+    for (const n of over) this.setRow(n, { st: 'wait' });              // past the press's seven: it waits, in its colour
     for (const n of rest) if (!this.fromCache(n)) this.setRow(n, { st: 'wait' }); else fromCache++;
     this.write();
-    this.speak(cmpBatch({ added: lit.length + rest.length, cached: fromCache, fetching: queued, waiting: lit.length + rest.length - fromCache - queued, left: want.length - take.length }));
+    const added = lit.length + rest.length;
+    this.speak(cmpBatch({ added, cached: fromCache, fetching: queued, first, waiting: added - fromCache - queued, left: want.length - take.length }));
   }
 
-  /** "Fetch 7 more" / "Fetch the rest (k)": the next seven rows that wait, in the order shown, in colour while colours are free. */
+  /** "Fetch 7 more" / "Fetch the rest (k)": the next seven rows that wait, in the order shown (six when the selected spacecraft's
+   *  own request goes first), in colour while colours are free. */
   fetchMore(): void {
     const ns = this.waiting.slice(0, FETCH_PER_PRESS);
     if (!ns.length) return;
-    let items = this.items;
-    for (const n of ns) if (!items.find(i => i.n === n)?.h) items = lightItem(items, n, true) ?? items;
-    this.items = items;
     this.refusal = null;
-    const { queued } = this.ask(ns);
+    const { queued, cached, first, over } = this.ask(ns);
+    let items = this.items;
+    for (const n of ns) if (!over.includes(n) && !items.find(i => i.n === n)?.h) items = lightItem(items, n, true) ?? items;
+    this.items = items;
     this.write();
-    this.speak(cmpFetchingSay(queued, this.waiting.length));
+    this.speak(cmpFetchingSay({ cached, fetching: queued, first, waiting: this.waiting.length }));
   }
 
   /** A row's own Fetch, or Try again: its history asked for, and in colour if one is free. */
@@ -244,7 +252,10 @@ class DecayCompare {
     const not = row?.st === 'shown' ? row.not : row?.st === 'failed' && !row.retry ? row.not : null;
     if (not) return this.refuse(n, cmpCannotHighlight(name, not));
     const next = lightItem(this.items, n, true);
-    if (!next) return this.refuse(n, cmpHighlightFull(name));
+    if (!next) {                                              // a listed spacecraft now selected keeps its colour, out of sight: named
+      const sel = this.selected;
+      return this.refuse(n, cmpHighlightFull(name, sel && this.slotOf(sel) ? this.name(sel) : undefined));
+    }
     this.items = next;
     if (row?.st === 'wait' || (row?.st === 'failed' && row.retry)) this.ask([n]);
     this.write();
@@ -271,6 +282,7 @@ class DecayCompare {
     this.items = [];
     for (const k of Object.keys(this.rows)) this.forget(k);
     this.q = [];
+    this.tally.clear();
     this.mirror();
     this.write();
     this.speak(cmpCleared(n));
@@ -295,9 +307,12 @@ class DecayCompare {
 
   /* ---- the queue ------------------------------------------------------------------------------------------------------ */
 
-  /** Ask for these listed rows' histories: the cached are read at once, the rest queued (each once). */
-  private ask(ns: readonly string[]): { queued: number; cached: number } {
-    let queued = 0, cached = 0;
+  /** Ask for these listed rows' histories: the cached are read at once, the rest queued (each once). One press starts seven
+   *  requests at most: the selected spacecraft's own is the first of them when it is asked for first (`first`, its name), and the
+   *  rows past the seventh are left as they are (`over`). */
+  private ask(ns: readonly string[]): { queued: number; cached: number; first?: string; over: string[] } {
+    let queued = 0, cached = 0, started = 0, first: string | undefined;
+    const over: string[] = [];
     for (const n of ns) {
       const st = this.rows[n]?.st;
       if (this.tok.has(n) && (st === 'queued' || st === 'fetching')) continue;              // asked for already
@@ -308,16 +323,18 @@ class DecayCompare {
         continue;
       }
       if (this.fromCache(n, true)) { cached++; continue; }
+      if (!started) { first = this.selectedFirst(false); if (first) started++; }     // the selected one's goes before the first
+      if (started >= FETCH_PER_PRESS) { over.push(n); continue; }
       const tok = ++this.seq;
       this.tok.set(n, tok);
       this.q.push({ kind: 'row', n, tok });
       this.setRow(n, { st: 'queued' });
       queued++;
+      started++;
     }
-    if (queued) this.selectedFirst(false);
     this.mirror();
     void this.pump();
-    return { queued, cached };
+    return { queued, cached, first, over };
   }
 
   /** A row's history from the cache, if it is there: it is worked out next. */
@@ -331,33 +348,43 @@ class DecayCompare {
   }
 
   /** The selected spacecraft's own request, first in the queue, when it is a catalogue one the section has not estimated (or, asked
-   *  for from its row, one whose request failed). */
-  private selectedFirst(asked: boolean): void {
+   *  for from its row, one whose request failed): its name, when it is queued now. */
+  private selectedFirst(asked: boolean): string | undefined {
     const e = app.entry, a = life.view.action;
     if (!e || isCustom(e) || !(a === 'estimate' || (asked && a === 'retry'))) return;
     if (this.lifeOut || this.q.some(t => t.kind === 'life')) return;
     this.q.unshift({ kind: 'life', n: e.satnum, asked });
+    return e.name;
   }
 
   /** One request at a time, started by a press and by its own completion (never by an effect). */
   private async pump(): Promise<void> {
     if (this.pumping) return;
     this.pumping = true;
-    this.tally = { ok: 0, failed: 0, name: '' };
+    this.tally = new Map();
     try {
       for (let t = this.q.shift(); t; t = this.q.shift()) {
+        this.head = t;
         this.mirror();
         try {
           if (t.kind === 'life') await this.runLife(t);
           else if (this.tok.get(t.n) === t.tok) await this.runRow(t);
         } catch (err) { console.error(err); }
+        finally { this.head = null; }
       }
     } finally {
       this.pumping = false;
       this.mirror();
     }
-    const { ok, failed, name } = this.tally;
+    let ok = 0, failed = 0, name = '';
+    for (const [n, a] of this.tally) if (this.listed(n) || n === this.selected) { if (a.ok) ok++; else failed++; name = a.name; }
     if (ok + failed) this.speak(cmpDone(ok, failed, name));
+  }
+
+  /** the head task's request goes out (or its answer is in the cache): it leaves the queue */
+  private started(): void {
+    this.head = null;
+    this.mirror();
   }
 
   /** Hold a request back until seven seconds after the last one, while the page's API is the one being asked. */
@@ -378,7 +405,14 @@ class DecayCompare {
       await this.spacing();
       if (!still()) return;
       this.lastNet = Date.now();
+      this.started();
       await life.start();
+      /* what the section painted: a forecast, or what came instead. Nothing is counted when the reader has moved on, or when the
+         section was offered its spacecraft again meanwhile (a window move) and asks again. */
+      const e = app.entry;
+      if (e && !isCustom(e) && e.satnum === t.n && (life.chart || life.view.action !== 'estimate')) {
+        this.tally.set(t.n, { ok: !!life.chart, name: e.name });
+      }
     } finally { this.lifeOut = false; }
   }
 
@@ -386,12 +420,13 @@ class DecayCompare {
     const { n, tok } = t;
     let got: HistoryOutcome | null;
     const hit = src.cached(n);
-    if (hit) got = { P: hit, why: null };
+    if (hit) { got = { P: hit, why: null }; this.started(); }
     else {
       await this.spacing();
       if (this.tok.get(n) !== tok) return;                    // removed while it waited: nothing was asked
       this.lastNet = Date.now();
       this.flight = { n, tok };
+      this.started();
       this.setRow(n, { st: 'fetching' });
       const t0 = Date.now();
       this.secs = 0;
@@ -403,16 +438,14 @@ class DecayCompare {
     }
     if (this.tok.get(n) !== tok) return;                      // removed while its answer was on its way: it is in the cache, not here
     this.tok.delete(n);
-    this.tally.name = this.name(n);
+    this.tally.set(n, { ok: !!(got && got.P), name: this.name(n) });
     if (got && got.P) {
-      this.tally.ok++;
       this.data.set(n, { P: got.P, r: null });
       this.setRow(n, { st: 'reading' });
       this.compute(n, true);
-      const e = app.entry;
-      if (e && !isCustom(e) && e.satnum === n && life.view.action === 'estimate') life.offer(e);
+      const e = app.entry, a = life.view.action;
+      if (e && !isCustom(e) && e.satnum === n && (a === 'estimate' || a === 'retry')) life.offer(e);
     } else {
-      this.tally.failed++;
       void this.fail(n, got);
     }
   }
@@ -497,6 +530,7 @@ class DecayCompare {
   private forget(n: string): void {
     this.tok.delete(n);
     this.q = this.q.filter(t => t.kind !== 'row' || t.n !== n);
+    if (this.head?.kind === 'row' && this.head.n === n) this.head = null;
     const i = this.cq.indexOf(n);
     if (i >= 0) this.cq.splice(i, 1);
     this.data.delete(n);
@@ -506,7 +540,7 @@ class DecayCompare {
 
   private setRow(n: string, row: CmpRow): void { this.rows = { ...this.rows, [n]: row }; }
   private mirror(): void {
-    const q = this.q.map(t => t.n);
+    const q = (this.head ? [this.head, ...this.q] : this.q).map(t => t.n);
     if (q.length !== this.queue.length || q.some((n, i) => n !== this.queue[i])) this.queue = q;
   }
 

@@ -71,6 +71,19 @@ function world(init: Record<string, string> = {}, o: { hold?: boolean; answer?: 
   };
 }
 
+/** the page's API, answering (and refusing every history, so the source asks CelesTrak itself): requests are spaced */
+function withApi() {
+  const api = { tle: vi.fn(), history: vi.fn(async () => ({ kind: 'down', why: 'api_error', error: 'upstream_unavailable' })) };
+  vi.doMock('../../src/state/net', () => ({
+    historyCtx: () => ({
+      fetch: (u: string, i: unknown) => (window as unknown as { fetch: (u: string, i: unknown) => unknown }).fetch(u, i),
+      now: () => Date.now(), storage: (window as unknown as { localStorage: unknown }).localStorage, isCustom: false, api,
+      breaker: { isOpen: () => false, trip: () => {}, reset: () => {} }
+    })
+  }));
+  return api;
+}
+
 async function load(w: ReturnType<typeof world>) {
   vi.resetModules();
   vi.stubGlobal('window', w.win);
@@ -87,7 +100,7 @@ const until = (f: () => void) => vi.waitFor(f, { timeout: 5000, interval: 5 });
 const nums = (k: number, from = 40000) => Array.from({ length: k }, (_, i) => String(from + i));
 
 describe('the decay comparison, kept', () => {
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.doUnmock('../../src/state/net'); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.doUnmock('../../src/state/net'); vi.doUnmock('../../src/lib/text/life'); });
 
   it('with nothing stored, lists nothing, and fetches and writes nothing', async () => {
     const w = world();
@@ -417,14 +430,7 @@ describe('the decay comparison, kept', () => {
 
   it('while the page\'s API answers, starts two requests at least seven seconds apart; answers from the cache are not held back', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
-    const api = { tle: vi.fn(), history: vi.fn(async () => ({ kind: 'down', why: 'api_error', error: 'upstream_unavailable' })) };
-    vi.doMock('../../src/state/net', () => ({
-      historyCtx: () => ({
-        fetch: (u: string, i: unknown) => (window as unknown as { fetch: (u: string, i: unknown) => unknown }).fetch(u, i),
-        now: () => Date.now(), storage: (window as unknown as { localStorage: unknown }).localStorage, isCustom: false, api,
-        breaker: { isOpen: () => false, trip: () => {}, reset: () => {} }
-      })
-    }));
+    const api = withApi();
     const w = world({ 'hist:43017': cached(FALLING()) });
     const { compare } = await load(w);
     compare.add('25544');
@@ -436,10 +442,34 @@ describe('the decay comparison, kept', () => {
     expect(compare.rows['43017']).toMatchObject({ st: 'shown' });  // from the cache, at once
     await vi.advanceTimersByTimeAsync(6500);
     expect(w.asked).toEqual(['25544']);
+    expect(compare.rows['07530']).toEqual({ st: 'queued' });      // waiting out the seven seconds: still next in the queue
+    expect(compare.queue).toEqual(['07530']);
+    expect(compare.queuePos('07530')).toBe(1);
     await vi.advanceTimersByTimeAsync(500);
     expect(w.asked).toEqual(['25544', '07530']);
+    expect(compare.queuePos('07530')).toBe(0);
     expect(w.times[1]! - w.times[0]!).toBeGreaterThanOrEqual(7000);
     expect(api.history).toHaveBeenCalledTimes(2);
+  });
+
+  it('the selected spacecraft\'s own request, waiting out the seven seconds, is first in the queue until it goes out', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    withApi();
+    const w = world();
+    const { compare, app, life } = await load(w);
+    compare.add('25544');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(w.asked).toEqual(['25544']);
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.add('07530');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(life.start).not.toHaveBeenCalled();
+    expect(compare.queue).toEqual(['67683', '07530']);
+    expect([compare.queuePos('67683'), compare.queuePos('07530')]).toEqual([1, 2]);
+    await vi.advanceTimersByTimeAsync(6100);
+    expect(life.start).toHaveBeenCalledTimes(1);
+    expect(compare.queue).toEqual(['07530']);
   });
 
   it('without an API, asks the next as soon as the last is in', async () => {
@@ -504,5 +534,141 @@ describe('the decay comparison, kept', () => {
     expect(compare.rows).toEqual({});
     expect(w.fetch).not.toHaveBeenCalled();
     expect(w.writes()).toHaveLength(1);                           // the test's own, as the other tab
+  });
+
+  it('a list another tab wrote in colour gives back the colour of a row that failed or has nothing to draw', async () => {
+    const w = world({ 'hist:26931': cached(GEO()) }, { answer: () => ({ status: 503, body: '' }) });
+    const { compare } = await load(w);
+    compare.add('26931'); compare.add('43017');
+    await until(() => expect(compare.rows['26931']).toMatchObject({ st: 'shown', not: 'high' }));
+    await until(() => expect(compare.rows['43017']).toMatchObject({ st: 'failed', retry: true }));
+    const writes = w.writes().length;
+    w.st.setItem('gt.decaycmp', '{"o":1,"l":[{"n":"26931","h":2},{"n":"43017","h":3}]}');
+    w.hear('gt.decaycmp');
+    expect([compare.slotOf('26931'), compare.slotOf('43017')]).toEqual([0, 0]);
+    expect(w.writes()).toHaveLength(writes + 1);                  // the other tab's alone
+  });
+
+  it('works the cached histories of a list read back one per task, those in colour first', async () => {
+    const order: number[] = [];
+    vi.doMock('../../src/lib/text/life', async () => {
+      const L = await vi.importActual<typeof import('../../src/lib/text/life')>('../../src/lib/text/life');
+      return { ...L, Lifetime: { ...L.Lifetime, predict: (P: unknown[]) => { order.push(P.length); return L.Lifetime.predict(P); } } };
+    });
+    const w = world({
+      'gt.decaycmp': '{"o":1,"l":[{"n":"07530"},{"n":"25544","h":3},{"n":"43017","h":2}]}',
+      'hist:07530': cached(fall(101, 400, 300)), 'hist:25544': cached(fall(102, 400, 300)), 'hist:43017': cached(fall(103, 400, 300))
+    });
+    const { compare } = await load(w);
+    await until(() => expect(Object.values(compare.rows).map(r => r.st)).toEqual(['shown', 'shown', 'shown']));
+    expect(order).toEqual([103, 102, 101]);                       // 43017 (colour 2), 25544 (colour 3), then 07530
+  });
+
+  it('Add watched from an empty list highlights seven and asks for exactly those seven', async () => {
+    const w = world({ 'gt.watch': JSON.stringify(nums(10)) }, { hold: true });
+    const { compare } = await load(w);
+    compare.addWatched();
+    expect(compare.items.filter(i => i.h).map(i => i.n)).toEqual(nums(7));
+    await until(() => expect(compare.say).toBe('10 added: 7 are being fetched one at a time, 3 wait for Fetch.'));
+    for (let i = 0; i < 7; i++) { await until(() => expect(w.held()).toHaveLength(1)); w.release(w.held()[0]!); }
+    await until(() => expect(compare.say).toBe('7 fetched.'));
+    expect(w.asked).toEqual(nums(7));
+    expect(compare.waiting).toEqual(nums(3, 40007));
+  });
+
+  it('a press starts seven requests at most, the selected spacecraft\'s own among them, and says so; its answer is counted', async () => {
+    const w = world({ 'gt.watch': JSON.stringify(nums(10)) }, { hold: true });
+    const { compare, app, life } = await load(w);
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.addWatched();
+    await until(() => expect(compare.say).toBe('10 added: KNACKSAT-2 and 6 more are being fetched one at a time, 4 wait for Fetch.'));
+    expect(life.start).toHaveBeenCalledTimes(1);
+    expect(compare.queue).toEqual(nums(6));                       // the selected one's request is out
+    expect(compare.slotOf('40006')).toBe(8);                      // the seventh in colour waits, in its colour
+    expect(compare.rows['40006']).toEqual({ st: 'wait' });
+    expect(compare.waiting).toEqual(nums(4, 40006));
+    const P = FALLING();
+    life.chart = { P, r: { tNow: P.at(-1)!.t, hNow: 300, track: [] } };
+    life.view = { big: '2027-01-01' };
+    life.finish();
+    for (let i = 0; i < 6; i++) { await until(() => expect(w.held()).toHaveLength(1)); w.release(w.held()[0]!); }
+    await until(() => expect(compare.say).toBe('7 fetched.'));
+    expect(w.asked).toEqual(nums(6));
+  });
+
+  it('Fetch with the selected spacecraft not estimated asks for it and six more', async () => {
+    const w = world({ 'gt.decaycmp': JSON.stringify({ o: 1, l: nums(10).map(n => ({ n })) }) }, { hold: true });
+    const { compare, app, life } = await load(w);
+    await until(() => expect(compare.waiting).toEqual(nums(10)));
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.fetchMore();
+    await until(() => expect(compare.say).toBe('KNACKSAT-2 and 6 more are being fetched one at a time, 4 still wait for Fetch.'));
+    expect(life.start).toHaveBeenCalledTimes(1);
+    expect(compare.queue).toEqual(nums(6));
+    expect(compare.items.filter(i => i.h).map(i => i.n)).toEqual(nums(6));
+    expect(compare.waiting).toEqual(nums(4, 40006));
+  });
+
+  it('the selected row\'s Fetch with the queue idle asks the section at once', async () => {
+    const w = world();
+    const { compare, app, life } = await load(w);
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not received', action: 'retry' };
+    compare.fetchSelected();
+    expect(compare.queuePos('67683')).toBe(1);
+    await until(() => expect(life.start).toHaveBeenCalledTimes(1));
+    expect(compare.queue).toEqual([]);
+    expect(w.fetch).not.toHaveBeenCalled();
+  });
+
+  it('a seventh highlight refused while a listed spacecraft, now the selected one, keeps its colour out of sight names it', async () => {
+    const seed: Record<string, string> = {};
+    for (const n of nums(8)) seed['hist:' + n] = cached(FALLING());
+    const w = world(seed);
+    const { compare, app } = await load(w);
+    for (const n of nums(8)) compare.add(n);
+    await until(() => expect(compare.lines).toHaveLength(8));
+    app.entry = { satnum: '40000', name: 'SAT 40000', l1: '', l2: '' };
+    expect(compare.shown.filter(n => compare.slotOf(n))).toHaveLength(6);
+    expect(compare.highlight('40007', true)).toBe(false);
+    expect(compare.refusal?.text).toBe('Seven are highlighted, one of them SAT 40000, now the selected spacecraft: turn one off to highlight SAT 40007.');
+  });
+
+  it('says what came in only for those still listed: nothing after Clear, and not a row removed once it was in', async () => {
+    const w = world({}, { hold: true });
+    const { compare } = await load(w);
+    compare.add('25544'); compare.add('07530');
+    await until(() => expect(w.held()).toEqual(['25544']));
+    w.release('25544');
+    await until(() => expect(w.held()).toEqual(['07530']));
+    compare.clear();
+    await until(() => expect(compare.say).toBe('Cleared the comparison of 2 spacecraft.'));
+    w.release('07530');
+    await later();
+    expect(compare.say).toBe('Cleared the comparison of 2 spacecraft.');
+    compare.add('43017'); compare.add('39444'); compare.add('26931');
+    await until(() => expect(w.held()).toEqual(['43017']));
+    w.release('43017');
+    await until(() => expect(w.held()).toEqual(['39444']));
+    compare.remove('43017');
+    w.release('39444');
+    await until(() => expect(w.held()).toEqual(['26931']));
+    w.release('26931');
+    await until(() => expect(compare.say).toBe('2 fetched.'));
+    expect(compare.name('99999')).toBe('NORAD 99999');            // not in the catalogue: named as the Decay section names one
+  });
+
+  it('offers the section the answer for the selected spacecraft when its own request had failed', async () => {
+    const w = world({}, { hold: true });
+    const { compare, app, life } = await load(w);
+    compare.add('07530');
+    await until(() => expect(w.asked).toEqual(['07530']));
+    const oscar = { satnum: '07530', name: 'OSCAR 7', l1: '1', l2: '2' };
+    app.entry = oscar;
+    life.view = { big: 'Not received', action: 'retry' };
+    w.release('07530');
+    await until(() => expect(life.offer).toHaveBeenCalledWith(oscar));
   });
 });

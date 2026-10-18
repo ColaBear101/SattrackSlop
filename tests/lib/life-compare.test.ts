@@ -98,8 +98,24 @@ describe('the status line', () => {
     expect(W.cmpRemoved(ISS, 2)).toBe('Removed ISS (ZARYA) · 2 in the comparison');
     expect(W.cmpRemovedWaiting(ISS, 2)).toBe('Removed ISS (ZARYA) · 2 in the comparison. Its history had already been asked for: the next one waits until that answer is in.');
     expect(W.cmpCleared(1)).toBe('Cleared the comparison of 1 spacecraft.');
-    expect(W.cmpFetchingSay(7, 5)).toBe('7 are being fetched one at a time, 5 still wait for Fetch.');
-    expect(W.cmpFetchingSay(1, 0)).toBe('1 is being fetched.');
+    expect(W.cmpFetchingSay({ cached: 0, fetching: 7, waiting: 5 })).toBe('7 are being fetched one at a time, 5 still wait for Fetch.');
+    expect(W.cmpFetchingSay({ cached: 0, fetching: 1, waiting: 0 })).toBe('1 is being fetched.');
+    expect(W.cmpFetchingSay({ cached: 0, fetching: 2, waiting: 1 })).toBe('2 are being fetched one at a time, 1 still waits for Fetch.');
+    // every row the press took was cached since: no "0 are being fetched"
+    expect(W.cmpFetchingSay({ cached: 2, fetching: 0, waiting: 2 })).toBe('2 from the cache, 2 still wait for Fetch.');
+  });
+  it('a press whose first request is the selected spacecraft\'s own names it: it is one of the seven', () => {
+    expect(W.cmpFetchingSay({ cached: 0, fetching: 6, waiting: 7, first: 'KNACKSAT-2' }))
+      .toBe('KNACKSAT-2 and 6 more are being fetched one at a time, 7 still wait for Fetch.');
+    expect(W.cmpBatch({ added: 10, cached: 1, fetching: 5, waiting: 4, first: 'KNACKSAT-2' }))
+      .toBe('10 added: 1 from the cache, KNACKSAT-2 and 5 more are being fetched one at a time, 4 wait for Fetch.');
+  });
+  it('a highlight refused while a listed spacecraft, now the selected one, keeps its colour out of sight names it', () => {
+    expect(W.cmpHighlightFull(ISS, 'KNACKSAT-2'))
+      .toBe('Seven are highlighted, one of them KNACKSAT-2, now the selected spacecraft: turn one off to highlight ISS (ZARYA).');
+  });
+  it('a listed spacecraft the catalogue does not hold is named by its number, as the Decay section names one', () => {
+    expect(W.cmpUnnamed('07530')).toBe('NORAD 07530');
   });
   it('the queue through: one named, several counted', () => {
     expect(W.cmpDone(6, 1)).toBe('6 fetched, 1 not received.');

@@ -15,11 +15,12 @@ const ISS = 'ISS (ZARYA)';
 describe('the opener', () => {
   it('is one constant name, and one sentence when the comparison does not arrive', () => {
     expect(CMP_OPEN).toBe('Compare with other spacecraft');
-    expect(CMP_OPEN_FAILED).toBe('The comparison could not be loaded, which usually means the connection went. Press again to retry.');
+    expect(CMP_OPEN_FAILED).toBe('The comparison could not be loaded. Press again to retry.');
   });
   it('is imported by none of the comparison\'s own modules, whose words do not repeat it', () => {
     const root = path.resolve(__dirname, '../..');
-    for (const f of ['src/lib/decay/compare.ts', 'src/lib/text/life-compare.ts', 'src/state/decay-compare.svelte.ts']) {
+    for (const f of ['src/lib/decay/compare.ts', 'src/lib/text/life-compare.ts', 'src/state/decay-compare.svelte.ts',
+      'src/components/report/draw-compare.ts', 'src/components/report/DecayCompare.svelte']) {
       const code = fs.readFileSync(path.join(root, f), 'utf8');
       expect(code, f).not.toMatch(/(?:from\s*|import\s*\(\s*)['"][^'"]*life-compare-open/);
     }
@@ -45,6 +46,8 @@ describe('the toolbar and the search', () => {
     expect(W.CMP_NO_MATCH).toBe('Nothing in the catalogue matches that.');
     expect(W.cmpMoreMatch(12)).toBe('12 more match. Keep typing…');
     expect(W.cmpAdded(ISS, 3)).toBe('Added ISS (ZARYA) · 3 in the comparison');
+    expect(W.CMP_DECAYED_NOTE).toMatch(/^Decayed now: .* Its history still shows how it came down, and is fetched when it is added\.$/);
+    expect(W.CMP_DECAYED_NOTE).not.toMatch(/picking/);
   });
 });
 
@@ -58,6 +61,7 @@ describe('a row', () => {
     expect(W.cmpRetryName(ISS)).toBe('Try again for ISS (ZARYA)');
     expect([W.CMP_ALT_NAME, W.CMP_RATE_NAME]).toEqual(['Mean altitude', 'Decay rate']);
     expect(W.cmpShowOthers(42)).toBe('Show the other 42');
+    expect(W.CMP_ROWS_NAME).toBe('Spacecraft in the comparison');
   });
   it('says its place in the queue in English ordinals, and the seconds of its wait', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111, 112].map(W.ordinal))

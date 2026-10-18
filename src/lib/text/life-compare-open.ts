@@ -10,4 +10,4 @@
 export const CMP_OPEN = 'Compare with other spacecraft';
 
 /** beside the button, when the comparison's chunk did not arrive; the button stays pressable */
-export const CMP_OPEN_FAILED = 'The comparison could not be loaded, which usually means the connection went. Press again to retry.';
+export const CMP_OPEN_FAILED = 'The comparison could not be loaded. Press again to retry.';

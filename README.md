@@ -22,7 +22,7 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 - **Set your own place.** Bangkok is the default; search for a town, use your location, type coordinates, or type a Maidenhead grid square such as OK03gs, which the page reads itself and sends nowhere. The form names your site's own square too. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates or a grid square, the nearest hour of solar time unless you enter an offset).
 - **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar, every pass at once or the selected one alone (on a phone, offered to the share sheet); the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
-- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down.
+- **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down. *Compare with other spacecraft* sets as many as you like beside it on a chart of its own, seven of them in colour and the rest in grey, each history fetched only when you ask.
 - **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
 - **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
 
@@ -885,7 +885,8 @@ worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the 
 last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
-filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"); and
+filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"; the
+spacecraft you compare decay with, `gt.decaycmp`, counted among the display choices); and
 two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
 cached copy is used for three hours or twelve, but nothing removes an old one: it stays until that
 object's is fetched again or it is forgotten here, so the caches are also a list of the objects you
@@ -1769,6 +1770,60 @@ ends before its own forecast date is most likely the record of one that has come
 panel read "2026-09-14 — 0 days from the last element set" eleven days after that date, over the
 within-three-weeks backtest line. It now reads **Probably re-entered**, with the forecast date and
 how long ago it was, and no accuracy claim: the backtest measured dates still to come.
+
+##### Comparing with other spacecraft
+
+Under the chart and its panel, which stay as they are, **Compare with other spacecraft** opens a
+panel with a chart of its own: the selected spacecraft and the ones you add, each one's mean
+altitude history and its forecast to 120 km, on one time axis. The button is a disclosure (Tab
+reaches it, Space or Enter opens and shuts it, and it says whether the panel is open); shutting the
+panel keeps the list.
+
+**Add spacecraft** opens a search of the catalogue, the picker's own (words in any order or a NORAD
+number, the spacecraft you watch first when nothing is typed; not the other names, L61). Enter or a
+click adds the highlighted row and leaves the search open with what you typed, so several can be
+added from one search; a row already in the comparison, or the selected one, says so and is not
+added twice. **Add watched (10)** adds every watched spacecraft not yet listed. The list keeps up to
+50.
+
+Up to seven are drawn in colour, besides the selected one in the page's cyan, a heavier line drawn
+last; the rest are thin grey lines, there for context. A row's square turns its colour on or off;
+the eighth is refused with a sentence that says to turn one off first. A spacecraft keeps its colour
+until you turn it off or remove it, and a freed colour goes to the next one turned on, so the lines
+already drawn never change colour. Nothing above 2,000 km of mean altitude is drawn (drag does not
+matter there, and one such line would flatten the others), nor a history too short or with nothing
+in it to fit; the row says which. The chart is fitted to the lines in colour: it shows at least a
+year of their past, or as much past as it shows future, and runs to the latest re-entry drawn; the
+grey ones are cut at its edges.
+With four or fewer lines in colour (the selected one's included) and room for them, each is named at
+its last element set, unless two names would sit too close, in which case none is. Under the
+pointer, a line across the chart and a box beside it give the date and each coloured line's
+altitude there, highest first.
+
+The list under the chart is the table of the same thing, the selected spacecraft first: each row has
+the re-entry date or the verdict (the section's own words, from the same history and code), the mean
+altitude and the decay rate, and what is happening to its history (*Queued, 2nd*, *Fetching… 12 s*,
+*Not received* with *Try again*). Eight rows show; the rest fold under *Show the other 5*.
+
+Histories are fetched only when you ask, by the rule above: adding one spacecraft asks for its
+history, turning a colour on asks for that one's, and **Fetch 7 more** or **Fetch the rest (3)**
+asks for the rows that wait. *Add watched* asks only for the ones it puts in colour. No press starts
+more than seven requests, the selected spacecraft's own among them when it has not been estimated
+(the same request as the panel's *Estimate* button, and the panel above paints from it). They go one
+at a time, and with the cache API answering, at least seven seconds apart (it allows ten a minute);
+a history cached in the last twelve hours is drawn at once. A request cannot be called back: a
+spacecraft removed while its history is on the way still fills the cache, and the next request
+waits for it. A line under the toolbar says what each press did and, once the queue is through,
+what came in ("6 fetched, 1 not received").
+
+With a planned orbit selected the panel says only that the comparison is put away (a planned orbit
+has no history and its forecast has no dates) and comes back with a catalogue spacecraft.
+
+The list, which ones are in colour and whether the panel is open are kept in your browser under
+`gt.decaycmp`, written only when you change them; reading it back fetches nothing, and a spacecraft
+not in the cache waits for *Fetch*. Another tab of the page follows a change. The panel is a chunk of
+its own (15.4 KB gzipped), asked for at the first press, or when the section comes near if you left
+the panel open; a visit that never opens it does not download it.
 
 ##### KNACKSAT-2
 

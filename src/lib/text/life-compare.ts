@@ -44,6 +44,9 @@ export const CMP_LISTED = 'in the comparison';
 export const CMP_SELECTED = 'selected';
 export const CMP_NO_MATCH = 'Nothing in the catalogue matches that.';
 export const cmpMoreMatch = (n: number): string => n + ' more match. Keep typing…';
+/** under the list, while an option carries the picker's "decayed now" mark (its own note says what picking one does in the picker) */
+export const CMP_DECAYED_NOTE = 'Decayed now: at the clock’s instant SGP4 has it below the entry interface, or can no longer follow it. ' +
+  'Its history still shows how it came down, and is fetched when it is added.';
 /** the count line in the search, after an add: "Added ISS (ZARYA) · 3 in the comparison" */
 export const cmpAdded = (name: string, n: number): string => 'Added ' + name + ' · ' + n + ' in the comparison';
 
@@ -63,6 +66,8 @@ export const CMP_ALT_NAME = 'Mean altitude';
 export const CMP_RATE_NAME = 'Decay rate';
 /** the folded rows */
 export const cmpShowOthers = (n: number): string => 'Show the other ' + n;
+/** the list, as a screen reader names it (the chart is described by it) */
+export const CMP_ROWS_NAME = 'Spacecraft in the comparison';
 
 /** 1st, 2nd, 3rd, 4th, 11th, 21st */
 export function ordinal(n: number): string {

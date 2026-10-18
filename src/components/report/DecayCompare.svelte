@@ -34,7 +34,7 @@
     CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED, CMP_NO_MATCH,
     CMP_NOTHING_DRAWN, CMP_PLANNED, CMP_RATE_NAME, CMP_READING, CMP_RETRY, CMP_ROWS_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER,
     CMP_SELECTED, CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpChartName, cmpClearArmed, cmpFetching, cmpFetchMore, cmpFetchName,
-    cmpHighlightName, cmpMoreMatch, cmpNotDrawn, cmpQueued, cmpRemoveName, cmpRetryName, cmpShowOthers
+    cmpHighlightName, cmpMoreMatch, cmpNotDrawn, cmpQueued, cmpRemoveName, cmpRetryName, cmpShowFirst, cmpShowOthers
   } from '../../lib/text/life-compare';
   import { colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpKeyItem, type CmpSeries, type CmpTipRow } from './draw-compare';
   import type { Geom } from './draw-life';
@@ -71,6 +71,11 @@
 
   /* ---- the selected spacecraft and the rows --------------------------------------------------------------------------- */
 
+  /* The rows are one line from 900 px (where the section sets its chart and figures side by side), two (or three) below. The one
+     line's columns are fixed, or a share of the room with a fixed least, so the rows' columns line up and none is wider than the room
+     (the panel's own column is minmax(0, 1fr), so nothing in it widens it); the toggle's and Remove's are as wide as those buttons
+     (--tgw), 44 px under a coarse pointer. */
+
   const sel = $derived(compare.selected);
   const all = $derived(sel ? [sel, ...compare.shown] : compare.shown);
   let unfold = $state(false);
@@ -84,17 +89,27 @@
   const colorFor = (slot: number): string => (colors ? colorOf(colors, slot) : 'currentColor');
 
   /* A row moves when it takes or gives back a colour (the highlighted come first), and the browser lets go of the focus of an element
-     it moves: whatever in the list had it before the move has it again after, if it is still there. */
+     it moves: whatever in the list had it before the move has it again after, if it is still there. A row that gives back its colour
+     goes to its place among the grey ones, which can be in the folded part of the list: then the fold opens, and the same control of
+     that row has the focus again. */
   let held: HTMLElement | null = null;
+  let heldRow = '';
   $effect.pre(() => {
     void visible;
-    const a = document.activeElement;
-    held = a instanceof HTMLElement && a.closest('#cmprows') ? a : null;
+    const a = document.activeElement, li = a instanceof HTMLElement ? a.closest<HTMLElement>('#cmprows > li') : null;
+    held = li ? (a as HTMLElement) : null;
+    heldRow = li?.dataset.n ?? '';
   });
   $effect(() => {
     void visible;
-    if (held?.isConnected && document.activeElement !== held) held.focus();
+    const h = held, n = heldRow;
     held = null;
+    if (!h || document.activeElement === h) return;
+    if (h.isConnected) { h.focus(); return; }
+    if (!all.includes(n) || visible.includes(n)) return;
+    const as = h.classList.contains('tg') ? '.tg' : h.classList.contains('rm') ? '.rm' : '.st';
+    unfold = true;
+    void tick().then(() => document.querySelector<HTMLElement>('#cmprows > li[data-n="' + n + '"] ' + as)?.focus());
   });
 
   /* a press whose button goes (it asked, and the row now says Queued): the focus would fall to the page, so it goes to that row's state */
@@ -256,7 +271,7 @@
         {#snippet trigger(t)}
           <Button {...t} id="cmpadd" size="sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>{CMP_ADD}</Button>
         {/snippet}
-        <div class="search">
+        <div class="cmpfield">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
           <input id="cmpsearch" type="search" role="combobox" aria-expanded="true" aria-controls={shownIdx.length ? 'cmplist' : undefined}
                  aria-autocomplete="list" aria-haspopup="listbox" aria-activedescendant={activeId} aria-label={CMP_SEARCH_NAME}
@@ -280,10 +295,10 @@
             {/each}
           </ul>
         {:else}
-          <p class="note">{CMP_NO_MATCH}</p>
+          <p class="cmpnote">{CMP_NO_MATCH}</p>
         {/if}
-        {#if more > 0}<p class="note">{cmpMoreMatch(more)}</p>{/if}
-        {#if dk?.any(shownIdx)}<p id="cmpdecayed" class="note">{CMP_DECAYED_NOTE}</p>{/if}
+        {#if more > 0}<p class="cmpnote">{cmpMoreMatch(more)}</p>{/if}
+        {#if dk?.any(shownIdx)}<p id="cmpdecayed" class="cmpnote">{CMP_DECAYED_NOTE}</p>{/if}
         <p id="cmpcount" role="status">{compare.say}</p>
       </Popover>
       {#if compare.watchable.length}
@@ -327,7 +342,7 @@
         {@const not = me ? selNot : r?.st === 'shown' ? r.not : r?.st === 'failed' && !r.retry ? r.not : null}
         {@const refused = !me && compare.refusal?.n === n ? compare.refusal.text : ''}
         {@const pos = compare.queuePos(n)}
-        <li class="row" class:me>
+        <li class="row" class:me data-n={n}>
           {#if me}
             <span class="tg sw" style="--c:{colorFor(1)}" aria-hidden="true"><i></i></span>
           {:else}
@@ -371,13 +386,13 @@
       {/each}
     </ul>
     {#if all.length > ROWS_SHOWN}
-      <Button id="cmpmore" variant="ghost" size="sm" aria-expanded={unfold} aria-controls="cmprows" onclick={() => (unfold = !unfold)}>{cmpShowOthers(all.length - ROWS_SHOWN)}</Button>
+      <Button id="cmpmore" variant="ghost" size="sm" aria-expanded={unfold} aria-controls="cmprows" onclick={() => (unfold = !unfold)}>{unfold ? cmpShowFirst(ROWS_SHOWN) : cmpShowOthers(all.length - ROWS_SHOWN)}</Button>
     {/if}
   {/if}
 </div>
 
 <style>
-  .cmp { display: grid; gap: var(--space-3); margin-top: var(--space-3); min-width: 0; }
+  .cmp { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin-top: var(--space-3); min-width: 0; }
   .cmp > p { margin: 0; }
   #cmpplanned, #cmpnone { color: var(--ink2); font-size: var(--fs-1); max-width: 62ch; }
   #cmpsay { color: var(--ink2); font-size: var(--fs-1); }
@@ -385,13 +400,13 @@
   #cmpwait { color: var(--muted); font-size: var(--fs-0); }
   .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
-  /* the search, as the picker's */
-  .search {
+  /* the search, as the picker's (classes of its own: the suites read the picker's notes page-wide) */
+  .cmpfield {
     display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3);
     border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--sunk); color: var(--muted);
   }
-  .search input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; outline: none; color: var(--ink); font-size: var(--fs-2); }
-  .search:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+  .cmpfield input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; outline: none; color: var(--ink); font-size: var(--fs-2); }
+  .cmpfield:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   #cmplist { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: min(40vh, 300px); overflow: auto; }
   #cmplist li {
     display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--r-2);
@@ -404,7 +419,7 @@
   #cmplist .mk { flex: none; color: var(--muted); font-size: var(--fs-0); }
   #cmplist .dk { flex: none; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--r-pill); color: var(--bad); font-size: var(--fs-0); white-space: nowrap; }
   #cmplist .id { flex: none; margin-left: auto; color: var(--muted); font-size: var(--fs-0); }
-  .note { margin: 0; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
+  .cmpnote { margin: 0; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--fs-1); }
   #cmpcount { margin: var(--space-2) 0 0; padding: 0 var(--space-3); color: var(--ink2); font-size: var(--fs-0); }
 
   /* the chart, its pointer's line and readout, and its key */
@@ -424,9 +439,10 @@
   #cmpkey i.d { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
   #cmpkey i.g { height: 2px; opacity: .6; }
 
-  /* the list: one line from 720 px, two (or three) on a phone */
+  /* the list: one line from 900 px, two (or three) below; see "the rows" above */
   #cmprows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
   .row {
+    --tgw: 28px;
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'tg nm rm' 'tg in in';
     align-items: center; gap: var(--space-1) var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--rule); font-size: var(--fs-1);
   }
@@ -446,26 +462,27 @@
   .st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .not { color: var(--muted); font-size: var(--fs-0); }
   .ref { flex-basis: 100%; color: var(--ink2); font-size: var(--fs-0); }
-  @media (min-width: 720px) {
-    .row { grid-template-columns: 28px minmax(8rem, 1.1fr) minmax(9rem, 1.3fr) 13rem minmax(9rem, 1fr) 28px; grid-template-areas: 'tg nm hd fg st rm'; }
+  @media (min-width: 900px) {
+    .row { grid-template-columns: var(--tgw) minmax(0, 1.1fr) minmax(0, 1.3fr) 13rem minmax(9rem, 1fr) var(--tgw); grid-template-areas: 'tg nm hd fg st rm'; }
     .in { display: contents; }
     .hd { grid-area: hd; } .fg { grid-area: fg; } .st { grid-area: st; }
     .ref { grid-column: 2 / -1; }
   }
 
-  /* the highlight: the line's colour on the panel, a check while on, a hollow box while off; the selected one's own line, no button */
+  /* the highlight: the line's colour on the panel, a check while on (in ink: full contrast in every colour), a hollow box while off;
+     the selected one's own line, no button */
   .tg, .rm {
-    display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-2);
+    display: grid; place-items: center; width: var(--tgw); height: var(--tgw); padding: 0; border: 0; border-radius: var(--r-2);
     background: none; color: var(--muted); cursor: pointer;
   }
   .tg:hover, .rm:hover { background: var(--hover); }
   .rm:hover { color: var(--ink); }
   .box { display: grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid var(--muted); border-radius: 4px; background: var(--panel); }
-  .tg[aria-pressed='true'] .box { border: 2px solid var(--c); color: var(--c); }
+  .tg[aria-pressed='true'] .box { border: 2px solid var(--c); color: var(--ink); }
   .tg[aria-disabled='true'] { cursor: default; }
   .tg[aria-disabled='true'] .box { border-style: dashed; }
   .sw { cursor: default; }
   .sw:hover { background: none; }
   .sw i { width: 18px; height: 3px; border-radius: 2px; background: var(--c); }
-  @media (pointer: coarse) { .tg, .rm { width: var(--tap); height: var(--tap); } }
+  @media (pointer: coarse) { .row { --tgw: var(--tap); } }
 </style>

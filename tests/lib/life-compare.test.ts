@@ -61,6 +61,7 @@ describe('a row', () => {
     expect(W.cmpRetryName(ISS)).toBe('Try again for ISS (ZARYA)');
     expect([W.CMP_ALT_NAME, W.CMP_RATE_NAME]).toEqual(['Mean altitude', 'Decay rate']);
     expect(W.cmpShowOthers(42)).toBe('Show the other 42');
+    expect(W.cmpShowFirst(8)).toBe('Show only the first 8');
     expect(W.CMP_ROWS_NAME).toBe('Spacecraft in the comparison');
   });
   it('says its place in the queue in English ordinals, and the seconds of its wait', () => {

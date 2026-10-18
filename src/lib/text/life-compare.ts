@@ -64,8 +64,9 @@ export const cmpRetryName = (name: string): string => 'Try again for ' + name;
 /** in front of a row's two figures, for a screen reader */
 export const CMP_ALT_NAME = 'Mean altitude';
 export const CMP_RATE_NAME = 'Decay rate';
-/** the folded rows */
+/** the folded rows; and the same button once they are shown, which folds them again */
 export const cmpShowOthers = (n: number): string => 'Show the other ' + n;
+export const cmpShowFirst = (n: number): string => 'Show only the first ' + n;
 /** the list, as a screen reader names it (the chart is described by it) */
 export const CMP_ROWS_NAME = 'Spacecraft in the comparison';
 

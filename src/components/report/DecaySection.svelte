@@ -33,9 +33,10 @@
      store, its own chart, its words and its style) is a chunk of its own, DecayCompare, asked for at the first press, or when the section
      comes near with the panel left open in the comparison's record (read here by its key, only for that). The chunk puts the panel in
      the slot below and from then on keeps the button's aria-expanded and the slot's hidden; nothing here imports the comparison, which
-     would bring it into this chunk, counted on every visit. One that does not come says so, and the button can be pressed again. */
+     would bring it into this chunk, counted on every visit. One that does not come at a press says so, and the button can be pressed
+     again; one that does not come when the section comes near says nothing (no one pressed anything), and a press asks again. */
   let cmpFailed = $state(false);
-  const cmp = (press?: boolean) => import('./DecayCompare.svelte').then(m => { cmpFailed = false; m.attach(press); }, () => { cmpFailed = true; });
+  const cmp = (press?: boolean) => import('./DecayCompare.svelte').then(m => { cmpFailed = false; m.attach(press); }, () => { cmpFailed = !!press; });
 
   onMount(() => {
     const ro = new ResizeObserver(() => resized++);

@@ -1803,7 +1803,8 @@ altitude there, highest first.
 The list under the chart is the table of the same thing, the selected spacecraft first: each row has
 the re-entry date or the verdict (the section's own words, from the same history and code), the mean
 altitude and the decay rate, and what is happening to its history (*Queued, 2nd*, *Fetching… 12 s*,
-*Not received* with *Try again*). Eight rows show; the rest fold under *Show the other 5*.
+*Not received* with *Try again*). Eight rows show; the rest fold under *Show the other 5*, and
+*Show only the first 8* folds them again.
 
 Histories are fetched only when you ask, by the rule above: adding one spacecraft asks for its
 history, turning a colour on asks for that one's, and **Fetch 7 more** or **Fetch the rest (3)**

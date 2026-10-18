@@ -104,6 +104,9 @@ describe('the status line', () => {
     expect(W.cmpRemoved(ISS, 2)).toBe('Removed ISS (ZARYA) · 2 in the comparison');
     expect(W.cmpRemovedWaiting(ISS, 2)).toBe('Removed ISS (ZARYA) · 2 in the comparison. Its history had already been asked for: the next one waits until that answer is in.');
     expect(W.cmpCleared(1)).toBe('Cleared the comparison of 1 spacecraft.');
+    /* what was just asked for waits behind a request out for nothing on the page now */
+    expect(W.CMP_BEHIND).toBe('It waits for the answer to a request already out, which cannot be called back.');
+    expect(W.cmpAddedBehind('HST', 1)).toBe('Added HST · 1 in the comparison. It waits for the answer to a request already out, which cannot be called back.');
     expect(W.cmpFetchingSay({ cached: 0, fetching: 7, waiting: 5 })).toBe('7 are being fetched one at a time, 5 still wait for Fetch.');
     expect(W.cmpFetchingSay({ cached: 0, fetching: 1, waiting: 0 })).toBe('1 is being fetched.');
     expect(W.cmpFetchingSay({ cached: 0, fetching: 2, waiting: 1 })).toBe('2 are being fetched one at a time, 1 still waits for Fetch.');

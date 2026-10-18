@@ -66,7 +66,7 @@ The page takes a satellite's Two-Line Element set, works out its orbit, and runs
 
 ## Can you trust the numbers?
 
-This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 28 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
+This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 29 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
 
 ## Data and privacy
 
@@ -293,7 +293,8 @@ verification/       run.js, which runs every stage and prints one table, and:
   fixtures/         the inputs the suites read: catalog.txt, WMM.COF and NOAA's test values,
                     resource.txt, the behaviour and mutant lists
   tools/            not stages: the data fetchers, the mutation runners, check-behaviours
-  lib/              the harness, the layout probe, the perf server, advisor-copy-checks
+  lib/              the harness, the layout probe, the perf server, advisor-copy-checks,
+                    the decay comparison's seed
 
 vercel.json         frontend-only: the build, immutable /assets, nosniff, no-referrer, a
                     Permissions-Policy, and a report-only CSP that names the page's one
@@ -888,9 +889,9 @@ read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar
 filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"; the
 spacecraft you compare decay with, `gt.decaycmp`, counted among the display choices); and
 two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
-cached copy is used for three hours or twelve, but nothing removes an old one: it stays until that
-object's is fetched again or it is forgotten here, so the caches are also a list of the objects you
-looked at.
+cached copy is used for three hours or twelve, and an old one stays until that object's is fetched
+again or it is forgotten here (a history past its twelve hours is also taken out when the decay
+comparison next asks for one), so the caches are also a list of the objects you looked at.
 The first press reads the store, writes nothing, and says what the second will
 forget, counted: *Press again to forget these and reload the page: your saved site, 2 recent
 places, your display choices, 1 orbit of your own and 3 cached element sets. Your own orbits cannot
@@ -1809,14 +1810,22 @@ altitude and the decay rate, and what is happening to its history (*Queued, 2nd*
 
 Histories are fetched only when you ask, by the rule above: adding one spacecraft asks for its
 history, turning a colour on asks for that one's, and **Fetch 7 more** or **Fetch the rest (3)**
-asks for the rows that wait. *Add watched* asks only for the ones it puts in colour. No press starts
-more than seven requests, the selected spacecraft's own among them when it has not been estimated
-(the same request as the panel's *Estimate* button, and the panel above paints from it). They go one
+asks for the rows that wait. *Add watched* asks only for the ones it puts in colour, and goes once
+the list holds 50. No press starts more than seven requests, the selected spacecraft's own among
+them when it has not been estimated (the same request as the panel's *Estimate* button, and the
+panel above paints from it), and a double-click is one press (its second click would land on
+whatever came under the pointer: the next row's remove button, another *Fetch*). They go one
 at a time, and with the cache API answering, at least seven seconds apart (it allows ten a minute);
-a history cached in the last twelve hours is drawn at once. A request cannot be called back: a
-spacecraft removed while its history is on the way still fills the cache, and the next request
-waits for it. A line under the toolbar says what each press did and, once the queue is through,
-what came in ("6 fetched, 1 not received").
+a history cached in the last twelve hours is drawn at once. The comparison and the panel above ask
+through one history source, so the panel's *Estimate* for a spacecraft the comparison is already
+fetching (one you listed, then picked) waits for that same request instead of sending a second;
+its row says *Fetching… 12 s* meanwhile. A request cannot be called back: a spacecraft removed
+while its history is on the way still fills the cache, and the next request waits for it (the line
+under the toolbar says so, also for one added meanwhile). A line under the toolbar says what each
+press did and, once the queue is through, what came in ("6 fetched, 1 not received"). Before its
+first request of a run, the comparison takes the cached histories past their twelve hours out of
+your browser's storage: they would not be used, and a long list asked for over many visits would
+otherwise fill the storage your orbits, stars and choices share.
 
 With a planned orbit selected the panel says only that the comparison is put away (a planned orbit
 has no history and its forecast has no dates) and comes back with a catalogue spacecraft.
@@ -1831,8 +1840,9 @@ the page, so another press would not bring it.
 
 `npm run decay-compare` drives all of this in a browser with CelesTrak faked per spacecraft,
 counting each one's requests and how many are out at once: nothing asked for on a fresh visit, on a
-reload or for a planned orbit, one request per add, never two at once, seven at most per press, the
-colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure and a phone (about a
+reload or for a planned orbit, one request per add, never two at once, seven at most per press (a
+double-click too), the colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure,
+a listed spacecraft picked while its history is on the way, a list nearly full and a phone (about a
 minute).
 `npm run layout` and `npm run axe` look at the panel too, open with nine rows and with its search
 open, on a page of their own whose storage alone holds the list and its histories.
@@ -3714,8 +3724,8 @@ GT_TARGET=legacy node verification/suites/verify-site.js
 
 Every suite that was ported takes `GT_TARGET=new` or `GT_TARGET=legacy` (with nothing set it is
 `new`) and runs the same file against either build; `golden` and `ab3d` hold the rebuilt page to what the old one produced (the
-files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout` and `ar-snap`
-are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
+files above), and `perf` measures both. `slice`, `visitor`, `frames`, `axe`, `layout`, `ar-snap` and
+`decay-compare` are about the rebuilt page alone, and `doppler` checks its live line (L52) on the rebuilt page only. `npm run extract-data`, which made `data/` from the old page's files, reads
 that checkout too; `data/` is the source of truth now. `git worktree remove legacy` puts it away.
 
 Every browser suite above except `perf` loads the page behind the same offline profile, `net()` in

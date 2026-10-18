@@ -124,6 +124,10 @@ export const cmpRemoved = (name: string, n: number): string => 'Removed ' + name
 /** a row removed while its request was out: a request cannot be called back, and the next waits for its answer */
 export const cmpRemovedWaiting = (name: string, n: number): string => cmpRemoved(name, n) +
   '. Its history had already been asked for: the next one waits until that answer is in.';
+/** what was just asked for waits behind a request that is out for nothing on the page now (a row removed since, or the ask of a
+ *  spacecraft selected before): said after "Added HST · 1 in the comparison", or alone at a row's Fetch */
+export const CMP_BEHIND = 'It waits for the answer to a request already out, which cannot be called back.';
+export const cmpAddedBehind = (name: string, n: number): string => cmpAdded(name, n) + '. ' + CMP_BEHIND;
 export const cmpCleared = (n: number): string => 'Cleared the comparison of ' + count(n, 'spacecraft', 'spacecraft') + '.';
 
 /** What a press asked for. `first` is the selected spacecraft, not yet estimated, whose own history is asked for first: it is one of

@@ -29,7 +29,7 @@
   import { watch } from '../../state/watch.svelte';
   import { rank, SHOWN_MAX } from '../../lib/catalogue/rank';
   import { watchedFirst } from '../../lib/catalogue/watch';
-  import { fetchPlan, notDrawn, ROWS_SHOWN } from '../../lib/decay/compare';
+  import { COMPARE_MAX, fetchPlan, notDrawn, ROWS_SHOWN } from '../../lib/decay/compare';
   import {
     CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED, CMP_NO_MATCH,
     CMP_NOTHING_DRAWN, CMP_PLANNED, CMP_RATE_NAME, CMP_READING, CMP_RETRY, CMP_ROWS_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER,
@@ -114,6 +114,10 @@
     void tick().then(() => document.querySelector<HTMLElement>('#cmprows > li[data-n="' + n + '"] ' + as)?.focus());
   });
 
+  /* A click of a double-click is not a press of its own: the first one's button goes, or its row moves, and the second would land on
+     whatever comes under the pointer (another batch of requests, the next row's Remove). Keys give a click with no count (0). */
+  const once = (f: () => unknown) => (e: MouseEvent) => { if (e.detail <= 1) void f(); };
+
   /* a press whose button goes (it asked, and the row now says Queued): the focus would fall to the page, so it goes to that row's state */
   async function rowAsk(n: string, f: () => void) {
     f();
@@ -158,7 +162,8 @@
   });
 
   const plan = $derived(fetchPlan(compare.waiting.length));
-  const busy = $derived(compare.queue.length > 0 || compare.shown.some(n => compare.rows[n]?.st === 'fetching'));
+  /* the selected spacecraft's own row among them: listed before it was selected, its request may still be out */
+  const busy = $derived(compare.queue.length > 0 || all.some(n => compare.rows[n]?.st === 'fetching'));
 
   /* ---- the search ------------------------------------------------------------------------------------------------------- */
 
@@ -303,11 +308,11 @@
         {#if dk?.any(shownIdx)}<p id="cmpdecayed" class="cmpnote">{CMP_DECAYED_NOTE}</p>{/if}
         <p id="cmpcount" role="status">{compare.say}</p>
       </Popover>
-      {#if compare.watchable.length}
-        <Button id="cmpwatched" variant="ghost" size="sm" onclick={() => barPress(() => compare.addWatched())}>{cmpAddWatched(compare.watchable.length)}</Button>
+      {#if compare.watchable.length && compare.items.length < COMPARE_MAX}
+        <Button id="cmpwatched" variant="ghost" size="sm" onclick={once(() => barPress(() => compare.addWatched()))}>{cmpAddWatched(compare.watchable.length)}</Button>
       {/if}
       {#if plan.k}
-        <Button id="cmpfetch" size="sm" onclick={() => barPress(() => compare.fetchMore())}>{cmpFetchMore(plan.k, plan.more)}</Button>
+        <Button id="cmpfetch" size="sm" onclick={once(() => barPress(() => compare.fetchMore()))}>{cmpFetchMore(plan.k, plan.more)}</Button>
       {/if}
       {#if compare.items.length}
         <Button id="cmpclear" variant="ghost" size="sm" aria-describedby={armed ? 'cmpsay' : undefined} onclick={clearPress} onblur={() => (armed = false)}
@@ -351,7 +356,7 @@
             <button type="button" class="tg" style="--c:{colorFor(slot)}" aria-label={cmpHighlightName(name)} aria-pressed={slot > 0}
                     aria-disabled={not ? 'true' : undefined}
                     aria-describedby={[not ? 'cmpnot-' + n : '', refused ? 'cmpref-' + n : ''].filter(Boolean).join(' ') || undefined}
-                    onclick={() => compare.highlight(n, !(slot > 0))}>
+                    onclick={once(() => compare.highlight(n, !(slot > 0)))}>
               <span class="box">{#if slot > 0}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{/if}</span>
             </button>
           {/if}
@@ -368,27 +373,28 @@
             </span>
             <span class="st" id="cmpst-{n}" tabindex="-1">
               {#if pos}{cmpQueued(pos)}
+              {:else if me && life.view.action && compare.selOut}{cmpFetching(compare.secs)}
               {:else if me && life.view.action}
-                <Button size="sm" aria-label={life.view.action === 'retry' ? cmpRetryName(name) : cmpFetchName(name)} onclick={() => rowAsk(n, () => compare.fetchSelected())}>{life.view.action === 'retry' ? CMP_RETRY : CMP_FETCH}</Button>
+                <Button size="sm" aria-label={life.view.action === 'retry' ? cmpRetryName(name) : cmpFetchName(name)} onclick={once(() => rowAsk(n, () => compare.fetchSelected()))}>{life.view.action === 'retry' ? CMP_RETRY : CMP_FETCH}</Button>
               {:else if r?.st === 'fetching'}{cmpFetching(compare.secs)}
               {:else if r?.st === 'reading'}{CMP_READING}
               {:else if r?.st === 'wait'}
-                <Button size="sm" aria-label={cmpFetchName(name)} onclick={() => rowAsk(n, () => compare.fetch(n))}>{CMP_FETCH}</Button>
+                <Button size="sm" aria-label={cmpFetchName(name)} onclick={once(() => rowAsk(n, () => compare.fetch(n)))}>{CMP_FETCH}</Button>
               {:else if r?.st === 'failed' && r.retry}
-                <Button size="sm" aria-label={cmpRetryName(name)} onclick={() => rowAsk(n, () => compare.fetch(n))}>{CMP_RETRY}</Button>
+                <Button size="sm" aria-label={cmpRetryName(name)} onclick={once(() => rowAsk(n, () => compare.fetch(n)))}>{CMP_RETRY}</Button>
               {/if}
               {#if not}<span class="not" id="cmpnot-{n}">{cmpNotDrawn(not)}</span>{/if}
             </span>
             {#if refused}<span class="ref" id="cmpref-{n}">{refused}</span>{/if}
           </span>
           <span class="rmc">
-            {#if !me}<button type="button" class="rm" data-rm={n} aria-label={cmpRemoveName(name)} onclick={() => drop(n)}>{@render cross()}</button>{/if}
+            {#if !me}<button type="button" class="rm" data-rm={n} aria-label={cmpRemoveName(name)} onclick={once(() => drop(n))}>{@render cross()}</button>{/if}
           </span>
         </li>
       {/each}
     </ul>
     {#if all.length > ROWS_SHOWN}
-      <Button id="cmpmore" variant="ghost" size="sm" aria-expanded={unfold} aria-controls="cmprows" onclick={() => (unfold = !unfold)}>{unfold ? cmpShowFirst(ROWS_SHOWN) : cmpShowOthers(all.length - ROWS_SHOWN)}</Button>
+      <Button id="cmpmore" variant="ghost" size="sm" aria-expanded={unfold} aria-controls="cmprows" onclick={once(() => (unfold = !unfold))}>{unfold ? cmpShowFirst(ROWS_SHOWN) : cmpShowOthers(all.length - ROWS_SHOWN)}</Button>
     {/if}
   {/if}
 </div>

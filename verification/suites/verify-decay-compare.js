@@ -12,16 +12,19 @@
  *  - One request at a time, never two at once, and seven at most for any one press. Adding a spacecraft asks for its history once
  *    (the selected spacecraft's own request first, when the section has not estimated it: the same request its Estimate button
  *    makes); "Add watched" with 10 watched asks for 7 and leaves 3 waiting; with 20, for the selected one and 6 more, and "Fetch 7
- *    more" then "Fetch the rest (7)" for the others. A request cannot be called back: a row removed while its request is out lets
- *    it finish (the answer still fills the cache), the next request waits for it, and the row listed again meanwhile joins it.
+ *    more" then "Fetch the rest (7)" for the others; a double-click on either is one press. A request cannot be called back: a row
+ *    removed while its request is out lets it finish (the answer still fills the cache), the next request waits for it, and the row
+ *    listed again meanwhile joins it. A listed spacecraft picked as the selected one while its request is out says so on its row,
+ *    and the section's own Estimate then shares that request (the page's one history source). With 49 listed, "Add watched" adds
+ *    the one that fits and goes.
  *  - The chart: its name counts what is drawn, its key names the selected one first and the coloured ones by colour, and each line
  *    is drawn in its row's colour (pixels of that exact colour on the canvas); a colour freed is gone from the canvas; the readout
  *    under the pointer lists the coloured lines' values, highest first, inside the chart; the chart is not redrawn while a request's
  *    seconds tick.
  *  - The list: a highlight past seven is refused and says why, on its row too; a freed colour goes to the next highlight as the
  *    lowest free one and nobody else's colour moves; the keyboard keeps its focus through a row that moves, a removed row and a
- *    toolbar button that goes; Clear takes two presses, and a second within 0.6 s is the rest of a double-click; a failure says so
- *    with Try again named for its spacecraft.
+ *    toolbar button that goes; a double-click on a row's Remove removes that row alone; Clear takes two presses, and a second within
+ *    0.6 s is the rest of a double-click; a failure says so with Try again named for its spacecraft.
  *  - Its markup keeps out of the selectors the golden prose reads, so the default report reads as it always did.
  *  - A phone: no sideways scroll, text 12 px and up, 44 px targets; a chunk that does not come says so, and to reload.
  *
@@ -81,12 +84,13 @@ const WATCHED20 = WATCHED.concat(catalogue().filter(n => !USED.has(n) && /^\d{5}
 
 /* ---- the fake CelesTrak --------------------------------------------------------------------------------------------------------- */
 async function fake(page) {
-  const net = { req: {}, inflight: 0, max: 0, failing: new Set(), hold: new Map(), arrived: new Set() };
+  const net = { req: {}, order: [], inflight: 0, max: 0, failing: new Set(), hold: new Map(), arrived: new Set() };
   await page.route('**celestrak.org/**', async r => {
     const u = new URL(r.request().url());
     if (!/graph-orbit-data/.test(u.pathname)) return r.abort().catch(() => {});
     const n = u.searchParams.get('CATNR');
     net.req[n] = (net.req[n] || 0) + 1;
+    net.order.push(n);
     net.inflight++; net.max = Math.max(net.max, net.inflight);
     try {
       const h = net.hold.get(n);
@@ -224,7 +228,9 @@ async function part(name, fn) {
     await toSection(page);
     await sleep(600);
     chk('fresh: the comparison\'s chunk is not fetched, even with the section in view', !chunks.includes('DecayCompare'), chunks.join(' ') || 'nothing');
-    chk('fresh: nothing is stored and CelesTrak is asked for nothing', (await record(page)) === null && net.total() === 0, JSON.stringify(net.req));
+    const kept0 = await page.evaluate(() => Object.keys(localStorage).filter(k => /^(hist:|gt\.decaycmp$)/.test(k)));
+    chk('fresh: nothing of the comparison is stored (no record, no history) and CelesTrak is asked for nothing', !kept0.length && net.total() === 0,
+      JSON.stringify(net.req) + ' ' + kept0.join(' '));
     const shut = await page.evaluate(() => {
       const b = document.getElementById('cmpopen'), s = document.getElementById('cmppanel');
       return { h3: !!b.closest('h3'), text: b.textContent, ex: b.getAttribute('aria-expanded'), ctl: b.getAttribute('aria-controls'), hidden: s.hidden, kids: s.children.length, fail: document.getElementById('cmpfail').textContent };
@@ -538,8 +544,16 @@ async function part(name, fn) {
     await page.keyboard.press('Space');
     await sleep(120);
     const on = await page.evaluate(() => document.activeElement.getAttribute('aria-label') === 'Highlight ISS (ZARYA)' && document.activeElement.getAttribute('aria-pressed') === 'true');
-    chk('a toggle pressed from the keyboard keeps the focus while its row moves (down among the grey, and back up)', off && on && i1 > i0, 'row ' + i0 + ' -> ' + i1 + ' -> ' + (await at()));
+    const i2 = await at();
+    chk('a toggle pressed from the keyboard keeps the focus while its row moves (down among the grey, and back up)', off && on && i1 > i0 && i2 === i0, 'row ' + i0 + ' -> ' + i1 + ' -> ' + i2);
     chk('...and back on it has its colour again, the lowest free', slotIn(await listed(page), '25544') === 2);
+    /* the row goes at the first click, and the next row's Remove comes up under the pointer for the second */
+    const l0 = await listed(page), rms = await page.evaluate(() => [...document.querySelectorAll('#cmprows [data-rm]')].map(b => b.dataset.rm));
+    await page.dblclick('#cmprows [data-rm="' + rms[0] + '"]');
+    await sleep(200);
+    const l2 = await listed(page);
+    chk('a double-click on a row\'s Remove removes that row alone, not the next one, which comes under the pointer',
+      l2.length === l0.length - 1 && !l2.some(i => i.n === rms[0]) && l2.some(i => i.n === rms[1]), rms.slice(0, 2).join(',') + ' / ' + l2.map(i => i.n).join(','));
     chk('none of it asked for anything', net.total() === 0, JSON.stringify(net.req));
     await ctx.close();
   });
@@ -578,20 +592,21 @@ async function part(name, fn) {
     chk('20 watched catalogue spacecraft: "Add watched (20)", and the selected row has its own Fetch, named for it', WATCHED20.length === 20 &&
       (await page.evaluate(() => document.getElementById('cmpwatched').textContent)) === 'Add watched (20)' &&
       (await page.evaluate(() => [...document.querySelectorAll('#cmprows > li.me button')].map(b => b.getAttribute('aria-label')).join())) === 'Fetch the history of KNACKSAT-2', WATCHED20.join(','));
-    await page.click('#cmpwatched');
+    /* double-clicked: the button goes at the first click, and "Fetch 7 more" comes under the pointer for the second */
+    await page.dblclick('#cmpwatched');
     await sleep(100);
-    chk('the selected spacecraft\'s request is one of the seven: it is named, 6 more, 14 wait',
+    chk('the selected spacecraft\'s request is one of the seven: it is named, 6 more, 14 wait (a double-click is one press)',
       (await say(page)) === '20 added: KNACKSAT-2 and 6 more are being fetched one at a time, 14 wait for Fetch.', await say(page));
     await settled(page, 21, 40000);
-    chk('7 requests, the selected one\'s first, one at a time', net.total() === 7 && net.req[SEL] === 1 && WATCHED20.slice(0, 6).every(n => net.req[n] === 1) && net.max === 1 &&
-      await page.evaluate(() => /^\d{4}-\d{2}-\d{2}$/.test(document.getElementById('lifebig').textContent)), JSON.stringify(net.req));
+    chk('7 requests, the selected one\'s first, one at a time', net.total() === 7 && net.order.slice(0, 7).join() === [SEL, ...WATCHED20.slice(0, 6)].join() && net.max === 1 &&
+      await page.evaluate(() => /^\d{4}-\d{2}-\d{2}$/.test(document.getElementById('lifebig').textContent)), net.order.join(','));
     chk('"Fetch 7 more"', (await page.evaluate(() => document.getElementById('cmpfetch')?.textContent)) === 'Fetch 7 more');
-    await page.click('#cmpfetch');
+    await page.dblclick('#cmpfetch');
     await sleep(100);
-    chk('...pressed: 7 asked for, 7 still wait', (await say(page)) === '7 are being fetched one at a time, 7 still wait for Fetch.', await say(page));
+    chk('...double-clicked: 7 asked for, 7 still wait', (await say(page)) === '7 are being fetched one at a time, 7 still wait for Fetch.', await say(page));
     await settled(page, 21, 40000);
-    chk('...7 more requests (the seventh coloured one first), and the button reads "Fetch the rest (7)"', net.total() === 14 && net.req[WATCHED20[6]] === 1 && net.max === 1 &&
-      (await page.evaluate(() => document.getElementById('cmpfetch')?.textContent)) === 'Fetch the rest (7)', JSON.stringify(net.req));
+    chk('...7 more requests (the seventh coloured one first), and the button reads "Fetch the rest (7)"', net.total() === 14 && net.order[7] === WATCHED20[6] && net.max === 1 &&
+      (await page.evaluate(() => document.getElementById('cmpfetch')?.textContent)) === 'Fetch the rest (7)', net.order.slice(7).join(','));
     await page.click('#cmpfetch');
     await sleep(100);
     chk('...pressed: the last 7', (await say(page)) === '7 are being fetched one at a time.', await say(page));
@@ -678,9 +693,11 @@ async function part(name, fn) {
     await page.click('#cmpopen');
     await page.waitForFunction(() => document.getElementById('cmpfail').textContent !== '', null, { timeout: 10000 }).catch(() => {});
     const f = await page.evaluate(() => ({ say: document.getElementById('cmpfail').textContent, role: document.getElementById('cmpfail').getAttribute('role'),
-      ex: document.getElementById('cmpopen').getAttribute('aria-expanded'), hidden: document.getElementById('cmppanel').hidden, rec: localStorage.getItem('gt.decaycmp') }));
+      ex: document.getElementById('cmpopen').getAttribute('aria-expanded'), hidden: document.getElementById('cmppanel').hidden, rec: localStorage.getItem('gt.decaycmp'),
+      dis: document.getElementById('cmpopen').disabled || document.getElementById('cmpopen').getAttribute('aria-disabled') === 'true' }));
     chk('a press says it could not be loaded and asks for a reload; the button stays shut and pressable, nothing stored',
-      f.say === 'The comparison could not be loaded. Reload the page to try again.' && f.role === 'status' && f.ex === 'false' && f.hidden && f.rec === null, JSON.stringify(f));
+      f.say === 'The comparison could not be loaded. Reload the page to try again.' && f.role === 'status' && f.ex === 'false' && f.hidden && f.rec === null && !f.dis,
+      JSON.stringify(f));
     await page.unroute(/\/assets\/DecayCompare-[A-Za-z0-9_-]{8}\.js$/, block);
     await page.reload({ waitUntil: 'load' });
     await ready(page);
@@ -688,6 +705,55 @@ async function part(name, fn) {
     await page.click('#cmpopen');
     await page.waitForSelector('#cmpadd', { state: 'visible', timeout: 15000 }).catch(() => {});
     chk('...after the reload a press opens it', await page.evaluate(() => document.getElementById('cmpopen').getAttribute('aria-expanded') === 'true' && document.getElementById('cmpfail').textContent === ''));
+    await ctx.close();
+  });
+
+  /* ---- 9. a listed spacecraft picked while its compared request is out ------------------------------------------------------ */
+  await part('9. a listed spacecraft picked as the selected one while its compared request is out', async () => {
+    const ISS = '25544';
+    const { ctx, page, net } = await open(browser, srv, { label: 'picked', seed: { 'gt.decaycmp': '{"o":1,"l":[]}', ['hist:' + SEL]: hists['hist:' + SEL] } });
+    await toSection(page);
+    await page.waitForSelector('#cmpadd', { timeout: 20000 });
+    const letIss = net.holdNext(ISS);
+    await addBySearch(page, [ISS]);
+    for (let i = 0; i < 50 && !net.arrived.has(ISS); i++) await sleep(100);
+    await page.evaluate(() => scrollTo(0, 0));
+    await H.pick(page, ISS);
+    await page.waitForFunction(n => window.__gt.D.entry.satnum === n, ISS, { timeout: 15000 });
+    await toSection(page);
+    await sleep(300);
+    const s = await page.evaluate(n => ({
+      me: (document.querySelector('#cmprows > li.me') || {}).dataset?.n, rows: document.querySelectorAll('#cmprows > li').length,
+      st: (document.getElementById('cmpst-' + n) || {}).textContent?.trim(), buttons: [...document.querySelectorAll('#cmprows > li.me button')].map(b => b.getAttribute('aria-label')),
+      wait: !!document.getElementById('cmpwait'), go: !!document.getElementById('lifego')
+    }), ISS);
+    chk('its row, the selected one\'s now, says its history is being fetched, with no Fetch to press, and the wait is said',
+      s.me === ISS && s.rows === 1 && /^Fetching… \d+ s$/.test(s.st || '') && !s.buttons.length && s.wait && s.go && net.req[ISS] === 1, JSON.stringify(s));
+    await page.click('#lifego');
+    await sleep(400);
+    chk('...the section\'s own Estimate shares that request: still one out, and no second', net.req[ISS] === 1 && net.inflight === 1, JSON.stringify(net.req));
+    letIss();
+    await page.waitForFunction(() => /^\d{4}-\d{2}-\d{2}$/.test(document.getElementById('lifebig').textContent), null, { timeout: 15000 }).catch(() => {});
+    chk('...and its answer paints the section: one request in all, never two at once', net.total() === 1 && net.max === 1 &&
+      await page.evaluate(() => /^\d{4}-\d{2}-\d{2}$/.test(document.getElementById('lifebig').textContent)), JSON.stringify(net.req) + ' max ' + net.max);
+    await ctx.close();
+  });
+
+  /* ---- 10. the list nearly full -------------------------------------------------------------------------------------------- */
+  await part('10. 49 listed and 10 watched: Add watched adds the one that fits, and goes', async () => {
+    const FULL = catalogue().filter(n => !USED.has(n) && !WATCHED20.includes(n) && /^\d{5}$/.test(n)).filter((n, i) => i % 40 === 7).slice(0, 49);
+    const { ctx, page, net } = await open(browser, srv, { label: 'full', seed: {
+      'gt.watch': JSON.stringify(WATCHED), 'gt.decaycmp': JSON.stringify({ o: 1, l: FULL.map(n => ({ n })) }), ['hist:' + SEL]: hists['hist:' + SEL] } });
+    await toSection(page);
+    await page.waitForSelector('#cmpwatched', { timeout: 20000 });
+    chk('"Add watched (10)" beside 49 listed', FULL.length === 49 && (await page.evaluate(() => document.getElementById('cmpwatched').textContent)) === 'Add watched (10)', String(FULL.length));
+    /* double-clicked: the button goes at the first click, and "Fetch 7 more" (49 wait) comes under the pointer for the second */
+    await page.dblclick('#cmpwatched');
+    await sleep(150);
+    chk('...double-clicked: the one that fits is added and asked for, the other 9 said not to fit, and the button goes with the list full',
+      (await say(page)) === '1 added: 1 is being fetched. 9 more did not fit: the comparison holds 50.' && !(await page.$('#cmpwatched')), await say(page));
+    await page.waitForFunction(() => !/Fetching|Queued/.test(document.getElementById('cmprows').innerText), null, { timeout: 15000 }).catch(() => {});
+    chk('...one request, for the first watched, and 50 listed', net.total() === 1 && net.req[WATCHED[0]] === 1 && (await listed(page)).length === 50, JSON.stringify(net.req));
     await ctx.close();
   });
 

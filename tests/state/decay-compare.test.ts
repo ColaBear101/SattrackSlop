@@ -16,13 +16,17 @@ vi.mock('../../src/state/life.svelte', () => import('./decay-compare-fakes.svelt
    or answered at once, counted per CATNR with the most in flight at once), and its storage listeners. */
 
 type Answer = { status: number; body: string };
-type Store = { getItem: ReturnType<typeof vi.fn>; setItem: ReturnType<typeof vi.fn>; removeItem: ReturnType<typeof vi.fn> };
+type Store = {
+  getItem: ReturnType<typeof vi.fn>; setItem: ReturnType<typeof vi.fn>; removeItem: ReturnType<typeof vi.fn>; key(i: number): string | null; readonly length: number
+};
 function storage(init: Record<string, string>): Store {
   const m = new Map(Object.entries(init));
   return {
     getItem: vi.fn((k: string) => (m.has(k) ? m.get(k)! : null)),
     setItem: vi.fn((k: string, v: string) => { m.set(k, String(v)); }),
-    removeItem: vi.fn((k: string) => { m.delete(k); })
+    removeItem: vi.fn((k: string) => { m.delete(k); }),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() { return m.size; }
   };
 }
 
@@ -74,13 +78,17 @@ function world(init: Record<string, string> = {}, o: { hold?: boolean; answer?: 
 /** the page's API, answering (and refusing every history, so the source asks CelesTrak itself): requests are spaced */
 function withApi() {
   const api = { tle: vi.fn(), history: vi.fn(async () => ({ kind: 'down', why: 'api_error', error: 'upstream_unavailable' })) };
-  vi.doMock('../../src/state/net', () => ({
-    historyCtx: () => ({
-      fetch: (u: string, i: unknown) => (window as unknown as { fetch: (u: string, i: unknown) => unknown }).fetch(u, i),
-      now: () => Date.now(), storage: (window as unknown as { localStorage: unknown }).localStorage, isCustom: false, api,
-      breaker: { isOpen: () => false, trip: () => {}, reset: () => {} }
-    })
-  }));
+  const historyCtx = () => ({
+    fetch: (u: string, i: unknown) => (window as unknown as { fetch: (u: string, i: unknown) => unknown }).fetch(u, i),
+    now: () => Date.now(), storage: (window as unknown as { localStorage: unknown }).localStorage, isCustom: false, api,
+    breaker: { isOpen: () => false, trip: () => {}, reset: () => {} }
+  });
+  /* the page's one history source, over that context (state/net.ts) */
+  vi.doMock('../../src/state/net', async () => {
+    const { createHistorySource } = await import('../../src/lib/net/history-source');
+    let hs: ReturnType<typeof createHistorySource> | undefined;
+    return { historyCtx, historySource: () => (hs ??= createHistorySource(historyCtx() as Parameters<typeof createHistorySource>[0])) };
+  });
   return api;
 }
 
@@ -307,21 +315,26 @@ describe('the decay comparison, kept', () => {
     expect(w.asked).toEqual(['25544']);
   });
 
-  it('removes a row that waits in the queue without asking for it; Clear drops the queue and says how many went', async () => {
+  it('removes a row that waits in the queue without asking for it; Clear drops the queue, not the selected one\'s ask, and says how many went', async () => {
     const seed: Record<string, string> = { 'hist:40000': cached(FALLING()) };
     const w = world(seed, { hold: true });
-    const { compare } = await load(w);
+    const { compare, app, life } = await load(w);
     compare.add('25544'); compare.add('07530'); compare.add('40000');
     await until(() => expect(w.asked).toEqual(['25544']));
     compare.remove('07530');
     await until(() => expect(compare.say).toBe('Removed OSCAR 7 · 2 in the comparison'));
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.fetchSelected();                                      // the selected row's Fetch: queued behind the request out
+    expect(compare.queue).toEqual(['67683']);
     compare.clear();
     expect(compare.items).toEqual([]);
     expect(compare.rows).toEqual({});
+    expect(compare.queue).toEqual(['67683']);                     // the selected spacecraft's own ask is not the list's: it stays
     await until(() => expect(compare.say).toBe('Cleared the comparison of 2 spacecraft.'));
     expect(w.st.removeItem).toHaveBeenLastCalledWith('gt.decaycmp');       // empty, and the panel shut
     w.release('25544');
-    await later();
+    await until(() => expect(life.start).toHaveBeenCalledTimes(1));
     expect(w.asked).toEqual(['25544']);
     expect(compare.rows).toEqual({});
   });
@@ -658,6 +671,123 @@ describe('the decay comparison, kept', () => {
     w.release('26931');
     await until(() => expect(compare.say).toBe('2 fetched.'));
     expect(compare.name('99999')).toBe('NORAD 99999');            // not in the catalogue: named as the Decay section names one
+  });
+
+  it('the ask of a spacecraft selected before does not swallow the next one\'s: picked meanwhile, its row\'s Fetch is asked once that turn is done', async () => {
+    const w = world({}, { hold: true });
+    const { compare, app, life } = await load(w);
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.add('25544');                                         // KNACKSAT-2's own ask goes first, then ISS
+    await until(() => expect(life.start).toHaveBeenCalledTimes(1));
+    expect(compare.selOut).toBe(true);
+    expect(compare.queue).toEqual(['25544']);
+    app.entry = { satnum: '07530', name: 'OSCAR 7', l1: '', l2: '' };     // picked in the main picker while that ask is out
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    expect(compare.selOut).toBe(false);
+    compare.fetchSelected();                                      // its row's Fetch: next, behind the ask that is out
+    expect(compare.queue).toEqual(['07530', '25544']);
+    expect(compare.queuePos('07530')).toBe(1);
+    life.finish();                                                // KNACKSAT-2's answer, which the section drops
+    await until(() => expect(life.start).toHaveBeenCalledTimes(2));
+    expect(compare.selOut).toBe(true);
+    expect(w.asked).toEqual([]);
+    life.view = { big: '2027-01-01' };
+    life.finish();
+    await until(() => expect(w.asked).toEqual(['25544']));
+    expect(life.start).toHaveBeenCalledTimes(2);
+  });
+
+  it('a queued ask of the selected spacecraft is not shown once another is selected, and is dropped at its turn', async () => {
+    const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"07530"}]}' }, { hold: true });
+    const { compare, app, life } = await load(w);
+    await until(() => expect(compare.rows['07530']).toEqual({ st: 'wait' }));
+    compare.add('25544');
+    await until(() => expect(w.asked).toEqual(['25544']));
+    app.entry = { satnum: '07530', name: 'OSCAR 7', l1: '', l2: '' };     // the listed one, picked in the main picker
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.fetchSelected();
+    expect(compare.queuePos('07530')).toBe(1);
+    app.entry = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };  // and another picked: OSCAR 7's row is shown again
+    life.view = { big: '2027-01-01' };
+    expect(compare.queue).toEqual([]);
+    expect(compare.queuePos('07530')).toBe(0);
+    expect(compare.rows['07530']).toEqual({ st: 'wait' });        // it waits for its own Fetch, as before
+    w.release('25544');
+    await until(() => expect(compare.say).toBe('The history of ISS (ZARYA) arrived.'));
+    expect(life.start).not.toHaveBeenCalled();
+  });
+
+  it('a window move while the selected spacecraft\'s own ask is out: the answer the section dropped is offered to it from the cache, and counted', async () => {
+    const w = world({}, { hold: true });
+    const { compare, app, life } = await load(w);
+    const knack = { satnum: '67683', name: 'KNACKSAT-2', l1: '', l2: '' };
+    app.entry = knack;
+    life.view = { big: 'Not estimated yet', action: 'estimate' };
+    compare.add('25544');
+    await until(() => expect(life.start).toHaveBeenCalledTimes(1));
+    expect(compare.selOut).toBe(true);                            // its row says so, in place of a Fetch that would ask nothing
+    compare.fetchSelected();                                      // a press of that row meanwhile asks nothing more
+    expect(compare.queue).toEqual(['25544']);
+    w.st.setItem('hist:67683', cached(FALLING()));                // the history came, and the section dropped it (a window move)
+    life.finish();
+    await until(() => expect(life.offer).toHaveBeenCalledWith(knack));
+    expect(compare.selOut).toBe(false);
+    await until(() => expect(w.asked).toEqual(['25544']));
+    w.release('25544');
+    await until(() => expect(compare.say).toBe('2 fetched.'));
+    expect(life.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks through the page\'s one history source: the section\'s ask for a spacecraft whose compared request is out shares it', async () => {
+    const w = world({}, { hold: true });
+    const { compare, app } = await load(w);
+    compare.add('25544');
+    await until(() => expect(w.asked).toEqual(['25544']));
+    app.entry = { satnum: '25544', name: 'ISS (ZARYA)', l1: '', l2: '' };    // picked while its compared request is out
+    expect(compare.shown).toEqual([]);
+    expect(compare.selOut).toBe(true);
+    const { historySource } = await import('../../src/state/net');
+    expect(historySource()).toBe(historySource());
+    const asked = historySource().history('25544');              // the section's Estimate
+    await later();
+    expect(w.asked).toEqual(['25544']);                           // no second request
+    w.release('25544');
+    expect((await asked)?.P).toHaveLength(100);
+    await until(() => expect(compare.rows['25544']).toMatchObject({ st: 'shown' }));
+    expect(w.asked).toEqual(['25544']);
+  });
+
+  it('says that what was just added waits for the answer to a removed row\'s request', async () => {
+    const w = world({}, { hold: true });
+    const { compare } = await load(w);
+    compare.add('25544');
+    await until(() => expect(w.asked).toEqual(['25544']));
+    compare.remove('25544');
+    await until(() => expect(compare.say).toBe('Removed ISS (ZARYA) · 0 in the comparison'));
+    compare.add('07530');
+    await until(() => expect(compare.say).toBe('Added OSCAR 7 · 1 in the comparison. It waits for the answer to a request already out, which cannot be called back.'));
+    expect(compare.queuePos('07530')).toBe(1);
+    w.release('25544');
+    await until(() => expect(w.asked).toEqual(['25544', '07530']));
+    compare.add('43017');                                         // behind a row that is on the page: said plainly
+    await until(() => expect(compare.say).toBe('Added FOX-1B · 2 in the comparison'));
+  });
+
+  it('takes the cache\'s expired histories out of storage before it asks for one, and leaves the rest', async () => {
+    const old = JSON.stringify({ at: Date.now() - 13 * 3600 * 1000, P: FALLING() });
+    const w = world({ 'hist:99999': old, 'hist:07530': cached(FALLING()), 'hist:junk': 'not json', 'gt.watch': '["25544"]' });
+    const { compare } = await load(w);
+    compare.add('07530');                                         // from the cache: nothing asked, nothing taken out
+    await until(() => expect(compare.rows['07530']).toMatchObject({ st: 'shown' }));
+    expect(w.st.getItem('hist:99999')).toBe(old);
+    compare.add('25544');
+    await until(() => expect(w.asked).toEqual(['25544']));
+    expect(w.st.getItem('hist:99999')).toBeNull();               // past its 12 hours: the cache read it as missing already
+    expect(w.st.getItem('hist:07530')).not.toBeNull();
+    expect(w.st.getItem('hist:junk')).toBe('not json');
+    expect(w.st.getItem('gt.watch')).toBe('["25544"]');
+    await until(() => expect(w.st.getItem('hist:25544')).not.toBeNull());
   });
 
   it('offers the section the answer for the selected spacecraft when its own request had failed', async () => {

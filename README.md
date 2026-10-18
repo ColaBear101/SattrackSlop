@@ -920,7 +920,8 @@ The old page had no such button.
 1024×650, on a tablet, on a phone held upright and sideways, on the two largest phones held
 sideways, 915×412 and 932×430, and on the two smallest, 360×640 and 320×568, and in the states that
 change what is on screen: the Layers panel, the picker, the observer's form, the window popover, the
-Map tab, the answer rail's three tabs, the pass list's filter open and the planner. It tests
+Map tab, the answer rail's three tabs, the pass list's filter open, the planner, and the decay
+comparison open and with its search open (on a second page, whose storage alone is seeded). It tests
 whether a button or a layer switch is covered with `elementFromPoint` at its centre, with the layers
 panel, or any panel that scrolls, scrolled to the control, with the page at its top, with the
 stage's foot at the foot of the screen, with the stage's top at the top, at the foot of the page
@@ -1827,6 +1828,14 @@ its own (15.7 KB gzipped), asked for at the first press, or when the section com
 the panel open; a visit that never opens it does not download it. If it does not arrive, a line
 beside the button says so and asks for a reload: the browser keeps a failed download for the rest of
 the page, so another press would not bring it.
+
+`npm run decay-compare` drives all of this in a browser with CelesTrak faked per spacecraft,
+counting each one's requests and how many are out at once: nothing asked for on a fresh visit, on a
+reload or for a planned orbit, one request per add, never two at once, seven at most per press, the
+colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure and a phone (about a
+minute).
+`npm run layout` and `npm run axe` look at the panel too, open with nine rows and with its search
+open, on a page of their own whose storage alone holds the list and its histories.
 
 ##### KNACKSAT-2
 
@@ -3650,6 +3659,9 @@ npm run timeline     # the window rolling forward past its end, and the next pas
 npm run elements     # the element labels: no overlap, nothing clipped, hover expands one;
                      # nothing named or picked through the Earth
 npm run lifetime     # the decay forecast's refusals, and what it says when it has no history
+npm run decay-compare # the decay comparison, the rebuilt page only: what it asks CelesTrak for
+                     # and when, one request at a time, its chart, list, keyboard and a phone
+                     # (about a minute; alone in run.js, since it times Clear's 0.6 s)
 npm run ar           # the AR view: WMM2025 against NOAA's test values, the sensor frame, the
                      # order the tap asks in, every refusal's words, the marker on the
                      # spacecraft, the phone held sideways, the globe paused while covered, the

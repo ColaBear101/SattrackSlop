@@ -53,6 +53,9 @@ const STAGES = [
   { name: 'timeline',    script: 'suites/verify-timeline.js' },
   { name: 'elements',    script: 'suites/verify-elements.js' },
   { name: 'lifetime',    script: 'suites/verify-lifetime.js' },
+  /* the decay comparison (L66): what it fetches and when, one request at a time, its chart and list. Alone: it times Clear's 0.6 s and a
+     held request's seconds. Rebuilt page only: the old page had no comparison */
+  { name: 'decay-compare', script: 'suites/verify-decay-compare.js', alone: true, target: 'new' },
   { name: 'ar',          script: 'suites/verify-ar.js',           alone: true },
   /* the Snap button of the AR and radar views: the picture's file and pixels, its caption, the share sheet, and that the camera's picture is
      drawn exactly once, for the press. About 30 s on an idle machine (a minute and more while other browsers run), so in the fast set too;
@@ -99,9 +102,9 @@ function run(stage) {
 
 function pad(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
 function report(results, stopped) {
-  console.log('\n' + pad('stage', 12) + pad('result', 8) + pad('seconds', 9) + 'last line');
+  console.log('\n' + pad('stage', 15) + pad('result', 8) + pad('seconds', 9) + 'last line');
   console.log('-'.repeat(78));
-  for (const r of results) console.log(pad(r.name, 12) + pad(r.ok ? 'pass' : 'FAIL', 8) + pad(r.seconds.toFixed(1), 9) + r.last.slice(0, 80));
+  for (const r of results) console.log(pad(r.name, 15) + pad(r.ok ? 'pass' : 'FAIL', 8) + pad(r.seconds.toFixed(1), 9) + r.last.slice(0, 80));
   const failed = results.filter(r => !r.ok);
   console.log('-'.repeat(78));
   console.log(stopped ? 'STOPPED after a failure in the numbers: ' + stopped

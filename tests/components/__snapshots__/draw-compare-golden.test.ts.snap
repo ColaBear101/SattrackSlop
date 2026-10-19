@@ -1,0 +1,1236 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > a 28-year ISS beside a 200-day KNACKSAT-2, at 700 px 1`] = `
+{
+  "draw": {
+    "calls": 676,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 700,
+      "hMax": 552,
+      "hMin": 88,
+      "t0": 1760572800000,
+      "tEnd": 1818115200000,
+    },
+    "label": "Mean altitude history and projected decay of 2 spacecraft: ISS (ZARYA) and KNACKSAT-2",
+    "labelled": true,
+    "sha256": "4e32d98bf050fe79c0a58266301fd998b9e59965bb69ef6cd7704cd81b11c4e4",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "KNACKSAT-2",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2025-10-16",
+      "rows": [
+        {
+          "color": "#track",
+          "h": 411.79060665362033,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "411.8 km",
+        },
+      ],
+      "t": 1760572800000,
+      "x": 46,
+    },
+    {
+      "day": "2026-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 519.625,
+          "n": "67683",
+          "name": "KNACKSAT-2",
+          "projected": false,
+          "value": "519.6 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.9760273972603,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "411.0 km",
+        },
+      ],
+      "t": 1774958400000,
+      "x": 202,
+    },
+    {
+      "day": "2026-09-14",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 478,
+          "n": "67683",
+          "name": "KNACKSAT-2",
+          "projected": false,
+          "value": "478.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.1614481409002,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.2 km",
+        },
+      ],
+      "t": 1789344000000,
+      "x": 358,
+    },
+    {
+      "day": "2027-02-27",
+      "rows": [
+        {
+          "color": "#track",
+          "h": 280.95,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": true,
+          "value": "280.9 km",
+        },
+        {
+          "color": "#s2",
+          "h": 156.16666666666666,
+          "n": "67683",
+          "name": "KNACKSAT-2",
+          "projected": true,
+          "value": "156.2 km",
+        },
+      ],
+      "t": 1803729600000,
+      "x": 514,
+    },
+    {
+      "day": "2027-08-13",
+      "rows": [
+        {
+          "color": "#track",
+          "h": 120,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1818115200000,
+      "x": 670,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > grey lines only, at 700 px 1`] = `
+{
+  "draw": {
+    "calls": 816,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 700,
+      "hMax": 547.275,
+      "hMin": 88.35,
+      "t0": 1760227200000,
+      "tEnd": 1809043200000,
+    },
+    "label": "Mean altitude history and projected decay of 2 spacecraft: GREY A and GREY B",
+    "labelled": false,
+    "sha256": "434e2c76b75d958e7c9ac4b381c4281274f54136ff76186e6d1771821c5c1ca5",
+  },
+  "key": [
+    {
+      "color": "#muted",
+      "grey": true,
+      "text": "2 spacecraft",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2025-10-12",
+      "rows": [],
+      "t": 1760227200000,
+      "x": 46,
+    },
+    {
+      "day": "2026-03-02",
+      "rows": [],
+      "t": 1772431200000,
+      "x": 202,
+    },
+    {
+      "day": "2026-07-21",
+      "rows": [],
+      "t": 1784635200000,
+      "x": 358,
+    },
+    {
+      "day": "2026-12-09",
+      "rows": [],
+      "t": 1796839200000,
+      "x": 514,
+    },
+    {
+      "day": "2027-04-30",
+      "rows": [],
+      "t": 1809043200000,
+      "x": 670,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > nothing drawable, at 700 px 1`] = `
+{
+  "draw": {
+    "calls": 3,
+    "geom": null,
+    "label": "Mean altitude history and projected decay of 0 spacecraft",
+    "labelled": false,
+    "sha256": "bfdbb5e558242194b6091f9b2ce24dbe1d99c0094e15511c6489414d00e2fc1f",
+  },
+  "key": [],
+  "tips": null,
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > three coloured lines at 280 px 1`] = `
+{
+  "draw": {
+    "calls": 2876,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 280,
+      "hMax": 736.68,
+      "hMin": 74.32,
+      "t0": 1713225600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO",
+    "labelled": false,
+    "sha256": "e2445b45649641e60ae10e66a1d2f8793e639549937045111f80bc74162a1635",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#s3",
+      "text": "BRAVO",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-16",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 691,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "691.0 km",
+        },
+        {
+          "color": "#s3",
+          "h": 554.3,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "554.3 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.7 km",
+        },
+      ],
+      "t": 1713225600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-12",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645.75,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.8 km",
+        },
+        {
+          "color": "#s3",
+          "h": 527.15,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "527.1 km",
+        },
+        {
+          "color": "#track",
+          "h": 433.07500000000005,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "433.1 km",
+        },
+      ],
+      "t": 1752321600000,
+      "x": 97,
+    },
+    {
+      "day": "2026-10-08",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600.5,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.5 km",
+        },
+        {
+          "color": "#s3",
+          "h": 500,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "500.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.45,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.4 km",
+        },
+      ],
+      "t": 1791417600000,
+      "x": 148,
+    },
+    {
+      "day": "2028-01-03",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 361.3333333333333,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "361.3 km",
+        },
+        {
+          "color": "#s3",
+          "h": 213.41666666666666,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": true,
+          "value": "213.4 km",
+        },
+      ],
+      "t": 1830513600000,
+      "x": 199,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 250,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > three coloured lines at 390 px 1`] = `
+{
+  "draw": {
+    "calls": 2877,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 390,
+      "hMax": 736.68,
+      "hMin": 74.32,
+      "t0": 1713225600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO",
+    "labelled": false,
+    "sha256": "63a727c080421f8a0ae896c9598d725ef0efb92218e7b8fd5bb8032a9d54df89",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#s3",
+      "text": "BRAVO",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-16",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 691,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "691.0 km",
+        },
+        {
+          "color": "#s3",
+          "h": 554.3,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "554.3 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.7 km",
+        },
+      ],
+      "t": 1713225600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-12",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645.75,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.8 km",
+        },
+        {
+          "color": "#s3",
+          "h": 527.15,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "527.1 km",
+        },
+        {
+          "color": "#track",
+          "h": 433.07500000000005,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "433.1 km",
+        },
+      ],
+      "t": 1752321600000,
+      "x": 124.5,
+    },
+    {
+      "day": "2026-10-08",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600.5,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.5 km",
+        },
+        {
+          "color": "#s3",
+          "h": 500,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "500.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.45,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.4 km",
+        },
+      ],
+      "t": 1791417600000,
+      "x": 203,
+    },
+    {
+      "day": "2028-01-03",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 361.3333333333333,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "361.3 km",
+        },
+        {
+          "color": "#s3",
+          "h": 213.41666666666666,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": true,
+          "value": "213.4 km",
+        },
+      ],
+      "t": 1830513600000,
+      "x": 281.5,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 360,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > three coloured lines at 700 px 1`] = `
+{
+  "draw": {
+    "calls": 2883,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 700,
+      "hMax": 736.68,
+      "hMin": 74.32,
+      "t0": 1713225600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO",
+    "labelled": true,
+    "sha256": "c3c9877f892806ffe9d9dd44fef835acd94d0b87beb232bae4ce53283604ae3c",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#s3",
+      "text": "BRAVO",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-16",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 691,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "691.0 km",
+        },
+        {
+          "color": "#s3",
+          "h": 554.3,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "554.3 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.7 km",
+        },
+      ],
+      "t": 1713225600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-12",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645.75,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.8 km",
+        },
+        {
+          "color": "#s3",
+          "h": 527.15,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "527.1 km",
+        },
+        {
+          "color": "#track",
+          "h": 433.07500000000005,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "433.1 km",
+        },
+      ],
+      "t": 1752321600000,
+      "x": 202,
+    },
+    {
+      "day": "2026-10-08",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600.5,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.5 km",
+        },
+        {
+          "color": "#s3",
+          "h": 500,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "500.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.45,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.4 km",
+        },
+      ],
+      "t": 1791417600000,
+      "x": 358,
+    },
+    {
+      "day": "2028-01-03",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 361.3333333333333,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "361.3 km",
+        },
+        {
+          "color": "#s3",
+          "h": 213.41666666666666,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": true,
+          "value": "213.4 km",
+        },
+      ],
+      "t": 1830513600000,
+      "x": 514,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 670,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > three coloured lines at 1100 px 1`] = `
+{
+  "draw": {
+    "calls": 2883,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 1100,
+      "hMax": 736.68,
+      "hMin": 74.32,
+      "t0": 1713225600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO",
+    "labelled": true,
+    "sha256": "d130b4b40d888af9552dd72d46a6fbcae83f53332a26379abd54807f66589ca8",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#s3",
+      "text": "BRAVO",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-16",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 691,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "691.0 km",
+        },
+        {
+          "color": "#s3",
+          "h": 554.3,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "554.3 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.7 km",
+        },
+      ],
+      "t": 1713225600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-12",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645.75,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.8 km",
+        },
+        {
+          "color": "#s3",
+          "h": 527.15,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "527.1 km",
+        },
+        {
+          "color": "#track",
+          "h": 433.07500000000005,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "433.1 km",
+        },
+      ],
+      "t": 1752321600000,
+      "x": 302,
+    },
+    {
+      "day": "2026-10-08",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600.5,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.5 km",
+        },
+        {
+          "color": "#s3",
+          "h": 500,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": false,
+          "value": "500.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.45,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.4 km",
+        },
+      ],
+      "t": 1791417600000,
+      "x": 558,
+    },
+    {
+      "day": "2028-01-03",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 361.3333333333333,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "361.3 km",
+        },
+        {
+          "color": "#s3",
+          "h": 213.41666666666666,
+          "n": "40002",
+          "name": "BRAVO",
+          "projected": true,
+          "value": "213.4 km",
+        },
+      ],
+      "t": 1830513600000,
+      "x": 814,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 1070,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > two coloured lines whose projections reach 120 km, named on a 900 px canvas 1`] = `
+{
+  "draw": {
+    "calls": 1925,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 900,
+      "hMax": 735.6,
+      "hMin": 74.4,
+      "t0": 1714089600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 2 spacecraft: ISS (ZARYA) and ALPHA",
+    "labelled": true,
+    "sha256": "ea8161ee27ae42a09a3ebb45906c9de9f1b3bd4a4dbe505f1a25d48db1679f48",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-26",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 690,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "690.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.2,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.2 km",
+        },
+      ],
+      "t": 1714089600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-20",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 432.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "432.7 km",
+        },
+      ],
+      "t": 1752969600000,
+      "x": 252,
+    },
+    {
+      "day": "2026-10-13",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.2,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.2 km",
+        },
+      ],
+      "t": 1791849600000,
+      "x": 458,
+    },
+    {
+      "day": "2028-01-06",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 360,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "360.0 km",
+        },
+      ],
+      "t": 1830729600000,
+      "x": 664,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 870,
+    },
+  ],
+}
+`;
+
+exports[`the comparison chart before L67: its call stream, key and readout (golden) > two coloured lines, two grey lines and a GEO line that is not drawn, at 700 px 1`] = `
+{
+  "draw": {
+    "calls": 2761,
+    "geom": {
+      "B": 26,
+      "Hc": 320,
+      "L": 46,
+      "R": 30,
+      "T": 14,
+      "Wc": 700,
+      "hMax": 735.6,
+      "hMin": 74.4,
+      "t0": 1714089600000,
+      "tEnd": 1869609600000,
+    },
+    "label": "Mean altitude history and projected decay of 4 spacecraft: ISS (ZARYA), ALPHA, GREY A and GREY B",
+    "labelled": true,
+    "sha256": "4225c18a3711cfdeb11409f0540d31ff9a5615f558ee3d8a495f7b515faee2d9",
+  },
+  "key": [
+    {
+      "color": "#track",
+      "text": "ISS (ZARYA)",
+    },
+    {
+      "color": "#s2",
+      "text": "ALPHA",
+    },
+    {
+      "color": "#muted",
+      "grey": true,
+      "text": "2 others",
+    },
+    {
+      "color": "#muted",
+      "text": "observed",
+    },
+    {
+      "color": "#muted",
+      "dashed": true,
+      "text": "projected",
+    },
+  ],
+  "tips": [
+    {
+      "day": "2024-04-26",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 690,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "690.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 455.2,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "455.2 km",
+        },
+      ],
+      "t": 1714089600000,
+      "x": 46,
+    },
+    {
+      "day": "2025-07-20",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 645,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "645.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 432.7,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "432.7 km",
+        },
+      ],
+      "t": 1752969600000,
+      "x": 202,
+    },
+    {
+      "day": "2026-10-13",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 600,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": false,
+          "value": "600.0 km",
+        },
+        {
+          "color": "#track",
+          "h": 410.2,
+          "n": "25544",
+          "name": "ISS (ZARYA)",
+          "projected": false,
+          "value": "410.2 km",
+        },
+      ],
+      "t": 1791849600000,
+      "x": 358,
+    },
+    {
+      "day": "2028-01-06",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 360,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "360.0 km",
+        },
+      ],
+      "t": 1830729600000,
+      "x": 514,
+    },
+    {
+      "day": "2029-03-31",
+      "rows": [
+        {
+          "color": "#s2",
+          "h": 120,
+          "n": "40001",
+          "name": "ALPHA",
+          "projected": true,
+          "value": "120.0 km",
+        },
+      ],
+      "t": 1869609600000,
+      "x": 670,
+    },
+  ],
+}
+`;

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem, COMPARE_MAX, DAY_MS, DRAW_MAX_KM, drawable, fetchPlan, frame, HIGHLIGHT_MAX, labelPlan, lightItem, lowestFree, notDrawn, readCompare,
-  removeItem, rowOrder, seriesEnd, shortName, tipOrder, valueAt, writeCompare, type CompareItem, type SeriesShape
+  removeItem, rowOrder, seriesEnd, shortName, tipOrder, valueAt, writeCompare, type CompareItem, type SeriesShape,
+  baseWindow, eccOf, frameView, lastOf, MEASURE, MU, niceStep, PARAMS, periodMin, points, projects, RANGES, rateSeries, RE, ringOf,
+  stepDecimals, valueIn, VIEW_DEFAULT
 } from '../../src/lib/decay/compare';
+import { Lifetime } from '../../src/lib/planner/lifetime';
 
 /* The decay comparison's model (CHANGES-FROM-LEGACY.md, L66): the stored list read back whatever is in it, the seven colours and how
    they are handed out (the lowest free one, and a colour follows its spacecraft), what can be drawn, the frame the chart is fitted to
@@ -205,5 +208,323 @@ describe('the names on the chart, all or none', () => {
   it('writes none when one would leave the plot', () => {
     expect(labelPlan([{ x: 120, y: 100, w: 80 }], plot)).toBeNull();
     expect(labelPlan([{ x: 600, y: 20, w: 80 }], plot)).toBeNull();
+  });
+});
+
+/* ---- the chart's view (L67): the quantity and the time range, the record's two keys, and the guarantee that the default view is
+   the frame above, unchanged ------------------------------------------------------------------------------------------------- */
+
+/** a history with an eccentricity on each set (NaN or null where `e` gives one) */
+const withEcc = (s: SeriesShape, e: (i: number) => number | null): SeriesShape => ({ ...s, P: s.P.map((r, i) => ({ ...r, ecc: e(i) })) });
+/** `n` sets `step` apart ending at `end`, the mean altitude h(i) */
+const rows = (n: number, h: (i: number) => number, step = DAY_MS, end = T) =>
+  Array.from({ length: n }, (_, i) => ({ t: end - (n - 1 - i) * step, sma: h(i) }));
+const geoS: SeriesShape = { P: [{ t: T - 300 * DAY_MS, sma: 35786 }, { t: T, sma: 35786 }], r: { tNow: T, hNow: 35786, track: null } };
+
+describe('the record of the view (L67)', () => {
+  const items = list(['25544', 2], ['07530']);
+  const TODAY = '{"o":1,"l":[{"n":"25544","h":2},{"n":"07530"}]}';
+  it('without a view, or with the default one, is written exactly as before', () => {
+    expect(writeCompare(true, items)).toBe(TODAY);
+    expect(writeCompare(true, items, VIEW_DEFAULT)).toBe(TODAY);
+    expect(writeCompare(true, items, { p: 'alt', r: 'auto' })).toBe(TODAY);
+  });
+  it('writes "p" and "r" after the list, each only when it is not the default, and reads them back', () => {
+    expect(writeCompare(true, [], { p: 'hp', r: '90d' })).toBe('{"o":1,"l":[],"p":"hp","r":"90d"}');
+    expect(writeCompare(true, [], { p: 'alt', r: 'all' })).toBe('{"o":1,"l":[],"r":"all"}');
+    expect(writeCompare(false, [], { p: 'ecc', r: 'auto' })).toBe('{"o":0,"l":[],"p":"ecc"}');
+    expect(readCompare('{"o":1,"l":[],"p":"hp","r":"90d"}')).toEqual({ open: true, items: [], view: { p: 'hp', r: '90d' } });
+    expect(readCompare('{"o":1,"l":[],"r":"all"}')).toEqual({ open: true, items: [], view: { r: 'all' } });
+  });
+  it('reads anything else as the default, with no view at all, and keeps the list', () => {
+    for (const kv of ['"p":"inc"', '"p":"alt"', '"r":"auto"', '"r":7', '"r":"2y"', '"p":null']) {
+      const rec = readCompare(TODAY.slice(0, -1) + ',' + kv + '}');
+      expect('view' in rec, kv).toBe(false);
+      expect(rec, kv).toEqual({ open: true, items });
+    }
+    /* an unknown key keeps the list; a good key beside a bad one is kept alone */
+    expect(readCompare('{"o":1,"l":[{"n":"25544","h":2}],"x":{"p":"hp"},"zz":1}')).toEqual({ open: true, items: list(['25544', 2]) });
+    expect(readCompare('{"o":0,"l":[],"p":"rate","r":"2y"}')).toEqual({ open: false, items: [], view: { p: 'rate' } });
+  });
+  it('round-trips every range with every quantity, "o" always first, and a shut one never reads as open to the section', () => {
+    for (const r of RANGES) for (const p of PARAMS) {
+      const s = writeCompare(true, items, { p, r });
+      expect(s.startsWith('{"o":')).toBe(true);
+      const rec = readCompare(s);
+      expect(rec.items).toEqual(items);
+      expect({ ...VIEW_DEFAULT, ...(rec.view ?? {}) }).toEqual({ p, r });
+      expect('view' in rec).toBe(p !== 'alt' || r !== 'auto');
+      expect(writeCompare(false, items, { p, r })).not.toMatch(/"o":1/);      // DecaySection's probe
+    }
+  });
+});
+
+describe('the quantities (L67)', () => {
+  it('copies the page\'s WGS-84 pair; the period and mean motion of a mean altitude are CelesTrak\'s', () => {
+    expect(RE).toBe(Lifetime.RE);
+    expect(MU).toBe(Lifetime.MU);
+    /* 67683 at 2026-09-12T07:29:09Z: SMA 363.259 km, mean motion 15.68476422 rev/day */
+    expect(Math.abs(periodMin(363.259) - 91.8088)).toBeLessThan(1e-4);
+    expect(Math.abs(1440 / periodMin(363.259) - 15.68476422)).toBeLessThan(1e-5);
+    expect(PARAMS.filter(p => projects(p))).toEqual(['alt', 'per', 'mm']);
+    expect(PARAMS.filter(p => MEASURE[p].floor)).toEqual(['alt', 'hp', 'ha']);
+  });
+  it('reads an eccentricity only where it is a finite number', () => {
+    expect(eccOf({ ecc: NaN })).toBeNaN();
+    expect(eccOf({ ecc: null })).toBeNaN();
+    expect(eccOf({ ecc: undefined })).toBeNaN();
+    expect(eccOf({})).toBeNaN();
+    expect(eccOf({ ecc: 0.001 })).toBe(0.001);
+  });
+  const E = 0.00096186;
+  const P = [{ t: T - 3 * DAY_MS, sma: 363.259, ecc: E }, { t: T - 2 * DAY_MS, sma: 362.9, ecc: NaN }, { t: T - DAY_MS, sma: 362.7, ecc: null },
+    { t: T, sma: 362.5 }];
+  it('mean perigee and apogee altitude from the mean altitude and eccentricity; NaN on a set without one', () => {
+    const hp = points(P, 'hp'), ha = points(P, 'ha'), ec = points(P, 'ecc');
+    expect(Math.abs(hp.v[0]! - ((363.259 + RE) * (1 - E) - RE))).toBeLessThan(1e-9);
+    expect(Math.abs(ha.v[0]! - ((363.259 + RE) * (1 + E) - RE))).toBeLessThan(1e-9);
+    expect(ec.v[0]).toBe(E);
+    for (const i of [1, 2, 3]) for (const q of [hp, ha, ec]) expect(q.v[i]).toBeNaN();
+    expect(Array.from(hp.t)).toEqual(P.map(r => r.t));
+  });
+  it('mean altitude, period and mean motion for every set', () => {
+    const alt = points(P, 'alt'), per = points(P, 'per'), mm = points(P, 'mm');
+    P.forEach((r, i) => {
+      expect(alt.v[i]).toBe(r.sma);
+      expect(per.v[i]).toBe(periodMin(r.sma));
+      expect(mm.v[i]).toBe(1440 / periodMin(r.sma));
+    });
+  });
+  it('gives the same object back for the same history and quantity, and works a new history out anew', () => {
+    expect(points(P, 'hp')).toBe(points(P, 'hp'));
+    expect(points(P, 'rate')).toBe(rateSeries(P));
+    expect(points([...P], 'hp')).not.toBe(points(P, 'hp'));
+  });
+});
+
+describe('the decay rate (L67)', () => {
+  it('a straight fall of 0.5 km/day, sampled daily, reads -0.5 wherever the 45 days hold 8 sets', () => {
+    const q = rateSeries(rows(120, i => 500 - 0.5 * i));
+    expect(q.t).toHaveLength(120);
+    for (let i = 0; i < 120; i++) {
+      if (i < 7) expect(q.v[i], String(i)).toBeNaN();
+      else expect(Math.abs(q.v[i]! + 0.5), String(i)).toBeLessThan(1e-12);
+    }
+  });
+  it('reads nothing with fewer than 8 sets in the 45 days', () => {
+    const q = rateSeries(rows(40, i => 500 - 3.5 * i, 7 * DAY_MS));        // weekly: 7 sets in 45 days
+    expect(Array.from(q.v).every(v => Number.isNaN(v))).toBe(true);
+  });
+  it('reads nothing with the window\'s two ends 5 days apart or less', () => {
+    const q = rateSeries(rows(13, i => 500 - 0.25 * i, DAY_MS / 2));        // every 12 hours
+    expect(q.v[11]).toBeNaN();                                               // 12 sets: the ends' middles 5 days apart
+    expect(Number.isFinite(q.v[12]!)).toBe(true);                            // 13 sets: 5.5 days
+    expect(q.v[12]).toBeCloseTo(-0.5, 12);
+  });
+  it('gives one point per instant: sets that share one count once, at the last of them', () => {
+    const P = rows(60, i => 500 - 0.5 * i);
+    const D = P.flatMap((r, i) => (i % 10 === 3 ? [r, { ...r, sma: r.sma + 0.1 }] : [r]));
+    const q = rateSeries(D);
+    expect(Array.from(q.t)).toEqual(P.map(r => r.t));
+  });
+  it('reads above zero after a reboost', () => {
+    const q = rateSeries(rows(100, i => (i < 50 ? 400 - 0.2 * i : 390 + 0.3 * (i - 50))));
+    expect(q.v[99]).toBeGreaterThan(0);
+    expect(q.v[49]).toBeLessThan(0);
+  });
+  it('at the last set is the Decay section\'s own 45-day figure, bit for bit', () => {
+    const P = rows(200, i => 420 - 0.15 * i - 0.0004 * i * i + 0.3 * Math.sin(i * 1.7));
+    P.splice(150, 0, { ...P[150]!, sma: P[150]!.sma + 0.05 });              // two sets at one instant
+    const c = Lifetime.calibrate(P, 45);
+    expect(c).not.toBeNull();
+    const q = rateSeries(P);
+    expect(q.v[q.v.length - 1]).toBe(c!.rate);
+    expect(q.t[q.t.length - 1]).toBe(P[P.length - 1]!.t);
+  });
+  it('keeps at most 2,000 points, counted back from the last, which is always among them', () => {
+    const P = rows(40000, i => 500 - i * 1e-4, 3600000);                    // hourly, 4.6 years
+    const q = rateSeries(P);
+    expect(q.t.length).toBeLessThanOrEqual(2000);
+    expect(q.t.length).toBeGreaterThan(1900);
+    expect(q.t[q.t.length - 1]).toBe(P[P.length - 1]!.t);
+    expect(q.v[q.v.length - 1]).toBeCloseTo(-24e-4, 9);
+  });
+});
+
+describe('the time window of a range (L67)', () => {
+  const iss = series(28 * 365, 1, 460, 410, 300), young = series(200, 2, 520, 470, 150);
+  const newest = T - DAY_MS;
+  it('Auto is the frame\'s; 30 d, 90 d and 1 y end at the newest set, not clamped; All runs from the first set to the latest end', () => {
+    const f = frame([iss, young])!;
+    expect(baseWindow([iss, young], 'auto')).toEqual({ t0: f.t0, t1: f.tEnd, tLast: newest });
+    for (const [r, N] of [['30d', 30], ['90d', 90], ['1y', 365]] as const) {
+      expect(baseWindow([iss, young], r)).toEqual({ t0: newest - N * DAY_MS, t1: newest, tLast: newest });
+    }
+    expect(baseWindow([iss, young], 'all')).toEqual({ t0: iss.P[0]!.t, t1: Math.max(seriesEnd(iss), seriesEnd(young)), tLast: newest });
+    const y = baseWindow([young], '1y')!;                                   // a year before a 200-day record's last set
+    expect(y.t0).toBe(young.r.tNow! - 365 * DAY_MS);
+    expect(y.t0).toBeLessThan(young.P[0]!.t);
+  });
+  it('gives one instant a day, and nothing with nothing drawable', () => {
+    const one: SeriesShape = { P: [{ t: T, sma: 400 }], r: { tNow: T, hNow: 400, track: null } };
+    expect(baseWindow([one], 'all')).toEqual({ t0: T, t1: T + DAY_MS, tLast: T });
+    expect(baseWindow([geoS], 'all')).toBeNull();
+    expect(baseWindow([], 'auto')).toBeNull();
+    expect(baseWindow([young, geoS], '30d')).toEqual(baseWindow([young], '30d'));
+  });
+});
+
+describe('the frame of a view (L67)', () => {
+  /* every frame() fixture above */
+  const fixtures: SeriesShape[][] = [
+    [series(28 * 365, 1, 460, 410, 300), series(200, 2, 520, 470, 150)],
+    [series(2000, 0, 600, 580, 1500)], [series(100, 0, 400, 390)],
+    [series(28 * 365, 1, 900, 410, 300)], [series(28 * 365, 1, 900, 410, 300), geoS],
+    [series(100, 0, 500, 500)], [series(100, 0, 600, 100, 0)],
+    [{ P: [{ t: T, sma: 400 }], r: { tNow: T, hNow: 400, track: null } }]
+  ];
+  it('the default view is frame() itself, for every frame in this file', () => {
+    for (const fx of fixtures) {
+      const v = frameView(fx, VIEW_DEFAULT)!, f = frame(fx)!;
+      expect({ t0: v.frame!.t0, tEnd: v.frame!.tEnd, hMin: v.frame!.hMin, hMax: v.frame!.hMax }).toEqual(f);
+      expect([v.why, v.zoomed, v.t0, v.t1]).toEqual([null, false, f.t0, f.tEnd]);
+      expect([v.frame!.base, v.frame!.zoomed]).toEqual([{ t0: f.t0, t1: f.tEnd }, false]);
+    }
+    expect(frameView([geoS], VIEW_DEFAULT)).toBeNull();
+    expect(frameView([], VIEW_DEFAULT)).toBeNull();
+  });
+  it('the window does not depend on the quantity: switching it only refits the heights', () => {
+    const fx = [withEcc(series(400, 1, 460, 410, 300), () => 0.001), withEcc(series(200, 2, 520, 470, 150), () => 0.002)];
+    for (const r of RANGES) {
+      const w = PARAMS.map(p => { const v = frameView(fx, { p, r })!; return [v.t0, v.t1, v.frame!.t0, v.frame!.tEnd]; });
+      for (const x of w) expect(x, r).toEqual(w[0]);
+    }
+  });
+  /* B comes in from the left edge of a 30-day window between two weekly sets, and its projection leaves through the right edge
+     (the newest set is A's, today); A sits between B's two edge values */
+  const B: SeriesShape = {
+    P: Array.from({ length: 21 }, (_, i) => { const t = T - 10 * DAY_MS - (20 - i) * 7 * DAY_MS; return { t, sma: 300 + (T - 10 * DAY_MS - t) / DAY_MS }; }),
+    r: { tNow: T - 10 * DAY_MS, hNow: 300, track: [{ t: 0, h: 300 }, { t: 20, h: 200 }] }
+  };
+  const A: SeriesShape = { P: rows(60, () => 260), r: { tNow: T, hNow: 260, track: null } };
+  it('30 days: a line comes in at the left edge and a projection leaves at the right, each read where it crosses', () => {
+    const v = frameView([A, B], { p: 'alt', r: '30d' })!;
+    expect([v.t0, v.t1, v.zoomed, v.why]).toEqual([T - 30 * DAY_MS, T, false, null]);
+    /* in: 320 km (between 321 and 314); out: 250 km, halfway along the projection's first 20 days; padded by 8 % of 70 km */
+    expect(v.frame!.hMax).toBeCloseTo(320 + 5.6, 9);
+    expect(v.frame!.hMin).toBeCloseTo(250 - 5.6, 9);
+  });
+  it('a zoom clips a history on both sides, read where it crosses each edge', () => {
+    const v = frameView([B], { p: 'alt', r: 'all' }, { t0: T - 100.5 * DAY_MS, t1: T - 50.5 * DAY_MS })!;
+    expect([v.zoomed, v.t0, v.t1, v.frame!.zoomed]).toEqual([true, T - 100.5 * DAY_MS, T - 50.5 * DAY_MS, true]);
+    expect(v.frame!.hMax).toBeCloseTo(390.5 + 4, 9);
+    expect(v.frame!.hMin).toBeCloseTo(340.5 - 4, 9);
+    expect(v.base).toEqual({ t0: B.P[0]!.t, t1: seriesEnd(B) });
+  });
+  it('pads by the quantity\'s least pad: a flat eccentricity of 0.001 gives 0.00095 to 0.00105', () => {
+    const f = frameView([withEcc(series(100, 0, 500, 490), () => 0.001)], { p: 'ecc', r: 'auto' })!.frame!;
+    expect(f.hMin).toBeCloseTo(0.00095, 12);
+    expect(f.hMax).toBeCloseTo(0.00105, 12);
+  });
+  it('lets the decay rate go below zero, and keeps every other quantity at zero or above', () => {
+    const s: SeriesShape = { P: rows(120, i => 500 - 0.5 * i), r: { tNow: T, hNow: 440.5, track: null } };
+    const f = frameView([s], { p: 'rate', r: 'auto' })!.frame!;
+    expect(f.hMin).toBeCloseTo(-0.51, 12);
+    expect(f.hMax).toBeCloseTo(-0.49, 12);
+    expect(PARAMS.filter(p => !MEASURE[p].min0)).toEqual(['rate']);
+    expect(frameView([withEcc(series(100, 0, 500, 490), () => 0.00001)], { p: 'ecc', r: 'auto' })!.frame!.hMin).toBe(0);
+  });
+  it('says why nothing is drawn: no history carries the quantity, or none has a value in the window', () => {
+    const none = withEcc(series(100, 0, 500, 490, 30), () => null), f = frame([none])!;
+    const a = frameView([none], { p: 'hp', r: 'auto' })!;
+    expect([a.frame, a.why, a.t0, a.t1, a.zoomed]).toEqual([null, 'param', f.t0, f.tEnd, false]);
+    const e = withEcc(series(100, 0, 500, 490, 30), () => 0.001), future = { t0: T + 5 * DAY_MS, t1: T + 20 * DAY_MS };
+    const z = frameView([e], { p: 'hp', r: 'auto' }, future)!;
+    expect([z.frame, z.why, z.zoomed, z.t0, z.t1]).toEqual([null, 'range', true, future.t0, future.t1]);
+    expect(frameView([e], { p: 'per', r: 'auto' }, future)!.frame).not.toBeNull();     // the period has the projection there
+  });
+  it('fits the heights to `yfit`, and the window to `fit`', () => {
+    const lo = withEcc(series(400, 1, 460, 410, 300), () => 0.001), hi = withEcc(series(400, 1, 900, 880), () => 0.001);
+    const v = frameView([lo], { p: 'hp', r: '90d' }, null, [hi])!;
+    expect([v.t0, v.t1]).toEqual([frameView([lo], { p: 'hp', r: '90d' })!.t0, frameView([lo], { p: 'hp', r: '90d' })!.t1]);
+    expect(v.frame!.hMin).toBeGreaterThan(800);
+  });
+  it('ignores a zoom outside the range\'s window, or narrower than a day', () => {
+    const fx = [series(100, 0, 500, 490, 30)], w = baseWindow(fx, '30d')!;
+    for (const win of [{ t0: w.t0 - 1, t1: w.t1 }, { t0: w.t0, t1: w.t1 + 1 }, { t0: w.t0 + DAY_MS, t1: w.t0 + 2 * DAY_MS - 1 }]) {
+      const v = frameView(fx, { p: 'alt', r: '30d' }, win)!;
+      expect([v.zoomed, v.t0, v.t1, v.frame!.zoomed]).toEqual([false, w.t0, w.t1, false]);
+    }
+    const ok = frameView(fx, { p: 'alt', r: '30d' }, { t0: w.t0 + DAY_MS, t1: w.t0 + 2 * DAY_MS })!;
+    expect([ok.zoomed, ok.t0, ok.t1]).toEqual([true, w.t0 + DAY_MS, w.t0 + 2 * DAY_MS]);
+    /* a zoom in the default view leaves the legacy frame */
+    const az = frameView(fx, VIEW_DEFAULT, { t0: T - 10 * DAY_MS, t1: T })!;
+    expect([az.zoomed, az.frame!.t0, az.frame!.tEnd]).toEqual([true, T - 10 * DAY_MS, T]);
+  });
+});
+
+describe('the readout of a view (L67)', () => {
+  const s = withEcc(series(10, 0, 400, 390, 20), i => (i === 4 ? NaN : 0.001));
+  const tNow = s.r.tNow!, A = s.r.track!;
+  const hp = (i: number) => (RE + s.P[i]!.sma) * (1 - 0.001) - RE;
+  it('reads mean altitude with valueAt itself', () => {
+    for (const t of [s.P[0]!.t - 1, s.P[0]!.t, s.P[3]!.t + DAY_MS / 4, s.P[4]!.t, tNow, tNow + DAY_MS, tNow + 2 * DAY_MS, tNow + 20 * DAY_MS,
+      tNow + 20 * DAY_MS + 1]) expect(valueIn(s, t, 'alt')).toEqual(valueAt(s, t));
+  });
+  it('reads nothing on or beside a set without the quantity, and the line between two that have it', () => {
+    expect(valueIn(s, s.P[3]!.t + DAY_MS / 2, 'ecc')).toBeNull();
+    expect(valueIn(s, s.P[4]!.t, 'hp')).toBeNull();
+    expect(valueIn(s, s.P[4]!.t + DAY_MS / 2, 'hp')).toBeNull();
+    expect(valueIn(s, s.P[6]!.t, 'ecc')).toEqual({ h: 0.001, projected: false });
+    const q = valueIn(s, s.P[6]!.t + DAY_MS / 4, 'hp')!;
+    expect(q.projected).toBe(false);
+    expect(q.h).toBeCloseTo(hp(6) + (hp(7) - hp(6)) / 4, 9);
+    expect(valueIn(s, s.P[0]!.t - 1, 'ecc')).toBeNull();
+  });
+  it('a quantity without a forecast reads nothing after the last set; the period and mean motion read the projection, mapped', () => {
+    expect(valueIn(s, tNow, 'hp')).toEqual({ h: hp(10), projected: false });
+    expect(valueIn(s, tNow + DAY_MS, 'hp')).toBeNull();
+    const p = valueIn(s, tNow + DAY_MS, 'per')!;                             // halfway between the first two points, 2 days apart
+    expect(p.projected).toBe(true);
+    expect(p.h).toBeCloseTo((periodMin(A[0]!.h) + periodMin(A[1]!.h)) / 2, 10);
+    const mm = (h: number) => 1440 / periodMin(h), m = valueIn(s, tNow + 3.5 * DAY_MS, 'mm')!;
+    expect(m.h).toBeCloseTo(mm(A[1]!.h) + (mm(A[2]!.h) - mm(A[1]!.h)) * 0.75, 10);
+    expect(valueIn(s, tNow + 20 * DAY_MS, 'per')).toEqual({ h: periodMin(120), projected: true });
+    expect(valueIn(s, tNow + 20 * DAY_MS + 1, 'per')).toBeNull();
+  });
+});
+
+describe('the grid step, the dot and the ring (L67)', () => {
+  /* draw-compare.ts's private step, as it was before L67 */
+  const tickStep = (span: number): number => {
+    const raw = span / 5, p = 10 ** Math.floor(Math.log10(raw)), e = raw / p;
+    return Math.max(1, (e >= Math.sqrt(50) ? 10 : e >= Math.sqrt(10) ? 5 : e >= Math.SQRT2 ? 2 : 1) * p);
+  };
+  it('a round step, at least the least; with a least of 1 the chart\'s km step for every span', () => {
+    expect(niceStep(8, 1)).toBe(2);
+    expect(niceStep(0.0004, 0.00001)).toBe(0.0001);
+    expect(niceStep(0.003, 1)).toBe(1);
+    for (const span of [0.004, 0.5, 1, 3, 7.07, 7.08, 7.9, 8, 13, 15.8, 47, 70.7, 99.9, 120, 352, 470, 999, 5000, 38000]) {
+      expect(niceStep(span, 1), String(span)).toBe(tickStep(span));
+    }
+    expect([stepDecimals(0.05), stepDecimals(2), stepDecimals(0.0001), stepDecimals(1), stepDecimals(0.001)]).toEqual([2, 0, 4, 0, 3]);
+  });
+  const s = withEcc(series(10, 0, 400, 390, 20), i => (i === 10 ? NaN : 0.001));
+  it('the dot: mean altitude at the last set exactly, the period there in minutes, the others at their last finite point', () => {
+    expect(lastOf(s, 'alt')).toEqual({ t: s.r.tNow, v: s.r.hNow });
+    expect(lastOf(s, 'per')).toEqual({ t: s.r.tNow, v: periodMin(390) });
+    expect(lastOf(s, 'hp')).toEqual({ t: s.P[9]!.t, v: (RE + s.P[9]!.sma) * (1 - 0.001) - RE });
+    expect(lastOf(s, 'rate')!.t).toBe(s.P[10]!.t);
+    expect(lastOf(withEcc(series(10, 0, 400, 390), () => NaN), 'ecc')).toBeNull();
+  });
+  it('the ring: only in a projected quantity, and only where the projection reaches 120.5 km or lower', () => {
+    const end = s.r.tNow! + 20 * DAY_MS;
+    expect(ringOf(s, 'alt')).toEqual({ t: end, v: 120 });
+    expect(ringOf(s, 'per')).toEqual({ t: end, v: periodMin(120) });
+    for (const p of ['hp', 'ha', 'rate', 'ecc'] as const) expect(ringOf(s, p)).toBeNull();
+    const ending = (h: number): SeriesShape => ({ ...s, r: { ...s.r, track: [{ t: 0, h: 390 }, { t: 9, h }] } });
+    expect(ringOf(ending(120.5), 'mm')).toEqual({ t: s.r.tNow! + 9 * DAY_MS, v: 1440 / periodMin(120.5) });
+    expect(ringOf(ending(120.6), 'alt')).toBeNull();
+    expect(ringOf({ ...s, r: { ...s.r, track: [{ t: 0, h: 120 }] } }, 'alt')).toBeNull();
   });
 });

@@ -14,6 +14,11 @@
  * element set to the latest end of a projection; older history is clipped. Above 2,000 km mean altitude drag does not matter
  * and one such line would flatten every other, so such an object is listed but not drawn.
  *
+ * The chart's view (L67): the quantity it shows (mean altitude, mean perigee and apogee altitude, the decay rate, eccentricity,
+ * orbital period or mean motion), all worked out from the history the page already holds, and the time range (Auto, today's
+ * frame, or the 30 days, 90 days or year up to the newest element set, or all of it). The time window never depends on the
+ * quantity, so switching it only refits the heights; the default view (Auto, mean altitude) is the frame above, unchanged.
+ *
  * Travels with the comparison's chunk (DecayCompare): the store (state/decay-compare.svelte.ts) and the chart
  * (components/report/draw-compare.ts) read it; the Decay section itself does not. */
 
@@ -36,10 +41,21 @@ export const DAY_MS = 86400000;
 const YEAR_MS = 365 * DAY_MS;
 const NUM = /^\d{1,5}$/;
 
+/** The chart's view: the quantity it shows and its time range. */
+export type CmpParam = 'alt' | 'hp' | 'ha' | 'rate' | 'ecc' | 'per' | 'mm';
+export type CmpRange = 'auto' | '30d' | '90d' | '1y' | 'all';
+export interface CmpView { readonly p: CmpParam; readonly r: CmpRange }
+export const PARAMS: readonly CmpParam[] = ['alt', 'hp', 'ha', 'rate', 'ecc', 'per', 'mm'];
+export const RANGES: readonly CmpRange[] = ['auto', '30d', '90d', '1y', 'all'];
+export const VIEW_DEFAULT: CmpView = { p: 'alt', r: 'auto' };
+/** a span of time (ms) */
+export interface Win { readonly t0: number; readonly t1: number }
+
 /** A listed spacecraft: its catalogue number as the catalogue writes it (five digits, zero-padded, as entry.satnum and the
  *  hist:<n> cache key), and the colour slot it is highlighted in. */
 export interface CompareItem { readonly n: string; readonly h?: number }
-export interface CompareRecord { open: boolean; items: CompareItem[] }
+/** The stored record; `view` only when it is not the default, with only the keys that differ from it. */
+export interface CompareRecord { open: boolean; items: CompareItem[]; view?: Partial<CmpView> }
 
 /** A catalogue number as the catalogue writes it, or null for anything else. */
 export function compareNum(x: unknown): string | null {
@@ -50,12 +66,14 @@ const isSlot = (h: unknown): h is number => Number.isInteger(h) && (h as number)
 
 /** The stored record, {"o":1,"l":[{"n":"25544","h":2},{"n":"07530"}]}, read as far as it can be: anything that is not one is an
  *  empty, closed list; a number that is not a catalogue number is left out, and so is a second copy of one; past 50 the rest
- *  are left out; a slot that is not 2..8, or one already taken by a row above it, is dropped (the row stays, not highlighted). */
+ *  are left out; a slot that is not 2..8, or one already taken by a row above it, is dropped (the row stays, not highlighted).
+ *  The view's keys, "p" (a quantity other than mean altitude) and "r" (a range other than Auto), are read when they are one of
+ *  those; anything else is the default, and the list is kept. */
 export function readCompare(raw: string | null): CompareRecord {
   let j: unknown;
   try { j = JSON.parse(raw ?? 'null'); } catch { return { open: false, items: [] }; }
   if (!j || typeof j !== 'object' || Array.isArray(j)) return { open: false, items: [] };
-  const rec = j as { o?: unknown; l?: unknown };
+  const rec = j as { o?: unknown; l?: unknown; p?: unknown; r?: unknown };
   const items: CompareItem[] = [], seen = new Set<string>(), slots = new Set<number>();
   for (const x of Array.isArray(rec.l) ? rec.l : []) {
     if (items.length >= COMPARE_MAX) break;
@@ -65,12 +83,20 @@ export function readCompare(raw: string | null): CompareRecord {
     const h = (x as { h?: unknown }).h;
     if (isSlot(h) && !slots.has(h)) { slots.add(h); items.push({ n, h }); } else items.push({ n });
   }
-  return { open: rec.o === 1, items };
+  const view: { p?: CmpParam; r?: CmpRange } = {};
+  if (typeof rec.p === 'string' && rec.p !== VIEW_DEFAULT.p && (PARAMS as readonly string[]).includes(rec.p)) view.p = rec.p as CmpParam;
+  if (typeof rec.r === 'string' && rec.r !== VIEW_DEFAULT.r && (RANGES as readonly string[]).includes(rec.r)) view.r = rec.r as CmpRange;
+  return view.p || view.r ? { open: rec.o === 1, items, view } : { open: rec.o === 1, items };
 }
 
-/** The record as it is stored. */
-export function writeCompare(open: boolean, items: readonly CompareItem[]): string {
-  return JSON.stringify({ o: open ? 1 : 0, l: items.map(i => (i.h ? { n: i.n, h: i.h } : { n: i.n })) });
+/** The record as it is stored, the view's keys after the list and only where it differs from the default: without a view, or
+ *  with the default one, exactly what was stored before the view existed. */
+export function writeCompare(open: boolean, items: readonly CompareItem[], view?: CmpView): string {
+  const rec: { o: number; l: CompareItem[]; p?: CmpParam; r?: CmpRange } =
+    { o: open ? 1 : 0, l: items.map(i => (i.h ? { n: i.n, h: i.h } : { n: i.n })) };
+  if (view && view.p !== VIEW_DEFAULT.p) rec.p = view.p;
+  if (view && view.r !== VIEW_DEFAULT.r) rec.r = view.r;
+  return JSON.stringify(rec);
 }
 
 /** The lowest colour slot no listed spacecraft holds, or null with all seven taken. */
@@ -125,10 +151,11 @@ export function fetchPlan(waiting: number): { k: number; more: boolean } {
 
 /* ---- what can be drawn, and where -------------------------------------------------------------------------------- */
 
-/** A history and its forecast, as far as the chart needs them: P the element sets (t ms, sma the mean altitude in km), r the
- *  prediction (tNow and hNow its last set; track the projection, t in days after tNow). */
+/** A history and its forecast, as far as the chart needs them: P the element sets (t ms, sma the mean altitude in km, ecc the
+ *  mean eccentricity where the history carries it), r the prediction (tNow and hNow its last set; track the projection, t in days
+ *  after tNow). */
 export interface SeriesShape {
-  readonly P: readonly { t: number; sma: number }[];
+  readonly P: readonly { t: number; sma: number; ecc?: number | null }[];
   readonly r: { tNow?: number; hNow?: number; track?: readonly { t: number; h: number }[] | null };
 }
 export type NotDrawn = 'thin' | 'high';
@@ -202,6 +229,239 @@ export function valueAt(s: SeriesShape, t: number): { h: number; projected: bool
   if (d > A[A.length - 1]!.t) return null;
   return { h: along(A, d, p => p.t, p => p.h), projected: true };
 }
+
+/* ---- the chart's view: the quantity and the time range (L67) ------------------------------------------------------- */
+
+/** WGS-84, the page's pair (km, km^3/s^2): lib/core/body.ts L31/L36 (Re and mu inside Earth()) and lib/planner/lifetime.ts L44
+ *  (RE, MU), copied, because importing them would put a new export on the entry (body.ts) or pull in the lifetime chunk. A unit
+ *  test pins them to Lifetime.RE and Lifetime.MU. */
+export const RE = 6378.137, MU = 398600.4418;
+/** The period (min) of an orbit whose mean altitude is h km: its semi-major axis is RE + h. */
+export const periodMin = (h: number): number => 2 * Math.PI * Math.sqrt((RE + h) ** 3 / MU) / 60;
+const meanMotion = (h: number): number => 1440 / periodMin(h);
+const FLOOR_KM = 120;                     // the line where an object stops being in orbit (draw-compare.ts FLOOR)
+
+/** How a quantity is drawn. */
+export interface Measure {
+  readonly proj: ((h: number) => number) | null;   // the projection in this quantity; null: history only
+  readonly pad: number; readonly step: number;      // least padding of the value range; least grid step
+  readonly floor: boolean; readonly min0: boolean;  // the 120 km line applies; the axis never goes below 0
+}
+/** The quantities. The forecast is of mean altitude, so only those worked out from it alone (the period and the mean motion) are
+ *  projected; the least pads are about 4 km of altitude at 400 km. The decay rate can go above zero (a raised orbit). */
+export const MEASURE: Readonly<Record<CmpParam, Measure>> = {
+  alt: { proj: h => h, pad: 4, step: 1, floor: true, min0: true },
+  hp: { proj: null, pad: 4, step: 1, floor: true, min0: true },
+  ha: { proj: null, pad: 4, step: 1, floor: true, min0: true },
+  rate: { proj: null, pad: 0.01, step: 0.001, floor: false, min0: false },
+  ecc: { proj: null, pad: 0.00005, step: 0.00001, floor: false, min0: true },
+  per: { proj: periodMin, pad: 0.08, step: 0.01, floor: false, min0: true },
+  mm: { proj: meanMotion, pad: 0.014, step: 0.001, floor: false, min0: true }
+};
+/** whether the forecast is drawn in this quantity */
+export const projects = (p: CmpParam): boolean => MEASURE[p].proj !== null;
+
+/** An element set's eccentricity, NaN where it has none: NaN on a fresh read and from the API, null from the hist:<n> cache,
+ *  absent in test fixtures (the global isFinite(null) is true, so it is not used). */
+export function eccOf(row: { ecc?: number | null }): number {
+  return typeof row.ecc === 'number' && Number.isFinite(row.ecc) ? row.ecc : NaN;
+}
+
+/** A line in one quantity: instants (ms) and values, NaN where there is none (the line breaks there). */
+export interface Pts { readonly t: Float64Array; readonly v: Float64Array }
+
+type Rows = SeriesShape['P'];
+/* keyed by the history (or the projection's track) array: a new history is a new array, so it gets a new entry */
+const ptsMemo = new WeakMap<object, Map<CmpParam, Pts>>();
+const projMemo = new WeakMap<object, Map<CmpParam, Pts>>();
+function memo(m: WeakMap<object, Map<CmpParam, Pts>>, key: object, p: CmpParam, make: () => Pts): Pts {
+  let byP = m.get(key);
+  if (!byP) m.set(key, byP = new Map());
+  let q = byP.get(p);
+  if (!q) byP.set(p, q = make());
+  return q;
+}
+
+/** A history in a quantity, one value per element set (the decay rate: one per instant, rateSeries). Memoised per history. */
+export function points(P: Rows, p: CmpParam): Pts {
+  if (p === 'rate') return rateSeries(P);
+  return memo(ptsMemo, P, p, () => {
+    const n = P.length, t = new Float64Array(n), v = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const row = P[i]!, h = row.sma;
+      t[i] = row.t;
+      if (p === 'alt') v[i] = h;
+      else if (p === 'per') v[i] = periodMin(h);
+      else if (p === 'mm') v[i] = meanMotion(h);
+      else {
+        const e = eccOf(row), a = RE + h;
+        v[i] = p === 'ecc' ? e : p === 'hp' ? a * (1 - e) - RE : a * (1 + e) - RE;
+      }
+    }
+    return { t, v };
+  });
+}
+
+/** The projection in a quantity (t = tNow + days, v = the quantity at the projected mean altitude), or null when the quantity is
+ *  not projected or there is no track. Memoised per track. */
+export function projected(s: SeriesShape, p: CmpParam): Pts | null {
+  const f = MEASURE[p].proj, A = s.r.track, tNow = s.r.tNow;
+  if (!f || !A || !A.length || tNow === undefined) return null;
+  return memo(projMemo, A, p, () => {
+    const n = A.length, t = new Float64Array(n), v = new Float64Array(n);
+    for (let i = 0; i < n; i++) { const q = A[i]!; t[i] = tNow + q.t * DAY_MS; v[i] = f(q.h); }
+    return { t, v };
+  });
+}
+
+/** the decay rate's window (days), the fewest element sets in it, and the most points drawn */
+export const RATE_DAYS = 45, RATE_MIN_ROWS = 8, RATE_MAX_POINTS = 2000;
+/* lifetime.ts L113's median, copied (that file is a verbatim port in another chunk) */
+const med = (arr: number[]): number => { const s = arr.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]!; };
+
+/** The decay rate (km/day) at each instant of a history: the Decay section's own estimator (lifetime.ts calibrate(P, 45)) over
+ *  the 45 days up to it, the median height and instant of the first and last fifth (two sets at least) of the window, without its
+ *  "must be falling" rule (a raised orbit shows above zero) and without integrating. NaN with fewer than 8 sets in the window or
+ *  its two ends 5 days apart or less. One point per instant (the last set of a run that shares one), every k-th counted back from
+ *  the last past 2,000 of them. At the last set it is calibrate's figure exactly. Memoised per history. */
+export function rateSeries(P: Rows): Pts {
+  return memo(ptsMemo, P, 'rate', () => {
+    const n = P.length, ep: number[] = [];
+    for (let i = 0; i < n; i++) if (i === n - 1 || P[i + 1]!.t !== P[i]!.t) ep.push(i);
+    const m = ep.length, k = Math.ceil(m / RATE_MAX_POINTS);
+    const E = k > 1 ? ep.filter((_, j) => (m - 1 - j) % k === 0) : ep;
+    const t = new Float64Array(E.length), v = new Float64Array(E.length);
+    let lo = 0;
+    E.forEach((i, j) => {
+      const ti = P[i]!.t;
+      while (P[lo]!.t < ti - RATE_DAYS * DAY_MS) lo++;
+      t[j] = ti;
+      const len = i - lo + 1;
+      if (len < RATE_MIN_ROWS) { v[j] = NaN; return; }
+      const q = Math.max(2, Math.floor(len / 5)), head = P.slice(lo, lo + q), tail = P.slice(i + 1 - q, i + 1);
+      const h1 = med(head.map(r => r.sma)), h2 = med(tail.map(r => r.sma));
+      const t1 = med(head.map(r => r.t)), t2 = med(tail.map(r => r.t));
+      const dt = (t2 - t1) / DAY_MS;
+      v[j] = dt > 5 ? (h2 - h1) / dt : NaN;
+    });
+    return { t, v };
+  });
+}
+
+/** Where a line's dot goes: its last element set in this quantity (for mean altitude exactly where it goes today), or null. */
+export function lastOf(s: SeriesShape, p: CmpParam): { t: number; v: number } | null {
+  const f = MEASURE[p].proj, { tNow, hNow } = s.r;
+  if (f) return tNow === undefined || hNow === undefined ? null : { t: tNow, v: p === 'alt' ? hNow : f(hNow) };
+  const q = points(s.P, p);
+  for (let i = q.t.length - 1; i >= 0; i--) if (Number.isFinite(q.v[i]!)) return { t: q.t[i]!, v: q.v[i]! };
+  return null;
+}
+
+/** Where a line's end ring goes: the end of its projection when that reaches the 120 km floor, in a projected quantity; or null. */
+export function ringOf(s: SeriesShape, p: CmpParam): { t: number; v: number } | null {
+  const f = MEASURE[p].proj, A = s.r.track, e = A && A.length > 1 ? A[A.length - 1]! : null;
+  return f && e && s.r.tNow !== undefined && e.h <= FLOOR_KM + .5 ? { t: s.r.tNow + e.t * DAY_MS, v: f(e.h) } : null;
+}
+
+const RANGE_DAYS: Readonly<Record<'30d' | '90d' | '1y', number>> = { '30d': 30, '90d': 90, '1y': 365 };
+
+/** The time window of a range, over the drawable series fitted (the same set frame() takes), which never depends on the quantity:
+ *  Auto is frame()'s; 30 d, 90 d and 1 y end at the newest element set (tLast), not clamped to the first; All runs from the first
+ *  element set to the latest end of a projection. Null with nothing drawable. */
+export function baseWindow(fit: readonly SeriesShape[], r: CmpRange): (Win & { tLast: number }) | null {
+  const S = fit.filter(s => s.P.length && drawable(s.r));
+  if (!S.length) return null;
+  let tFirst = Infinity, tLast = -Infinity, tEnd = -Infinity;
+  for (const s of S) {
+    tFirst = Math.min(tFirst, s.P[0]!.t);
+    tLast = Math.max(tLast, s.r.tNow!);
+    tEnd = Math.max(tEnd, seriesEnd(s));
+  }
+  if (r === 'auto') { const f = frame(S)!; return { t0: f.t0, t1: f.tEnd, tLast }; }
+  if (r === 'all') return { t0: tFirst, t1: tEnd > tFirst ? tEnd : tFirst + DAY_MS, tLast };
+  return { t0: tLast - RANGE_DAYS[r] * DAY_MS, t1: tLast, tLast };
+}
+
+/** A frame with the window it was cut from: the range's own (base), whether a zoom is drawn, and the newest element set. */
+export interface ViewFrame extends Frame { readonly base: Win; readonly zoomed: boolean; readonly tLast: number }
+
+/* the values of a polyline inside [t0, t1], with the value where it comes in at t0 and where it leaves at t1; never across a NaN */
+function extent(q: Pts, t0: number, t1: number, take: (v: number) => void): void {
+  for (let i = 0; i < q.t.length; i++) {
+    const t = q.t[i]!, v = q.v[i]!;
+    if (t < t0) continue;
+    const ok = Number.isFinite(v), pt = i > 0 ? q.t[i - 1]! : NaN, pv = i > 0 ? q.v[i - 1]! : NaN, pok = i > 0 && Number.isFinite(pv);
+    if (pok && ok && pt < t0) take(pv + (v - pv) * (t0 - pt) / (t - pt));             // comes in at the left edge (as frame())
+    if (t > t1) { if (pok && ok && i > 0) take(pv + (v - pv) * (t1 - pt) / (t - pt)); break; }   // leaves at the right edge
+    if (ok) take(v);
+  }
+}
+
+/** The chart's frame for a view: the range's window over the series fitted (`fit`, the legacy fitted set), or the zoom `win` when
+ *  it lies inside that window and spans a day at least, and the heights over the values in view of the series in `yfit` that
+ *  carry the quantity (their history, and their projection when the quantity is projected), padded by 8 % and at least the
+ *  quantity's least pad. The default view (mean altitude, Auto, not zoomed) is frame() itself. `frame` is null with `why`:
+ *  'param' when no series carries the quantity, 'range' when none has a value in the window. Null with nothing drawable. */
+export function frameView(fit: readonly SeriesShape[], v: CmpView, win?: Win | null, yfit: readonly SeriesShape[] = fit): {
+  frame: ViewFrame | null; why: 'param' | 'range' | null; t0: number; t1: number; base: Win; zoomed: boolean; tLast: number } | null {
+  const B = baseWindow(fit, v.r);
+  if (!B) return null;
+  const base: Win = { t0: B.t0, t1: B.t1 }, tLast = B.tLast;
+  const zoomed = !!win && win.t0 >= B.t0 && win.t1 <= B.t1 && win.t1 - win.t0 >= DAY_MS;
+  const t0 = zoomed ? win!.t0 : B.t0, t1 = zoomed ? win!.t1 : B.t1;
+  const at = { t0, t1, base, zoomed, tLast };
+  /* the default does not move: the legacy frame, unchanged */
+  if (v.p === 'alt' && v.r === 'auto' && !zoomed) return { ...at, frame: { ...frame(fit)!, base, zoomed: false, tLast }, why: null };
+  const p = v.p, M = MEASURE[p];
+  const Sp = yfit.filter(s => s.P.length && drawable(s.r) && points(s.P, p).v.some(x => Number.isFinite(x)));
+  if (!Sp.length) return { ...at, frame: null, why: 'param' };
+  let hMin = Infinity, hMax = -Infinity;
+  const take = (h: number) => { if (h < hMin) hMin = h; if (h > hMax) hMax = h; };
+  for (const s of Sp) {
+    extent(points(s.P, p), t0, t1, take);
+    const q = projected(s, p);
+    if (q) extent(q, t0, t1, take);
+  }
+  if (!(hMin <= hMax)) return { ...at, frame: null, why: 'range' };
+  const pad = Math.max(M.pad, (hMax - hMin) * 0.08);
+  return {
+    ...at, why: null,
+    frame: { t0, tEnd: t1 > t0 ? t1 : t0 + DAY_MS, hMin: M.min0 ? Math.max(0, hMin - pad) : hMin - pad, hMax: hMax + pad, base, zoomed, tLast }
+  };
+}
+
+/** A series' value of a quantity at instant t, read off the line the chart draws there: mean altitude is valueAt() itself; any
+ *  other from its history (straight between two element sets, null where either is NaN), then, for a projected quantity, from
+ *  the projection mapped into it; null before the history and past what is drawn. */
+export function valueIn(s: SeriesShape, t: number, p: CmpParam): { h: number; projected: boolean } | null {
+  if (p === 'alt') return valueAt(s, t);
+  const q = points(s.P, p), n = q.t.length;
+  if (!n || t < q.t[0]!) return null;
+  if (t <= q.t[n - 1]!) {
+    let lo = 0, hi = n - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (q.t[m]! < t) lo = m + 1; else hi = m; }
+    const vb = q.v[lo]!;
+    if (q.t[lo] === t && Number.isFinite(vb)) return { h: vb, projected: false };
+    if (lo === 0) return null;
+    const ta = q.t[lo - 1]!, va = q.v[lo - 1]!, tb = q.t[lo]!;
+    return Number.isFinite(va) && Number.isFinite(vb) ? { h: va + (vb - va) * (t - ta) / (tb - ta), projected: false } : null;
+  }
+  const f = MEASURE[p].proj, A = s.r.track;
+  if (!f || !A || !A.length || s.r.tNow === undefined) return null;
+  const d = (t - s.r.tNow) / DAY_MS;
+  if (d > A[A.length - 1]!.t) return null;
+  return { h: along(A, d, x => x.t, x => f(x.h)), projected: true };
+}
+
+/** A round step (1, 2 or 5 x 10^k) for about five grid lines over `span`, `least` at least. With least = 1 it is the chart's
+ *  km step as it always was; a negative power of ten is divided out, so 0.0001 is 0.0001 and not 0.00009999999999999999. */
+export function niceStep(span: number, least: number): number {
+  const raw = span / 5, n = Math.floor(Math.log10(raw)), p = n >= 0 ? 10 ** n : 1 / 10 ** -n, e = raw / p;
+  const m = e >= Math.sqrt(50) ? 10 : e >= Math.sqrt(10) ? 5 : e >= Math.SQRT2 ? 2 : 1;
+  return Math.max(least, n >= 0 ? m * p : m / 10 ** -n);
+}
+/** the decimals a grid step needs */
+export const stepDecimals = (step: number): number => (step >= 1 ? 0 : Math.ceil(-Math.log10(step) - 1e-9));
 
 /** the most highlighted series that get their names written on the chart, the least plot width for it (px), and the least
  *  distance two names may sit apart (px) */

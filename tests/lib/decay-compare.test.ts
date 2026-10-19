@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addItem, COMPARE_MAX, DAY_MS, DRAW_MAX_KM, drawable, fetchPlan, frame, HIGHLIGHT_MAX, labelPlan, lightItem, lowestFree, notDrawn, readCompare,
   removeItem, rowOrder, seriesEnd, shortName, tipOrder, valueAt, writeCompare, type CompareItem, type SeriesShape,
-  baseWindow, eccOf, frameView, lastOf, MEASURE, MU, niceStep, PARAMS, periodMin, points, projects, RANGES, rateSeries, RE, ringOf,
+  baseWindow, eccOf, frameView, lastOf, MEASURE, MU, niceStep, PARAMS, periodMin, points, projected, projects, RANGES, rateSeries, RE, ringOf,
   stepDecimals, valueIn, VIEW_DEFAULT
 } from '../../src/lib/decay/compare';
 import { Lifetime } from '../../src/lib/planner/lifetime';
@@ -300,6 +300,24 @@ describe('the quantities (L67)', () => {
     expect(points(P, 'rate')).toBe(rateSeries(P));
     expect(points([...P], 'hp')).not.toBe(points(P, 'hp'));
   });
+  it('pads and steps each axis by the table\'s least amounts', () => {
+    expect(MEASURE).toMatchObject({
+      alt: { pad: 4, step: 1 }, hp: { pad: 4, step: 1 }, ha: { pad: 4, step: 1 }, rate: { pad: 0.01, step: 0.001 },
+      ecc: { pad: 0.00005, step: 0.00001 }, per: { pad: 0.08, step: 0.01 }, mm: { pad: 0.014, step: 0.001 }
+    });
+  });
+  it('projects the forecast in each quantity that has one, kept apart per quantity, and nothing without a track', () => {
+    const s = series(100, 0, 400, 390, 20), A = s.r.track!;
+    const alt = projected(s, 'alt')!, per = projected(s, 'per')!, mm = projected(s, 'mm')!;   // alt first: each is its own entry
+    expect(Array.from(alt.t)).toEqual(A.map(q => s.r.tNow! + q.t * DAY_MS));
+    expect(Array.from(alt.v)).toEqual(A.map(q => q.h));
+    expect(Array.from(per.v)).toEqual(A.map(q => periodMin(q.h)));
+    A.forEach((_, i) => expect(Math.abs(mm.v[i]! - 1440 / per.v[i]!), String(i)).toBeLessThan(1e-12));
+    expect(projected(s, 'per')).toBe(per);
+    expect(projected(s, 'mm')).not.toBe(per);
+    for (const p of ['hp', 'ha', 'rate', 'ecc'] as const) expect(projected(s, p), p).toBeNull();
+    expect(projected(series(100, 0, 400, 390), 'alt')).toBeNull();
+  });
 });
 
 describe('the decay rate (L67)', () => {
@@ -326,6 +344,16 @@ describe('the decay rate (L67)', () => {
     const D = P.flatMap((r, i) => (i % 10 === 3 ? [r, { ...r, sma: r.sma + 0.1 }] : [r]));
     const q = rateSeries(D);
     expect(Array.from(q.t)).toEqual(P.map(r => r.t));
+    /* the value at a shared instant is the window that ends with both sets */
+    const lastAt = (i: number) => D.map(r => r.t).lastIndexOf(P[i]!.t);
+    for (const i of [13, 23, 33, 43, 53]) {
+      expect(D[lastAt(i)]!.sma, String(i)).toBe(P[i]!.sma + 0.1);
+      const c = Lifetime.calibrate(D.slice(0, lastAt(i) + 1), 45);
+      expect(c, String(i)).not.toBeNull();
+      expect(q.v[i], String(i)).toBe(c!.rate);
+    }
+    /* where the window is short, the first of the two alone reads another figure (in longer ones the medians can hide it) */
+    expect(q.v[13]).not.toBe(Lifetime.calibrate(D.slice(0, lastAt(13)), 45)!.rate);
   });
   it('reads above zero after a reboost', () => {
     const q = rateSeries(rows(100, i => (i < 50 ? 400 - 0.2 * i : 390 + 0.3 * (i - 50))));
@@ -335,10 +363,12 @@ describe('the decay rate (L67)', () => {
   it('at the last set is the Decay section\'s own 45-day figure, bit for bit', () => {
     const P = rows(200, i => 420 - 0.15 * i - 0.0004 * i * i + 0.3 * Math.sin(i * 1.7));
     P.splice(150, 0, { ...P[150]!, sma: P[150]!.sma + 0.05 });              // two sets at one instant
+    P.push({ ...P.at(-1)!, sma: P.at(-1)!.sma - 0.3 });                     // and two at the last one (CelesTrak sends such pairs)
     const c = Lifetime.calibrate(P, 45);
     expect(c).not.toBeNull();
     const q = rateSeries(P);
     expect(q.v[q.v.length - 1]).toBe(c!.rate);
+    expect(q.v[q.v.length - 1]).not.toBe(Lifetime.calibrate(P.slice(0, -1), 45)!.rate);   // the first of the pair alone differs
     expect(q.t[q.t.length - 1]).toBe(P[P.length - 1]!.t);
   });
   it('keeps at most 2,000 points, counted back from the last, which is always among them', () => {

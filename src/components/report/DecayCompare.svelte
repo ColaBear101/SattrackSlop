@@ -36,8 +36,9 @@
     CMP_SELECTED, CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpChartName, cmpClearArmed, cmpFetching, cmpFetchMore, cmpFetchName,
     cmpHighlightName, cmpMoreMatch, cmpNotDrawn, cmpQueued, cmpRemoveName, cmpRetryName, cmpShowFirst, cmpShowOthers
   } from '../../lib/text/life-compare';
-  import { colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpKeyItem, type CmpSeries, type CmpTipRow } from './draw-compare';
-  import type { Geom } from './draw-life';
+  import {
+    colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpGeom, type CmpKeyItem, type CmpSeries, type CmpTipRow
+  } from './draw-compare';
   import Button from '../ui/Button.svelte';
   import Popover from '../ui/Popover.svelte';
 
@@ -232,7 +233,7 @@
   const drawKey = $derived(compare.lines.map(l => l.n + ':' + l.slot + ':' + idOf(l.r)).join(' '));
   let label = $state(cmpChartName(0, null));
   let ckey = $state.raw<CmpKeyItem[]>([]);
-  let geom: Geom | null = null;
+  let geom: CmpGeom | null = null;
   let drawn: CmpSeries[] = [];
   let tip = $state.raw<{ x: number; y: number; top: number; h: number; day: string; rows: CmpTipRow[] } | null>(null);
   let tipEl: HTMLElement | undefined = $state();

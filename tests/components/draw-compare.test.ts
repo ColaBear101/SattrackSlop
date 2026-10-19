@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  CMP_PALETTE, colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpSeries
+  CMP_PALETTE, colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpSeries, type DrawView
 } from '../../src/components/report/draw-compare';
-import { DAY_MS, frame, seriesEnd } from '../../src/lib/decay/compare';
+import { baseWindow, DAY_MS, frame, periodMin, RE, seriesEnd } from '../../src/lib/decay/compare';
 import { CMP_REENTRY } from '../../src/lib/text/life-compare';
 
 /* The decay comparison's chart (CHANGES-FROM-LEGACY.md, L66), drawn on a recording context (Vitest runs without a DOM): the frame it
@@ -418,5 +418,311 @@ describe('the colours', () => {
       vi.unstubAllGlobals();
       vi.stubGlobal('window', { devicePixelRatio: DPR });
     }
+  });
+});
+
+/* ---- the view (L67): another quantity, another time range, a zoom ------------------------------------------------------------ */
+
+function drawIn(lines: CmpSeries[], view: DrawView, W = 700) {
+  const { c, calls } = canvas(W);
+  const out = drawCompare(c, lines, col, view);
+  return { ...out, c, calls };
+}
+/** the line with a mean eccentricity on every set, from `from` to `to` (null: none, as a set read from the cache; NaN: none, as a
+ *  fresh read or the API's answer) */
+const withEcc = (s: CmpSeries, from: number | null, to: number | null = from): CmpSeries => ({
+  ...s, P: s.P.map((r, i, a) => ({ ...r, ecc: from === null || to === null ? null : from + (to - from) * (i / Math.max(1, a.length - 1)) }))
+});
+/** each path: the calls between its beginPath and the stroke or fill that ends it, and that call (with its state) */
+function paths(calls: Call[]): { ops: string[]; end: Call }[] {
+  const out: { ops: string[]; end: Call }[] = [];
+  let ops: string[] = [];
+  for (const c of calls) {
+    if (c.op === 'beginPath') ops = [];
+    else if (c.op === 'stroke' || c.op === 'fill') out.push({ ops, end: c });
+    else ops.push(c.op);
+  }
+  return out;
+}
+const xLabels = (calls: Call[]) => texts(calls).filter(t => t.op === 'fillText' && t.args[2] === 320 - 26 + 16);
+const yLabels = (calls: Call[]) => texts(calls).filter(t => t.op === 'fillText' && t.align === 'right' && t.base === 'middle');
+const span = (t: Call): [number, number] => {
+  const x = t.args[1] as number, w = (t.args[0] as string).length * 6.6;
+  return t.align === 'left' ? [x, x + w] : t.align === 'right' ? [x - w, x] : [x - w / 2, x + w / 2];
+};
+const dotsOf = (calls: Call[]) => marks(calls).filter(m => m.op === 'fill' && m.arcs.length === 1 && m.arcs[0]![2] === 4);
+const ringsOf = (calls: Call[]) => marks(calls).filter(m => m.op === 'stroke' && m.arcs.length === 1 && m.arcs[0]![2] === 3);
+const floorLine = (calls: Call[]) => marks(calls).filter(m => m.op === 'stroke' && m.dash.join() === '4,3');
+const reentry = (calls: Call[]) => texts(calls).filter(t => t.args[0] === CMP_REENTRY);
+
+describe('drawCompare: the view (L67)', () => {
+  it('draws the default view given in full exactly as with none', () => {
+    const base = draw(three()).calls;
+    expect(drawIn(three(), {}).calls).toEqual(base);
+    expect(drawIn(three(), { p: 'alt', r: 'auto', win: null }).calls).toEqual(base);
+    expect(drawIn(three(), {}).info).toMatchObject({ p: 'alt', zoomed: false, why: null });
+  });
+
+  it('30 d: the window is the 30 days up to the newest set, a history leaves through the right edge, no dot or ring outside it, and then no names', () => {
+    const lines = [...three(), line('40007', 4, 'OLD', 400, 40, 450, 430)];         // its last set 40 days before T
+    const { geom, calls, labelled, info } = drawIn(lines, { r: '30d' }, 800);
+    const B = baseWindow(lines, '30d')!;
+    expect([geom!.t0, geom!.tEnd]).toEqual([B.t0, B.t1]);
+    expect([B.t0, B.t1]).toEqual([T - 31 * DAY_MS, T - DAY_MS]);
+    expect(info).toEqual({ p: 'alt', t0: B.t0, t1: B.t1, base: { t0: B.t0, t1: B.t1 }, zoomed: false, tLast: T - DAY_MS, why: null });
+    const clip = calls.findIndex(c => c.op === 'clip');
+    expect(calls[clip - 1]).toMatchObject({ op: 'rect', args: [L, 14, geom!.Wc - L - R, 320 - 14 - 26] });
+    for (const m of seriesLines(calls).filter(m => m.dash.length === 0)) expect(m.pts.filter(p => p[0] > geom!.Wc - R).length).toBeLessThanOrEqual(1);
+    for (const a of calls.filter(c => c.op === 'arc')) {
+      expect(a.args[0]).toBeGreaterThanOrEqual(L); expect(a.args[0]).toBeLessThanOrEqual(geom!.Wc - R);
+    }
+    expect(dotsOf(calls).map(m => m.color)).toEqual(['#s2', '#s3', '#track']);       // none for OLD
+    expect(ringsOf(calls)).toHaveLength(0);                                           // every ring is past the window
+    expect(labelled).toBe(false);
+    expect(drawIn(three(), { r: '30d' }, 800).labelled).toBe(true);                  // the same three alone: named
+    /* a zoom inside it: the selected line's history comes in from the last set before the window and leaves at the first after it */
+    const win = { t0: T - 21 * DAY_MS, t1: T - 11 * DAY_MS };
+    const z = drawIn(three(), { r: '30d', win }, 800);
+    const hist = seriesLines(z.calls).find(m => m.color === '#track' && m.dash.length === 0)!;
+    expect(hist.pts).toHaveLength(13);                                               // T-22 d .. T-10 d, daily
+    expect(hist.pts.filter(p => p[0] > z.geom!.Wc - R)).toHaveLength(1);
+    expect(hist.pts.filter(p => p[0] < L)).toHaveLength(1);
+    expect(hist.pts[12]![0]).toBeCloseTo(z.geom!.X(T - 10 * DAY_MS), 9);
+  });
+
+  it('writes no names when a dot falls outside the window, even one whose name alone would still fit on the plot', () => {
+    const two = [line('40051', 2, 'ALPHA', 400, 10, 520, 500), line('40052', 3, 'BRAVO', 400, 20, 470, 450)];
+    const edge = drawIn(two, { win: { t0: T - 40 * DAY_MS, t1: T - 10 * DAY_MS } }, 800);
+    expect(edge.info!.zoomed).toBe(true);
+    expect(dotsOf(edge.calls)).toHaveLength(2);                                       // ALPHA's on the right edge
+    expect(edge.labelled).toBe(true);
+    /* a tenth of a day less: ALPHA's dot is 2.4 px past the edge and not drawn, so neither name is written */
+    const past = drawIn(two, { win: { t0: T - 40 * DAY_MS, t1: T - 10.1 * DAY_MS } }, 800);
+    expect(past.geom!.X(T - 10 * DAY_MS) - (past.geom!.Wc - R)).toBeCloseTo(724 * 0.1 / 29.9, 9);
+    expect(dotsOf(past.calls).map(m => m.color)).toEqual(['#s3']);
+    expect(past.labelled).toBe(false);
+    expect(texts(past.calls).some(t => t.args[0] === 'ALPHA' || t.args[0] === 'BRAVO')).toBe(false);
+  });
+
+  it('All runs from the first set held to the latest end of a projection', () => {
+    const lines = three(), { geom } = drawIn(lines, { r: 'all' });
+    expect(geom!.t0).toBe(Math.min(...lines.map(s => s.P[0]!.t)));
+    expect(geom!.tEnd).toBe(Math.max(...lines.map(seriesEnd)));
+  });
+
+  it('writes days where months would repeat: 30 d at each width, a 2-day zoom, and Auto on a 60-day record', () => {
+    for (const [W, n] of [[700, 4], [390, 3], [280, 2]] as const) {
+      const { calls, geom } = drawIn(three(), { r: '30d' }, W);
+      const d = xLabels(calls);
+      expect(d).toHaveLength(n);
+      for (const t of d) { expect(t.args[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/); expect(t.base).toBe('alphabetic'); }
+      expect(new Set(d.map(t => t.args[0])).size).toBe(n);
+      expect(d.map(t => t.align)).toEqual(n === 2 ? ['left', 'right'] : n === 3 ? ['left', 'center', 'right'] : ['left', 'center', 'center', 'right']);
+      expect(d[0]!.args[1]).toBe(L); expect(d[n - 1]!.args[1]).toBeCloseTo(geom!.Wc - R, 9);
+      for (let i = 1; i < n; i++) expect(span(d[i]!)[0] - span(d[i - 1]!)[1]).toBeGreaterThanOrEqual(8);
+    }
+    const B = baseWindow(three(), '30d')!;
+    for (const W of [280, 700, 1100]) {
+      const z = drawIn(three(), { r: '30d', win: { t0: B.t1 - 2 * DAY_MS, t1: B.t1 } }, W);
+      expect(z.info!.zoomed).toBe(true);
+      const d = xLabels(z.calls).map(t => t.args[0] as string);
+      expect(d.length).toBeLessThanOrEqual(3); expect(d.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(d).size).toBe(d.length);
+      for (const s of d) expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+    /* the default view on a 60-day record with no forecast: four distinct days, where four month labels would have repeated one */
+    const short = line('40041', 2, 'SHORT', 60, 1, 400, 380);
+    const d = xLabels(draw([short]).calls).map(t => t.args[0] as string);
+    expect(d).toEqual(['2026-08-18', '2026-09-07', '2026-09-27', '2026-10-17']);
+    expect(new Set(d.map(s => s.slice(0, 7))).size).toBe(3);
+    /* a year still has months, distinct */
+    const y = xLabels(drawIn(three(), { r: '1y' }).calls).map(t => t.args[0] as string);
+    expect(y).toHaveLength(4);
+    for (const s of y) expect(s).toMatch(/^\d{4}-\d{2}$/);
+    expect(new Set(y).size).toBe(4);
+  });
+
+  it('mean perigee altitude: history only (no dashes, no ring, no "projected"), km readouts highest first, the 120 km line when a perigee comes down to it', () => {
+    const lines = three().map(s => withEcc(s, 0.001));
+    const { geom, calls, info, label } = drawIn(lines, { p: 'hp' });
+    expect(geom!.p).toBe('hp');
+    expect(info).toMatchObject({ p: 'hp', why: null, zoomed: false });
+    expect(label).toBe('Mean perigee altitude history of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO');
+    expect(marks(calls).some(m => m.op === 'stroke' && m.dash.join() === '6,3')).toBe(false);
+    expect(ringsOf(calls)).toHaveLength(0);
+    expect(dotsOf(calls).map(m => m.color)).toEqual(['#s2', '#s3', '#track']);
+    expect(compareKey(lines, col, 'hp')).toEqual([
+      { color: '#track', text: 'ISS (ZARYA)' }, { color: '#s2', text: 'ALPHA' }, { color: '#s3', text: 'BRAVO' }, { color: '#muted', text: 'observed' }
+    ]);
+    const tip = compareTipAt(geom!, lines, geom!.X(T - 20 * DAY_MS), col)!;
+    expect(tip.rows.map(r => r.n)).toEqual(['40001', '40002', '25544']);
+    for (const r of tip.rows) { expect(r.value).toMatch(/^\d+\.\d km$/); expect(r.projected).toBe(false); }
+    const iss = tip.rows[2]!, sma = 460 - 50 * ((1000 - 19) / 1000);                 // the ISS's set 19 days before its last
+    expect(iss.h).toBeCloseTo((RE + sma) * (1 - 0.001) - RE, 6);
+    const hist = seriesLines(calls).find(m => m.color === '#track')!;                  // drawn in perigee altitude, ending at its dot
+    expect(hist.pts[hist.pts.length - 1]![1]).toBeCloseTo(geom!.Y((RE + 410) * (1 - 0.001) - RE), 9);
+    expect(dotsOf(calls).find(m => m.color === '#track')!.arcs[0]![1]).toBeCloseTo(geom!.Y((RE + 410) * (1 - 0.001) - RE), 9);
+    expect(compareTipAt(geom!, lines, geom!.X(T + 30 * DAY_MS), col)!.rows).toEqual([]);   // no forecast in it
+    expect(floorLine(calls)).toHaveLength(0);
+    /* a mean altitude that stays above 130 km with a perigee that goes below 120 */
+    const low = withEcc(line('40042', 2, 'LOW', 100, 1, 200, 130), 0.002);
+    expect(floorLine(draw([low]).calls)).toHaveLength(0);
+    const h = drawIn([low], { p: 'hp' });
+    expect(h.geom!.hMin).toBeLessThanOrEqual(120);
+    expect(floorLine(h.calls)).toHaveLength(1);
+    expect(floorLine(h.calls)[0]!.pts.map(p => p[1])).toEqual([h.geom!.Y(120), h.geom!.Y(120)]);
+    expect(reentry(h.calls).length).toBe(2);
+  });
+
+  it('eccentricity: a left margin wide enough for "0.0012" (the plot starts there), no 120 km line, five-place readouts', () => {
+    const lines = three().map(s => withEcc(s, 0.0007, 0.0013));
+    const { geom, calls } = drawIn(lines, { p: 'ecc' });
+    const yl = yLabels(calls).map(t => t.args[0] as string);
+    expect(yl).toContain('0.0012');
+    for (const s of yl) expect(s).toMatch(/^0\.\d{4}$/);
+    expect(geom!.L).toBeGreaterThanOrEqual(53);
+    expect(geom!.L).toBe(Math.ceil(Math.max(...yl.map(s => s.length * 6.6))) + 13);
+    for (const t of yLabels(calls)) expect(t.args[1]).toBe(geom!.L - 7);
+    const clip = calls.findIndex(c => c.op === 'clip');
+    expect(calls[clip - 1]).toMatchObject({ op: 'rect', args: [geom!.L, 14, geom!.Wc - geom!.L - R, 320 - 14 - 26] });
+    expect(marks(calls).filter(m => m.color === '#rule').every(m => m.pts[0]![0] === geom!.L)).toBe(true);
+    expect(xLabels(calls)[0]!.args[1]).toBe(geom!.L);
+    expect(floorLine(calls)).toHaveLength(0);
+    expect(reentry(calls)).toHaveLength(0);
+    /* the histories are drawn in eccentricity: every point inside the plot's width is inside its height */
+    const hist = seriesLines(calls);
+    expect(hist).toHaveLength(3);
+    for (const m of hist) for (const [x, y] of m.pts) if (x >= geom!.L) { expect(y).toBeGreaterThanOrEqual(14); expect(y).toBeLessThanOrEqual(320 - 26); }
+    const tip = compareTipAt(geom!, lines, geom!.X(T - 20 * DAY_MS), col)!;
+    expect(tip.rows).toHaveLength(3);
+    for (const r of tip.rows) expect(r.value).toMatch(/^\d\.\d{5}$/);
+    expect(compareTipAt(geom!, lines, geom!.L - 1, col)).toBeNull();
+  });
+
+  it('the decay rate: below zero, a 60-day hole breaks the line (one stroke, two pieces), no 120 km line, signed readouts', () => {
+    const full = line('40043', 1, 'HOLED', 200, 1, 400, 350);                         // -0.25 km/day
+    const holed: CmpSeries = { ...full, P: full.P.filter((_, i) => i < 80 || i >= 140) };
+    const raised = line('40044', 2, 'RAISED', 200, 1, 350, 400);                      // +0.25 km/day
+    const { geom, calls, info } = drawIn([holed, raised], { p: 'rate' });
+    expect(info!.why).toBeNull();
+    expect(geom!.hMin).toBeLessThan(0);
+    const mine = paths(calls).filter(q => q.end.op === 'stroke' && q.end.stroke === '#track');
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.ops.filter(o => o === 'moveTo')).toHaveLength(2);
+    expect(mine[0]!.ops.filter(o => o === 'lineTo').length).toBeGreaterThan(100);
+    expect(paths(calls).filter(q => q.end.op === 'stroke' && q.end.stroke === '#s2')[0]!.ops.filter(o => o === 'moveTo')).toHaveLength(1);
+    expect(floorLine(calls)).toHaveLength(0);
+    expect(reentry(calls)).toHaveLength(0);
+    expect(marks(calls).some(m => m.op === 'stroke' && m.dash.join() === '6,3')).toBe(false);
+    const tip = compareTipAt(geom!, [holed, raised], geom!.X(T - 160 * DAY_MS), col)!;
+    expect(tip.rows.map(r => r.value)).toEqual(['+0.250 km/day', '-0.250 km/day']);
+    for (const r of tip.rows) expect(r.value).toMatch(/^[-+]\d+\.\d{3} km\/day$/);
+    /* inside the hole, and in the days after it before a window holds eight sets, the holed line has no value */
+    for (const ago of [100, 57]) expect(compareTipAt(geom!, [holed, raised], geom!.X(T - ago * DAY_MS), col)!.rows.map(r => r.n)).toEqual(['40044']);
+  });
+
+  it('the orbital period and the mean motion carry the forecast: dashed projections, a ring at the floor in the quantity, no 120 km line, projected readouts', () => {
+    const cases = [['per', / min$/, /^\d+\.\d{2} min$/, periodMin], ['mm', / rev\/day$/, /^\d+\.\d{4} rev\/day$/, (h: number) => 1440 / periodMin(h)]] as const;
+    for (const [p, unit, form, conv] of cases) {
+      const lines = three();
+      const { geom, calls, label } = drawIn(lines, { p });
+      expect(label).toMatch(/history and projection of 3 spacecraft/);
+      expect(seriesLines(calls).filter(m => m.dash.join() === '6,3').map(m => m.color)).toEqual(['#s2', '#s3', '#track']);
+      const iss = lines[0]!, A = iss.r.track!, e = A[A.length - 1]!;
+      const ring = ringsOf(calls).find(m => m.color === '#track')!;
+      expect(ring.arcs[0]![0]).toBeCloseTo(geom!.X(seriesEnd(iss)), 9);
+      expect(ring.arcs[0]![1]).toBeCloseTo(geom!.Y(conv(e.h)), 9);
+      const dot = dotsOf(calls).find(m => m.color === '#track')!;
+      expect(dot.arcs[0]![1]).toBeCloseTo(geom!.Y(conv(iss.r.hNow!)), 9);
+      /* both of its strokes are in the quantity: the projection from its last set to the floor, the history up to that set */
+      const [proj, hist] = seriesLines(calls).filter(m => m.color === '#track');
+      expect(proj!.dash).toEqual([6, 3]);
+      expect(proj!.pts.map(q => q[1])).toEqual(A.map(q => geom!.Y(conv(q.h))));
+      expect(hist!.pts[hist!.pts.length - 1]![1]).toBeCloseTo(geom!.Y(conv(iss.P[iss.P.length - 1]!.sma)), 9);
+      expect(floorLine(calls)).toHaveLength(0);
+      expect(reentry(calls)).toHaveLength(0);
+      expect(compareKey(lines, col, p).map(k => k.text)).toEqual(['ISS (ZARYA)', 'ALPHA', 'BRAVO', 'observed', 'projected']);
+      const tip = compareTipAt(geom!, lines, geom!.X(T + 30 * DAY_MS), col)!;
+      expect(tip.rows).toHaveLength(3);
+      for (const r of tip.rows) { expect(r.projected).toBe(true); expect(r.value).toMatch(unit); expect(r.value).toMatch(form); }
+    }
+  });
+
+  it('zooms to a window inside the range\'s, ignores one that is not, and says when the window holds nothing', () => {
+    const lines = three(), B = baseWindow(lines, 'auto')!;
+    const win = { t0: T - 200 * DAY_MS, t1: T - 100 * DAY_MS };
+    const z = drawIn(lines, { win });
+    expect([z.geom!.t0, z.geom!.tEnd]).toEqual([win.t0, win.t1]);
+    expect(z.info).toMatchObject({ p: 'alt', zoomed: true, t0: win.t0, t1: win.t1, base: { t0: B.t0, t1: B.t1 }, why: null });
+    expect(z.calls.filter(c => c.op === 'arc')).toHaveLength(0);                      // every dot and ring is after it
+    expect(z.labelled).toBe(false);
+    /* a window reaching outside the range's, or under a day: the range's own frame, the default call for call */
+    for (const w of [{ t0: B.t0 - DAY_MS, t1: B.t0 + 10 * DAY_MS }, { t0: T - 100 * DAY_MS, t1: T - 100 * DAY_MS + DAY_MS - 1 }]) {
+      const out = drawIn(lines, { win: w });
+      expect(out.info!.zoomed).toBe(false);
+      expect([out.geom!.t0, out.geom!.tEnd]).toEqual([B.t0, B.t1]);
+      expect(out.calls).toEqual(draw(lines).calls);
+    }
+    /* in the future, under a quantity with no forecast: nothing falls in it */
+    const e = three().map(s => withEcc(s, 0.001));
+    const f = drawIn(e, { p: 'hp', win: { t0: T + 100 * DAY_MS, t1: T + 200 * DAY_MS } });
+    expect(f.geom).toBeNull(); expect(f.labelled).toBe(false);
+    expect(f.info).toMatchObject({ p: 'hp', why: 'range', zoomed: true, t0: T + 100 * DAY_MS, t1: T + 200 * DAY_MS });
+    expect(texts(f.calls).map(t => t.args[0])).toEqual(['—']);
+  });
+
+  it('a line with no value of the quantity is not drawn, counted, keyed or read; with none at all, a dash that says why', () => {
+    const [iss, a, b] = three();
+    const mixed = [withEcc(iss!, 0.001), withEcc(a!, null), withEcc(b!, NaN)];
+    const m = drawIn(mixed, { p: 'hp' });
+    expect(m.label).toBe('Mean perigee altitude history of 1 spacecraft: ISS (ZARYA)');
+    expect(marks(m.calls).some(k => k.color === '#s2' || k.color === '#s3')).toBe(false);
+    expect(compareKey(mixed, col, 'hp').map(k => k.text)).toEqual(['ISS (ZARYA)', 'observed']);
+    expect(compareTipAt(m.geom!, mixed, m.geom!.X(T - 20 * DAY_MS), col)!.rows.map(r => r.n)).toEqual(['25544']);
+    /* every eccentricity missing, as the cache (null), a fresh read (NaN) or a fixture (absent) has it */
+    for (const lines of [three().map(s => withEcc(s, null)), three().map(s => withEcc(s, NaN)), three()]) {
+      const r = drawIn(lines, { p: 'hp' });
+      expect(r.geom).toBeNull(); expect(r.labelled).toBe(false);
+      expect(r.info).toMatchObject({ p: 'hp', why: 'param', zoomed: false });
+      expect(texts(r.calls).map(t => t.args[0])).toEqual(['—']);
+      expect(r.label).toBe('Mean perigee altitude history of 0 spacecraft');
+      expect(compareKey(lines, col, 'hp')).toEqual([]);
+    }
+    /* no coloured line carries it but grey ones do: the window is still the coloured lines', the heights are the grey ones' */
+    const greys = [withEcc(line('40011', 0, 'GREY A', 400, 3, 500, 450, 100), 0.001), withEcc(line('40012', 0, 'GREY B', 400, 6, 520, 470, 200), 0.001)];
+    const g = drawIn([...three(), ...greys], { p: 'hp' });
+    expect(g.info!.why).toBeNull();
+    expect([g.geom!.t0, g.geom!.tEnd]).toEqual([draw(three()).geom!.t0, draw(three()).geom!.tEnd]);
+    expect(g.geom!.hMin).toBeGreaterThan(400); expect(g.geom!.hMax).toBeLessThan(530);
+    expect(g.label).toBe('Mean perigee altitude history of 2 spacecraft: GREY A and GREY B');
+    expect(seriesLines(g.calls).map(k => k.color)).toEqual(['#muted', '#muted']);
+    expect(compareKey([...three(), ...greys], col, 'hp')).toEqual([{ color: '#muted', text: '2 spacecraft', grey: true }, { color: '#muted', text: 'observed' }]);
+    /* nothing drawable at all: no view to speak of */
+    expect(drawIn([geo(2)], { p: 'hp' }).info).toBeNull();
+    expect(drawIn([], { r: '30d' }).info).toBeNull();
+  });
+
+  it('never draws text on the \'top\' baseline in a view, and only the selected line is 3 px wide', () => {
+    const e = three().map(s => withEcc(s, 0.0007, 0.0013));
+    const views: DrawView[] = [{ p: 'hp' }, { p: 'ecc' }, { p: 'rate' }, { r: '30d' }, { win: { t0: T - 200 * DAY_MS, t1: T - 100 * DAY_MS } }];
+    for (const v of views) for (const W of [280, 390, 700, 1100]) {
+      const { calls } = drawIn(e, v, W);
+      expect(texts(calls).filter(t => t.base === 'top')).toEqual([]);
+      expect(texts(calls).length).toBeGreaterThan(0);
+      const strokes = marks(calls).filter(m => m.op === 'stroke');
+      expect(Math.max(...strokes.map(m => m.width))).toBe(3);
+      expect(strokes.filter(m => m.width === 3).every(m => m.color === '#track')).toBe(true);
+    }
+  });
+
+  it('reads the quantity its geometry was drawn in', () => {
+    const lines = three(), a = drawIn(lines, {}).geom!, q = drawIn(lines, { p: 'per' }).geom!;
+    expect([a.p, q.p]).toEqual(['alt', 'per']);
+    expect([q.t0, q.tEnd]).toEqual([a.t0, a.tEnd]);                                   // the window does not depend on the quantity
+    const t = T - 100 * DAY_MS, ta = compareTipAt(a, lines, a.X(t), col)!, tq = compareTipAt(q, lines, q.X(t), col)!;
+    for (const r of ta.rows) expect(r.value).toMatch(/^\d+\.\d km$/);
+    for (const r of tq.rows) expect(r.value).toMatch(/^\d+\.\d{2} min$/);
+    expect(tq.rows.map(r => r.n)).toEqual(ta.rows.map(r => r.n));                     // the period rises with the altitude
+    tq.rows.forEach((r, i) => expect(r.h).toBeCloseTo(periodMin(ta.rows[i]!.h), 6));
   });
 });

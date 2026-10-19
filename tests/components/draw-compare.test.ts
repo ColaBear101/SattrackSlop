@@ -454,6 +454,17 @@ const dotsOf = (calls: Call[]) => marks(calls).filter(m => m.op === 'fill' && m.
 const ringsOf = (calls: Call[]) => marks(calls).filter(m => m.op === 'stroke' && m.arcs.length === 1 && m.arcs[0]![2] === 3);
 const floorLine = (calls: Call[]) => marks(calls).filter(m => m.op === 'stroke' && m.dash.join() === '4,3');
 const reentry = (calls: Call[]) => texts(calls).filter(t => t.args[0] === CMP_REENTRY);
+/** three()'s names, each written (the halo and the ink) at its own dot, 6 px to its left and 6 px above (the dots and the names go
+ *  in the same order, the selected one last) */
+function namedAtDots(calls: Call[]) {
+  const NAMES = ['ALPHA', 'BRAVO', 'ISS (ZARYA)'], d = dotsOf(calls);
+  expect(d.map(m => m.color)).toEqual(['#s2', '#s3', '#track']);
+  for (const op of ['strokeText', 'fillText']) {
+    const t = texts(calls).filter(c => c.op === op && NAMES.includes(c.args[0] as string));
+    expect(t.map(c => c.args[0])).toEqual(NAMES);
+    t.forEach((c, i) => { expect(c.args[1]).toBeCloseTo(d[i]!.arcs[0]![0] - 6, 9); expect(c.args[2]).toBeCloseTo(d[i]!.arcs[0]![1] - 6, 9); });
+  }
+}
 
 describe('drawCompare: the view (L67)', () => {
   it('draws the default view given in full exactly as with none', () => {
@@ -464,15 +475,24 @@ describe('drawCompare: the view (L67)', () => {
   });
 
   it('30 d: the window is the 30 days up to the newest set, a history leaves through the right edge, no dot or ring outside it, and then no names', () => {
-    const lines = [...three(), line('40007', 4, 'OLD', 400, 40, 450, 430)];         // its last set 40 days before T
+    const coloured = [...three(), line('40007', 4, 'OLD', 400, 40, 450, 430)];      // OLD's last set 40 days before T
+    /* and a grey line newer than every coloured one, its sets six hours apart up to T: four of them after the window's end */
+    const fresh: CmpSeries = { n: '40008', slot: 0, name: 'FRESH', r: { tNow: T, hNow: 510, track: null },
+      P: Array.from({ length: 81 }, (_, i) => ({ t: T - (80 - i) * DAY_MS / 4, sma: 520 - i / 8 })) };
+    const lines = [...coloured, fresh];
     const { geom, calls, labelled, info } = drawIn(lines, { r: '30d' }, 800);
-    const B = baseWindow(lines, '30d')!;
+    const B = baseWindow(coloured, '30d')!;
     expect([geom!.t0, geom!.tEnd]).toEqual([B.t0, B.t1]);
     expect([B.t0, B.t1]).toEqual([T - 31 * DAY_MS, T - DAY_MS]);
     expect(info).toEqual({ p: 'alt', t0: B.t0, t1: B.t1, base: { t0: B.t0, t1: B.t1 }, zoomed: false, tLast: T - DAY_MS, why: null });
     const clip = calls.findIndex(c => c.op === 'clip');
     expect(calls[clip - 1]).toMatchObject({ op: 'rect', args: [L, 14, geom!.Wc - L - R, 320 - 14 - 26] });
     for (const m of seriesLines(calls).filter(m => m.dash.length === 0)) expect(m.pts.filter(p => p[0] > geom!.Wc - R).length).toBeLessThanOrEqual(1);
+    expect(fresh.P.filter(p => p.t > B.t1)).toHaveLength(4);
+    const fr = seriesLines(calls).filter(m => m.color === '#muted' && m.dash.length === 0);
+    expect(fr).toHaveLength(1);
+    expect(fr[0]!.pts.filter(p => p[0] > geom!.Wc - R)).toHaveLength(1);              // it stops at the first set past the edge
+    expect(fr[0]!.pts[fr[0]!.pts.length - 1]![0]).toBeCloseTo(geom!.X(T - 0.75 * DAY_MS), 9);
     for (const a of calls.filter(c => c.op === 'arc')) {
       expect(a.args[0]).toBeGreaterThanOrEqual(L); expect(a.args[0]).toBeLessThanOrEqual(geom!.Wc - R);
     }
@@ -510,7 +530,7 @@ describe('drawCompare: the view (L67)', () => {
     expect(geom!.tEnd).toBe(Math.max(...lines.map(seriesEnd)));
   });
 
-  it('writes days where months would repeat: 30 d at each width, a 2-day zoom, and Auto on a 60-day record', () => {
+  it('writes days where months would sit under 31 days apart: 30 d at each width, a 2-day zoom, and Auto on a 45- to 62-day record', () => {
     for (const [W, n] of [[700, 4], [390, 3], [280, 2]] as const) {
       const { calls, geom } = drawIn(three(), { r: '30d' }, W);
       const d = xLabels(calls);
@@ -535,6 +555,18 @@ describe('drawCompare: the view (L67)', () => {
     const d = xLabels(draw([short]).calls).map(t => t.args[0] as string);
     expect(d).toEqual(['2026-08-18', '2026-09-07', '2026-09-27', '2026-10-17']);
     expect(new Set(d.map(s => s.slice(0, 7))).size).toBe(3);
+    /* the rule is the spacing, not the repeat: under 31 days apart the labels are days even where the months would all differ (a
+       62-day record's 2026-07, 2026-08, 2026-09, 2026-10 sat 20.7 days apart; on a phone a 45-day record's three months sat 22.5
+       days apart, and two days take their place) */
+    const s62 = line('40045', 2, 'S62', 62, 17, 400, 380), s45 = line('40046', 2, 'S45', 45, 3, 400, 380);
+    for (const [s, W, k] of [[s62, 700, 3], [s45, 280, 2]] as const) {
+      const g = draw([s], W).geom!;
+      expect([g.t0, g.tEnd]).toEqual([s.P[0]!.t, s.r.tNow]);
+      const m = Array.from({ length: k + 1 }, (_, i) => new Date(g.t0 + (g.tEnd - g.t0) * i / k).toISOString().slice(0, 7));
+      expect(new Set(m).size).toBe(k + 1);                                              // 4621100's month labels: all distinct
+    }
+    expect(xLabels(draw([s62], 700).calls).map(t => t.args[0])).toEqual(['2026-07-31', '2026-08-20', '2026-09-10', '2026-10-01']);
+    expect(xLabels(draw([s45], 280).calls).map(t => t.args[0])).toEqual(['2026-08-31', '2026-10-15']);
     /* a year still has months, distinct */
     const y = xLabels(drawIn(three(), { r: '1y' }).calls).map(t => t.args[0] as string);
     expect(y).toHaveLength(4);
@@ -648,6 +680,24 @@ describe('drawCompare: the view (L67)', () => {
     }
   });
 
+  it('writes the names at each line\'s own dot in the quantity drawn, not where its mean altitude would put it', () => {
+    const lines = three().map(s => withEcc(s, 0.001));
+    for (const p of ['hp', 'ha', 'rate', 'per', 'mm'] as const) {
+      const { calls, geom, labelled } = drawIn(lines, { p }, 800);
+      expect(labelled).toBe(true);
+      namedAtDots(calls);
+      const iss = lines[0]!, dot = dotsOf(calls).find(m => m.color === '#track')!;
+      expect(dot.arcs[0]![0]).toBeCloseTo(geom!.X(iss.r.tNow!), 9);
+      expect(Math.abs(dot.arcs[0]![1] - geom!.Y(iss.r.hNow!))).toBeGreaterThan(3);          // not at the mean altitude's height
+    }
+    /* the name is above its dot in perigee altitude: with e = 0.004, 27 km under its mean altitude */
+    const e4 = three().map(s => withEcc(s, 0.004)), h = drawIn(e4, { p: 'hp' }, 800);
+    expect(h.labelled).toBe(true);
+    namedAtDots(h.calls);
+    const at = texts(h.calls).find(t => t.op === 'fillText' && t.args[0] === 'ISS (ZARYA)')!;
+    expect(at.args[2]).toBeCloseTo(h.geom!.Y((RE + 410) * (1 - 0.004) - RE) - 6, 9);
+  });
+
   it('zooms to a window inside the range\'s, ignores one that is not, and says when the window holds nothing', () => {
     const lines = three(), B = baseWindow(lines, 'auto')!;
     const win = { t0: T - 200 * DAY_MS, t1: T - 100 * DAY_MS };
@@ -679,6 +729,18 @@ describe('drawCompare: the view (L67)', () => {
     expect(marks(m.calls).some(k => k.color === '#s2' || k.color === '#s3')).toBe(false);
     expect(compareKey(mixed, col, 'hp').map(k => k.text)).toEqual(['ISS (ZARYA)', 'observed']);
     expect(compareTipAt(m.geom!, mixed, m.geom!.X(T - 20 * DAY_MS), col)!.rows.map(r => r.n)).toEqual(['25544']);
+    /* grey lines with no eccentricity (as the cache has them, or a fresh read) beside a coloured one with it: not drawn, not counted
+       in the name and not in the key, though under mean altitude they are all three */
+    const bare = [withEcc(line('40013', 0, 'G1', 400, 3, 500, 450, 100), null), withEcc(line('40014', 0, 'G2', 400, 4, 510, 460, 100), null),
+      withEcc(line('40015', 0, 'G3', 400, 5, 520, 470), NaN)];
+    const one = [withEcc(iss!, 0.001), ...bare], n = drawIn(one, { p: 'hp' });
+    expect(n.label).toBe('Mean perigee altitude history of 1 spacecraft: ISS (ZARYA)');
+    expect(seriesLines(n.calls).map(k => k.color)).toEqual(['#track']);
+    expect(marks(n.calls).filter(k => k.op === 'stroke' && k.color === '#muted')).toEqual([]);   // no grey stroke at all, not even an empty one
+    expect(compareKey(one, col, 'hp')).toEqual([{ color: '#track', text: 'ISS (ZARYA)' }, { color: '#muted', text: 'observed' }]);
+    expect(drawIn(one, {}).label).toBe('Mean altitude history and projected decay of 4 spacecraft: ISS (ZARYA), G1, G2 and G3');
+    expect(compareKey(one, col).map(k => k.text)).toEqual(['ISS (ZARYA)', '3 others', 'observed', 'projected']);
+    expect(seriesLines(drawIn(one, {}).calls).filter(k => k.color === '#muted')).toHaveLength(5);   // three histories, two projections
     /* every eccentricity missing, as the cache (null), a fresh read (NaN) or a fixture (absent) has it */
     for (const lines of [three().map(s => withEcc(s, null)), three().map(s => withEcc(s, NaN)), three()]) {
       const r = drawIn(lines, { p: 'hp' });

@@ -30,8 +30,11 @@ import {
  * the heights are fitted to the lines that carry the quantity. A line with no value of it is not drawn, named or keyed; a missing
  * value breaks a line rather than bridging it; the forecast is drawn only in a quantity it converts into (the period, the mean
  * motion); a dot or ring outside the window is left out, and then no name is written. The left margin widens for longer labels
- * (eccentricity's), and the bottom labels are days where months would repeat. The default view (Auto, mean altitude) draws what
- * it drew before, call for call, but for those day labels on a span too short for distinct months.
+ * (eccentricity's), and the bottom labels are days wherever they would fall under 31 days apart (a span under about 93 days with
+ * four labels, 62 with three), where months could repeat. The default view (Auto, mean altitude) draws what it drew before, call
+ * for call, but for two things: those day labels, which also replace month labels that were distinct on such a span (they were
+ * under a month apart while reading as a month each); and a grey line newer than every coloured one, which stops one set past
+ * the right edge, outside the clip, instead of running on to its last set.
  *
  * The colours: slot 1 is --track as the page has it; slots 2..8 are constants for each theme (the dataviz reference palette,
  * checked against --panel #FFFFFF and #121A20: adjacent pairs at least dE 9.1 / 8.4 under colour-vision deficiency and 19.6 / 19.3
@@ -162,7 +165,8 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
   }
 
   /* The record in the quantity from the last element set before the window (so the line comes in from the left edge) to the first
-     after it (so it leaves through the right one), a missing value ending the stroke's piece there; and the projection in it. */
+     after it (so it leaves through the right one; in the default view only a grey line newer than every coloured one has sets
+     past it), a missing value ending the stroke's piece there; and the projection in it. */
   const history = (s: CmpSeries) => {
     const q = points(s.P, p), n = q.t.length;
     let lo = 0, hi = n - 1;

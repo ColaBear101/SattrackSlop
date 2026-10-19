@@ -21,13 +21,15 @@
 
 const DAY = 86400000;
 
-/** One element set a day, `n` of them, the mean altitude falling from `from` to `to` km, the last `endAgo` days before `nowMs`. */
+/** One element set a day, `n` of them, the mean altitude falling from `from` to `to` km, the last `endAgo` days before `nowMs`.
+ *  `ecc` is the eccentricity of every row, or a function of the row's place from 0 (the first) to 1 (the last) that gives each
+ *  row's (L67: the comparison's eccentricity and perigee views need lines that differ). */
 function falling(nowMs, ecc, endAgo, from, to, n) {
   n = n || 221;
   const t1 = nowMs - endAgo * DAY, rows = [];
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
-    rows.push({ t: t1 - (n - 1 - i) * DAY, sma: from - (from - to) * (0.72 * t + 0.28 * t * t), ecc });
+    rows.push({ t: t1 - (n - 1 - i) * DAY, sma: from - (from - to) * (0.72 * t + 0.28 * t * t), ecc: typeof ecc === 'function' ? ecc(t) : ecc });
   }
   return rows;
 }

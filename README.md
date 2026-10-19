@@ -1853,10 +1853,12 @@ for the rest of the page, so another press would not bring it.
 counting each one's requests and how many are out at once: nothing asked for on a fresh visit, on a
 reload or for a planned orbit, one request per add, never two at once, seven at most per press (a
 double-click too), the colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure,
-a listed spacecraft picked while its history is on the way, a list nearly full and a phone (about a
-minute).
-`npm run layout` and `npm run axe` look at the panel too, open with nine rows and with its search
-open, on a page of their own whose storage alone holds the list and its histories.
+a listed spacecraft picked while its history is on the way, a list nearly full, a phone (a tap, a
+sideways finger and a vertical swipe on the chart) and the chart's view (each range and quantity,
+the zoom, the reading slider, and what is kept) (about a minute).
+`npm run layout` and `npm run axe` look at the panel too, open with nine rows, with its search open
+and with its chart zoomed in on another quantity, on a page of their own whose storage alone holds
+the list and its histories.
 
 ##### KNACKSAT-2
 

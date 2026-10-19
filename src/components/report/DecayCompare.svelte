@@ -316,13 +316,14 @@
   }
   /** the instant a `+` or `-` on the scrubber was pressed at: the draws of that zoom keep the scrubber there */
   let keepT: number | null = null;
-  /** after a draw: the scrubber at the newest element set (its right end when that is outside the window), or, after a zoom from
-      the scrubber, still at the instant it was zoomed about; said, not shown */
+  /** after a draw: the scrubber at the newest element set, on its step or the one before, never after it (a quantity with no
+      forecast has no value past it, and the reading would be empty), at its right end when that set is outside the window; or,
+      after a zoom from the scrubber, still at the instant it was zoomed about; said, not shown */
   function setScrubStart() {
     const el = scrubEl, g = geom, i = info;
     if (!el || !g || !i || i.why) { scrubText = ''; return; }
     const k = keepT === null ? -1 : Math.round((keepT - g.t0) / (g.tEnd - g.t0) * STEPS);
-    const last = i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.round((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS;
+    const last = i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.floor((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS;
     el.value = String(k >= 0 && k <= STEPS ? k : last);
     scrubText = scrubSays(g, el);
     if (document.activeElement === el) readScrub();

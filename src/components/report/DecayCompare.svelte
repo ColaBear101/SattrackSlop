@@ -314,11 +314,16 @@
     const t = scrubT(g, el), r = colors ? compareTipAt(g, drawn, g.X(t), colors) : null;
     return cmpScrubText(cmpDay(t), r ? r.rows.map(q => ({ name: nameOf(q.n), value: q.value, projected: q.projected })) : []);
   }
-  /** after a draw: the scrubber at the newest element set (its right end when that is outside the window), said, not shown */
+  /** the instant a `+` or `-` on the scrubber was pressed at: the draws of that zoom keep the scrubber there */
+  let keepT: number | null = null;
+  /** after a draw: the scrubber at the newest element set (its right end when that is outside the window), or, after a zoom from
+      the scrubber, still at the instant it was zoomed about; said, not shown */
   function setScrubStart() {
     const el = scrubEl, g = geom, i = info;
     if (!el || !g || !i || i.why) { scrubText = ''; return; }
-    el.value = String(i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.round((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS);
+    const k = keepT === null ? -1 : Math.round((keepT - g.t0) / (g.tEnd - g.t0) * STEPS);
+    const last = i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.round((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS;
+    el.value = String(k >= 0 && k <= STEPS ? k : last);
     scrubText = scrubSays(g, el);
     if (document.activeElement === el) readScrub();
   }
@@ -332,12 +337,16 @@
   function scrubBlur() { if (!pinned) tip = null; }
   async function scrubKey(e: KeyboardEvent) {
     const g = geom, el = scrubEl;
-    if (e.key === 'Escape') { tip = null; return; }          // until the next input
+    if (e.key === 'Escape') { if (tip) { e.preventDefault(); tip = null; } return; }   // until the next input; the sheet stays
+    if (e.ctrlKey || e.metaKey || e.altKey) return;           // Ctrl or Cmd with + or -: the browser's own zoom of the page
     if (!g || !el || (e.key !== '+' && e.key !== '=' && e.key !== '-')) return;
     e.preventDefault();
+    const t = scrubT(g, el);
+    keepT = t;                                                // the reading stays on this instant through the zoom's draws
     if (e.key === '-') zoomOut();
-    else { const t = scrubT(g, el), s = (g.tEnd - g.t0) / 4; zoomTo(t - s, t + s); }
+    else { const s = (g.tEnd - g.t0) / 4; zoomTo(t - s, t + s); }
     await tick();
+    keepT = null;
     /* zoomed into a span with nothing drawn, the scrubber is hidden with the focus in it: Reset zoom has it (shown, as zoomed) */
     const a = document.activeElement;
     if (scrubEl?.hidden && (a === scrubEl || a === document.body)) (document.getElementById('cmpreset') ?? paramEl)?.focus();
@@ -372,7 +381,7 @@
   let drag: { x0: number; on: boolean } | null = null;
   let band = $state.raw<{ l: number; w: number; top: number; h: number } | null>(null);
   let lastType = '';
-  const dragEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') endDrag(); };
+  const dragEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); endDrag(); } };   // the sheet stays
   function endDrag() {
     if (drag) document.removeEventListener('keydown', dragEsc);
     drag = null; band = null;
@@ -406,7 +415,9 @@
   function up(e: PointerEvent) {
     const d = drag, g = geom;
     endDrag();
-    if (d?.on && g) { const x = inPlot(g, px(e)); zoomTo(tAt(g, Math.min(x, d.x0)), tAt(g, Math.max(x, d.x0))); }
+    if (!d?.on || !g) return;
+    const x = inPlot(g, px(e));
+    if (Math.abs(x - d.x0) >= 8) zoomTo(tAt(g, Math.min(x, d.x0)), tAt(g, Math.max(x, d.x0)));   // brought back under 8 px: nothing
   }
   function cancel() { endDrag(); }                           // a touch reading stays where it is
   function leave(e: PointerEvent) { if (e.pointerType !== 'touch' && !drag) tip = null; }
@@ -423,7 +434,7 @@
   $effect(() => {
     if (!pinned) return;
     const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.('#cmpcv, #cmpscrub')) { pinned = false; tip = null; } };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { pinned = false; tip = null; } };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); pinned = false; tip = null; } };
     document.addEventListener('pointerdown', away, true);
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esc); };

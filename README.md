@@ -1800,7 +1800,7 @@ grey ones are cut at its edges.
 With four or fewer lines in colour (the selected one's included) and room for them, each is named at
 its last element set, unless two names would sit too close, in which case none is. Under the
 pointer, a line across the chart and a box beside it give the date and each coloured line's
-altitude there, highest first.
+value there (the altitude, or what **Show** below picks), highest first.
 
 **Range** picks what the chart spans: Auto (the fitted frame above, the default), the last 30 or 90
 days or year of history up to the newest element set, or All. **Show** picks what it plots: mean
@@ -1809,8 +1809,9 @@ altitude, mean perigee or apogee altitude (from the mean elements), the decay ra
 altitude, period and mean motion have the dashed forecast. The line over the chart names the
 quantity, its unit and the dates shown. On a desktop, drag across the chart or double-click it to
 zoom, and Reset zoom to go back. On a phone, tap the chart to pin the reading and slide sideways to
-move it. The slider under the chart reads every line's value at a date from the keyboard, with plus
-and minus to zoom. Range and Show are kept with the list; a zoom is not.
+move it. The slider under the chart reads every coloured line's value at a date from the keyboard,
+with plus and minus to zoom. Range and Show are kept with the list, but are this tab's: another tab
+of the page keeps its own. A zoom is not kept.
 
 The list under the chart is the table of the same thing, the selected spacecraft first: each row has
 the re-entry date or the verdict (the section's own words, from the same history and code), the mean
@@ -1842,11 +1843,11 @@ has no history and its forecast has no dates) and comes back with a catalogue sp
 
 The list, which ones are in colour and whether the panel is open are kept in your browser under
 `gt.decaycmp`, written only when you change them; reading it back fetches nothing, and a spacecraft
-not in the cache waits for *Fetch*. Another tab of the page follows a change. The panel is a chunk of
-its own (15.7 KB gzipped), asked for at the first press, or when the section comes near if you left
-the panel open; a visit that never opens it does not download it. If it does not arrive, a line
-beside the button says so and asks for a reload: the browser keeps a failed download for the rest of
-the page, so another press would not bring it.
+not in the cache waits for *Fetch*. Another tab of the page follows a change to the list. The panel
+is a chunk of its own (22.4 KB gzipped), asked for at the first press, or when the section comes
+near if you left the panel open; a visit that never opens it does not download it. If it does not
+arrive, a line beside the button says so and asks for a reload: the browser keeps a failed download
+for the rest of the page, so another press would not bring it.
 
 `npm run decay-compare` drives all of this in a browser with CelesTrak faked per spacecraft,
 counting each one's requests and how many are out at once: nothing asked for on a fresh visit, on a

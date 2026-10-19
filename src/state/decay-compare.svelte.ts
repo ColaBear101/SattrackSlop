@@ -1,7 +1,7 @@
 import type { PlotRow } from '../../shared/plot';
 import {
   addItem, API_SPACING_MS, COMPARE_MAX, compareNum, drawable, FETCH_PER_PRESS, lightItem, notDrawn, readCompare, removeItem, rowOrder,
-  writeCompare, type CompareItem, type CompareRecord, type NotDrawn
+  VIEW_DEFAULT, writeCompare, type CmpView, type CompareItem, type CompareRecord, type NotDrawn
 } from '../lib/decay/compare';
 import type { HistoryOutcome } from '../lib/net/history-source';
 import { isCustom } from '../lib/planner/custom';
@@ -20,9 +20,11 @@ import { watch } from './watch.svelte';
    the fetching, and the record kept in the browser.
 
    The list is the reader's: it is read from its own key (gt.decaycmp) when this chunk arrives and written only by what the reader
-   does here (add, remove, highlight, clear, open or shut the panel), never for having been read, nor when an answer comes in; an
-   empty list with the panel shut leaves nothing stored. Another tab's change is heard through the storage event and the list read
-   again (this tab's panel stays open or shut as it is). Where the browser refuses storage the list holds for the visit.
+   does here (add, remove, highlight, clear, open or shut the panel, pick what the chart shows or its range), never for having been
+   read, nor when an answer comes in; an empty list with the panel shut leaves nothing stored, the chart's view with it. The view
+   (L67: the quantity and the range) is kept only where it is not the default (mean altitude, Auto); a zoom is the panel's and never
+   kept. Another tab's change is heard through the storage event and the list read again (this tab's panel stays open or shut as it
+   is, and its view as it is). Where the browser refuses storage the list holds for the visit.
 
    Nothing is fetched unless asked, by the Decay section's own rule (state/life.svelte.ts): CelesTrak rebuilds a history on each
    request and has taken from a few seconds to over a minute. Reading the list back fetches nothing: a history cached in the last
@@ -61,7 +63,7 @@ export type CmpRow =
   | { st: 'shown'; big: string; sub: string; alt: string; rate: string; not: NotDrawn | null }
   | { st: 'failed'; big: string; short: string; retry: boolean; not: Exclude<CmpNotDrawn, NotDrawn> };
 /** A line of the comparison chart: slot 1 the selected spacecraft, 2..8 one in colour, 0 a grey one. */
-export interface CmpLine { n: string; slot: number; P: readonly { t: number; sma: number }[]; r: Any }
+export interface CmpLine { n: string; slot: number; P: readonly PlotRow[]; r: Any }
 
 type Task = { kind: 'row'; n: string; tok: number } | { kind: 'life'; n: string; asked: boolean };
 
@@ -105,6 +107,8 @@ class DecayCompare {
   items = $state.raw<readonly CompareItem[]>([]);
   /** the panel is open */
   open = $state(false);
+  /** what the chart shows and over what range (L67); replaced whole */
+  view = $state.raw<CmpView>(VIEW_DEFAULT);
   /** what each listed row shows, by catalogue number; replaced whole */
   rows = $state.raw<Readonly<Record<string, CmpRow>>>({});
   /** what waits its turn, in order: a row's number, or the selected spacecraft's own ask (life) */
@@ -141,7 +145,8 @@ class DecayCompare {
   lines = $derived.by((): CmpLine[] => {
     const out: CmpLine[] = [], grey: CmpLine[] = [];
     const sel = this.selected, ch = life.chart;
-    if (sel && ch && !ch.custom && ch.P.length && drawable(ch.r)) out.push({ n: sel, slot: 1, P: ch.P, r: ch.r });
+    /* the section's rows are the history source's PlotRows, eccentricity with them; its own type (entry code) names only t and sma */
+    if (sel && ch && !ch.custom && ch.P.length && drawable(ch.r)) out.push({ n: sel, slot: 1, P: ch.P as unknown as readonly PlotRow[], r: ch.r });
     const rows = this.rows;
     for (const n of this.shown) {
       const row = rows[n], f = this.data.get(n);
@@ -176,6 +181,7 @@ class DecayCompare {
   constructor(rec: CompareRecord) {
     this.items = rec.items;
     this.open = rec.open;
+    this.view = { ...VIEW_DEFAULT, ...(rec.view ?? {}) };
     const rows: Record<string, CmpRow> = {};
     for (const n of rowOrder(rec.items, null)) { rows[n] = { st: 'reading' }; this.cq.push(n); }
     this.rows = rows;
@@ -323,7 +329,15 @@ class DecayCompare {
     this.write();
   }
 
-  /** Another tab wrote the list, removed it, or the origin's storage was cleared: the list is read again. */
+  /** What the chart shows, or its range, picked (kept with the list where it is not the default). Nothing is fetched for it. */
+  setView(v: Partial<CmpView>): void {
+    const n = { ...this.view, ...v };
+    if (n.p === this.view.p && n.r === this.view.r) return;
+    this.view = n;
+    this.write();
+  }
+
+  /** Another tab wrote the list, removed it, or the origin's storage was cleared: the list is read again (not its view). */
   heard(): void {
     const rec = stored(), was = new Set(this.items.map(i => i.n)), now = new Set(rec.items.map(i => i.n));
     for (const n of was) if (!now.has(n)) this.forget(n);
@@ -587,11 +601,11 @@ class DecayCompare {
     if (q.length !== was.length || q.some((t, i) => t.n !== was[i]!.n || t.life !== was[i]!.life)) this.tasks = q;
   }
 
-  /** the record, written for what the reader did; an empty list with the panel shut leaves nothing stored */
+  /** the record, written for what the reader did; an empty list with the panel shut leaves nothing stored, the view with it */
   private write(): void {
     try {
       if (!this.items.length && !this.open) localStore().removeItem(COMPARE_KEY);
-      else localStore().setItem(COMPARE_KEY, writeCompare(this.open, this.items));
+      else localStore().setItem(COMPARE_KEY, writeCompare(this.open, this.items, this.view));
     } catch { /* private window or full storage: the list holds for this visit */ }
   }
 

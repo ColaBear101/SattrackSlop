@@ -1802,6 +1802,16 @@ its last element set, unless two names would sit too close, in which case none i
 pointer, a line across the chart and a box beside it give the date and each coloured line's
 altitude there, highest first.
 
+**Range** picks what the chart spans: Auto (the fitted frame above, the default), the last 30 or 90
+days or year of history up to the newest element set, or All. **Show** picks what it plots: mean
+altitude, mean perigee or apogee altitude (from the mean elements), the decay rate (the section's
+45-day measure at each element set), eccentricity, orbital period or mean motion. Only mean
+altitude, period and mean motion have the dashed forecast. The line over the chart names the
+quantity, its unit and the dates shown. On a desktop, drag across the chart or double-click it to
+zoom, and Reset zoom to go back. On a phone, tap the chart to pin the reading and slide sideways to
+move it. The slider under the chart reads every line's value at a date from the keyboard, with plus
+and minus to zoom. Range and Show are kept with the list; a zoom is not.
+
 The list under the chart is the table of the same thing, the selected spacecraft first: each row has
 the re-entry date or the verdict (the section's own words, from the same history and code), the mean
 altitude and the decay rate, and what is happening to its history (*Queued, 2nd*, *Fetching… 12 s*,

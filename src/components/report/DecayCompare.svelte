@@ -29,18 +29,24 @@
   import { watch } from '../../state/watch.svelte';
   import { rank, SHOWN_MAX } from '../../lib/catalogue/rank';
   import { watchedFirst } from '../../lib/catalogue/watch';
-  import { COMPARE_MAX, fetchPlan, notDrawn, ROWS_SHOWN } from '../../lib/decay/compare';
   import {
-    CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED, CMP_NO_MATCH,
-    CMP_NOTHING_DRAWN, CMP_PLANNED, CMP_RATE_NAME, CMP_READING, CMP_RETRY, CMP_ROWS_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER,
-    CMP_SELECTED, CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpChartName, cmpClearArmed, cmpFetching, cmpFetchMore, cmpFetchName,
-    cmpHighlightName, cmpMoreMatch, cmpNotDrawn, cmpQueued, cmpRemoveName, cmpRetryName, cmpShowFirst, cmpShowOthers
+    COMPARE_MAX, DAY_MS, fetchPlan, notDrawn, PARAMS, RANGES, ROWS_SHOWN, type CmpParam, type CmpRange, type Win
+  } from '../../lib/decay/compare';
+  import {
+    CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_DRAG_HINT, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED,
+    CMP_NO_MATCH, CMP_NOTHING_DRAWN, CMP_PARAMS, CMP_PLANNED, CMP_RANGE, CMP_RANGE_TITLES, CMP_RANGES, CMP_RATE_NAME, CMP_READING,
+    CMP_RESET, CMP_RETRY, CMP_ROWS_NAME, CMP_SCRUB_KEYS, CMP_SCRUB_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER, CMP_SELECTED, CMP_SHOW,
+    CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpAxis, cmpChartName, cmpClearArmed, cmpDay, cmpFetching, cmpFetchMore, cmpFetchName,
+    cmpHighlightName, cmpMoreMatch, cmpNoParam, cmpNotDrawn, cmpNote, cmpQueued, cmpRemoveName, cmpRetryName, cmpScrubText, cmpShowFirst,
+    cmpShowOthers
   } from '../../lib/text/life-compare';
   import {
-    colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpGeom, type CmpKeyItem, type CmpSeries, type CmpTipRow
+    colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpGeom, type CmpKeyItem, type CmpSeries, type CmpTipRow,
+    type DrawInfo
   } from './draw-compare';
   import Button from '../ui/Button.svelte';
   import Popover from '../ui/Popover.svelte';
+  import Segmented from '../ui/Segmented.svelte';
 
   /* The decay comparison's panel (CHANGES-FROM-LEGACY.md, L66), under the Decay section's own chart, which it does not touch: a toolbar
      (add from the catalogue, add the watched, fetch the rows that wait, clear), a status line, a chart of its own (draw-compare.ts) with
@@ -58,8 +64,9 @@
      added again. While it is open, its own line says what an add did, and the status line under the toolbar says nothing, so nothing
      is spoken twice.
 
-     The chart is redrawn only when what it draws changes (which spacecraft, their colours, a forecast), the theme, or its width: the
-     seconds of a wait tick in the list, not in the chart, and the readout under the pointer stays put while they do. */
+     The chart is redrawn only when what it draws changes (which spacecraft, their colours, a forecast), the theme, its width, or its
+     view (L67: the quantity, the range, a zoom): the seconds of a wait tick in the list, not in the chart, and the readout under the
+     pointer stays put while they do. */
 
   /* The opener and the panel's slot are the Decay section's (DecaySection.svelte); whether the panel is open is the record's
      (compare.open), so the button says so and the slot shows or hides from here. */
@@ -235,28 +242,195 @@
   let ckey = $state.raw<CmpKeyItem[]>([]);
   let geom: CmpGeom | null = null;
   let drawn: CmpSeries[] = [];
-  let tip = $state.raw<{ x: number; y: number; top: number; h: number; day: string; rows: CmpTipRow[] } | null>(null);
+  /** the reading: `y` the pointer's height beside which the box sits, null for one held at the top of the plot (touch, the scrubber) */
+  let tip = $state.raw<{ x: number; y: number | null; top: number; h: number; day: string; rows: CmpTipRow[] } | null>(null);
   let tipEl: HTMLElement | undefined = $state();
 
+  /* ---- the chart's view (L67): the range, the quantity, a zoom, and reading it --------------------------------------- */
+
+  /* The range and the quantity are the store's (kept with the list where they are not the default); a zoom is this panel's and never
+     kept. What was drawn last (info) gives the caption, the hint or Reset zoom, the note and the scrubber; a zoom always lies inside
+     the range's own window and spans a day at least, and one the window drawn cannot hold (a new line, another range) is dropped. */
+  let win = $state.raw<Win | null>(null);
+  let info = $state.raw<DrawInfo | null>(null);
+  let pl = $state(46);
+  const rangeOpts = RANGES.map(r => ({ value: r, label: CMP_RANGES[r], title: CMP_RANGE_TITLES[r], id: 'cmpr-' + r }));
+  const caption = $derived(info ? (info.why === 'param' ? cmpNoParam(info.p) : cmpAxis(info.p, info.t0, info.t1, info.zoomed, info.why === 'range')) : '');
+  const note = $derived(info && info.p !== 'alt' ? cmpNote(info.p) : '');
+  const describedBy = $derived('cmpaxis' + (note ? ' cmpnote' : '') + ' cmprows');
+  const viewKey = $derived(compare.view.p + ' ' + compare.view.r + ' ' + (win ? win.t0 + ':' + win.t1 : ''));
+
+  /* the dropdown follows the store, whatever was picked last (PassDetails.svelte's #dopsel): its options are written out, with no
+     value bound, so the page's entry needs nothing more for it */
+  let paramEl: HTMLSelectElement | undefined = $state();
+  $effect(() => { const el = paramEl, p = compare.view.p; if (el) el.selectedIndex = PARAMS.indexOf(p); });
+  function pickRange(v: string | number) {
+    win = null;                                               // the pressed one again: back to its whole window
+    compare.setView({ r: v as CmpRange });
+  }
+  function pickParam(e: Event) {
+    const v = (e.currentTarget as HTMLSelectElement).value;
+    if ((PARAMS as readonly string[]).includes(v)) compare.setView({ p: v as CmpParam });
+  }
+  /* a zoom is of one spacecraft's company: another selected, it goes */
+  $effect(() => { void compare.selected; untrack(() => { win = null; }); });
+
+  let scrubEl: HTMLInputElement | undefined = $state();
+  let scrubText = $state('');
+  /** the touch reading is held where the finger left it */
+  let pinned = $state(false);
+
   $effect(() => {
-    void drawKey;
+    void drawKey; void viewKey;
     const c = colors, w = width, canvas = cv;
     if (!c || !w || !canvas) return;
     untrack(() => {
       drawn = compare.lines.map(l => ({ ...l, name: nameOf(l.n) }));
-      const r = drawCompare(canvas, drawn, c);
-      label = r.label; geom = r.geom; ckey = compareKey(drawn, c); tip = null;
+      const v = compare.view, r = drawCompare(canvas, drawn, c, { p: v.p, r: v.r, win });
+      label = r.label; geom = r.geom; info = r.info; ckey = compareKey(drawn, c, v.p); pl = r.geom ? r.geom.L : 46;
+      canvas.dataset.p = v.p;                                 // for the suites: nothing here reads them
+      canvas.dataset.t0 = r.info ? String(Math.round(r.info.t0)) : ''; canvas.dataset.t1 = r.info ? String(Math.round(r.info.t1)) : '';
+      tip = null; pinned = false; endDrag();
+      setScrubStart();
+      if (win && !r.info?.zoomed) win = null;                 // a zoom the new window cannot hold: one more draw
     });
   });
 
-  function move(e: PointerEvent) {
-    const c = colors;
-    if (!geom || !c || !cv) { tip = null; return; }
-    const b = cv.getBoundingClientRect();
-    const t = compareTipAt(geom, drawn, e.clientX - b.left, c);
-    tip = t && t.rows.length ? { x: t.x, y: e.clientY - b.top, top: geom.T, h: geom.Hc - geom.T - geom.B, day: t.day, rows: t.rows } : null;
+  const STEPS = 240;                                          // the scrubber's steps across the plot
+  const yOf = (h: number): number => (geom ? geom.Y(h) : 0);
+  /** the instant at x (CSS px from the canvas's left edge), as compareTipAt reads it */
+  const tAt = (g: CmpGeom, x: number): number => g.t0 + (x - g.L) / (g.Wc - g.L - g.R) * (g.tEnd - g.t0);
+  const scrubT = (g: CmpGeom, el: HTMLInputElement): number => g.t0 + +el.value / STEPS * (g.tEnd - g.t0);
+  const px = (e: MouseEvent): number => e.clientX - cv!.getBoundingClientRect().left;
+
+  /** the reading at x: none outside the plot; with no line valued there, nothing, or the crosshair alone when `bare` */
+  function showAt(x: number, y: number | null, bare: boolean) {
+    const c = colors, g = geom;
+    const t = g && c ? compareTipAt(g, drawn, x, c) : null;
+    tip = g && t && (t.rows.length || bare) ? { x: t.x, y, top: g.T, h: g.Hc - g.T - g.B, day: t.day, rows: t.rows } : null;
   }
-  /* the readout beside the pointer, kept inside the chart both ways: flipped to the pointer's left at the right edge, never past either */
+  /** what the scrubber says at its value: the day, and every coloured line's value there by its full name */
+  function scrubSays(g: CmpGeom, el: HTMLInputElement): string {
+    const t = scrubT(g, el), r = colors ? compareTipAt(g, drawn, g.X(t), colors) : null;
+    return cmpScrubText(cmpDay(t), r ? r.rows.map(q => ({ name: nameOf(q.n), value: q.value, projected: q.projected })) : []);
+  }
+  /** after a draw: the scrubber at the newest element set (its right end when that is outside the window), said, not shown */
+  function setScrubStart() {
+    const el = scrubEl, g = geom, i = info;
+    if (!el || !g || !i || i.why) { scrubText = ''; return; }
+    el.value = String(i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.round((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS);
+    scrubText = scrubSays(g, el);
+    if (document.activeElement === el) readScrub();
+  }
+  $effect(() => { if (scrubEl) untrack(setScrubStart); });   // the scrubber comes with the first line: set it once there
+  function readScrub() {
+    const el = scrubEl, g = geom;
+    if (!el || !g) return;
+    scrubText = scrubSays(g, el);
+    showAt(g.X(scrubT(g, el)), null, true);
+  }
+  function scrubBlur() { if (!pinned) tip = null; }
+  async function scrubKey(e: KeyboardEvent) {
+    const g = geom, el = scrubEl;
+    if (e.key === 'Escape') { tip = null; return; }          // until the next input
+    if (!g || !el || (e.key !== '+' && e.key !== '=' && e.key !== '-')) return;
+    e.preventDefault();
+    if (e.key === '-') zoomOut();
+    else { const t = scrubT(g, el), s = (g.tEnd - g.t0) / 4; zoomTo(t - s, t + s); }
+    await tick();
+    /* zoomed into a span with nothing drawn, the scrubber is hidden with the focus in it: Reset zoom has it (shown, as zoomed) */
+    const a = document.activeElement;
+    if (scrubEl?.hidden && (a === scrubEl || a === document.body)) (document.getElementById('cmpreset') ?? paramEl)?.focus();
+  }
+
+  /* A zoom inside the window drawn now, never under a day: whole milliseconds, so the model reads it as inside (an edge one ulp past
+     the window's would not be). */
+  function zoomTo(a: number, b: number) {
+    const g = geom;
+    if (!g) return;
+    const lo = Math.ceil(g.t0), hi = Math.floor(g.tEnd), w = Math.round(Math.max(b - a, DAY_MS));
+    if (w >= hi - lo) return;                                 // already this narrow, or narrower than a day
+    const t0 = Math.min(Math.max(Math.round((a + b) / 2 - w / 2), lo), hi - w);
+    win = { t0, t1: t0 + w };
+  }
+  /** twice the zoom, about its middle, inside the range's window; the whole of that window once it reaches it */
+  function zoomOut() {
+    const i = info, z = win;
+    if (!i || !z) return;
+    const lo = Math.ceil(i.base.t0), hi = Math.floor(i.base.t1), w = 2 * (z.t1 - z.t0);
+    if (w >= hi - lo) { win = null; return; }
+    const t0 = Math.min(Math.max(Math.round((z.t0 + z.t1) / 2 - w / 2), lo), hi - w);
+    win = { t0, t1: t0 + w };
+  }
+  async function resetZoom() {
+    win = null;
+    await tick();
+    document.getElementById('cmpr-' + compare.view.r)?.focus();        // Reset zoom has gone: the range it was made in
+  }
+
+  /* A drag across the plot (a mouse or pen, 8 px or more) zooms to it; Escape, or the pointer taken away, lets it go with no change. */
+  let drag: { x0: number; on: boolean } | null = null;
+  let band = $state.raw<{ l: number; w: number; top: number; h: number } | null>(null);
+  let lastType = '';
+  const dragEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') endDrag(); };
+  function endDrag() {
+    if (drag) document.removeEventListener('keydown', dragEsc);
+    drag = null; band = null;
+  }
+  const inPlot = (g: CmpGeom, x: number): number => Math.max(g.L, Math.min(g.Wc - g.R, x));
+
+  function down(e: PointerEvent) {
+    lastType = e.pointerType;
+    const g = geom;
+    if (!g || !cv) return;
+    const x = px(e);
+    if (e.pointerType === 'touch') { pinned = true; showAt(x, null, true); return; }   // held at the top, the finger under it
+    if (e.button !== 0 || x < g.L || x > g.Wc - g.R) return;
+    endDrag();
+    drag = { x0: x, on: false };
+    document.addEventListener('keydown', dragEsc);
+    cv.setPointerCapture(e.pointerId);
+  }
+  function move(e: PointerEvent) {
+    const g = geom;
+    if (!g || !colors || !cv) { tip = null; return; }
+    const x = px(e);
+    if (e.pointerType === 'touch') { if (pinned) showAt(x, null, true); return; }
+    if (drag) {
+      const xc = inPlot(g, x);
+      if (Math.abs(xc - drag.x0) >= 8) drag.on = true;
+      if (drag.on) { band = { l: Math.min(xc, drag.x0), w: Math.abs(xc - drag.x0), top: g.T, h: g.Hc - g.T - g.B }; tip = null; return; }
+    }
+    showAt(x, e.clientY - cv.getBoundingClientRect().top, false);
+  }
+  function up(e: PointerEvent) {
+    const d = drag, g = geom;
+    endDrag();
+    if (d?.on && g) { const x = inPlot(g, px(e)); zoomTo(tAt(g, Math.min(x, d.x0)), tAt(g, Math.max(x, d.x0))); }
+  }
+  function cancel() { endDrag(); }                           // a touch reading stays where it is
+  function leave(e: PointerEvent) { if (e.pointerType !== 'touch' && !drag) tip = null; }
+  /* half the span about the point: the drag's one-pointer alternative; never from a touch, which never zooms */
+  function dbl(e: MouseEvent) {
+    const g = geom;
+    if (lastType === 'touch' || !g) return;
+    const x = px(e);
+    if (x < g.L || x > g.Wc - g.R) return;
+    const t = tAt(g, x), s = (g.tEnd - g.t0) / 4;
+    zoomTo(t - s, t + s);
+  }
+  /* a held touch reading goes at a press anywhere else, or Escape (as Clear's arming, above) */
+  $effect(() => {
+    if (!pinned) return;
+    const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.('#cmpcv, #cmpscrub')) { pinned = false; tip = null; } };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { pinned = false; tip = null; } };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esc); };
+  });
+
+  /* the readout beside the pointer, kept inside the chart both ways: flipped to the pointer's left at the right edge, never past either;
+     held at the top of the plot for a touch or the scrubber */
   $effect(() => {
     const t = tip, el = tipEl, g = geom;
     if (!t || !el || !g) return;
@@ -264,7 +438,7 @@
     let x = t.x + 14;
     if (x + w > g.Wc) x = t.x - 14 - w;
     el.style.left = Math.max(0, Math.min(g.Wc - w, x)) + 'px';
-    el.style.top = Math.max(0, Math.min(g.Hc - h, t.y - h / 2)) + 'px';
+    el.style.top = (t.y === null ? g.T + 2 : Math.max(0, Math.min(g.Hc - h, t.y - h / 2))) + 'px';
   });
 </script>
 
@@ -323,20 +497,58 @@
     <p id="cmpsay" role="status">{armed ? cmpClearArmed(compare.items.length) : addOpen ? '' : compare.say}</p>
     {#if busy}<p id="cmpwait">{CMP_WAIT_NOTE}</p>{/if}
 
-    <div class="chart">
-      <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
-      <canvas bind:this={cv} id="cmpcv" role="img" aria-label={label} aria-describedby="cmprows" hidden={!compare.lines.length}
-              onpointermove={move} onpointerleave={() => (tip = null)}></canvas>
+    {#if compare.lines.length}
+      <div id="cmpview" class="view">
+        <div class="vg">
+          <span class="vl" aria-hidden="true">{CMP_RANGE}</span>
+          <Segmented label={CMP_RANGE} size="sm" value={compare.view.r} options={rangeOpts} onchange={pickRange} />
+        </div>
+        <div class="vg">
+          <label class="vl" for="cmpparam">{CMP_SHOW}</label>
+          <!-- the options written out and no value bound: an effect above keeps the one shown (selectedIndex) -->
+          <select id="cmpparam" bind:this={paramEl} onchange={pickParam}>
+            <option value="alt">{CMP_PARAMS.alt}</option>
+            <option value="hp">{CMP_PARAMS.hp}</option>
+            <option value="ha">{CMP_PARAMS.ha}</option>
+            <option value="rate">{CMP_PARAMS.rate}</option>
+            <option value="ecc">{CMP_PARAMS.ecc}</option>
+            <option value="per">{CMP_PARAMS.per}</option>
+            <option value="mm">{CMP_PARAMS.mm}</option>
+          </select>
+        </div>
+      </div>
+      <div class="cap">
+        <p id="cmpaxis">{caption}</p>
+        {#if info?.zoomed}<Button id="cmpreset" variant="ghost" size="sm" onclick={resetZoom}>{CMP_RESET}</Button>
+        {:else if info && !info.why}<span id="cmpdraghint">{CMP_DRAG_HINT}</span>{/if}
+      </div>
+    {/if}
+    <div class="chart" style="--pl:{pl}px; --pr:30px">
+      <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role, a11y_no_noninteractive_element_interactions -->
+      <canvas bind:this={cv} id="cmpcv" role="img" aria-label={label} aria-describedby={describedBy} hidden={!compare.lines.length}
+              onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} onlostpointercapture={cancel}
+              onpointerleave={leave} ondblclick={dbl}></canvas>
+      {#if band}<div id="cmpsel" style="left:{band.l}px; width:{band.w}px; top:{band.top}px; height:{band.h}px"></div>{/if}
       {#if tip}
         <div id="cmpx" style="left:{tip.x}px; top:{tip.top}px; height:{tip.h}px"></div>
-        <div id="cmptip" class="mono" bind:this={tipEl}>
-          <p>{tip.day}</p>
-          {#each tip.rows as r (r.n)}<p><i class:p={r.projected} style="--c:{r.color}"></i>{r.value} <span>{r.name}</span></p>{/each}
-        </div>
+        {#if tip.rows.length}
+          <div id="cmptip" class="mono" bind:this={tipEl}>
+            <p>{tip.day}</p>
+            {#each tip.rows as r (r.n)}<p><i class:p={r.projected} style="--c:{r.color}"></i>{r.value} <span>{r.name}</span></p>{/each}
+          </div>
+          <div id="cmpdots" aria-hidden="true">{#each tip.rows as r (r.n)}<i class:p={r.projected} style="left:{tip.x}px; top:{yOf(r.h)}px; --c:{r.color}"></i>{/each}</div>
+        {/if}
+      {/if}
+      {#if compare.lines.length}
+        <input id="cmpscrub" type="range" min="0" max="240" step="1" bind:this={scrubEl} hidden={!info || !!info.why}
+               aria-label={CMP_SCRUB_NAME} aria-describedby="cmpscrubkeys" aria-valuetext={scrubText}
+               oninput={readScrub} onfocus={readScrub} onblur={scrubBlur} onkeydown={scrubKey}>
+        <span id="cmpscrubkeys" class="sr-only">{CMP_SCRUB_KEYS}</span>
       {/if}
     </div>
     {#if compare.lines.length}
       <p id="cmpkey">{#each ckey as k}<span><i class:d={k.dashed} class:g={k.grey} style="--c:{k.color}"></i>{k.text}</span>{/each}</p>
+      {#if note}<p id="cmpnote">{note}</p>{/if}
     {:else}
       <p id="cmpnone">{CMP_NOTHING_DRAWN}</p>
     {/if}
@@ -448,6 +660,37 @@
   #cmpkey i { display: inline-block; width: 14px; height: 3px; margin-right: var(--space-2); vertical-align: middle; border-radius: 2px; background: var(--c); }
   #cmpkey i.d { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
   #cmpkey i.g { height: 2px; opacity: .6; }
+
+  /* the chart's view (L67): the range and the quantity over it, the caption with the hint or Reset zoom, the zoom's band, the dots of
+     the reading, the scrubber inset to the plot (--pl, --pr: the plot's margins, written after each draw), and the note under the key */
+  .view { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-5); min-width: 0; }
+  .vg { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+  .vl { color: var(--muted); font-size: var(--fs-0); }
+  #cmpparam {
+    height: 28px; min-width: 0; max-width: 100%; padding: 0 var(--space-2); border: 1px solid var(--rule); border-radius: var(--r-2);
+    background: var(--sunk); color: var(--ink); font: inherit; font-size: var(--fs-1);
+  }
+  #cmpparam:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+  .cap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); margin-bottom: calc(-1 * var(--space-2)); }
+  #cmpaxis { margin: 0; flex: 1 1 16rem; min-width: 0; color: var(--ink2); font-size: var(--fs-0); font-variant-numeric: tabular-nums; }
+  #cmpdraghint { color: var(--muted); font-size: var(--fs-0); }
+  .chart { --pl: 46px; --pr: 30px; }
+  #cmpcv { touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #cmpsel { position: absolute; pointer-events: none; background: color-mix(in srgb, var(--muted) 14%, transparent); border-inline: 1px solid var(--muted); }
+  #cmpdots i {
+    position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--c);
+    box-shadow: 0 0 0 2px var(--panel); pointer-events: none; z-index: 1;
+  }
+  #cmpdots i.p { background: var(--panel); border: 2px solid var(--c); }
+  #cmpscrub {
+    display: block; width: calc(100% - var(--pl) - var(--pr) + 16px); height: 24px; margin: var(--space-1) calc(var(--pr) - 8px) 0 calc(var(--pl) - 8px);
+    accent-color: var(--ink); background: transparent;
+  }
+  #cmpnote { color: var(--muted); font-size: var(--fs-0); max-width: 72ch; }
+  @media (hover: hover) and (pointer: fine) { #cmpcv { cursor: crosshair; } }
+  @media (hover: none), (pointer: coarse) { #cmpdraghint { display: none; } }
+  @media (pointer: coarse) { #cmpparam { height: var(--tap); font-size: 16px; } #cmpscrub { height: var(--tap); margin-top: 0; } }
+  @media (max-width: 359px) { .vg > .vl[aria-hidden='true'] { display: none; } }   /* 320: the group keeps its aria-label "Range" */
 
   /* the list: one line from 900 px, two (or three) below; see "the rows" above */
   #cmprows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }

@@ -27,7 +27,7 @@ export const app = new FakeApp();
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class FakeLife {
   view = $state.raw<{ big: string; action?: 'estimate' | 'retry' }>({ big: '—' });
-  chart = $state.raw<{ P: { t: number; sma: number }[]; r: any; custom?: boolean } | null>(null);
+  chart = $state.raw<{ P: { t: number; sma: number; ecc?: number | null }[]; r: any; custom?: boolean } | null>(null);
   /** the section's own request: resolves when the test says */
   start = vi.fn(() => new Promise<void>(res => { this.finish = res; }));
   offer = vi.fn();

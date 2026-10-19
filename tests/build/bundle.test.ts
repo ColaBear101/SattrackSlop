@@ -62,14 +62,15 @@ describe.skipIf(!built)('the production bundle', () => {
      chunk, counted on every visit, holds the opener's two (life-compare-open.ts) and the record's key once, as the probe, and none of
      the comparison's own words. Its own words are life-compare.ts's sentences and names, but the few the page already says elsewhere
      in the same words: the picker's "nothing matches", the single chart's 120 km line, the section's "Mean altitude" and "Decay rate",
-     and "element sets". The sentences its functions build ("Added ISS (ZARYA) · 3 in the comparison") are checked by their pieces:
-     every quoted literal of 12 or more characters in its source, its imports left out (the regex takes whole literals and comments in
-     order, so no two quotes of different literals pair up). */
+     "element sets", and 'Eccentricity', which the entry holds inside the propagator's error names. The sentences its functions build
+     ("Added ISS (ZARYA) · 3 in the comparison") are checked by their pieces: every quoted literal of 12 or more characters in its
+     source, its imports left out (the regex takes whole literals and comments in order, so no two quotes of different literals pair
+     up). */
   describe('the decay comparison', () => {
     const preload = [...html.matchAll(/<link rel="modulepreload"[^>]*href="\/(assets\/[^"]+\.js)"/g)].map(m => m[1]!);
     const entryCode = built ? [entry!, ...preload].map(read).join('\n') : '';
     const named = (re: RegExp) => assets.filter(f => re.test(f));
-    const SHARED = new Set<string>([CMP.CMP_NO_MATCH, CMP.CMP_REENTRY, CMP.CMP_ALT_NAME, CMP.CMP_RATE_NAME, 'element sets']);
+    const SHARED = new Set<string>([CMP.CMP_NO_MATCH, CMP.CMP_REENTRY, CMP.CMP_ALT_NAME, CMP.CMP_RATE_NAME, 'element sets', 'Eccentricity']);
     const own = Object.values(CMP).filter((v): v is string => typeof v === 'string' && v.length >= 14 && !SHARED.has(v));
     const source = fs.readFileSync(path.join(ROOT, 'src', 'lib', 'text', 'life-compare.ts'), 'utf8').replace(/^import [^\n]*\n/gm, '');
     const pieces = [...new Set([...source.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|'((?:[^'\\\n]|\\.)*)'/g)].map(m => m[1]))]

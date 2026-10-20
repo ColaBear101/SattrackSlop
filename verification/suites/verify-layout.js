@@ -13,8 +13,8 @@
  * Each size is visited once, in these states, and every sweep runs in each of them, in light and in dark:
  *   default . the Layers panel . the spacecraft picker (and on a query whose rows are marked "decayed now") . the observer form . the window
  *   popover . the Map tab . the answer rail (its three tabs,
- *   the pass list's filter open, and folded, where it folds, and the transponder calculator open on QO-100, L63) . the orbit planner (a drawer, a
- *   sheet or a panel, by width)
+ *   the pass list's filter open, and folded, where it folds, and the transponder calculator open on QO-100, L63) . FO-29 with the Professor's
+ *   group that holds "Go to Orbital decay" open (L64) . the orbit planner (a drawer, a sheet or a panel, by width)
  *   and, on a second page whose storage holds a comparison left open (seeded in that page alone), the decay comparison with nine rows and
  *   its search open
  *
@@ -230,9 +230,9 @@ function statesFor(page, size, assertPlanner) {
   /* the transponder calculator, open (CHANGES-FROM-LEGACY.md, L63): "Uplink and transponders", the disclosure that ends the live line in the
      Passes tab, whose panel is a chunk of its own mounted at the first opening, on QO-100 (ES'HAIL 2), the panel at its tallest (a linear
      passband: the record list, whose options are the longest of the table, the three-way hold, the dial, the nudges, the figures, the offset
-     and its hint). Picked through the picker by its number; the default spacecraft is picked again on the way out. Not FO-29: its report
-     opens the Professor's group with "Go to Orbital decay" in it, a link 15 px tall that is not in a sentence, which this suite would
-     flag on any spacecraft whose group opens so (the default's stays shut), and which is not the calculator's. The press on the summary
+     and its hint). Picked through the picker by its number; the default spacecraft is picked again on the way out. (FO-29 was passed
+     over because its report opens the Professor's group with "Go to Orbital decay" in it, a link then 15 px tall; it has a full target
+     under a finger now and a state of its own below, prof-decay, L64.) The press on the summary
      scrolls the rail to it; the rail is put back at its top, as the other states leave it, so that the pass list's sticky day header is
      not left over rows scrolled under it. */
   const pickNo = async (n, name) => {
@@ -255,6 +255,20 @@ function statesFor(page, size, assertPlanner) {
       await pickNo('67683', 'KNACKSAT-2');
       await peekTo(rm !== 'sheet');
     } });
+  /* FO-29 (JAS 2, 24278) with the Professor's group that holds life.tracked open (CHANGES-FROM-LEGACY.md, L64): the read-only note's
+     "Go to Orbital decay", whose link is not in a sentence ("Go to" is two short words), so the tap sweep holds it to 44 px. The group
+     opens by itself for FO-29, AO-7 and RS-44 and stays shut for the default, so the default state never sees the link; it is opened
+     here as well (the property, not a press, so the group is left untouched and shuts again for the default on the way out), and the
+     state is not entered until the link is drawn: the Professor is built in an idle callback after the spacecraft loads. */
+  S.push({ id: 'prof-decay', overlay: null,
+    enter: async () => {
+      await pickNo('24278', 'JAS 2');
+      const link = '#sec-prof li[data-id="life.tracked"] a[href="#sec-life"]';
+      await waitFor(page, s => !!document.querySelector(s), link, 15000);
+      await page.evaluate(s => { document.querySelector(s).closest('details').open = true; }, link);
+      await shownSel(link); await raf2(page);
+    },
+    exit: async () => { await pickNo('67683', 'KNACKSAT-2'); } });
   S.push({ id: 'planner-' + pm, overlay: pm === 'sheet' ? '#planner' : null,
     enter: async () => {
       await page.click('#planopen');

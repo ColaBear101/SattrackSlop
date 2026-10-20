@@ -53,7 +53,8 @@ export function mirrorJson(name: string, t: MakeTle, id: number | string): strin
 /* ---- the decay-history page (the shapes verification/suites/verify-lifetime.js builds) ----------------------- */
 
 const DAY = 86400000;
-export interface PlotRowSpec { t: number; sma: number; ecc: number | null }
+/** an element set of the page; `inc` and `raan` (deg) are 0 when not given, as every page here had them before L68 */
+export interface PlotRowSpec { t: number; sma: number; ecc: number | null; inc?: number | null; raan?: number | null }
 
 /** A falling orbit, one element set a day: `from` km to about `to` km over 220 days, steepening as it goes, which is
  *  the shape of KNACKSAT-2's record. Ending `endAgo` days before `nowMs`. */
@@ -69,7 +70,8 @@ export function falling(nowMs: number, ecc: number | null, endAgo: number, from:
 /** The page CelesTrak serves: one plotData string, header first. */
 export function plotPage(rows: PlotRowSpec[]): string {
   return '<html><body><script>var plotData = "Date,RAAN,Inclination,Arg of Perigee,SMA,Eccentricity|' +
-    rows.map(r => [new Date(r.t).toISOString().replace('Z', ''), 0, 0, 0, r.sma, r.ecc === null ? '' : r.ecc].join(',')).join('|') +
+    rows.map(r => [new Date(r.t).toISOString().replace('Z', ''), r.raan === null ? '' : r.raan ?? 0, r.inc === null ? '' : r.inc ?? 0, 0, r.sma,
+      r.ecc === null ? '' : r.ecc].join(',')).join('|') +
     '";</script></body></html>';
 }
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { hasPlane, VIEW_DEFAULT } from '../../src/lib/decay/compare';
 import { EMPTY_PLOT, plotPage } from '../server/helpers/tle';
 
 /* the console's own store and the Decay section's, stood in for by reactive fakes (decay-compare-fakes.svelte.ts) */
@@ -435,10 +436,17 @@ describe('the decay comparison, kept', () => {
     compare.highlight('25544', false);
     await until(() => expect(compare.lines).toHaveLength(4));
     expect(compare.lines.map(l => [l.n, l.slot])).toEqual([['67683', 1], ['07530', 3], ['43017', 4], ['25544', 0]]);
+    /* every line carries the selected spacecraft's history, which the RAAN offset is measured from (L68): the section's own rows */
+    expect(compare.lines.every(l => l.ref === P)).toBe(true);
+    expect(compare.lines[0]!.P).toBe(P);
     life.chart = { P, r: { tNow: P.at(-1)!.t, hNow: 300, track: [] }, custom: true };
     expect(compare.lines.map(l => l.n)).toEqual(['07530', '43017', '25544']);
+    expect(compare.lines.every(l => l.ref === null)).toBe(true);             // a planned orbit has no history to measure from
     life.chart = { P, r: { tNow: P.at(-1)!.t, hNow: 36000, track: [] } };
     expect(compare.lines.map(l => l.n)).toEqual(['07530', '43017', '25544']);
+    expect(compare.lines.every(l => l.ref === P)).toBe(true);                // not drawn, and still the reference
+    life.chart = null;
+    expect(compare.lines.every(l => l.ref === null)).toBe(true);
   });
 
   it('while the page\'s API answers, starts two requests at least seven seconds apart; answers from the cache are not held back', async () => {
@@ -800,5 +808,122 @@ describe('the decay comparison, kept', () => {
     life.view = { big: 'Not received', action: 'retry' };
     w.release('07530');
     await until(() => expect(life.offer).toHaveBeenCalledWith(oscar));
+  });
+});
+
+/* The chart's view (L67): what it shows and over what range, kept in the same record only where it is not the default (mean altitude,
+   Auto), written only for the reader's pick, read back with nothing written, per tab (another tab's list is heard, not its view),
+   gone with the record when the list is empty and the panel shut, and never a reason to fetch. */
+describe('the decay comparison\'s view', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.doUnmock('../../src/state/net'); });
+
+  it('is kept only where it is not the default: written once for each change, and today\'s record again for the default', async () => {
+    const w = world({ 'hist:25544': cached(FALLING()) });
+    const { compare } = await load(w);
+    expect(compare.view).toEqual(VIEW_DEFAULT);
+    compare.add('25544');
+    expect(w.writes()).toEqual(['{"o":0,"l":[{"n":"25544","h":2}]}']);
+    compare.setView({ p: 'hp' });
+    expect(compare.view).toEqual({ p: 'hp', r: 'auto' });
+    expect(w.writes()).toEqual(['{"o":0,"l":[{"n":"25544","h":2}]}', '{"o":0,"l":[{"n":"25544","h":2}],"p":"hp"}']);
+    compare.setView({ p: 'hp' });                                // the same again: nothing written
+    compare.setView({});
+    expect(w.writes()).toHaveLength(2);
+    compare.setView({ r: '90d' });
+    expect(w.writes().at(-1)).toBe('{"o":0,"l":[{"n":"25544","h":2}],"p":"hp","r":"90d"}');
+    compare.setView(VIEW_DEFAULT);
+    expect(compare.view).toEqual(VIEW_DEFAULT);
+    expect(w.writes().at(-1)).toBe('{"o":0,"l":[{"n":"25544","h":2}]}');
+    expect(w.writes()).toHaveLength(4);
+  });
+
+  it('is read back from the record, and nothing is written for having been read; the next press keeps it', async () => {
+    const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"25544"}],"p":"rate","r":"1y"}' });
+    const { compare } = await load(w);
+    expect(compare.view).toEqual({ p: 'rate', r: '1y' });
+    expect(compare.items).toEqual([{ n: '25544' }]);
+    await until(() => expect(compare.rows['25544']).toEqual({ st: 'wait' }));
+    await later();
+    expect(w.st.setItem).not.toHaveBeenCalled();
+    expect(w.st.removeItem).not.toHaveBeenCalled();
+    expect(w.fetch).not.toHaveBeenCalled();
+    compare.setOpen(false);
+    expect(w.writes()).toEqual(['{"o":0,"l":[{"n":"25544"}],"p":"rate","r":"1y"}']);
+  });
+
+  it('reads what it does not know as the default, and keeps the list', async () => {
+    for (const tail of ['"p":"argp","r":"2y"', '"p":null,"r":7', '"p":"alt","r":"auto"', '"p":"hp ","r":"30D","q":1']) {   // "inc" until L68
+      const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"25544","h":2}],' + tail + '}' });
+      const { compare } = await load(w);
+      expect(compare.view, tail).toEqual(VIEW_DEFAULT);
+      expect(compare.items, tail).toEqual([{ n: '25544', h: 2 }]);
+      expect(w.st.setItem, tail).not.toHaveBeenCalled();
+      compare.setOpen(false);
+      expect(w.writes(), tail).toEqual(['{"o":0,"l":[{"n":"25544","h":2}]}']);
+    }
+  });
+
+  it('is this tab\'s: another tab\'s list is heard, not its view, and the next write carries this one', async () => {
+    const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"25544"}],"r":"30d"}' });
+    const { compare } = await load(w);
+    compare.setView({ p: 'hp' });
+    expect(w.writes().at(-1)).toBe('{"o":1,"l":[{"n":"25544"}],"p":"hp","r":"30d"}');
+    w.st.setItem('gt.decaycmp', '{"o":1,"l":[{"n":"07530"}],"p":"ecc","r":"all"}');
+    w.hear('gt.decaycmp');
+    expect(compare.items).toEqual([{ n: '07530' }]);
+    expect(compare.view).toEqual({ p: 'hp', r: '30d' });
+    expect(w.writes()).toHaveLength(2);                           // this one's and the other tab's: nothing for hearing it
+    compare.setOpen(false);
+    expect(w.writes().at(-1)).toBe('{"o":0,"l":[{"n":"07530"}],"p":"hp","r":"30d"}');
+  });
+
+  it('goes with the record when the list is emptied with the panel shut, as the list does', async () => {
+    const w = world({ 'hist:25544': cached(FALLING()) });
+    const { compare } = await load(w);
+    compare.setOpen(true);
+    compare.add('25544');
+    compare.setView({ p: 'hp' });
+    expect(w.writes().at(-1)).toBe('{"o":1,"l":[{"n":"25544","h":2}],"p":"hp"}');
+    compare.clear();
+    expect(w.writes().at(-1)).toBe('{"o":1,"l":[],"p":"hp"}');    // the panel open: kept, the view with it
+    compare.setOpen(false);
+    expect(w.st.removeItem).toHaveBeenLastCalledWith('gt.decaycmp');
+    expect(w.st.getItem('gt.decaycmp')).toBeNull();
+    expect(compare.view).toEqual({ p: 'hp', r: 'auto' });        // this visit keeps it
+  });
+
+  /* The runes here are compiled for the server (environment node), where a derived is worked out again at every read: `lines` read
+     twice is two arrays even with nothing changed. So the same lines are told by what they are made of: the same history and the
+     same forecast objects, nothing worked out again. */
+  it('asks for nothing when it changes: no request, no row asked for, nothing worked out again, and the same lines', async () => {
+    const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"25544","h":2},{"n":"07530"}]}', 'hist:25544': cached(FALLING()) });
+    const { compare } = await load(w);
+    await until(() => expect(compare.rows['25544']).toMatchObject({ st: 'shown', not: null }));
+    await until(() => expect(compare.rows['07530']).toEqual({ st: 'wait' }));
+    const { Lifetime } = await import('../../src/lib/text/life');      // the chunk the store asks for, as it has it
+    const predict = vi.spyOn(Lifetime, 'predict');
+    const f = compare.forecast('25544')!, rows = compare.rows, items = compare.items;
+    const lines = compare.lines;
+    expect(lines).toEqual([{ n: '25544', slot: 2, P: f.P, r: f.r, ref: null }]);
+    expect(hasPlane(f.P)).toBe(false);                                     // a copy cached before L68: Inclination asks for nothing
+    const same = (why: string) => {
+      const now = compare.lines;
+      expect(now, why).toEqual(lines);
+      expect(now[0]!.P, why).toBe(f.P);
+      expect(now[0]!.r, why).toBe(f.r);
+    };
+    for (const v of [{ p: 'hp' }, { r: '90d' }, { p: 'rate', r: 'all' }, { p: 'ecc' }, { p: 'inc' }, { p: 'raan', r: '30d' }, VIEW_DEFAULT] as const) {
+      compare.setView(v);
+      same(JSON.stringify(v));
+    }
+    await later();
+    expect(w.fetch).not.toHaveBeenCalled();
+    expect(predict).not.toHaveBeenCalled();
+    expect(compare.queue).toEqual([]);
+    expect(compare.rows).toBe(rows);                              // no row changed (replaced whole when one does)
+    expect(compare.items).toBe(items);
+    expect(compare.forecast('25544')).toBe(f);
+    same('after');
+    predict.mockRestore();
   });
 });

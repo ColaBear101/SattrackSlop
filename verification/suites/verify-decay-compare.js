@@ -25,6 +25,22 @@
  *    lowest free one and nobody else's colour moves; the keyboard keeps its focus through a row that moves, a removed row and a
  *    toolbar button that goes; a double-click on a row's Remove removes that row alone; Clear takes two presses, and a second within
  *    0.6 s is the rest of a double-click; a failure says so with Try again named for its spacecraft.
+ *  - The chart's view (L67): Range (Auto, 30 d, 90 d, 1 y, All; a group of pressed buttons the arrow keys move along) and Show (the
+ *    seven quantities) redraw it once each, name it, caption it with the quantity, its unit and its dates, and are kept in the record
+ *    only when not the default, with no request; each range spans what it says, and each quantity reads in its own unit and agrees
+ *    with the others (perigee below the mean altitude below apogee, period times mean motion a day); a reload keeps the range and the
+ *    quantity and no zoom; a drag across the plot (8 px or more) or a double-click zooms inside the range, Escape or a short press does
+ *    not, and Reset zoom or a press of the range goes back, a click and a drag the browser makes a double-click of zoom once; the
+ *    reading has a dot on each coloured line; the slider under the plot starts on the newest element set (never past it), reads it
+ *    from the keyboard with each line's full name, says its keys beside the caption while it has the keyboard's focus, and zooms with
+ *    plus and minus, saying the span then drawn, and the chart does not move as the caption's row changes; on a phone a tap pins the
+ *    reading at the top of the plot, a sideways finger moves it, a tap elsewhere or Escape lets it go (a tap on the slider does not;
+ *    a tap on the slider alone holds its own reading the same way), a double tap zooms nothing, and a vertical swipe still scrolls
+ *    the page and pins nothing.
+ *  - L68: Show's last two, the inclination and the RAAN offset from the selected spacecraft, each read off its spacecraft's plane
+ *    (the made-up histories carry one: lib/decay-compare-seed.js plane()), history only, with no request; a spacecraft added keeps
+ *    its plane from CelesTrak's page into the cache; a history cached before L68 says so in its row and is not drawn in either, and
+ *    nothing is fetched for it; with the selected spacecraft's own history cached so, the offset says it has nothing to measure from.
  *  - Its markup keeps out of the selectors the golden prose reads, so the default report reads as it always did.
  *  - A phone: no sideways scroll, text 12 px and up, 44 px targets; a chunk that does not come says so, and to reload.
  *
@@ -68,7 +84,14 @@ const CURVES = {
   42841: [330, 228, 1, 221], 27844: [640, 636, 1, 500], 41603: [505, 470, 1, 400]
 };
 const curve = n => CURVES[+n] || [380 + (+n % 160), 380 + (+n % 160) - 8 - (+n % 30), 1, 260];
-const body = n => { const c = curve(n); return S.plot(S.falling(Date.now(), 0.001, c[2], c[0], c[1], c[3])); };
+/* each spacecraft's eccentricity, rising by half along its history: 0.0006 to 0.0024, so the eccentricity and perigee views (L67)
+   draw lines that differ (modulo 11: the five that part 11 draws get five different ones), and far under the Decay section's
+   "eccentric" mark (0.02), so no verdict and no other check moves; the selected spacecraft's starts at 0.0006 and rises to 0.0009
+   (until L67 every body had a flat 0.001) */
+const ECC = n => 0.0006 + (+n % 11) * 0.0001;
+/* ...and each its own plane (L68: lib/decay-compare-seed.js plane(), an inclination and a precessing RAAN), as CelesTrak's page has */
+const rowsOf = (n, pl) => { const c = curve(n); return S.falling(Date.now(), u => ECC(n) * (1 + 0.5 * u), c[2], c[0], c[1], c[3], pl === undefined ? S.plane(n) : pl); };
+const body = n => S.plot(rowsOf(n));
 /* the light theme's colours for slots 2..8 (draw-compare.ts CMP_PALETTE.light) */
 const LIGHT = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const DELAY = 200;                                              // each answer takes this long: two at once would overlap
@@ -211,6 +234,13 @@ const keep = page => page.evaluate(() => {
 /* what golden.js reads in a report section (golden.js: per section and page-wide) */
 const GOLDEN_SEC = 'h2, .hint, .eyebrow, th, figcaption, .passnote, .access dt, .life dt';
 const GOLDEN_PAGE = '.legend .key, .legend li, .readout dt, .readouts dt';
+/* what of those the section and the panel hold, and the panel's ids that do not start with cmp (part 1, and again in part 11) */
+const goldenIn = page => page.evaluate(([a, b]) => {
+  const sec = document.getElementById('sec-life'), p = document.getElementById('cmppanel');
+  const ids = [...p.querySelectorAll('[id]')].map(e => e.id).concat(['cmpopen', 'cmpfail', 'cmppanel']).filter(id => !/^(cmp|copt-|pop-)/.test(id));
+  return { sec: sec.querySelectorAll(a).length, page: p.querySelectorAll(b + ', dt, section, .legend, .hint, .eyebrow, h2, th, figcaption, .passnote').length, ids };
+}, [GOLDEN_SEC, GOLDEN_PAGE]);
+let golden0 = null;       // the section's count on a fresh visit, the panel shut (part 1)
 
 async function part(name, fn) {
   console.log('\n' + name);
@@ -237,7 +267,7 @@ async function part(name, fn) {
     });
     chk('the disclosure: a button in an h3, "Compare with other spacecraft", shut, its slot hidden and empty, no failure sentence',
       shut.h3 && shut.text === 'Compare with other spacecraft' && shut.ex === 'false' && shut.ctl === 'cmppanel' && shut.hidden && !shut.kids && shut.fail === '', JSON.stringify(shut));
-    const golden0 = await page.evaluate(([a]) => document.getElementById('sec-life').querySelectorAll(a).length, [GOLDEN_SEC]);
+    golden0 = await page.evaluate(([a]) => document.getElementById('sec-life').querySelectorAll(a).length, [GOLDEN_SEC]);
 
     await page.focus('#cmpopen');
     await page.keyboard.press('Enter');
@@ -329,11 +359,7 @@ async function part(name, fn) {
       cols.length === 8 && cols[0].n === SEL && cols[0].c === want && cols.slice(1).map(c => c.c.toLowerCase()).join() === LIGHT.join(), JSON.stringify(cols));
     const px = await colourCounts(page, cols.map(c => c.c));
     chk('each of the eight lines is on the canvas in its row\'s colour', px.every(k => k >= 20), cols.map((c, i) => NAMES[c.n] + ' ' + px[i]).join(', '));
-    const gold = await page.evaluate(([a, b]) => {
-      const sec = document.getElementById('sec-life'), p = document.getElementById('cmppanel');
-      const ids = [...p.querySelectorAll('[id]')].map(e => e.id).concat(['cmpopen', 'cmpfail', 'cmppanel']).filter(id => !/^(cmp|copt-|pop-)/.test(id));
-      return { sec: sec.querySelectorAll(a).length, page: p.querySelectorAll(b + ', dt, section, .legend, .hint, .eyebrow, h2, th, figcaption, .passnote').length, ids };
-    }, [GOLDEN_SEC, GOLDEN_PAGE]);
+    const gold = await goldenIn(page);
     chk('the panel uses none of the selectors the golden prose reads, no dt and no section, and its ids start with cmp',
       gold.sec === golden0 && gold.page === 0 && !gold.ids.length, JSON.stringify(gold) + ' (section had ' + golden0 + ' before)');
 
@@ -663,8 +689,9 @@ async function part(name, fn) {
     await settled(page, 5);
     chk('restored, drawn, no request', net.total() === 0 && (await opaque(page)) > 2000, JSON.stringify(net.req));
     chk('no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), String(await page.evaluate(() => document.documentElement.scrollWidth)));
-    const small = await page.evaluate(() => [...document.querySelectorAll('#sec-life h3, #cmpfail, #cmppanel *')].filter(e => e.offsetParent && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) &&
+    const smallText = () => page.evaluate(() => [...document.querySelectorAll('#sec-life h3, #cmpfail, #cmppanel *')].filter(e => e.offsetParent && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) &&
       !e.closest('.sr-only') && parseFloat(getComputedStyle(e).fontSize) < 12).map(e => e.tagName + '.' + e.className));
+    const small = await smallText();
     chk('no text under 12 px', small.length === 0, small.join(' '));
     /* [how many controls are on the screen, those under 44 px] */
     const taps = sel => page.evaluate(s => {
@@ -674,6 +701,13 @@ async function part(name, fn) {
     }, sel);
     const [k1, t1] = await taps('#cmpopen, #cmppanel button');
     chk('every control of the panel is 44 px or more both ways', k1 >= 10 && t1.length === 0, k1 + ' controls; ' + JSON.stringify(t1));
+    /* the chart's view (L67): Range's five buttons are among the panel's buttons above; Show is a select */
+    const [k3, t3] = await taps('#cmpparam');
+    const pfs = await page.evaluate(() => getComputedStyle(document.getElementById('cmpparam')).fontSize);
+    chk('Show (the quantity\'s select) is 44 px or more both ways, its text 16 px (so a phone does not zoom the page into it)', k3 === 1 && t3.length === 0 && pfs === '16px',
+      k3 + ' control; ' + JSON.stringify(t3) + ' ' + pfs);
+    const ta = await page.evaluate(() => getComputedStyle(document.getElementById('cmpcv')).touchAction);
+    chk('the chart leaves a vertical swipe and a pinch to the page (touch-action: pan-y pinch-zoom)', ta === 'pan-y pinch-zoom', ta);
     await page.click('#cmpadd');
     await page.fill('#cmpsearch', 'lemur');
     await sleep(300);
@@ -681,6 +715,129 @@ async function part(name, fn) {
     const inView = await page.evaluate(() => { const d = document.querySelector('[role=dialog][aria-label="Add a spacecraft to compare"]').getBoundingClientRect(); return d.left >= 0 && d.right <= innerWidth; });
     chk('the search is inside the screen, its options 44 px tall', inView && k2 >= 3 && t2.length === 0, k2 + ' options; ' + JSON.stringify(t2));
     chk('...and the page still does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.keyboard.press('Escape');
+    await sleep(150);
+
+    // ---- the reading by touch (L67): pinned at the top of the plot, moved by a sideways finger, let go by a tap elsewhere
+    const box = async () => {
+      await page.evaluate(() => document.getElementById('cmpcv').scrollIntoView({ block: 'center' }));
+      await sleep(250);
+      return page.evaluate(() => { const r = document.getElementById('cmpcv').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+    };
+    const pinnedNow = () => page.evaluate(() => {
+      const t = document.getElementById('cmptip'), c = document.getElementById('cmpcv').getBoundingClientRect();
+      return { tip: !!t, cross: !!document.getElementById('cmpx'), top: t ? Math.round(t.getBoundingClientRect().top - c.top) : null, day: t ? t.querySelector('p').textContent : null,
+        rows: t ? t.querySelectorAll('p').length - 1 : 0, dots: document.querySelectorAll('#cmpdots i').length };
+    });
+    let C = await box();
+    await page.touchscreen.tap(C.x + C.w * 0.4, C.y + C.h / 2);
+    await sleep(150);
+    const p1 = await pinnedNow();
+    await sleep(400);
+    const p2 = await pinnedNow();
+    chk('a tap on the chart pins the reading at the top of the plot (16 px down: the finger is under it), a dot on the line for each row, and it stays',
+      p1.tip && p1.cross && Math.abs(p1.top - 16) <= 4 && p1.rows > 0 && p1.dots === p1.rows && p2.tip && p2.day === p1.day, JSON.stringify([p1, p2]));
+    await page.evaluate(() => document.querySelector('#cmprows .name').scrollIntoView({ block: 'nearest' }));
+    await sleep(150);
+    const held = (await pinnedNow()).tip;
+    const nm = await page.evaluate(() => { const r = document.querySelector('#cmprows .name').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await page.touchscreen.tap(nm.x, nm.y);
+    await sleep(150);
+    const p3 = await pinnedNow();
+    chk('...a tap elsewhere (the first row\'s name) lets it go', held && !p3.tip && !p3.cross, 'held ' + held + ', then ' + JSON.stringify(p3));
+    C = await box();
+    const mid = [C.x + C.w * 0.5, C.y + C.h / 2];
+    await page.touchscreen.tap(mid[0], mid[1]);
+    await sleep(150);
+    const q1 = await pinnedNow();
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    const q2 = await pinnedNow();
+    chk('...Escape lets it go too', q1.tip && !q2.tip && !q2.cross, JSON.stringify([q1, q2]));
+    await sleep(400);                                             // past a double tap
+    /* a tap on the reading slider under the chart keeps it: the focused slider shows a reading of its own, so the slider is then left
+       (blur), which hides a reading that is not pinned: a reading still there is held. (A tap does not focus the range input in this
+       headless phone, so the slider is focused first; the tap is then on the focused slider, and moves its value.) */
+    await page.touchscreen.tap(mid[0], mid[1]);
+    await sleep(150);
+    const q3 = await pinnedNow();
+    await page.focus('#cmpscrub');
+    await sleep(100);
+    const sb = await page.evaluate(() => { const r = document.getElementById('cmpscrub').getBoundingClientRect(); return { x: r.left + r.width * 0.25, y: r.top + r.height / 2, h: Math.round(r.height) }; });
+    await page.touchscreen.tap(sb.x, sb.y);
+    await sleep(200);
+    const q4 = await pinnedNow(), onScrub = await focusIs(page, '#cmpscrub');
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await sleep(150);
+    const q5 = await pinnedNow();
+    chk('...a tap on the reading slider keeps it: still shown once the slider is left', q3.tip && sb.h > 0 && q4.tip && onScrub && q5.tip && q5.cross,
+      JSON.stringify([q3, sb, q4, onScrub, q5]));
+    await page.keyboard.press('Escape');
+    await sleep(400);
+    /* a tap on the slider with nothing pinned: the finger moves its value without focusing it, so no blur would ever take that reading
+       away; it is held as a tap on the chart holds one, and a tap elsewhere lets it go */
+    await box();
+    const sb2 = await page.evaluate(() => { const r = document.getElementById('cmpscrub').getBoundingClientRect(); return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }; });
+    const q6 = await pinnedNow();
+    await page.touchscreen.tap(sb2.x, sb2.y);
+    await sleep(200);
+    const q7 = await pinnedNow(), onScrub2 = await focusIs(page, '#cmpscrub');
+    await page.evaluate(() => document.querySelector('#cmprows .name').scrollIntoView({ block: 'nearest' }));
+    await sleep(150);
+    const q8a = await pinnedNow();
+    const nm2 = await page.evaluate(() => { const r = document.querySelector('#cmprows .name').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await page.touchscreen.tap(nm2.x, nm2.y);
+    await sleep(150);
+    const q8 = await pinnedNow();
+    chk('a tap on the reading slider with nothing pinned shows its reading (the slider not focused by it) and keeps it, and a tap elsewhere (the first row\'s name) lets it go',
+      !q6.tip && !q6.cross && q7.cross && !onScrub2 && q8a.cross && !q8.tip && !q8.cross, JSON.stringify([q6, q7, onScrub2, q8a, q8]));
+    await sleep(400);
+    /* a double tap never zooms: two taps 100 ms apart, then the double-click a browser makes of them, sent after the touches */
+    const w0 = await page.evaluate(() => { const c = document.getElementById('cmpcv'); window.__dbl = 0; c.addEventListener('dblclick', () => window.__dbl++); return [c.dataset.t0, c.dataset.t1]; });
+    await page.touchscreen.tap(mid[0], mid[1]);
+    await sleep(100);
+    await page.touchscreen.tap(mid[0], mid[1]);
+    await sleep(300);
+    const nat = await page.evaluate(() => window.__dbl);
+    await page.evaluate(([x, y]) => document.getElementById('cmpcv').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: x, clientY: y })), mid);
+    await sleep(250);
+    const w1 = await page.evaluate(() => { const c = document.getElementById('cmpcv'); return [c.dataset.t0, c.dataset.t1]; });
+    const zm = { reset: !!(await page.$('#cmpreset')), hint: !!(await page.$('#cmpdraghint')) };
+    chk('a double tap on the chart zooms nothing, nor does the double-click a browser makes of it (the window as it was, the hint and no Reset zoom)',
+      !!w0[0] && w1.join() === w0.join() && !zm.reset && zm.hint, JSON.stringify([w0, w1, zm]) + ' / the browser\'s own dblclicks ' + nat);
+    await page.keyboard.press('Escape');
+    await sleep(400);
+    C = await box();
+    const ym = C.y + C.h / 2, xa = C.x + C.w * 0.3, xb = C.x + C.w * 0.6;
+    await page.touchscreen.tap(xa, ym);
+    await sleep(150);
+    const d30 = (await pinnedNow()).day;
+    await sleep(400);                                             // well past a double tap
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: xa, y: ym }] });
+    for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: xa + (xb - xa) * i / 6, y: ym }] }); await sleep(30); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(150);
+    const p4 = await pinnedNow();
+    chk('a sideways finger from 30 % to 60 % of the chart moves the reading with it and leaves it there: a later day than a tap at 30 % reads',
+      !!d30 && p4.tip && p4.day > d30 && p4.dots === p4.rows, d30 + ' -> ' + JSON.stringify(p4));
+    /* a finger up the chart, 300 px, as touch events (Input.synthesizeScrollGesture's touch source scrolls nothing in headless
+       Chromium, on the chart or off it; these go through the page's touch-action and the browser's own scrolling) */
+    C = await box();
+    const y0 = await page.evaluate(() => scrollY), xs = Math.round(C.x + C.w / 2), ys = Math.round(C.y + C.h * 0.8);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: xs, y: ys }] });
+    for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: xs, y: ys - 300 * i / 12 }] }); await sleep(16); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(400);
+    const y1 = await page.evaluate(() => scrollY);
+    chk('a vertical swipe on the chart still scrolls the page', y1 - y0 >= 100, 'scrollY ' + y0 + ' -> ' + y1);
+    const p5 = await pinnedNow();
+    chk('...and pins no reading where it began (the browser took the finger), nor keeps the one the sideways finger left', p4.tip && !p5.tip && !p5.cross, JSON.stringify(p5));
+    const hint = await page.evaluate(() => { const h = document.getElementById('cmpdraghint'); return h ? h.checkVisibility() : 'absent'; });
+    chk('the hint to drag or double-click is in the page (the chart is drawn, not zoomed) and not shown under a finger', hint === false, String(hint));
+    chk('after the touches: still no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), String(await page.evaluate(() => document.documentElement.scrollWidth)));
+    const small2 = await smallText();
+    chk('...and no text under 12 px', small2.length === 0, small2.join(' '));
     await ctx.close();
   });
 
@@ -755,6 +912,530 @@ async function part(name, fn) {
     await page.waitForFunction(() => !/Fetching|Queued/.test(document.getElementById('cmprows').innerText), null, { timeout: 15000 }).catch(() => {});
     chk('...one request, for the first watched, and 50 listed', net.total() === 1 && net.req[WATCHED[0]] === 1 && (await listed(page)).length === 50, JSON.stringify(net.req));
     await ctx.close();
+  });
+
+  /* ---- 11. the chart's view (L67) ----------------------------------------------------------------------------------------------- */
+  await part('11. the chart\'s view: range, quantity, zoom and reading (1280 light, seeded)', async () => {
+    const { ctx, page, net } = await open(browser, srv, { label: 'view', seed: stored });
+    await toSection(page);
+    await settled(page, 5);
+    await page.waitForFunction(() => { const c = document.getElementById('cmpcv'); return !!c && !c.hidden && !!c.dataset.t0; }, null, { timeout: 10000 });
+    const seeded = stored['gt.decaycmp'];
+    const DAY = S.DAY;
+    /* the lines in colour (the selected one and the highlighted rows) and, from their cached histories, the first element set among
+       them and the newest: where All starts, and where 30 d, 90 d and 1 y end */
+    const coloured = [SEL].concat(JSON.parse(seeded).l.filter(i => i.h).map(i => i.n));
+    const sets = coloured.map(n => JSON.parse(stored['hist:' + n]).P);
+    const tFirst = Math.min(...sets.map(P => P[0].t)), tLast = Math.max(...sets.map(P => P[P.length - 1].t));
+    /* the view as the page has it: the pressed range, the quantity, the caption, the chart's name and description, the record, the
+       draws, the key, the window drawn (the canvas's data-t0 and data-t1, written for the suites), Reset zoom, the hint and the note */
+    const view = () => page.evaluate(() => {
+      const cv = document.getElementById('cmpcv'), shown = id => { const e = document.getElementById(id); return !!e && e.checkVisibility(); };
+      return { pressed: [...document.querySelectorAll('#cmpview button[aria-pressed="true"]')].map(b => b.id), buttons: document.querySelectorAll('#cmpview button[aria-pressed]').length,
+        param: document.getElementById('cmpparam').value, axis: document.getElementById('cmpaxis').textContent, name: cv.getAttribute('aria-label'),
+        desc: cv.getAttribute('aria-describedby'), rec: localStorage.getItem('gt.decaycmp'), draws: window.__cmpDraws || 0,
+        key: [...document.querySelectorAll('#cmpkey > span')].map(s => s.textContent), t0: +cv.dataset.t0, t1: +cv.dataset.t1,
+        reset: shown('cmpreset'), hint: shown('cmpdraghint'), note: (document.getElementById('cmpnote') || {}).textContent || null };
+    });
+    /* the reading: its day, its rows (the whole row's text, the value alone, the name), the dots on the lines, its top over the canvas's */
+    const reading = () => page.evaluate(() => {
+      const t = document.getElementById('cmptip'), c = document.getElementById('cmpcv').getBoundingClientRect();
+      if (!t) return null;
+      return { day: t.querySelector('p').textContent, top: Math.round(t.getBoundingClientRect().top - c.top), dots: document.querySelectorAll('#cmpdots i').length,
+        rows: [...t.querySelectorAll('p')].slice(1).map(p => ({ text: p.textContent.replace(/\s+/g, ' ').trim(), v: [...p.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim(), name: p.querySelector('span').textContent })) };
+    });
+    /* the canvas in the page and the plot's margins (--pl, --pr: what the panel wrote after the draw) */
+    const plot = async () => {
+      await page.evaluate(() => document.getElementById('cmpcv').scrollIntoView({ block: 'center' }));
+      await sleep(200);
+      return page.evaluate(() => {
+        const cv = document.getElementById('cmpcv'), r = cv.getBoundingClientRect(), s = getComputedStyle(cv.parentElement);
+        return { x: r.left, y: r.top, w: r.width, h: r.height, L: parseFloat(s.getPropertyValue('--pl')), R: parseFloat(s.getPropertyValue('--pr')) };
+      });
+    };
+    const across = (P, f) => P.x + P.L + (P.w - P.L - P.R) * f;               // f of the way across the plot
+    const off = async P => { await page.mouse.move(P.x + P.w / 2, P.y - 60); await sleep(80); };
+    /* the pointer from 2 % to 98 % of the canvas's width, in 4 % steps, at half its height: every reading it shows */
+    const hover = async P => {
+      const out = [];
+      for (let i = 0; i <= 24; i++) {
+        await page.mouse.move(P.x + P.w * (0.02 + 0.04 * i), P.y + P.h / 2);
+        await sleep(30);
+        const r = await reading();
+        if (r) out.push(r);
+      }
+      await off(P);
+      return out;
+    };
+    const dates = a => (/ · (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/.exec(a) || []).slice(1);
+    const day = t => new Date(t).toISOString().slice(0, 10);
+    const focused = () => page.evaluate(() => document.activeElement && document.activeElement.id);
+    const HP_NOTE = 'Worked out from each element set’s mean altitude and eccentricity, above a sphere of the Earth’s equatorial radius: ' +
+      'a height found by propagating the orbit differs by a few km. The forecast is of mean altitude only, so these lines stop at each last element set.';
+
+    let P = await plot();
+    const v1 = await view();
+    chk('the defaults: Auto pressed and the other four not, Mean altitude shown, the caption "Mean altitude, km · <from> to <to>" with the drawn window\'s days, the record as seeded, no request, the hint and no Reset zoom',
+      v1.buttons === 5 && v1.pressed.join() === 'cmpr-auto' && v1.param === 'alt' && /^Mean altitude, km · \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/.test(v1.axis) &&
+      dates(v1.axis).join() === [day(v1.t0), day(v1.t1)].join() && v1.rec === seeded && net.total() === 0 && v1.hint && !v1.reset && !(await page.$('#cmpreset')), JSON.stringify(v1));
+
+    await page.click('#cmpr-90d');
+    await sleep(200);
+    const v2 = await view(), d2 = dates(v2.axis);
+    chk('90 d: pressed instead, the window the 90 days up to the newest element set of the lines in colour (its end that set, the caption\'s days 90 apart), kept ("r":"90d", the list the same), drawn once more, the same name, no request',
+      v2.pressed.join() === 'cmpr-90d' && v2.t1 === Math.round(tLast) && v2.t1 - v2.t0 === 90 * DAY && d2.length === 2 && Date.parse(d2[1]) - Date.parse(d2[0]) === 90 * DAY && JSON.parse(v2.rec).r === '90d' &&
+      JSON.stringify(JSON.parse(v2.rec).l) === JSON.stringify(JSON.parse(seeded).l) && v2.draws === v1.draws + 1 && v2.name === v1.name && net.total() === 0, JSON.stringify(v2) + ' / newest set ' + day(tLast));
+
+    await page.focus('#cmpr-90d');
+    await page.keyboard.press('ArrowRight');
+    await sleep(150);
+    const k1 = await view(), f1 = await focused();
+    await page.keyboard.press('ArrowLeft');
+    await sleep(150);
+    const k2 = await view(), f2 = await focused();
+    chk('the arrow keys: ArrowRight presses 1 y and moves the focus to it, kept ("r":"1y"); ArrowLeft goes back to 90 d',
+      k1.pressed.join() === 'cmpr-1y' && f1 === 'cmpr-1y' && JSON.parse(k1.rec).r === '1y' && k2.pressed.join() === 'cmpr-90d' && f2 === 'cmpr-90d' && JSON.parse(k2.rec).r === '90d',
+      [k1.pressed, f1, k1.rec, k2.pressed, f2].join(' / '));
+
+    /* every range, pressed in turn: its window (30 d and 1 y end at the newest set; All runs from the first set to the latest end of a
+       projection, where Auto ends too), its caption, the record ("r" only when not Auto), one draw each, no request */
+    const RANGE_WIN = {
+      '30d': w => w.t1 === Math.round(tLast) && w.t1 - w.t0 === 30 * DAY,
+      '1y': w => w.t1 === Math.round(tLast) && w.t1 - w.t0 === 365 * DAY,
+      all: w => w.t0 === Math.round(tFirst) && w.t1 === v1.t1 && w.t0 <= v1.t0,
+      auto: w => w.t0 === v1.t0 && w.t1 === v1.t1 && w.rec === seeded,
+      '90d': w => w.t0 === v2.t0 && w.t1 === v2.t1 && w.rec === v2.rec
+    };
+    const RANGE_SAYS = { '30d': 'the 30 days up to the newest set', '1y': 'the 365 days up to the newest set', all: 'from the first set (' + day(tFirst) + ') to where Auto ends',
+      auto: 'Auto\'s window again, the record as seeded', '90d': '90 d\'s window again' };
+    for (const r of ['30d', '1y', 'all', 'auto', '90d']) {
+      const n0 = (await view()).draws;
+      await page.click('#cmpr-' + r);
+      await sleep(200);
+      const w = await view(), rec = JSON.parse(w.rec);
+      chk('Range "' + r + '": pressed alone, ' + RANGE_SAYS[r] + ', the caption "Mean altitude, km · " with its days, kept (' + (r === 'auto' ? 'no "r"' : '"r":"' + r + '"') + '), drawn once more, no request',
+        w.pressed.join() === 'cmpr-' + r && RANGE_WIN[r](w) && w.axis.startsWith('Mean altitude, km · ') && dates(w.axis).join() === [day(w.t0), day(w.t1)].join() &&
+        (r === 'auto' ? !('r' in rec) : rec.r === r) && JSON.stringify(rec.l) === JSON.stringify(JSON.parse(seeded).l) && w.draws === n0 + 1 && net.total() === 0,
+        JSON.stringify({ pressed: w.pressed, axis: w.axis, t0: w.t0, t1: w.t1, days: (w.t1 - w.t0) / DAY, rec: w.rec, draws: w.draws - n0 }) + ' / Auto ' + [v1.t0, v1.t1] + ', first set ' + tFirst + ', newest ' + tLast);
+    }
+
+    P = await plot();
+    const h4 = await hover(P);
+    chk('hover from 2 % to 98 % of the width: every reading\'s day within the caption\'s, some readings, and a dot for each row',
+      h4.length > 0 && h4.every(r => r.rows.length && r.day >= d2[0] && r.day <= d2[1] && r.dots === r.rows.length), h4.length + ' readings; ' + JSON.stringify(h4.filter(r => !(r.day >= d2[0] && r.day <= d2[1] && r.dots === r.rows.length)).slice(0, 2)));
+
+    /* every quantity, chosen in turn over 90 d: the select's value, the caption (the quantity, its unit, 90 d's days: the window never
+       moves with the quantity), the record ("p" only when not Mean altitude), one draw each, no request, and the reading at the middle
+       of the plot, each value in the quantity's own form; then those readings against each other, spacecraft by spacecraft */
+    const PARAM_AXIS = { hp: 'Mean perigee altitude, km', ha: 'Mean apogee altitude, km', rate: 'Decay rate, km/day', ecc: 'Eccentricity', per: 'Orbital period, min',
+      mm: 'Mean motion, rev/day', alt: 'Mean altitude, km' };
+    const KM = /^\d+\.\d km$/;
+    const FORM = { hp: KM, ha: KM, rate: /^[-+]?\d+\.\d{3} km\/day$/, ecc: /^\d\.\d{5}$/, per: /^\d+\.\d{2} min$/, mm: /^\d+\.\d{4} rev\/day$/, alt: KM };
+    const FORM_SAYS = { hp: 'km to 0.1', ha: 'km to 0.1', rate: 'km/day to 0.001', ecc: 'to five places', per: 'min to 0.01', mm: 'rev/day to 0.0001', alt: 'km to 0.1' };
+    const at = {};                                                // quantity -> name -> the value read at the middle of 90 d
+    for (const p of ['hp', 'ha', 'rate', 'ecc', 'per', 'mm', 'alt']) {
+      const n0 = (await view()).draws;
+      await page.selectOption('#cmpparam', p);
+      await sleep(200);
+      const w = await view(), rec = JSON.parse(w.rec);
+      const Q = await plot();
+      await page.mouse.move(across(Q, 0.5), Q.y + Q.h / 2);
+      await sleep(60);
+      const r = await reading();
+      await off(Q);
+      at[p] = Object.fromEntries(((r && r.rows) || []).map(q => [q.name, parseFloat(q.v)]));
+      chk('Show "' + p + '": chosen, the caption "' + PARAM_AXIS[p] + ' · " with 90 d\'s days, kept (' + (p === 'alt' ? 'no "p"' : '"p":"' + p + '"') + ' with "r":"90d"), drawn once more, no request, and the reading mid-plot one row per line in colour, each ' + FORM_SAYS[p],
+        w.param === p && w.axis.startsWith(PARAM_AXIS[p] + ' · ') && dates(w.axis).join() === d2.join() && w.t0 === v2.t0 && w.t1 === v2.t1 &&
+        (p === 'alt' ? !('p' in rec) && w.rec === v2.rec : rec.p === p) && rec.r === '90d' && w.draws === n0 + 1 && net.total() === 0 &&
+        !!r && r.rows.length === coloured.length && r.rows.every(q => FORM[p].test(q.v)),
+        JSON.stringify({ param: w.param, axis: w.axis, rec: w.rec, draws: w.draws - n0 }) + ' / ' + JSON.stringify(r));
+    }
+    const RE_KM = 6378.137, names = Object.keys(at.alt);
+    const odd = names.filter(nm => !(at.hp[nm] < at.alt[nm] && at.alt[nm] < at.ha[nm] && Math.abs((at.ha[nm] - at.hp[nm]) - 2 * at.ecc[nm] * (at.alt[nm] + RE_KM)) <= 0.3 &&
+      Math.abs(at.per[nm] * at.mm[nm] - 1440) <= 0.1 && at.rate[nm] < 0));
+    chk('...and read together, each spacecraft\'s: perigee below its mean altitude below its apogee, apogee less perigee twice the eccentricity times the mean altitude plus 6378.137 km (to 0.3 km), period times mean motion 1440 min a day (to 0.1), the decay rate below zero; and five different eccentricities',
+      names.length === coloured.length && !odd.length && new Set(names.map(nm => at.ecc[nm])).size === names.length,
+      (odd.length ? 'odd: ' + odd.join(', ') + ' / ' : '') + JSON.stringify(at));
+
+    const d5 = (await view()).draws;
+    await page.selectOption('#cmpparam', 'hp');
+    await sleep(200);
+    const v5 = await view();
+    chk('Show "Mean perigee altitude": the chart named for it, the key "observed" with no "projected", the note under it and in the chart\'s description, the caption "Mean perigee altitude, km · " with 90 d\'s days, kept with the range ("p":"hp","r":"90d"), drawn once more, no request',
+      /^Mean perigee altitude history of \d+ spacecraft/.test(v5.name) && v5.key[v5.key.length - 1] === 'observed' && !v5.key.includes('projected') && v5.note === HP_NOTE &&
+      v5.axis.startsWith('Mean perigee altitude, km · ') && dates(v5.axis).join() === d2.join() && JSON.parse(v5.rec).p === 'hp' && JSON.parse(v5.rec).r === '90d' &&
+      v5.draws === d5 + 1 && net.total() === 0 && (v5.desc || '').split(' ').includes('cmpnote'), JSON.stringify(v5));
+    P = await plot();
+    const h5 = await hover(P);
+    chk('...its readings: each row "<km to 0.1> km <name>", highest first', h5.length > 0 &&
+      h5.every(r => r.rows.length && r.rows.every((q, i, a) => /^\d+\.\d km /.test(q.text) && (!i || parseFloat(a[i - 1].v) >= parseFloat(q.v)))), JSON.stringify(h5.slice(0, 2)));
+
+    await page.selectOption('#cmpparam', 'rate');
+    await sleep(200);
+    const v6 = await view(), h6 = await hover(await plot());
+    chk('Decay rate: the caption "Decay rate, km/day · ", every reading\'s value signed to 0.001 km/day and below zero (the histories fall)',
+      v6.axis.startsWith('Decay rate, km/day · ') && h6.length > 0 && h6.every(r => r.rows.length && r.rows.every(q => /^[-+]\d+\.\d{3} km\/day /.test(q.text) && parseFloat(q.v) < 0)),
+      v6.axis + ' / ' + JSON.stringify(h6.slice(0, 2)));
+
+    await page.selectOption('#cmpparam', 'ecc');
+    await sleep(200);
+    const v7 = await view(), h7 = await hover(await plot());
+    /* each line's values from left to right: the made-up eccentricities rise by half along each history, so none falls, each ends
+       higher than it starts, and no two lines read the same (each spacecraft has its own) */
+    const eccSeq = nm => h7.map(r => r.rows.find(q => q.name === nm)).filter(Boolean).map(q => parseFloat(q.v));
+    const eccNames = [...new Set(h7.flatMap(r => r.rows.map(q => q.name)))];
+    const eccOdd = eccNames.filter(nm => { const s = eccSeq(nm); return !(s.length > 1 && s.every((v, i) => !i || v >= s[i - 1]) && s[s.length - 1] > s[0]); });
+    chk('Eccentricity: the caption "Eccentricity · " (no unit), every reading\'s value to five places, each line rising from left to right, and no two lines reading the same',
+      v7.axis.startsWith('Eccentricity · ') && h7.length > 0 && h7.every(r => r.rows.length && r.rows.every(q => /^\d\.\d{5} /.test(q.text)) && new Set(r.rows.map(q => q.v)).size === r.rows.length) &&
+      eccNames.length === coloured.length && !eccOdd.length,
+      v7.axis + (eccOdd.length ? ' / not rising: ' + eccOdd.map(nm => nm + ' ' + eccSeq(nm).join(' ')).join('; ') : '') + ' / ' + JSON.stringify(h7.slice(0, 2)));
+
+    await page.selectOption('#cmpparam', 'per');
+    await sleep(150);
+    await page.click('#cmpr-auto');
+    await sleep(250);
+    const v8 = await view(), rec8 = JSON.parse(v8.rec);
+    const cols = await rowColours(page), px8 = await colourCounts(page, cols.map(c => c.c));
+    const h8 = await hover(await plot());
+    chk('Orbital period over Auto: the key ends "observed", "projected", every coloured row\'s line is on the canvas in its colour, the chart named "Orbital period history and projection of ...", readings in min, kept as "p":"per" with no "r"',
+      v8.pressed.join() === 'cmpr-auto' && v8.key.slice(-2).join() === 'observed,projected' && cols.length >= 2 && px8.every(k => k >= 20) && v8.name.startsWith('Orbital period history and projection of ') &&
+      h8.length > 0 && h8.every(r => r.rows.every(q => / min$/.test(q.v))) && rec8.p === 'per' && !('r' in rec8),
+      JSON.stringify(v8) + ' / ' + cols.map((c, i) => c.n + ' ' + px8[i]).join(', ') + ' / ' + JSON.stringify(h8.slice(0, 1)));
+
+    // ---- the zoom (a mouse): a drag, a short press, Escape mid-drag, Reset zoom, a double-click, a press of the range
+    const auto = await view();
+    P = await plot();
+    const ym = P.y + P.h / 2;
+    await page.mouse.move(across(P, 0.3), ym);
+    await page.mouse.down();
+    let band = false;
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(across(P, 0.3 + 0.03 * i), ym);
+      if (i === 5) band = await page.evaluate(() => { const b = document.getElementById('cmpsel'); return !!b && b.checkVisibility() && b.getBoundingClientRect().width > 0; });
+    }
+    await page.mouse.up();
+    await sleep(200);
+    const z = await view();
+    const aSpan = auto.t1 - auto.t0;
+    chk('a drag from 30 % to 60 % of the plot: the band shows on the way, then that part of Auto\'s window (its start 30 % and its end 60 % of the way across, to 1 % of the span), Reset zoom, the caption ending " · zoomed in", Auto still pressed, the record unchanged, no request',
+      band && z.t0 >= auto.t0 && z.t1 <= auto.t1 && Math.abs(z.t0 - (auto.t0 + 0.3 * aSpan)) <= 0.01 * aSpan && Math.abs(z.t1 - (auto.t0 + 0.6 * aSpan)) <= 0.01 * aSpan &&
+      z.reset && z.axis.endsWith(' · zoomed in') && z.pressed.join() === 'cmpr-auto' && z.rec === auto.rec && net.total() === 0,
+      'band ' + band + '; ' + ((z.t0 - auto.t0) / aSpan).toFixed(4) + ' to ' + ((z.t1 - auto.t0) / aSpan).toFixed(4) + ' of Auto; ' + JSON.stringify(z));
+    await page.mouse.move(across(P, 0.5), ym);
+    await page.mouse.down();
+    await page.mouse.move(across(P, 0.5) + 4, ym);
+    await page.mouse.up();
+    await sleep(150);
+    const z10 = await view();
+    chk('a press that moves 4 px zooms nothing', z10.t0 === z.t0 && z10.t1 === z.t1, JSON.stringify([z.t0, z.t1, z10.t0, z10.t1]));
+    await page.mouse.move(across(P, 0.2), ym);
+    await page.mouse.down();
+    await page.mouse.move(across(P, 0.2) + 100, ym, { steps: 5 });
+    const band11 = await page.evaluate(() => !!document.getElementById('cmpsel'));
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await sleep(150);
+    const z11 = await view();
+    chk('Escape during a drag: the band goes and nothing is zoomed', band11 && z11.t0 === z.t0 && z11.t1 === z.t1 && !(await page.$('#cmpsel')), 'band ' + band11 + '; ' + JSON.stringify([z11.t0, z11.t1]));
+    await page.click('#cmpreset');
+    await sleep(200);
+    const v12 = await view();
+    chk('Reset zoom: Auto\'s window again, Reset zoom gone, the focus on Auto (the range the zoom was made in), the caption no longer "zoomed in"',
+      v12.t0 === auto.t0 && v12.t1 === auto.t1 && !v12.reset && !(await page.$('#cmpreset')) && (await focused()) === 'cmpr-auto' && !v12.axis.includes('zoomed in'),
+      JSON.stringify(v12) + ' / focus ' + (await focused()));
+    P = await plot();
+    await page.dblclick('#cmpcv', { position: { x: P.L + (P.w - P.L - P.R) * 0.5, y: P.h / 2 } });
+    await sleep(200);
+    const v13 = await view();
+    await off(P);
+    await page.click('#cmpr-auto');
+    await sleep(200);
+    const v13b = await view();
+    chk('a double-click at the middle halves the span (to 1 ms), inside Auto\'s, with Reset zoom; a press of Auto, the one pressed, takes the zoom away',
+      Math.abs((v13.t1 - v13.t0) - (auto.t1 - auto.t0) / 2) <= 1 && v13.t0 >= auto.t0 && v13.t1 <= auto.t1 && v13.reset && v13b.t0 === auto.t0 && v13b.t1 === auto.t1 && !v13b.reset,
+      JSON.stringify([(v13.t1 - v13.t0) / DAY, (auto.t1 - auto.t0) / DAY, v13.reset, v13b.reset]));
+    /* a click, then a press within the double-click time that drags: its release zooms to the band, and the browser ends a double-click
+       with it and the click before (the second press's count, 2); that is not a second zoom, about the release, of half the band */
+    P = await plot();
+    const y18 = P.y + P.h / 2;
+    await page.evaluate(() => { window.__dbl18 = 0; document.getElementById('cmpcv').addEventListener('dblclick', () => window.__dbl18++); });
+    await page.mouse.click(across(P, 0.3), y18);
+    await page.mouse.down({ clickCount: 2 });
+    for (let i = 1; i <= 10; i++) await page.mouse.move(across(P, 0.3 + 0.03 * i), y18);
+    await page.mouse.up({ clickCount: 2 });
+    await sleep(200);
+    const z18 = await view(), dbl18 = await page.evaluate(() => window.__dbl18);
+    await off(P);
+    await page.click('#cmpr-auto');
+    await sleep(200);
+    chk('a click, then a press within the double-click time that drags from 30 % to 60 % of the plot (the browser making a double-click of them): one zoom, to that band (to 1 % of Auto\'s span), not half of it',
+      dbl18 === 1 && z18.reset && Math.abs(z18.t0 - (auto.t0 + 0.3 * aSpan)) <= 0.01 * aSpan && Math.abs(z18.t1 - (auto.t0 + 0.6 * aSpan)) <= 0.01 * aSpan,
+      ((z18.t0 - auto.t0) / aSpan).toFixed(4) + ' to ' + ((z18.t1 - auto.t0) / aSpan).toFixed(4) + ' of Auto; ' + JSON.stringify([z18.reset, (z18.t1 - z18.t0) / DAY]) + '; dblclicks ' + dbl18);
+
+    // ---- the reading slider, from the keyboard
+    /* where the chart sits in the page, and what the caption's row holds beside the caption: the drag hint, or the slider's keys */
+    const cvTop = () => page.evaluate(() => Math.round(document.getElementById('cmpcv').getBoundingClientRect().top + scrollY));
+    const hints = () => page.evaluate(() => {
+      const k = document.getElementById('cmpkeyhint'), d = document.getElementById('cmpdraghint');
+      return { keys: k && k.checkVisibility() ? k.textContent : null, drag: !!d && d.checkVisibility(), hidden: k ? k.getAttribute('aria-hidden') : null };
+    });
+    const KEYS_HINT = 'Arrow keys move the reading; plus and minus zoom in and out.';
+    const top0 = await cvTop(), kh0 = await hints();
+    await page.focus('#cmpscrub');
+    await sleep(150);
+    const s1 = await reading(), vt1 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
+    chk('the reading slider, focused: the reading shows, held at the top of the plot (16 px down), and its aria-valuetext ("<day>: ...") names KNACKSAT-2',
+      !!s1 && Math.abs(s1.top - 16) <= 4 && /^\d{4}-\d{2}-\d{2}: /.test(vt1) && vt1.includes('KNACKSAT-2'), JSON.stringify(s1) + ' / ' + vt1);
+    for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowLeft');
+    await sleep(100);
+    const vt2 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
+    chk('...ten ArrowLeft presses read an earlier day', vt2.slice(0, 10) < vt1.slice(0, 10), vt1.slice(0, 10) + ' -> ' + vt2.slice(0, 10));
+    const kh2 = await hints(), top1 = await cvTop();
+    chk('...while the slider has the keyboard\'s focus, its keys are said beside the caption in the drag hint\'s place ("' + KEYS_HINT + '", hidden from a screen reader, which has them as the slider\'s description); the drag hint before',
+      !kh0.keys && kh0.drag && kh2.keys === KEYS_HINT && !kh2.drag && kh2.hidden === 'true', JSON.stringify([kh0, kh2]));
+    const desc = await page.evaluate(() => { const d = document.getElementById(document.getElementById('cmpscrub').getAttribute('aria-describedby')); return d ? { hidden: d.hidden, text: d.textContent } : null; });
+    chk('...the slider\'s description holds its keys in full, hidden (read as the description only, not again as text)',
+      !!desc && desc.hidden && desc.text === 'Left and right arrows move the reading, Page Up and Page Down further; plus and minus zoom in and out.', JSON.stringify(desc));
+    await page.evaluate(() => { window.__keys = []; addEventListener('keydown', e => { if (e.key !== 'Control') window.__keys.push(e.key + (e.defaultPrevented ? ' taken' : '')); }); });
+    await page.keyboard.press('Control+Equal');
+    await sleep(150);
+    const c14 = await view(), keys = await page.evaluate(() => window.__keys);
+    chk('...Ctrl with = is left to the browser (the page\'s own zoom): nothing zoomed, the key not taken', !c14.reset && c14.t0 === auto.t0 && c14.t1 === auto.t1 && keys.join() === '=',
+      keys.join() + ' / ' + JSON.stringify([c14.reset, c14.t0 - auto.t0, c14.t1 - auto.t1]));
+    await page.keyboard.press('=');
+    await sleep(200);
+    const s3 = await view(), vt3 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
+    /* the slider stays on its instant through the zoom; when the halved window is held inside Auto's, the nearest of its 240 steps (well
+       under a day away) may fall on the next day: a slider sent back to the newest set or the right end would be weeks away */
+    chk('...= zooms in: Reset zoom shows, the span halves, the slider keeps the focus and still reads the instant it was at (to a day)',
+      s3.reset && Math.abs((s3.t1 - s3.t0) - (auto.t1 - auto.t0) / 2) <= 1 && (await focused()) === 'cmpscrub' && Math.abs(Date.parse(vt3.slice(0, 10)) - Date.parse(vt2.slice(0, 10))) <= DAY,
+      JSON.stringify([s3.reset, (s3.t1 - s3.t0) / DAY, (auto.t1 - auto.t0) / DAY]) + ' / ' + vt2.slice(0, 10) + ' -> ' + vt3.slice(0, 10) + ' / focus ' + (await focused()));
+    chk('...and its aria-valuetext then ends with the span drawn, " · <from> to <to> · zoomed in", so the zoom is heard',
+      vt3.endsWith(' · ' + day(s3.t0) + ' to ' + day(s3.t1) + ' · zoomed in'), vt3);
+    const top2 = await cvTop();
+    await page.keyboard.press('-');
+    await sleep(200);
+    const s4 = await view(), vt4 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '', top3 = await cvTop();
+    chk('...- takes the zoom away: Auto\'s window, no Reset zoom', !s4.reset && s4.t0 === auto.t0 && s4.t1 === auto.t1, JSON.stringify([s4.reset, s4.t0 - auto.t0, s4.t1 - auto.t1]));
+    chk('...and its aria-valuetext ends with Auto\'s span, no longer zoomed in', vt4.endsWith(' · ' + day(auto.t0) + ' to ' + day(auto.t1)) && !vt4.includes('zoomed in'), vt4);
+    chk('the chart does not move while the caption\'s row holds the drag hint, the slider\'s keys, Reset zoom, then the keys again (28 px each)',
+      [top1, top2, top3].every(t => t === top0), JSON.stringify([top0, top1, top2, top3]));
+    await page.keyboard.press('Escape');
+    await sleep(100);
+    const e1 = { tip: !!(await reading()), cross: !!(await page.$('#cmpx')) };
+    await page.keyboard.press('ArrowRight');
+    await sleep(100);
+    const e2 = !!(await page.$('#cmpx'));
+    await page.keyboard.press('Tab');
+    await sleep(150);
+    const e3 = { tip: !!(await reading()), cross: !!(await page.$('#cmpx')), focus: await focused() };
+    chk('...Escape hides the reading, the next key brings it back, and Tab away leaves none', !e1.tip && !e1.cross && e2 && !e3.tip && !e3.cross && e3.focus !== 'cmpscrub',
+      JSON.stringify([e1, e2, e3]));
+    const kh3 = await hints();
+    chk('...and the drag hint is back in the keys\' place', !kh3.keys && kh3.drag, JSON.stringify(kh3));
+
+    // ---- reload: the quantity and the range kept, a zoom not (reloaded with 90 d pressed, not the default, and a zoom drawn)
+    await page.click('#cmpr-90d');
+    await sleep(200);
+    P = await plot();
+    await page.dblclick('#cmpcv', { position: { x: P.L + (P.w - P.L - P.R) * 0.5, y: P.h / 2 } });
+    await sleep(200);
+    const z15 = await view();
+    await off(P);
+    const rec15 = await record(page), n15 = net.total();
+    await page.reload({ waitUntil: 'load' });
+    await ready(page);
+    await toSection(page);
+    await settled(page, 5);
+    await page.waitForFunction(() => { const c = document.getElementById('cmpcv'); return !!c && !c.hidden && !!c.dataset.t0; }, null, { timeout: 10000 });
+    await sleep(150);
+    const v15 = await view(), r15 = JSON.parse(rec15 || '{}');
+    chk('after a reload with 90 d pressed and a zoom drawn: Orbital period still shown, 90 d pressed and its window again, no zoom (no Reset zoom), the record as it was ("p":"per","r":"90d", nothing of the zoom), no request',
+      z15.reset && z15.pressed.join() === 'cmpr-90d' && z15.t1 - z15.t0 < 90 * DAY && v15.param === 'per' && v15.pressed.join() === 'cmpr-90d' && v15.t0 === v2.t0 && v15.t1 === v2.t1 &&
+      !v15.reset && !(await page.$('#cmpreset')) && v15.rec === rec15 && z15.rec === rec15 && r15.p === 'per' && r15.r === '90d' && Object.keys(r15).sort().join() === 'l,o,p,r' && net.total() === n15,
+      'zoomed ' + JSON.stringify([z15.reset, z15.pressed, (z15.t1 - z15.t0) / DAY]) + ' / after ' + JSON.stringify(v15) + ' / ' + rec15);
+    await page.click('#cmpr-auto');
+    await sleep(200);
+    await page.selectOption('#cmpparam', 'alt');
+    await sleep(200);
+    const v16 = await view();
+    chk('Mean altitude again: the record is the seeded string (the default view is not written), and the chart\'s name is the first one', v16.rec === seeded && v16.name === v1.name,
+      v16.rec + ' / ' + v16.name);
+
+    /* the golden guard again, with the view in the page: as it is now, then with a note, Reset zoom, the reading and its dots */
+    const g1 = await goldenIn(page);
+    await page.selectOption('#cmpparam', 'hp');
+    await sleep(200);
+    /* Where the reading slider starts after a draw: on the newest element set's step of its 240 or the one before, never after it
+       (Mean perigee altitude has no forecast, so past the last sets no line has a value). Its instant is the window's start plus
+       value / 240 of the window. Over Auto, then over a zoom (a double-click about the newest set, a pixel further each time) that
+       puts the newest set in the second half of a step, where a start rounded to the nearest step would land after it. */
+    const scrubNow = () => page.evaluate(() => {
+      const s = document.getElementById('cmpscrub'), c = document.getElementById('cmpcv'), t0 = +c.dataset.t0, t1 = +c.dataset.t1, v = +s.value;
+      return { v, t0, t1, t: t0 + v / 240 * (t1 - t0), text: s.getAttribute('aria-valuetext') || '' };
+    });
+    const place = s => (tLast - s.t0) / (s.t1 - s.t0) * 240;      // the newest set's place on the slider's steps
+    const startOk = s => !!s && s.t <= tLast + 1 && s.t > tLast - (s.t1 - s.t0) / 240 - 1 && /^\d{4}-\d{2}-\d{2}: /.test(s.text) && !/no line has a value here/.test(s.text);
+    const sA = await scrubNow();
+    let sZ = null;
+    P = await plot();
+    for (let dx = 0; dx < 10 && !sZ; dx++) {
+      await page.dblclick('#cmpcv', { position: { x: P.L + (P.w - P.L - P.R) * (tLast - sA.t0) / (sA.t1 - sA.t0) + dx, y: P.h / 2 } });
+      await sleep(200);
+      const s = await scrubNow(), f = place(s);
+      if (s.t1 - s.t0 < sA.t1 - sA.t0 && f > 0 && f < 240 && f - Math.floor(f) >= 0.55) sZ = s;
+      await off(P);
+      await page.click('#cmpr-auto');                             // the pressed range: the zoom goes
+      await sleep(200);
+    }
+    await page.focus('#cmpscrub');
+    await sleep(150);
+    const r17 = await reading(), vt17 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
+    const says = s => s && { v: s.v, place: +place(s).toFixed(3), before: +((tLast - s.t) / DAY).toFixed(3), text: s.text.slice(0, 60) };
+    chk('Mean perigee altitude (no forecast past the last sets): the reading slider starts on the newest element set\'s step or the one before, never after it, and reads values there: over Auto, and over a zoom with that set in the second half of a step',
+      startOk(sA) && startOk(sZ) && !!r17 && r17.rows.length > 0 && vt17 === sA.text,
+      JSON.stringify({ auto: says(sA), zoom: says(sZ), newest: day(tLast) }) + ' / focused ' + vt17.slice(0, 60) + ' / ' + JSON.stringify(r17 && r17.rows.length));
+    await page.keyboard.press('=');
+    await sleep(200);
+    const g2 = await goldenIn(page), there = await page.evaluate(() => ['cmpview', 'cmpaxis', 'cmpscrub', 'cmpnote', 'cmpreset', 'cmptip', 'cmpdots'].filter(id => !document.getElementById(id)));
+    chk('with the view bar, the caption, the slider, the note, Reset zoom and the reading in the page, the panel still uses none of the selectors the golden prose reads, and its ids start with cmp',
+      golden0 !== null && [g1, g2].every(g => g.sec === golden0 && g.page === 0 && !g.ids.length) && !there.length, JSON.stringify([g1, g2]) + ' (section had ' + golden0 + ' on a fresh visit); missing ' + there.join(' '));
+    await ctx.close();
+  });
+
+  /* ---- 12. the slider's words name each line in full ----------------------------------------------------------------------------- */
+  await part('12. the reading slider says each line\'s full name (1280 light, the sweeps\' seed: ARCTIC WEATHER SATELLITE in colour)', async () => {
+    const { ctx, page, net } = await open(browser, srv, { label: 'names', seed: S.compareSeed(Date.now()) });
+    await toSection(page);
+    /* every cached row read and drawn (the fold shut: 8 of its 9 rows), as verify-layout waits for it */
+    await page.waitForFunction(() => {
+      const r = document.getElementById('cmprows'), c = document.getElementById('cmpcv'), s = document.getElementById('cmpscrub');
+      return !!r && r.children.length === 8 && !/Reading|Queued|Fetching/.test(r.innerText) && !!c && !c.hidden && !!c.dataset.t0 && !!s && !s.hidden;
+    }, null, { timeout: 20000 });
+    await sleep(200);
+    await page.focus('#cmpscrub');
+    await sleep(150);
+    const vt = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
+    const tipNames = await page.evaluate(() => [...document.querySelectorAll('#cmptip p')].slice(1).map(p => p.querySelector('span').textContent));
+    const FULL = 'ARCTIC WEATHER SATELLITE', SHORT = 'ARCTIC WEATHER SA…';   // the readout's shortName: 17 characters and an ellipsis
+    chk('the slider\'s aria-valuetext names ARCTIC WEATHER SATELLITE in full, where the reading beside it shortens the name (ARCTIC WEATHER SA…); no request',
+      vt.includes(FULL + ' ') && !vt.includes(SHORT) && tipNames.includes(SHORT) && !tipNames.includes(FULL) && net.total() === 0, vt + ' / ' + tipNames.join(', ') + ' / ' + JSON.stringify(net.req));
+    await ctx.close();
+  });
+
+  /* ---- 13. the inclination and the RAAN offset (L68) -------------------------------------------------------------------------- */
+  await part('13. the inclination and the RAAN offset from the selected spacecraft (1280 light): read off each plane, one cached before L68 says it has neither, and nothing is fetched for them', async () => {
+    const now = Date.now(), wrap = d => d - 360 * Math.round(d / 360);
+    /* KNACKSAT-2 (the selected one; its record runs to now, so every line's last days have it to be measured from), ISS and HST cached
+       with their plane; FLOCK 4G 24 in colour too, cached as a page before L68 kept it */
+    const hist = (n, pl, endAgo) => { const c = curve(n); return S.histEntry(now, S.falling(now, u => ECC(n) * (1 + 0.5 * u), endAgo === undefined ? c[2] : endAgo, c[0], c[1], c[3], pl)); };
+    const seed = (selKept) => ({
+      'gt.decaycmp': JSON.stringify({ o: 1, l: [{ n: '25544', h: 2 }, { n: '20580', h: 3 }, { n: '62637', h: 4 }] }),
+      ['hist:' + SEL]: hist(SEL, selKept ? S.plane(SEL) : null, 0), 'hist:25544': hist('25544', S.plane('25544')), 'hist:20580': hist('20580', S.plane('20580')),
+      'hist:62637': hist('62637', null)
+    });
+    const { ctx, page, net } = await open(browser, srv, { label: 'plane', seed: seed(true) });
+    await toSection(page);
+    await settled(page, 4);
+    const view = () => page.evaluate(() => {
+      const cv = document.getElementById('cmpcv');
+      return { param: document.getElementById('cmpparam').value, axis: document.getElementById('cmpaxis').textContent, name: cv.getAttribute('aria-label'),
+        key: [...document.querySelectorAll('#cmpkey > span')].map(s => s.textContent), rec: localStorage.getItem('gt.decaycmp'),
+        note: (document.getElementById('cmpnote') || {}).textContent || null, draws: window.__cmpDraws || 0,
+        options: [...document.querySelectorAll('#cmpparam option')].map(o => o.value + ':' + o.textContent) };
+    });
+    /* the slider moved 30 steps back from where it starts (about four days, inside every record over 30 d), its instant, and what it
+       says there: each line's name and value */
+    const scrub = async () => {
+      await page.focus('#cmpscrub');
+      for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowLeft');
+      await sleep(150);
+      const s = await page.evaluate(() => {
+        const el = document.getElementById('cmpscrub'), cv = document.getElementById('cmpcv');
+        return { t: +cv.dataset.t0 + +el.value / 240 * (+cv.dataset.t1 - +cv.dataset.t0), text: el.getAttribute('aria-valuetext') || '' };
+      });
+      const rows = {};
+      for (const m of s.text.slice(s.text.indexOf(': ') + 2).matchAll(/(.+?) ([-+]?\d+\.\d+°)(?:, |$)/g)) rows[m[1]] = m[2];
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());    // the next draw starts the slider afresh
+      return Object.assign(s, { rows });
+    };
+    const OLD = 'A history cached before the page kept inclination and RAAN has neither: it has them from its next fetch, once its 12 hours in the cache are up.';
+    const NO_FORECAST = 'The forecast is of mean altitude only, so these lines stop at each last element set.';
+    const v0 = await view();
+    chk('Show offers the nine quantities, Inclination and "RAAN offset from the selected" last', v0.options.slice(-2).join() === 'inc:Inclination,raan:RAAN offset from the selected' && v0.options.length === 9,
+      v0.options.join(', '));
+
+    await page.click('#cmpr-30d');
+    await sleep(150);
+    let n0 = (await view()).draws;
+    await page.selectOption('#cmpparam', 'inc');
+    await sleep(250);
+    const v1 = await view(), cols1 = await rowColours(page), px1 = await colourCounts(page, cols1.map(c => c.c)), s1 = await scrub();
+    const incOdd = [SEL, '25544', '20580'].filter(n => { const v = s1.rows[NAMES[n]]; return !(v && /^\d+\.\d{4}°$/.test(v) && Math.abs(parseFloat(v) - S.plane(n)(s1.t).inc) <= 0.0003); });
+    chk('Inclination: drawn once more, named "Inclination history of 3 spacecraft: ...", the caption "Inclination, ° · " over 30 d, the key "observed" and no "projected", kept as "p":"inc", no request',
+      v1.draws === n0 + 1 && /^Inclination history of 3 spacecraft: /.test(v1.name) && v1.axis.startsWith('Inclination, ° · ') && v1.key[v1.key.length - 1] === 'observed' && !v1.key.includes('projected') &&
+      JSON.parse(v1.rec).p === 'inc' && JSON.parse(v1.rec).r === '30d' && net.total() === 0, JSON.stringify(v1));
+    chk('...the slider reads each line\'s own inclination, to four places in degrees (within 0.0003 deg of the made-up plane at its instant), FLOCK 4G 24 not among them',
+      !incOdd.length && !(NAMES[62637] in s1.rows), (incOdd.length ? 'odd: ' + incOdd.join(', ') + ' / ' : '') + s1.text + ' / at ' + new Date(s1.t).toISOString());
+    chk('...the three lines with a plane on the canvas in their colours, and none in FLOCK 4G 24\'s',
+      cols1.length === 4 && cols1.every((c, i) => (c.n === '62637' ? px1[i] === 0 : px1[i] >= 20)), cols1.map((c, i) => c.n + ' ' + px1[i]).join(', '));
+    const st1 = { old: await stText(page, '62637'), others: await Promise.all([SEL, '25544', '20580'].map(n => stText(page, n))) };
+    chk('...FLOCK 4G 24\'s row says "inclination not in this cached history" and no other row does; the note says what the inclination is and when such a history will have it',
+      (st1.old || '').includes('inclination not in this cached history') && st1.others.every(t => !/cached history/.test(t || '')) &&
+      v1.note === 'Each element set’s mean inclination, as CelesTrak lists it. ' + NO_FORECAST + ' ' + OLD, JSON.stringify(st1) + ' / ' + v1.note);
+
+    n0 = (await view()).draws;
+    await page.selectOption('#cmpparam', 'raan');
+    await sleep(250);
+    const v2 = await view(), cols2 = await rowColours(page), px2 = await colourCounts(page, cols2.map(c => c.c)), s2 = await scrub();
+    const expectOff = (n, t) => (n === SEL ? 0 : wrap(S.plane(n)(t).raan - S.plane(SEL)(t).raan));
+    const offOdd = [SEL, '25544', '20580'].filter(n => { const v = s2.rows[NAMES[n]]; return !(v && /^[-+]?\d+\.\d{3}°$/.test(v) && Math.abs(parseFloat(v) - expectOff(n, s2.t)) <= 0.002); });
+    chk('RAAN offset: drawn once more, named "RAAN offset from the selected spacecraft, in the history of 3 spacecraft: ...", the caption "RAAN offset from the selected, ° · ", "observed" and no "projected", kept as "p":"raan", no request',
+      v2.draws === n0 + 1 && /^RAAN offset from the selected spacecraft, in the history of 3 spacecraft: /.test(v2.name) && v2.axis.startsWith('RAAN offset from the selected, ° · ') &&
+      v2.key[v2.key.length - 1] === 'observed' && !v2.key.includes('projected') && JSON.parse(v2.rec).p === 'raan' && net.total() === 0, JSON.stringify(v2));
+    chk('...the slider reads KNACKSAT-2 (the selected one) at 0.000° and each other line\'s RAAN less KNACKSAT-2\'s at that instant, signed to three places (within 0.002 deg)',
+      !offOdd.length && s2.rows[NAMES[SEL]] === '0.000°', (offOdd.length ? 'odd: ' + offOdd.join(', ') + ' / ' : '') + s2.text + ' / want ' +
+      [SEL, '25544', '20580'].map(n => n + ' ' + expectOff(n, s2.t).toFixed(3)).join(', '));
+    chk('...the three lines on the canvas, none in FLOCK 4G 24\'s colour, whose row says "RAAN not in this cached history"; the note says what the offset is, and when that history will have it',
+      cols2.every((c, i) => (c.n === '62637' ? px2[i] === 0 : px2[i] >= 20)) && ((await stText(page, '62637')) || '').includes('RAAN not in this cached history') &&
+      (v2.note || '').startsWith('Each element set’s right ascension of the ascending node less the selected spacecraft’s at the same instant') && (v2.note || '').endsWith(NO_FORECAST + ' ' + OLD),
+      cols2.map((c, i) => c.n + ' ' + px2[i]).join(', ') + ' / ' + v2.note);
+
+    /* a spacecraft added now: its history comes from (the fake) CelesTrak, read by the page's own reader, and keeps its plane */
+    await addBySearch(page, ['48274']);
+    await settled(page, 5);
+    const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('hist:48274') || 'null'));
+    const v3 = await view(), s3 = await scrub(), css = s3.rows[NAMES[48274]];
+    chk('CSS (TIANHE-1) added with Show at the RAAN offset: one request, its cached copy keeps every row\'s inclination and RAAN, its row says nothing of a cached history, and it is keyed and read at its own offset',
+      net.req['48274'] === 1 && net.total() === 1 && !!kept && kept.P.length > 0 && kept.P.every(r => typeof r.inc === 'number' && typeof r.raan === 'number') &&
+      !/cached history/.test((await stText(page, '48274')) || '') && v3.key.includes(NAMES[48274]) && !!css && Math.abs(parseFloat(css) - expectOff('48274', s3.t)) <= 0.002,
+      JSON.stringify({ req: net.req, rows: kept && kept.P.length, first: kept && kept.P[0], key: v3.key, css, want: expectOff('48274', s3.t).toFixed(3) }));
+
+    await page.reload({ waitUntil: 'load' });
+    await ready(page);
+    await toSection(page);
+    await settled(page, 5);
+    const v4 = await view();
+    chk('reloaded: Show still at the RAAN offset over 30 d, read back from the record, and nothing asked for',
+      v4.param === 'raan' && v4.axis.startsWith('RAAN offset from the selected, ° · ') && JSON.parse(v4.rec).p === 'raan' && net.total() === 1, JSON.stringify({ param: v4.param, axis: v4.axis, req: net.req }));
+    await ctx.close();
+
+    /* the selected spacecraft's own history cached before L68: no reference for the offset; the inclination of the others still drawn */
+    const b = await open(browser, srv, { label: 'plane-old-sel', seed: Object.assign(seed(false), { 'gt.decaycmp': JSON.stringify({ o: 1, l: [{ n: '25544', h: 2 }, { n: '20580', h: 3 }], p: 'raan' }) }) });
+    await toSection(b.page);
+    await settled(b.page, 3);
+    const w1 = await b.page.evaluate(() => ({ axis: document.getElementById('cmpaxis').textContent, scrub: !!document.getElementById('cmpscrub') && !document.getElementById('cmpscrub').hidden }));
+    const me1 = await stText(b.page, SEL);
+    await b.page.selectOption('#cmpparam', 'inc');
+    await sleep(250);
+    const w2 = await b.page.evaluate(() => ({ key: [...document.querySelectorAll('#cmpkey > span')].map(s => s.textContent) }));
+    const me2 = await stText(b.page, SEL);
+    chk('the selected spacecraft cached before L68: the RAAN offset says "None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from." with no slider, its row "RAAN not in this cached history"; Inclination draws the other two and not it, its row saying so; nothing fetched',
+      w1.axis === 'None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from.' && !w1.scrub && (me1 || '').includes('RAAN not in this cached history') &&
+      w2.key.join() === [NAMES[25544], NAMES[20580], 'observed'].join() && (me2 || '').includes('inclination not in this cached history') && b.net.total() === 0,
+      JSON.stringify({ w1, me1, w2, me2, req: b.net.req }));
+    await b.ctx.close();
   });
 
   console.log('');

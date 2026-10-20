@@ -177,7 +177,9 @@ export async function fetchHistory(deps: Deps, cfg: Config, norad: string): Prom
     if (!read.found) return fail('unreadable');
     return { kind: 'none', why: read.rows ? 'outside' : 'empty', rows: read.rows, src: SRC_CELESTRAK, at };
   }
-  /* JSON has no NaN: a row with no eccentricity travels as null, and the client turns it back into NaN. */
-  const P: HistoryRow[] = read.P.map(r => ({ t: r.t, sma: r.sma, ecc: Number.isFinite(r.ecc) ? r.ecc : null }));
+  /* JSON has no NaN: a row with no eccentricity travels as null, and the client turns it back into NaN; so do the inclination
+     and RAAN (CHANGES-FROM-LEGACY.md, L68). */
+  const num = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const P: HistoryRow[] = read.P.map(r => ({ t: r.t, sma: r.sma, ecc: num(r.ecc), inc: num(r.inc), raan: num(r.raan) }));
   return { kind: 'ok', P, rows: read.rows, src: SRC_CELESTRAK, at };
 }

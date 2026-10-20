@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { DIRECT_HISTORY_TIMEOUT_MS, DIRECT_TIMEOUT_MS } from '../../src/lib/net/direct';
+import { describe, expect, it, vi } from 'vitest';
+import { DIRECT_TIMEOUT_MS } from '../../src/lib/net/direct';
+import { DIRECT_HISTORY_TIMEOUT_MS } from '../../src/lib/net/direct-history';
 import { createHistorySource } from '../../src/lib/net/history-source';
 import { BREAKER_MS } from '../../src/lib/net/breaker';
 import { fetchLiveTle } from '../../src/lib/net/tle-source';
@@ -100,7 +101,7 @@ describe('the history source - the API', () => {
     const out = await src.history('25544');
     expect(out!.why).toBeNull();
     expect(out!.P).toHaveLength(221);
-    expect(out!.P![0]).toEqual({ t: expect.any(Number), sma: expect.any(Number), ecc: 0.0008 });
+    expect(out!.P![0]).toEqual({ t: expect.any(Number), sma: expect.any(Number), ecc: 0.0008, inc: 0, raan: 0 });   // the page's 0s (L68)
     expect(w.apiCalls()).toEqual([API_BASE + '/api/history/25544']);
     expect(w.directCalls()).toEqual([]);
     expect(JSON.parse(w.store.data.get('hist:25544')!).at).toBe(T0);
@@ -118,6 +119,49 @@ describe('the history source - the API', () => {
     // ...and what the page's own estimator makes of it is what it makes of the same page read directly
     const direct = await createHistorySource(historyCtx(makeWorld({ upstream: { history: () => html(good(clock, null)) }, clock }), { api: null })).history('25544');
     expect(Lifetime.predict(out!.P)).toEqual(Lifetime.predict(direct!.P));
+  });
+
+  it('keeps each row\'s inclination and RAAN, from the API as from CelesTrak (null from one, NaN from the other), and stores them (L68)', async () => {
+    const clock = fakeClock(T0);
+    const rows: PlotRowSpec[] = [
+      { t: T0 - 2 * DAY, sma: 420, ecc: 0.0005, inc: 51.6412, raan: 123.4567 },
+      { t: T0 - DAY, sma: 419, ecc: 0.0005, inc: null, raan: 118.5 }
+    ];
+    const upstream: Script = { history: () => html(plotPage(rows)) };
+    const real = realApi(upstream, {}, clock);
+    const w = makeWorld({ api: real.handler, clock });
+    const viaApi = await createHistorySource(historyCtx(w)).history('25544');
+    expect(viaApi!.P!.map(r => [r.inc, r.raan])).toEqual([[51.6412, 123.4567], [null, 118.5]]);    // as the hist:<n> copy has them
+    const direct = await createHistorySource(historyCtx(makeWorld({ upstream, clock }), { api: null })).history('25544');
+    expect(direct!.P!.map(r => [r.inc, r.raan])).toEqual([[51.6412, 123.4567], [NaN, 118.5]]);
+    expect(viaApi!.P!.map(r => [r.t, r.sma, r.ecc])).toEqual(direct!.P!.map(r => [r.t, r.sma, r.ecc]));
+    expect(JSON.parse(w.store.data.get('hist:25544')!).P.map((r: { inc: number | null; raan: number | null }) => [r.inc, r.raan]))
+      .toEqual([[51.6412, 123.4567], [null, 118.5]]);
+  });
+
+  it('leaves the rows of an API that predates L68 without an inclination or RAAN, as a history cached before then is', async () => {
+    const clock = fakeClock(T0);
+    const old = { status: 'ok', norad: '25544', P: [{ t: T0 - DAY, sma: 420, ecc: null }, { t: T0, sma: 419, ecc: 0.0005 }], rows: 2, src: 'CelesTrak', at: T0 };
+    const w = makeWorld({ api: () => new Response(JSON.stringify(old), { headers: { 'content-type': 'application/json', 'x-gt-api': '1' } }), clock });
+    const out = await createHistorySource(historyCtx(w)).history('25544');
+    expect(out!.why).toBeNull();
+    expect(out!.P!.map(r => Object.keys(r).join())).toEqual(['t,sma,ecc', 't,sma,ecc']);
+    expect(w.directCalls()).toEqual([]);
+    /* and a row that sends them as anything but a number or null is no answer: on to CelesTrak */
+    const bad = { ...old, P: [{ t: T0, sma: 419, ecc: 0.0005, inc: '51.6' }] };
+    const w2 = makeWorld({ api: () => new Response(JSON.stringify(bad), { headers: { 'content-type': 'application/json', 'x-gt-api': '1' } }),
+      upstream: world(clock), clock });
+    await createHistorySource(historyCtx(w2)).history('25544');
+    expect(w2.directCalls()).toEqual([HIST('25544')]);
+  });
+
+  it('hands back a hist:<n> copy kept before L68 as it is, without the two, and asks nobody for them', async () => {
+    const clock = fakeClock(T0);
+    const raw = JSON.stringify({ at: T0 - HOUR, P: [{ t: T0 - DAY, sma: 400, ecc: 0.001 }, { t: T0 - HOUR, sma: 399.9, ecc: 0.001 }] });
+    const w = makeWorld({ store: memoryStore({ 'hist:25544': raw }), upstream: world(clock), clock });
+    const out = await createHistorySource(historyCtx(w)).history('25544');
+    expect(out!.P).toEqual(JSON.parse(raw).P);
+    expect(w.calls).toEqual([]);
   });
 
   it('thins what it stores past 700 rows (about 500 spread over the run, and the newest 250 whole), and returns the whole run', async () => {
@@ -284,5 +328,31 @@ describe('every way of having no history, against the original', () => {
       seen.add(viaApi!.why ?? 'ok');
     }
     expect(seen).toEqual(new Set(['ok', 'http', 'unreachable', 'timeout', 'unreadable', 'empty', 'outside']));
+  });
+});
+
+describe('the direct fetch is a chunk of its own (CHANGES-FROM-LEGACY.md, L68)', () => {
+  it('when its code does not arrive the answer is "unreachable", nobody is asked and nothing is stored; the next request asks for the code again', async () => {
+    vi.resetModules();
+    let refuse = true;
+    vi.doMock('../../src/lib/net/direct-history', async (load: () => Promise<unknown>) => {
+      if (refuse) throw new TypeError('Failed to fetch dynamically imported module');
+      return load();
+    });
+    try {
+      const { createHistorySource: fresh } = await import('../../src/lib/net/history-source');
+      const w = makeWorld({ upstream: world(), clock: fakeClock(T0) });
+      const src = fresh(historyCtx(w, { api: null }));
+      expect(await src.history('25544')).toEqual({ P: null, why: 'unreachable' });
+      expect(w.calls).toEqual([]);
+      expect(w.store.writes).toEqual([]);
+      refuse = false;
+      const out = await src.history('25544');
+      expect(out!.P).toHaveLength(221);
+      expect(w.calls.map(c => c.url)).toEqual([HIST('25544')]);
+    } finally {
+      vi.doUnmock('../../src/lib/net/direct-history');
+      vi.resetModules();
+    }
   });
 });

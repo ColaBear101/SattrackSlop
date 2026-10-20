@@ -24,10 +24,16 @@ import type { PlotRow } from '../../../shared/plot';
 import { isNoradId } from '../../../shared/tle';
 import { tripsBreaker, type ApiClient } from './api';
 import type { Breaker } from './breaker';
-import { fetchDirectHistory, type HistoryOutcome } from './direct';
+import type { HistoryOutcome } from './direct-history';
 import { HIST_TTL, type FetchLike, type Store } from './types';
 
-export type { HistoryOutcome } from './direct';
+export type { HistoryOutcome } from './direct-history';
+
+/* The direct fetch (direct-history.ts) is a chunk of its own, asked for at the first history request that gets as far as it, and
+   CelesTrak's page reader (shared/plot.ts) is in the lifetime chunk it imports: the entry, which every visit downloads, carries
+   neither. A chunk that does not arrive is asked for again at the next request. */
+let direct: Promise<typeof import('./direct-history')> | null = null;
+const directHistory = () => (direct ??= import('./direct-history').catch(err => { direct = null; throw err; }));
 
 export interface HistoryCtx {
   fetch: FetchLike;
@@ -46,8 +52,10 @@ export interface HistorySource {
   history(norad: unknown): Promise<HistoryOutcome | null>;
 }
 
-/** JSON has no NaN: the API sends a row with no eccentricity as null, and a freshly read page has NaN there. */
-const revive = (rows: HistoryRow[]): PlotRow[] => rows.map(r => ({ t: r.t, sma: r.sma, ecc: r.ecc === null ? NaN : r.ecc }));
+/** JSON has no NaN: the API sends a row with no eccentricity as null, and a freshly read page has NaN there. The inclination and
+ *  RAAN (L68) are kept as they come, null where a row has none, as the hist:<n> copy has them (nothing here computes with them,
+ *  and the comparison reads null and NaN alike); an API that predates them leaves them out, as a history cached before them does. */
+const revive = (rows: HistoryRow[]): PlotRow[] => rows.map(r => ({ ...r, ecc: r.ecc === null ? NaN : r.ecc }));
 
 export function createHistorySource(ctx: HistoryCtx): HistorySource {
   const inflight = new Map<string, Promise<HistoryOutcome>>();
@@ -85,6 +93,9 @@ export function createHistorySource(ctx: HistoryCtx): HistorySource {
       if (got.why === 'api_error' && got.error === 'upstream_timeout') return { P: null, why: 'timeout' };
       if (tripsBreaker(got)) ctx.breaker.trip();
     }
+    let fetchDirectHistory;
+    try { ({ fetchDirectHistory } = await directHistory()); }
+    catch { return { P: null, why: 'unreachable' }; }                // its code did not arrive: nothing was asked
     const out = await fetchDirectHistory(satnum, { fetch: ctx.fetch, timeoutMs: ctx.directTimeoutMs });
     if (out.P) remember(satnum, ctx.now(), out.P);
     return out;

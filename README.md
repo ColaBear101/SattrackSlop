@@ -1808,10 +1808,12 @@ altitude, mean perigee or apogee altitude (from the mean elements), the decay ra
 45-day measure at each element set), eccentricity, orbital period or mean motion. Only mean
 altitude, period and mean motion have the dashed forecast. The line over the chart names the
 quantity, its unit and the dates shown. On a desktop, drag across the chart or double-click it to
-zoom, and Reset zoom to go back. On a phone, tap the chart to pin the reading and slide sideways to
-move it. The slider under the chart reads every coloured line's value at a date from the keyboard,
-with plus and minus to zoom. Range and Show are kept with the list, but are this tab's: another tab
-of the page keeps its own. A zoom is not kept.
+zoom, and Reset zoom to go back. On a phone, tap the chart (or the slider under it) to pin the
+reading, slide sideways to move it, and tap anywhere else to let it go; a scroll or a pinch that
+starts on the chart leaves no reading. The slider under the chart reads every coloured line's value
+at a date from the keyboard, with plus and minus to zoom (the line over the chart says so while the
+slider has the focus, and the slider says the dates then drawn). Range and Show are kept with the
+list, but are this tab's: another tab of the page keeps its own. A zoom is not kept.
 
 The list under the chart is the table of the same thing, the selected spacecraft first: each row has
 the re-entry date or the verdict (the section's own words, from the same history and code), the mean

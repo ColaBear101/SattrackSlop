@@ -30,10 +30,13 @@
  *    only when not the default, with no request; each range spans what it says, and each quantity reads in its own unit and agrees
  *    with the others (perigee below the mean altitude below apogee, period times mean motion a day); a reload keeps the range and the
  *    quantity and no zoom; a drag across the plot (8 px or more) or a double-click zooms inside the range, Escape or a short press does
- *    not, and Reset zoom or a press of the range goes back; the reading has a dot on each coloured line; the slider under the plot
- *    starts on the newest element set (never past it), reads it from the keyboard with each line's full name, and zooms with plus and
- *    minus; on a phone a tap pins the reading at the top of the plot, a sideways finger moves it, a tap elsewhere or Escape lets it go
- *    (a tap on the slider does not), a double tap zooms nothing, and a vertical swipe still scrolls the page.
+ *    not, and Reset zoom or a press of the range goes back, a click and a drag the browser makes a double-click of zoom once; the
+ *    reading has a dot on each coloured line; the slider under the plot starts on the newest element set (never past it), reads it
+ *    from the keyboard with each line's full name, says its keys beside the caption while it has the keyboard's focus, and zooms with
+ *    plus and minus, saying the span then drawn, and the chart does not move as the caption's row changes; on a phone a tap pins the
+ *    reading at the top of the plot, a sideways finger moves it, a tap elsewhere or Escape lets it go (a tap on the slider does not;
+ *    a tap on the slider alone holds its own reading the same way), a double tap zooms nothing, and a vertical swipe still scrolls
+ *    the page and pins nothing.
  *  - Its markup keeps out of the selectors the golden prose reads, so the default report reads as it always did.
  *  - A phone: no sideways scroll, text 12 px and up, 44 px targets; a chunk that does not come says so, and to reload.
  *
@@ -79,7 +82,8 @@ const CURVES = {
 const curve = n => CURVES[+n] || [380 + (+n % 160), 380 + (+n % 160) - 8 - (+n % 30), 1, 260];
 /* each spacecraft's eccentricity, rising by half along its history: 0.0006 to 0.0024, so the eccentricity and perigee views (L67)
    draw lines that differ (modulo 11: the five that part 11 draws get five different ones), and far under the Decay section's
-   "eccentric" mark (0.02), so no verdict and no other check moves; the selected spacecraft's is 0.0006 as before */
+   "eccentric" mark (0.02), so no verdict and no other check moves; the selected spacecraft's starts at 0.0006 and rises to 0.0009
+   (until L67 every body had a flat 0.001) */
 const ECC = n => 0.0006 + (+n % 11) * 0.0001;
 const body = n => { const c = curve(n); return S.plot(S.falling(Date.now(), u => ECC(n) * (1 + 0.5 * u), c[2], c[0], c[1], c[3])); };
 /* the light theme's colours for slots 2..8 (draw-compare.ts CMP_PALETTE.light) */
@@ -764,6 +768,24 @@ async function part(name, fn) {
       JSON.stringify([q3, sb, q4, onScrub, q5]));
     await page.keyboard.press('Escape');
     await sleep(400);
+    /* a tap on the slider with nothing pinned: the finger moves its value without focusing it, so no blur would ever take that reading
+       away; it is held as a tap on the chart holds one, and a tap elsewhere lets it go */
+    await box();
+    const sb2 = await page.evaluate(() => { const r = document.getElementById('cmpscrub').getBoundingClientRect(); return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }; });
+    const q6 = await pinnedNow();
+    await page.touchscreen.tap(sb2.x, sb2.y);
+    await sleep(200);
+    const q7 = await pinnedNow(), onScrub2 = await focusIs(page, '#cmpscrub');
+    await page.evaluate(() => document.querySelector('#cmprows .name').scrollIntoView({ block: 'nearest' }));
+    await sleep(150);
+    const q8a = await pinnedNow();
+    const nm2 = await page.evaluate(() => { const r = document.querySelector('#cmprows .name').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await page.touchscreen.tap(nm2.x, nm2.y);
+    await sleep(150);
+    const q8 = await pinnedNow();
+    chk('a tap on the reading slider with nothing pinned shows its reading (the slider not focused by it) and keeps it, and a tap elsewhere (the first row\'s name) lets it go',
+      !q6.tip && !q6.cross && q7.cross && !onScrub2 && q8a.cross && !q8.tip && !q8.cross, JSON.stringify([q6, q7, onScrub2, q8a, q8]));
+    await sleep(400);
     /* a double tap never zooms: two taps 100 ms apart, then the double-click a browser makes of them, sent after the touches */
     const w0 = await page.evaluate(() => { const c = document.getElementById('cmpcv'); window.__dbl = 0; c.addEventListener('dblclick', () => window.__dbl++); return [c.dataset.t0, c.dataset.t1]; });
     await page.touchscreen.tap(mid[0], mid[1]);
@@ -803,6 +825,8 @@ async function part(name, fn) {
     await sleep(400);
     const y1 = await page.evaluate(() => scrollY);
     chk('a vertical swipe on the chart still scrolls the page', y1 - y0 >= 100, 'scrollY ' + y0 + ' -> ' + y1);
+    const p5 = await pinnedNow();
+    chk('...and pins no reading where it began (the browser took the finger), nor keeps the one the sideways finger left', p4.tip && !p5.tip && !p5.cross, JSON.stringify(p5));
     const hint = await page.evaluate(() => { const h = document.getElementById('cmpdraghint'); return h ? h.checkVisibility() : 'absent'; });
     chk('the hint to drag or double-click is in the page (the chart is drawn, not zoomed) and not shown under a finger', hint === false, String(hint));
     chk('after the touches: still no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), String(await page.evaluate(() => document.documentElement.scrollWidth)));
@@ -1124,8 +1148,33 @@ async function part(name, fn) {
     chk('a double-click at the middle halves the span (to 1 ms), inside Auto\'s, with Reset zoom; a press of Auto, the one pressed, takes the zoom away',
       Math.abs((v13.t1 - v13.t0) - (auto.t1 - auto.t0) / 2) <= 1 && v13.t0 >= auto.t0 && v13.t1 <= auto.t1 && v13.reset && v13b.t0 === auto.t0 && v13b.t1 === auto.t1 && !v13b.reset,
       JSON.stringify([(v13.t1 - v13.t0) / DAY, (auto.t1 - auto.t0) / DAY, v13.reset, v13b.reset]));
+    /* a click, then a press within the double-click time that drags: its release zooms to the band, and the browser ends a double-click
+       with it and the click before (the second press's count, 2); that is not a second zoom, about the release, of half the band */
+    P = await plot();
+    const y18 = P.y + P.h / 2;
+    await page.evaluate(() => { window.__dbl18 = 0; document.getElementById('cmpcv').addEventListener('dblclick', () => window.__dbl18++); });
+    await page.mouse.click(across(P, 0.3), y18);
+    await page.mouse.down({ clickCount: 2 });
+    for (let i = 1; i <= 10; i++) await page.mouse.move(across(P, 0.3 + 0.03 * i), y18);
+    await page.mouse.up({ clickCount: 2 });
+    await sleep(200);
+    const z18 = await view(), dbl18 = await page.evaluate(() => window.__dbl18);
+    await off(P);
+    await page.click('#cmpr-auto');
+    await sleep(200);
+    chk('a click, then a press within the double-click time that drags from 30 % to 60 % of the plot (the browser making a double-click of them): one zoom, to that band (to 1 % of Auto\'s span), not half of it',
+      dbl18 === 1 && z18.reset && Math.abs(z18.t0 - (auto.t0 + 0.3 * aSpan)) <= 0.01 * aSpan && Math.abs(z18.t1 - (auto.t0 + 0.6 * aSpan)) <= 0.01 * aSpan,
+      ((z18.t0 - auto.t0) / aSpan).toFixed(4) + ' to ' + ((z18.t1 - auto.t0) / aSpan).toFixed(4) + ' of Auto; ' + JSON.stringify([z18.reset, (z18.t1 - z18.t0) / DAY]) + '; dblclicks ' + dbl18);
 
     // ---- the reading slider, from the keyboard
+    /* where the chart sits in the page, and what the caption's row holds beside the caption: the drag hint, or the slider's keys */
+    const cvTop = () => page.evaluate(() => Math.round(document.getElementById('cmpcv').getBoundingClientRect().top + scrollY));
+    const hints = () => page.evaluate(() => {
+      const k = document.getElementById('cmpkeyhint'), d = document.getElementById('cmpdraghint');
+      return { keys: k && k.checkVisibility() ? k.textContent : null, drag: !!d && d.checkVisibility(), hidden: k ? k.getAttribute('aria-hidden') : null };
+    });
+    const KEYS_HINT = 'Arrow keys move the reading; plus and minus zoom in and out.';
+    const top0 = await cvTop(), kh0 = await hints();
     await page.focus('#cmpscrub');
     await sleep(150);
     const s1 = await reading(), vt1 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
@@ -1135,6 +1184,12 @@ async function part(name, fn) {
     await sleep(100);
     const vt2 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '';
     chk('...ten ArrowLeft presses read an earlier day', vt2.slice(0, 10) < vt1.slice(0, 10), vt1.slice(0, 10) + ' -> ' + vt2.slice(0, 10));
+    const kh2 = await hints(), top1 = await cvTop();
+    chk('...while the slider has the keyboard\'s focus, its keys are said beside the caption in the drag hint\'s place ("' + KEYS_HINT + '", hidden from a screen reader, which has them as the slider\'s description); the drag hint before',
+      !kh0.keys && kh0.drag && kh2.keys === KEYS_HINT && !kh2.drag && kh2.hidden === 'true', JSON.stringify([kh0, kh2]));
+    const desc = await page.evaluate(() => { const d = document.getElementById(document.getElementById('cmpscrub').getAttribute('aria-describedby')); return d ? { hidden: d.hidden, text: d.textContent } : null; });
+    chk('...the slider\'s description holds its keys in full, hidden (read as the description only, not again as text)',
+      !!desc && desc.hidden && desc.text === 'Left and right arrows move the reading, Page Up and Page Down further; plus and minus zoom in and out.', JSON.stringify(desc));
     await page.evaluate(() => { window.__keys = []; addEventListener('keydown', e => { if (e.key !== 'Control') window.__keys.push(e.key + (e.defaultPrevented ? ' taken' : '')); }); });
     await page.keyboard.press('Control+Equal');
     await sleep(150);
@@ -1149,10 +1204,16 @@ async function part(name, fn) {
     chk('...= zooms in: Reset zoom shows, the span halves, the slider keeps the focus and still reads the instant it was at (to a day)',
       s3.reset && Math.abs((s3.t1 - s3.t0) - (auto.t1 - auto.t0) / 2) <= 1 && (await focused()) === 'cmpscrub' && Math.abs(Date.parse(vt3.slice(0, 10)) - Date.parse(vt2.slice(0, 10))) <= DAY,
       JSON.stringify([s3.reset, (s3.t1 - s3.t0) / DAY, (auto.t1 - auto.t0) / DAY]) + ' / ' + vt2.slice(0, 10) + ' -> ' + vt3.slice(0, 10) + ' / focus ' + (await focused()));
+    chk('...and its aria-valuetext then ends with the span drawn, " · <from> to <to> · zoomed in", so the zoom is heard',
+      vt3.endsWith(' · ' + day(s3.t0) + ' to ' + day(s3.t1) + ' · zoomed in'), vt3);
+    const top2 = await cvTop();
     await page.keyboard.press('-');
     await sleep(200);
-    const s4 = await view();
+    const s4 = await view(), vt4 = (await page.getAttribute('#cmpscrub', 'aria-valuetext')) || '', top3 = await cvTop();
     chk('...- takes the zoom away: Auto\'s window, no Reset zoom', !s4.reset && s4.t0 === auto.t0 && s4.t1 === auto.t1, JSON.stringify([s4.reset, s4.t0 - auto.t0, s4.t1 - auto.t1]));
+    chk('...and its aria-valuetext ends with Auto\'s span, no longer zoomed in', vt4.endsWith(' · ' + day(auto.t0) + ' to ' + day(auto.t1)) && !vt4.includes('zoomed in'), vt4);
+    chk('the chart does not move while the caption\'s row holds the drag hint, the slider\'s keys, Reset zoom, then the keys again (28 px each)',
+      [top1, top2, top3].every(t => t === top0), JSON.stringify([top0, top1, top2, top3]));
     await page.keyboard.press('Escape');
     await sleep(100);
     const e1 = { tip: !!(await reading()), cross: !!(await page.$('#cmpx')) };
@@ -1164,6 +1225,8 @@ async function part(name, fn) {
     const e3 = { tip: !!(await reading()), cross: !!(await page.$('#cmpx')), focus: await focused() };
     chk('...Escape hides the reading, the next key brings it back, and Tab away leaves none', !e1.tip && !e1.cross && e2 && !e3.tip && !e3.cross && e3.focus !== 'cmpscrub',
       JSON.stringify([e1, e2, e3]));
+    const kh3 = await hints();
+    chk('...and the drag hint is back in the keys\' place', !kh3.keys && kh3.drag, JSON.stringify(kh3));
 
     // ---- reload: the quantity and the range kept, a zoom not (reloaded with 90 d pressed, not the default, and a zoom drawn)
     await page.click('#cmpr-90d');

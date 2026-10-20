@@ -192,11 +192,12 @@ export const cmpKm = (h: number): string => h.toFixed(1) + ' km';
 export const CMP_RANGE = 'Range';
 export const CMP_RANGES: Readonly<Record<CmpRange, string>> = { auto: 'Auto', '30d': '30 d', '90d': '90 d', '1y': '1 y', all: 'All' };
 export const CMP_RANGE_TITLES: Readonly<Record<CmpRange, string>> = {
-  auto: 'Fitted to the decay: a year or more before the earliest last element set, to the latest projected re-entry or newest set',
+  auto: 'Fitted to the decay: a year or more before the earliest last element set (from the oldest set held, when that is later), ' +
+    'to the latest projected re-entry or newest set',
   '30d': 'The 30 days up to the newest element set',
   '90d': 'The 90 days up to the newest element set',
   '1y': 'The year up to the newest element set',
-  all: 'Every element set held, and the forecast to the latest projected re-entry'
+  all: 'Every element set held, and the forecast to the latest projected re-entry where there is one'
 };
 /** the quantity's dropdown, its label and choices: the Decay section's own "Mean altitude" and "Decay rate", and the planner's
  *  "Mean perigee altitude" and "Mean apogee altitude" (advisor-copy.ts), which say they come from the mean elements */
@@ -230,6 +231,14 @@ export const CMP_SCRUB_KEYS = 'Left and right arrows move the reading, Page Up a
 export const CMP_NO_VALUE = 'no line has a value here';
 export const cmpScrubText = (day: string, rows: readonly { name: string; value: string; projected: boolean }[]): string =>
   day + ': ' + (rows.length ? rows.map(r => r.name + ' ' + r.value + (r.projected ? ' ' + CMP_KEY_PROJECTED : '')).join(', ') : CMP_NO_VALUE);
+/** what the scrubber says once its plus or minus has redrawn the chart: the reading there, then the span now drawn, as the caption
+ *  gives it ("2026-04-21: KNACKSAT-2 352.1 km · 2026-03-10 to 2026-05-30 · zoomed in"), so a zoom is heard; a press that zooms
+ *  nothing (a day already) says nothing */
+export const cmpScrubView = (said: string, t0: number, t1: number, zoomed: boolean): string =>
+  said + ' · ' + cmpDay(t0) + ' to ' + cmpDay(t1) + (zoomed ? ' · ' + CMP_ZOOMED : '');
+/** beside the caption, in the drag hint's place, while the scrubber has the keyboard's focus (a mouse or pen screen): its keys, which
+ *  its description gives in full to a screen reader */
+export const CMP_SCRUB_HINT = 'Arrow keys move the reading; plus and minus zoom in and out.';
 
 /** a value in the readout and the scrubber, the number first (an ASCII minus): km to 0.1 (as cmpKm), the decay rate signed to
  *  0.001 km/day (as the section's), eccentricity to five places, the period to 0.01 min, mean motion to 0.0001 rev/day */

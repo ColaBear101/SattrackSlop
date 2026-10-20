@@ -166,11 +166,14 @@ describe('the chart\'s view (L67)', () => {
     expect(W.CMP_RANGES).toEqual({ auto: 'Auto', '30d': '30 d', '90d': '90 d', '1y': '1 y', all: 'All' });
     expect(Object.keys(W.CMP_RANGES)).toEqual(RANGES);
     expect(W.CMP_RANGE_TITLES).toEqual({
-      auto: 'Fitted to the decay: a year or more before the earliest last element set, to the latest projected re-entry or newest set',
+      /* Auto starts at the first set held when every history fitted is younger than its year; All has no forecast to end on when no
+         line in colour has one (stable, maneuvered, slow): both say so */
+      auto: 'Fitted to the decay: a year or more before the earliest last element set (from the oldest set held, when that is later), ' +
+        'to the latest projected re-entry or newest set',
       '30d': 'The 30 days up to the newest element set',
       '90d': 'The 90 days up to the newest element set',
       '1y': 'The year up to the newest element set',
-      all: 'Every element set held, and the forecast to the latest projected re-entry'
+      all: 'Every element set held, and the forecast to the latest projected re-entry where there is one'
     });
   });
   it('the quantity: its label and seven choices, mean altitude and the decay rate in the rows\' own words', () => {
@@ -190,6 +193,12 @@ describe('the chart\'s view (L67)', () => {
     expect(W.CMP_SCRUB_NAME).toBe('Read the chart at a date');
     expect(W.CMP_SCRUB_KEYS).toBe('Left and right arrows move the reading, Page Up and Page Down further; plus and minus zoom in and out.');
     expect(W.CMP_NO_VALUE).toBe('no line has a value here');
+    expect(W.CMP_SCRUB_HINT).toBe('Arrow keys move the reading; plus and minus zoom in and out.');
+  });
+  it('after plus or minus, the scrubber says the span now drawn, and "zoomed in" while zoomed', () => {
+    expect(W.cmpScrubView('2026-04-21: KNACKSAT-2 352.1 km', Date.UTC(2026, 2, 10), Date.UTC(2026, 4, 30), true))
+      .toBe('2026-04-21: KNACKSAT-2 352.1 km · 2026-03-10 to 2026-05-30 · zoomed in');
+    expect(W.cmpScrubView('2026-04-21: no line has a value here', t0, t1, false)).toBe('2026-04-21: no line has a value here · 2026-07-19 to 2026-10-17');
   });
   it('the canvas\'s name says the quantity, and whether the forecast is drawn in it; mean altitude says what it always said', () => {
     expect(W.cmpChartName(3, ['A', 'B', 'C'], 'per')).toBe('Orbital period history and projection of 3 spacecraft: A, B and C');

@@ -35,10 +35,10 @@
   import {
     CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_DRAG_HINT, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED,
     CMP_NO_MATCH, CMP_NOTHING_DRAWN, CMP_PARAMS, CMP_PLANNED, CMP_RANGE, CMP_RANGE_TITLES, CMP_RANGES, CMP_RATE_NAME, CMP_READING,
-    CMP_RESET, CMP_RETRY, CMP_ROWS_NAME, CMP_SCRUB_KEYS, CMP_SCRUB_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER, CMP_SELECTED, CMP_SHOW,
-    CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpAxis, cmpChartName, cmpClearArmed, cmpDay, cmpFetching, cmpFetchMore, cmpFetchName,
-    cmpHighlightName, cmpMoreMatch, cmpNoParam, cmpNotDrawn, cmpNote, cmpQueued, cmpRemoveName, cmpRetryName, cmpScrubText, cmpShowFirst,
-    cmpShowOthers
+    CMP_RESET, CMP_RETRY, CMP_ROWS_NAME, CMP_SCRUB_HINT, CMP_SCRUB_KEYS, CMP_SCRUB_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER, CMP_SELECTED,
+    CMP_SHOW, CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpAxis, cmpChartName, cmpClearArmed, cmpDay, cmpFetching, cmpFetchMore,
+    cmpFetchName, cmpHighlightName, cmpMoreMatch, cmpNoParam, cmpNotDrawn, cmpNote, cmpQueued, cmpRemoveName, cmpRetryName, cmpScrubText,
+    cmpScrubView, cmpShowFirst, cmpShowOthers
   } from '../../lib/text/life-compare';
   import {
     colorOf, compareKey, compareTipAt, drawCompare, readCmpColors, type CmpColors, type CmpGeom, type CmpKeyItem, type CmpSeries, type CmpTipRow,
@@ -285,6 +285,10 @@
     const c = colors, w = width, canvas = cv;
     if (!c || !w || !canvas) return;
     untrack(() => {
+      /* a redraw while the scrubber has the focus (a history come in, a forecast, the page zoomed or the theme turned) keeps it on
+         the instant it reads, while the new window holds it: a reader on it is not sent to the newest set and told of a day unasked */
+      const el = scrubEl, g0 = geom, hold = keepT === null && !!el && !!g0 && document.activeElement === el;
+      if (hold) keepT = scrubT(g0!, el!);
       drawn = compare.lines.map(l => ({ ...l, name: nameOf(l.n) }));
       const v = compare.view, r = drawCompare(canvas, drawn, c, { p: v.p, r: v.r, win });
       label = r.label; geom = r.geom; info = r.info; ckey = compareKey(drawn, c, v.p); pl = r.geom ? r.geom.L : 46;
@@ -292,6 +296,7 @@
       canvas.dataset.t0 = r.info ? String(Math.round(r.info.t0)) : ''; canvas.dataset.t1 = r.info ? String(Math.round(r.info.t1)) : '';
       tip = null; pinned = false; endDrag();
       setScrubStart();
+      if (hold) keepT = null;
       if (win && !r.info?.zoomed) win = null;                 // a zoom the new window cannot hold: one more draw
     });
   });
@@ -314,8 +319,11 @@
     const t = scrubT(g, el), r = colors ? compareTipAt(g, drawn, g.X(t), colors) : null;
     return cmpScrubText(cmpDay(t), r ? r.rows.map(q => ({ name: nameOf(q.n), value: q.value, projected: q.projected })) : []);
   }
-  /** the instant a `+` or `-` on the scrubber was pressed at: the draws of that zoom keep the scrubber there */
+  /** the instant a `+` or `-` on the scrubber was pressed at (or the focused scrubber read when a redraw came): the draws of that
+   *  zoom keep the scrubber there */
   let keepT: number | null = null;
+  /** a `+` or `-` on the scrubber is being drawn: what it says then ends with the span drawn, so the zoom is heard */
+  let zoomSay = false;
   /** after a draw: the scrubber at the newest element set, on its step or the one before, never after it (a quantity with no
       forecast has no value past it, and the reading would be empty), at its right end when that set is outside the window; or,
       after a zoom from the scrubber, still at the instant it was zoomed about; said, not shown */
@@ -325,8 +333,9 @@
     const k = keepT === null ? -1 : Math.round((keepT - g.t0) / (g.tEnd - g.t0) * STEPS);
     const last = i.tLast >= i.t0 && i.tLast <= i.t1 ? Math.floor((i.tLast - i.t0) / (i.t1 - i.t0) * STEPS) : STEPS;
     el.value = String(k >= 0 && k <= STEPS ? k : last);
-    scrubText = scrubSays(g, el);
     if (document.activeElement === el) readScrub();
+    else scrubText = scrubSays(g, el);
+    if (zoomSay) scrubText = cmpScrubView(scrubText, i.t0, i.t1, i.zoomed);
   }
   $effect(() => { if (scrubEl) untrack(setScrubStart); });   // the scrubber comes with the first line: set it once there
   function readScrub() {
@@ -334,6 +343,12 @@
     if (!el || !g) return;
     scrubText = scrubSays(g, el);
     showAt(g.X(scrubT(g, el)), null, true);
+  }
+  /* A finger on the slider moves its value without focusing it (Chromium, Safari), so no blur would ever take that reading away: it
+     is held as a tap on the chart holds one, and goes as that does, at a press anywhere else or Escape. */
+  function scrubInput() {
+    if (document.activeElement !== scrubEl) pinned = true;
+    readScrub();
   }
   function scrubBlur() { if (!pinned) tip = null; }
   async function scrubKey(e: KeyboardEvent) {
@@ -344,10 +359,11 @@
     e.preventDefault();
     const t = scrubT(g, el);
     keepT = t;                                                // the reading stays on this instant through the zoom's draws
+    zoomSay = true;
     if (e.key === '-') zoomOut();
     else { const s = (g.tEnd - g.t0) / 4; zoomTo(t - s, t + s); }
     await tick();
-    keepT = null;
+    keepT = null; zoomSay = false;
     /* zoomed into a span with nothing drawn, the scrubber is hidden with the focus in it: Reset zoom has it (shown, as zoomed) */
     const a = document.activeElement;
     if (scrubEl?.hidden && (a === scrubEl || a === document.body)) (document.getElementById('cmpreset') ?? paramEl)?.focus();
@@ -382,6 +398,10 @@
   let drag: { x0: number; on: boolean } | null = null;
   let band = $state.raw<{ l: number; w: number; top: number; h: number } | null>(null);
   let lastType = '';
+  /** the last press became a drag: the double-click a browser may make of a click and that press is not one (it zoomed already) */
+  let dragged = false;
+  /** the finger that came down on the chart last: where, and how far sideways it has gone since */
+  let finger: { id: number; x0: number; far: number } | null = null;
   const dragEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); endDrag(); } };   // the sheet stays
   function endDrag() {
     if (drag) document.removeEventListener('keydown', dragEsc);
@@ -391,10 +411,14 @@
 
   function down(e: PointerEvent) {
     lastType = e.pointerType;
+    dragged = false;
     const g = geom;
     if (!g || !cv) return;
     const x = px(e);
-    if (e.pointerType === 'touch') { pinned = true; showAt(x, null, true); return; }   // held at the top, the finger under it
+    if (e.pointerType === 'touch') {                          // held at the top, the finger under it
+      finger = { id: e.pointerId, x0: x, far: 0 };
+      pinned = true; showAt(x, null, true); return;
+    }
     if (e.button !== 0 || x < g.L || x > g.Wc - g.R) return;
     endDrag();
     drag = { x0: x, on: false };
@@ -405,10 +429,14 @@
     const g = geom;
     if (!g || !colors || !cv) { tip = null; return; }
     const x = px(e);
-    if (e.pointerType === 'touch') { if (pinned) showAt(x, null, true); return; }
+    if (e.pointerType === 'touch') {
+      if (finger?.id === e.pointerId) finger.far = Math.max(finger.far, Math.abs(x - finger.x0));
+      if (pinned) showAt(x, null, true);
+      return;
+    }
     if (drag) {
       const xc = inPlot(g, x);
-      if (Math.abs(xc - drag.x0) >= 8) drag.on = true;
+      if (Math.abs(xc - drag.x0) >= 8) drag.on = dragged = true;
       if (drag.on) { band = { l: Math.min(xc, drag.x0), w: Math.abs(xc - drag.x0), top: g.T, h: g.Hc - g.T - g.B }; tip = null; return; }
     }
     showAt(x, e.clientY - cv.getBoundingClientRect().top, false);
@@ -421,11 +449,19 @@
     if (Math.abs(x - d.x0) >= 8) zoomTo(tAt(g, Math.min(x, d.x0)), tAt(g, Math.max(x, d.x0)));   // brought back under 8 px: nothing
   }
   function cancel() { endDrag(); }                           // a touch reading stays where it is
+  /* The browser took the pointer for itself. A finger that came down on the chart and went on to scroll the page or pinch it (the
+     browser's, by touch-action) pinned a reading it never meant: that goes. One that first slid sideways 8 px or more was reading
+     the chart, and its reading stays. (Not on lostpointercapture: that follows every tap's pointerup too.) */
+  function cancelPointer(e: PointerEvent) {
+    endDrag();
+    if (e.pointerType === 'touch' && finger?.id === e.pointerId && finger.far < 8) { pinned = false; tip = null; }
+  }
   function leave(e: PointerEvent) { if (e.pointerType !== 'touch' && !drag) tip = null; }
-  /* half the span about the point: the drag's one-pointer alternative; never from a touch, which never zooms */
+  /* half the span about the point: the drag's one-pointer alternative; never from a touch, which never zooms, nor from a press
+     that dragged (its release zoomed to the band, and may end a double-click with the click before it) */
   function dbl(e: MouseEvent) {
     const g = geom;
-    if (lastType === 'touch' || !g) return;
+    if (lastType === 'touch' || dragged || !g) return;
     const x = px(e);
     if (x < g.L || x > g.Wc - g.R) return;
     const t = tAt(g, x), s = (g.tEnd - g.t0) / 4;
@@ -435,18 +471,32 @@
   $effect(() => {
     if (!pinned) return;
     const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.('#cmpcv, #cmpscrub')) { pinned = false; tip = null; } };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); pinned = false; tip = null; } };
+    /* the Escape is taken (the answer sheet stays) only when it hides a reading: a touch in the axis margin pins one with nothing shown */
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (tip) e.preventDefault(); pinned = false; tip = null; } };
     document.addEventListener('pointerdown', away, true);
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esc); };
   });
 
   /* the readout beside the pointer, kept inside the chart both ways: flipped to the pointer's left at the right edge, never past either;
-     held at the top of the plot for a touch or the scrubber */
+     held at the top of the plot for a touch or the scrubber. Where it fits on neither side of the line (a phone), the names give way
+     (cut with an ellipsis, 8 characters left at least, so a value never rests on its colour alone), and the box covers less of the
+     line and the dots on it. */
+  const NAME_MIN = 8;
   $effect(() => {
     const t = tip, el = tipEl, g = geom;
     if (!t || !el || !g) return;
-    const w = el.offsetWidth, h = el.offsetHeight;
+    el.style.maxWidth = '';
+    let w = el.offsetWidth;
+    const h = el.offsetHeight, room = Math.max(t.x - 14, g.Wc - t.x - 14);
+    if (w > room) {
+      let edge = 0, need = 0;                                 // the names' right edge, and where it could come in to
+      for (const s of el.querySelectorAll<HTMLElement>('p > span')) {
+        const r = s.offsetLeft + s.offsetWidth, n = s.textContent?.length || 1, keep = Math.min(s.offsetWidth, NAME_MIN * s.offsetWidth / n);
+        edge = Math.max(edge, r); need = Math.max(need, r - s.offsetWidth + keep);
+      }
+      if (edge) { el.style.maxWidth = Math.ceil(Math.max(room, w - edge + need)) + 'px'; w = el.offsetWidth; }
+    }
     let x = t.x + 14;
     if (x + w > g.Wc) x = t.x - 14 - w;
     el.style.left = Math.max(0, Math.min(g.Wc - w, x)) + 'px';
@@ -532,13 +582,13 @@
       <div class="cap">
         <p id="cmpaxis">{caption}</p>
         {#if info?.zoomed}<Button id="cmpreset" variant="ghost" size="sm" onclick={resetZoom}>{CMP_RESET}</Button>
-        {:else if info && !info.why}<span id="cmpdraghint">{CMP_DRAG_HINT}</span>{/if}
+        {:else if info && !info.why}<span id="cmpdraghint">{CMP_DRAG_HINT}</span><span id="cmpkeyhint" aria-hidden="true">{CMP_SCRUB_HINT}</span>{/if}
       </div>
     {/if}
     <div class="chart" style="--pl:{pl}px; --pr:30px">
       <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role, a11y_no_noninteractive_element_interactions -->
       <canvas bind:this={cv} id="cmpcv" role="img" aria-label={label} aria-describedby={describedBy} hidden={!compare.lines.length}
-              onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} onlostpointercapture={cancel}
+              onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancelPointer} onlostpointercapture={cancel}
               onpointerleave={leave} ondblclick={dbl}></canvas>
       {#if band}<div id="cmpsel" style="left:{band.l}px; width:{band.w}px; top:{band.top}px; height:{band.h}px"></div>{/if}
       {#if tip}
@@ -554,8 +604,9 @@
       {#if compare.lines.length}
         <input id="cmpscrub" type="range" min="0" max="240" step="1" bind:this={scrubEl} hidden={!info || !!info.why}
                aria-label={CMP_SCRUB_NAME} aria-describedby="cmpscrubkeys" aria-valuetext={scrubText}
-               oninput={readScrub} onfocus={readScrub} onblur={scrubBlur} onkeydown={scrubKey}>
-        <span id="cmpscrubkeys" class="sr-only">{CMP_SCRUB_KEYS}</span>
+               oninput={scrubInput} onfocus={readScrub} onblur={scrubBlur} onkeydown={scrubKey}>
+        <!-- the slider's description only (hidden: not read again as text, nor left in the page while the slider is hidden) -->
+        <span id="cmpscrubkeys" hidden>{CMP_SCRUB_KEYS}</span>
       {/if}
     </div>
     {#if compare.lines.length}
@@ -685,7 +736,8 @@
   #cmpparam:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
   .cap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); margin-bottom: calc(-1 * var(--space-2)); }
   #cmpaxis { margin: 0; flex: 1 1 16rem; min-width: 0; color: var(--ink2); font-size: var(--fs-0); font-variant-numeric: tabular-nums; }
-  #cmpdraghint { color: var(--muted); font-size: var(--fs-0); }
+  #cmpdraghint, #cmpkeyhint { color: var(--muted); font-size: var(--fs-0); }
+  #cmpkeyhint { display: none; }
   .chart { --pl: 46px; --pr: 30px; }
   #cmpcv { touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #cmpsel { position: absolute; pointer-events: none; background: color-mix(in srgb, var(--muted) 14%, transparent); border-inline: 1px solid var(--muted); }
@@ -699,7 +751,14 @@
     accent-color: var(--ink); background: transparent;
   }
   #cmpnote { color: var(--muted); font-size: var(--fs-0); max-width: 72ch; }
-  @media (hover: hover) and (pointer: fine) { #cmpcv { cursor: crosshair; } }
+  /* a mouse or pen: the hint's place is as tall as Reset zoom (28 px), which takes it while zoomed, so the chart under them does not
+     jump, on one line or two; while the slider has the keyboard's focus, the slider's keys are said there in its stead (not zoomed) */
+  @media (hover: hover) and (pointer: fine) {
+    #cmpcv { cursor: crosshair; }
+    #cmpdraghint { display: inline-flex; align-items: center; min-height: 28px; }
+    .cmp:has(#cmpscrub:focus-visible) #cmpdraghint { display: none; }
+    .cmp:has(#cmpscrub:focus-visible) #cmpkeyhint { display: inline-flex; align-items: center; min-height: 28px; }
+  }
   @media (hover: none), (pointer: coarse) { #cmpdraghint { display: none; } }
   @media (pointer: coarse) { #cmpparam { height: var(--tap); font-size: 16px; } #cmpscrub { height: var(--tap); margin-top: 0; } }
   @media (max-width: 359px) { .vg > .vl[aria-hidden='true'] { display: none; } }   /* 320: the group keeps its aria-label "Range" */

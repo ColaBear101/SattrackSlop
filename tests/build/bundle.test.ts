@@ -64,6 +64,20 @@ describe.skipIf(!built)('the production bundle', () => {
     expect(js.filter(f => read('assets/' + f).includes(table[0]!))).toEqual(withKey);
   });
 
+  /* The downlink table and the picker's other names (CHANGES-FROM-LEGACY.md, L65) are files of their own too, the same bytes as data/,
+     fetched rather than imported (a browser keeps a failed import() for the life of the page): no chunk holds either, and their loaders,
+     in the entry, name them. */
+  it('ships the downlink table and the other names as files of their own, fetched by the entry', () => {
+    const js = assets.filter(f => f.endsWith('.js'));
+    for (const name of ['transmitters', 'aliases']) {
+      expect(js.filter(f => new RegExp('^' + name + '-[A-Za-z0-9_-]{8}\\.js$').test(f)), name).toEqual([]);
+      const file = assets.filter(f => new RegExp('^' + name + '-[A-Za-z0-9_-]{8}\\.json$').test(f));
+      expect(file.length, name).toBe(1);
+      expect(fs.readFileSync(path.join(dist, 'assets', file[0]!))).toEqual(fs.readFileSync(path.join(ROOT, 'data', name + '.json')));
+      expect(js.filter(f => read('assets/' + f).includes(file[0]!)), name).toEqual([entry!.replace(/^assets\//, '')]);
+    }
+  });
+
   /* The footer's credit line (CHANGES-FROM-LEGACY.md, L49, which gives its words) states package.json's version: Vite writes it in, so no chunk may still
      name __APP_VERSION__ (it would throw in the page), and the chunk with the line carries the version. */
   it('has the version written in where the footer states it', () => {

@@ -287,9 +287,9 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
   // ---- the picker's other names ---------------------------------------------
   /* The rebuilt picker also matches the other names SatNOGS DB keeps for the catalogue's spacecraft, baked into data/aliases.json
      (CHANGES-FROM-LEGACY.md, L61): after rank()'s rows, what one of them matches, by every word of the query starting a word of the name,
-     its option saying which name matched in plain text. The table is a chunk of its own (with its finder, another, asked for in the same
-     moment), asked for the first time something is typed, not at boot and not when the list opens; Enter on that first query, if it comes
-     before the table, waits for it. Nothing is asked of SatNOGS and nothing is stored. A context of its own, so that no chunk is in the
+     its option saying which name matched in plain text. The table is a file of its own, fetched (assets/aliases-<hash>.json, L65; its finder
+     is a chunk, asked for in the same moment), the first time something is typed, not at boot and not when the list opens; Enter on that
+     first query, if it comes before the table, waits for it. Nothing is asked of SatNOGS and nothing is stored. A context of its own, so that no chunk is in the
      cache (and routes, which keep the page from its HTTP cache on each fresh load below). */
   if (NEW) {
     const ctxA = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1400, height: 900 } });
@@ -298,7 +298,7 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     const errsA = [], reqsA = [];
     pA.on('pageerror', e => errsA.push(e.message));
     pA.on('request', r => reqsA.push(r.url()));
-    const TABLE = /\/assets\/aliases-[A-Za-z0-9_-]{8}\.js$/, FINDER = /\/assets\/alias-[A-Za-z0-9_-]{8}\.js$/;
+    const TABLE = /\/assets\/aliases-[A-Za-z0-9_-]{8}\.json$/, FINDER = /\/assets\/alias-[A-Za-z0-9_-]{8}\.js$/;
     const originA = new URL(PAGE).origin;
     /* the table is held back 1.5 s the first time, so that the Enter below is surely pressed before it has come; and so is the finder's
        code, so that the table is seen to be asked for while that is still on its way (together, one round trip; not one after the other) */
@@ -442,6 +442,29 @@ const iso = ms => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
     chk('...and Enter then opens the planner, as the Plan row says, rather than picking CSC-1', after.planner && after.shown === f.name && !after.open, JSON.stringify(after));
     await pA.keyboard.press('Escape');
     await pA.waitForFunction(() => document.getElementById('planner').hidden, null, { timeout: 5000 }).catch(() => {});
+    await pA.unroute(TABLE);
+
+    /* The table refused once, as on a dropped connection (CHANGES-FROM-LEGACY.md, L65). It is a file of the page's own, fetched, not a chunk:
+       a browser keeps a failed import() for the life of the page, so a chunk could never be asked for again. The first query is answered by
+       rank() alone; the next one typed, the reader's try again, asks for the table again, and it comes. */
+    let refusedA = 0;
+    await pA.route(TABLE, r => (refusedA++ === 0 ? r.abort() : r.continue()));
+    await pA.goto(PAGE, { waitUntil: 'load' });
+    await pA.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+    await pA.waitForTimeout(1500);
+    const lostA = await rowsA('rs44');
+    await pA.waitForFunction(() => [...document.querySelectorAll('.search ~ p.note')].some(n => n.textContent === 'Nothing in the catalogue matches that.'), null, { timeout: 10000 }).catch(() => {});
+    const lostNotes = await H.pickerNotes(pA);
+    chk('the table refused once: "rs44", which only an other name matches, is answered by rank() alone, "Nothing in the catalogue matches that."',
+        refusedA === 1 && lostA.length === 0 && lostNotes[0] === 'Nothing in the catalogue matches that.', JSON.stringify({ rows: lostA, notes: lostNotes, refused: refusedA }));
+    await H.typeInPicker(pA, 'rs-44');
+    await pA.waitForSelector('#satlist .al', { timeout: 10000 }).catch(() => {});
+    const backA = await rowsA('rs-44');
+    chk('...try again, the next query typed ("rs-44"): the table is asked for again, a second request, and comes: BREEZE-KM R/B, "matches RS-44"',
+        refusedA === 2 && backA.length === 1 && backA[0].nm === 'BREEZE-KM R/B' && backA[0].al === 'matches RS-44', JSON.stringify({ rows: backA, refused: refusedA }));
+    const ao7 = (await rowsA('ao7')).map(x => x.nm + ' / ' + x.al).join(' | ');
+    chk('...and it is kept: "ao7" lists OSCAR 7 and FUNCUBE 1 with no third request', refusedA === 2 && ao7 === 'OSCAR 7 / matches AO-7 | FUNCUBE 1 / matches AO-73', ao7 + '; requests ' + refusedA);
+    await H.closePicker(pA);
     await pA.unroute(TABLE);
     chk('...and nothing is asked of db.satnogs.org, or of any SatNOGS host, at any point of the visit', !reqsA.some(u => /satnogs/i.test(new URL(u).hostname)),
         reqsA.filter(u => /satnogs/i.test(new URL(u).hostname)).join(' ') || 'none of ' + reqsA.length + ' requests');

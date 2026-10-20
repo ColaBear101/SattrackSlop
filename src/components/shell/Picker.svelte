@@ -27,7 +27,8 @@
      their own asked for the first time something is typed. What rank() did not list that one of them matches comes after rank()'s rows,
      and its option says which name matched. A wrapper: rank() is not touched, and only the catalogue is searched this way. The finder's
      chunk and the table's are asked for together, one round trip. Rows that come in after the first query has been answered go before
-     the Plan row: if that row was the one chosen, it stays chosen. `alDone`: the table has come, or will not. */
+     the Plan row: if that row was the one chosen, it stays chosen. `alDone`: the table has come, or did not (L65: a failure is forgotten,
+     so the next query typed asks again, and the rows come in when it does). */
   let al = $state.raw<import('../../lib/catalogue/alias').AliasFinder | null>(null);
   let alDone = $state(false);
   let alp: Promise<void> | null = null;
@@ -36,7 +37,7 @@
     al = m.aliasFinder(d.a);
     alDone = true;
     if (keep) active = shown.length;
-  }, () => { alDone = true; }));
+  }, () => { alDone = true; alp = null; }));
   const ranked = $derived.by(() => { void custom.rev; return rank(app.catalogue, query, custom.list); });
   const said = $derived(al && query.trim() ? al(app.catalogue, query, ranked) : null);
   const hits = $derived(watchedFirst(said?.size ? ranked.concat([...said.keys()]) : ranked, lead));

@@ -764,6 +764,49 @@ const chk = (name, ok, detail) => {
         lost.open && !lost.panel && lost.summary === 'Uplink and transponders' && errs2.length === 0,
         JSON.stringify(lost) + '; asked for ' + reqs2.filter(u => XPDR_JS.test(u)).length + ' time(s) in three toggles; errors: ' + (errs2.join(' | ') || 'none'));
     await p2.close();
+
+    /* the downlink table refused at boot, as on a dropped connection (CHANGES-FROM-LEGACY.md, L65), and every time it is asked for until
+       the connection is back: the first request fails, and so does any other analysis's at boot (a newer element set adopted asks again, at a
+       moment that depends on the cache's answer, so a first refusal alone could not be seen). It is a file of the page's own, fetched
+       (assets/transmitters-<hash>.json), not a chunk: a browser keeps a failed import() for the life of the page, so a chunk could never be
+       asked for again. The box says what it says when there is no table; once the connection is back, the next spacecraft shown, the reader's
+       try again, asks for it again, once, and it comes, for that spacecraft and for the one before. */
+    const TX_TABLE = /\/assets\/transmitters-[A-Za-z0-9_-]{8}\.json$/;
+    const p3 = await browser.newPage();
+    const errs3 = [];
+    let txAsked = 0, txDown = true;
+    p3.on('pageerror', e => errs3.push(e.message));
+    for (const host of ['**celestrak.org/**', '**gibs.earthdata.nasa.gov/**', '**tle.ivanstanojevic.me/**']) await p3.route(host, r => r.abort());
+    await p3.route(TX_TABLE, r => { txAsked++; return txDown ? r.abort() : r.continue(); });
+    await p3.goto(PAGE, { waitUntil: 'load' });
+    await p3.waitForFunction(() => !!window.__gt && !!window.__gt.D, null, { timeout: 30000 });
+    await p3.waitForSelector('#dopbar', { timeout: 15000 });
+    /* boot settles: no request for the table for 2 s, at least 3 s after the first analysis (8 s at most) */
+    for (let t = 0, seen = -1, still = 0; t < 8000 && !(t >= 3000 && still >= 2000); t += 250) {
+      await p3.waitForTimeout(250);
+      if (txAsked === seen) still += 250; else { seen = txAsked; still = 0; }
+    }
+    const bar = () => p3.evaluate(() => ({ name: window.__gt.D.entry.name, opts: [...document.querySelectorAll('#dopsel option')].map(o => o.textContent.replace(/\s+/g, ' ').trim()),
+      freq: document.getElementById('dopfreq').value, none: (document.querySelector('#dopbar .none') || {}).textContent || null }));
+    const lostTx = await bar(), refusedTx = txAsked;
+    chk('a downlink table that does not come at boot: no list, the box says "no published downlink — enter one", the frequency box empty, no page error',
+        refusedTx >= 1 && lostTx.name === 'KNACKSAT-2' && lostTx.opts.length === 0 && lostTx.none === 'no published downlink — enter one' && lostTx.freq === '' && errs3.length === 0,
+        JSON.stringify(lostTx) + '; refused ' + refusedTx + ' time(s); errors: ' + (errs3.join(' | ') || 'none'));
+    txDown = false;
+    await H.pickExact(p3, 'SAUDISAT 1C');
+    await p3.waitForFunction(() => !!document.getElementById('dopsel') && document.getElementById('dopfreq').value !== '', null, { timeout: 15000 }).catch(() => {});
+    const backTx = await bar();
+    chk('...the connection back, try again, the next spacecraft shown (SAUDISAT 1C): the table is asked for again, once, and comes: its downlinks listed, the first one tuned',
+        txAsked === refusedTx + 1 && backTx.name === 'SAUDISAT 1C' && backTx.opts.join(' | ') === '149.025 MHz FM 44000bd | 436.795 MHz FM | Custom…' && backTx.freq === '149.025',
+        JSON.stringify(backTx) + '; asked for ' + txAsked + ' time(s), ' + refusedTx + ' refused');
+    await H.pickExact(p3, 'KNACKSAT-2');
+    await p3.waitForFunction(() => window.__gt.D.entry.name === 'KNACKSAT-2', null, { timeout: 15000 }).catch(() => {});
+    await p3.waitForTimeout(500);
+    const againTx = await bar();
+    chk('...and back on KNACKSAT-2 its own downlinks are listed and tuned, with no request more and no page error',
+        txAsked === refusedTx + 1 && againTx.opts.length === 3 && againTx.opts[0].startsWith('145.825 MHz FSK') && againTx.opts[2] === 'Custom…' && againTx.freq === '145.825' && errs3.length === 0,
+        JSON.stringify(againTx) + '; asked for ' + txAsked + ' time(s); errors: ' + (errs3.join(' | ') || 'none'));
+    await p3.close();
   } else {
     /* the old page has the range rate the checks above use, but no line under its downlink box (it is new in the rebuild) */
     console.log('\n  the live line under the downlink box: not on the old page, which has none (CHANGES-FROM-LEGACY.md, L52); not checked');

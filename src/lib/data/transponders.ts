@@ -17,6 +17,8 @@
  * inv 1 for an inverting passband (always 0 for a pair), upMode '' when SatNOGS gives none or the same as the downlink's, tone 0
  * when the record names none. Per object, the linear passbands come first, then the pairs, each by uplink. */
 
+import { retrying } from '../net/file';
+
 export type XpRecord = [number, number, number, number, 0 | 1, string, string, number, string];
 export interface TransponderData {
   built: string; source: string; licence: string; objects: number; records: number;
@@ -73,13 +75,6 @@ export function makeTransponders(data: TransponderData): TransponderTable {
     },
     has(satnum) { return own(keyOf(satnum)); }
   };
-}
-
-/** One promise for every caller while it is on its way or has come; a failure is forgotten, so the next call asks again (a lost
- *  file on a flaky connection is not the end of the table for the visit). */
-export function retrying<T>(get: () => Promise<T>): () => Promise<T> {
-  let p: Promise<T> | null = null;
-  return () => (p ??= get().catch((e: unknown) => { p = null; throw e; }));
 }
 
 /** The table from what `get` gives, the file's JSON (the store hands it a fetch of the file), asked for once and kept, and asked for

@@ -3228,8 +3228,12 @@ than leaving a tolerance that looks arbitrary.
 transmitter endpoint — the same anonymous source that supplies most of the embedded catalogue, so
 this adds a field to a source already trusted rather than a new dependency. One request, not
 2,158: the whole table is 3.9 MB unpaginated in about seven seconds, and asking per object would
-be 2,158 requests for the same bytes. The table is a chunk of its own, asked for as soon as the
-first answer has been computed, so the entry the page cannot start without does not carry it.
+be 2,158 requests for the same bytes. The table is a file of the page's own
+(`assets/transmitters-<hash>.json`, the same bytes), fetched as soon as the first answer has been
+computed, so the entry the page cannot start without does not carry it. It is fetched rather than
+imported as a chunk because a browser keeps a failed `import()` for the life of the page: a table
+lost on a dropped connection is asked for again when the next spacecraft is shown, and comes
+(`src/lib/net/file.ts`; the box says *no published downlink* until it has).
 
 Kept: **active** transmitters only, with a published downlink, deduplicated on frequency and mode,
 at most four per object, and only for objects actually in the catalogue.
@@ -3293,10 +3297,12 @@ another object's name in the catalogue. That last is where SatNOGS DB and the ca
 which object is which: SatNOGS gives CBERS-4A to 44879, which the catalogue calls OBJECT A, while
 the catalogue's CBERS 4A is 44883, and GRUS-1D to 47935, the catalogue's GRUS-1E (2 names; kept,
 they would list a second spacecraft under a name that is another's). The file is 14.0 KB (14,021
-bytes), 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a chunk of its
-own that the picker asks for the first time something is typed into it, not at boot and not when
-the list opens, so a visit that never searches never loads it. The code that searches it is a
-chunk of its own too (0.5 KB), asked for in the same moment, so the two come in one round trip.
+bytes), 6.0 KB gzipped, keyed by the NORAD number without its leading zeros; it is a file of the
+page's own (`assets/aliases-<hash>.json`) that the picker fetches the first time something is typed
+into it, not at boot and not when the list opens, so a visit that never searches never loads it.
+Fetched, not imported, for the same reason as the transmitter table: one that did not come is asked
+for again at the next query typed. The code that searches it is a chunk (0.5 KB), asked for in the
+same moment, so the two come in one round trip.
 The page asks SatNOGS nothing: the names are a file of the page's own, so the table in *Data and
 privacy* is unchanged.
 

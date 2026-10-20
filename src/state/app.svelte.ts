@@ -174,7 +174,7 @@ class AppState {
     const linked = satnum ? this.catalogue.findIndex(c => c.satnum === satnum) : -1;
     const wants = WANT.map(re => this.catalogue.findIndex(c => re.test(c.name)));
     const first = linked >= 0 ? linked : wants.find(i => i >= 0) ?? 0;
-    if (this.load(this.catalogue[first]!)) { void doppler.ensure(); return; }
+    if (this.load(this.catalogue[first]!)) return;
     const said = this.note;
     const tried = new Set([first]);
     for (const i of wants.concat(this.catalogue.map((_, i) => i))) {
@@ -182,7 +182,6 @@ class AppState {
       tried.add(i);
       if (this.load(this.catalogue[i]!)) { this.note = said + ' Showing ' + this.catalogue[i]!.name + ' instead.'; break; }
     }
-    void doppler.ensure();
   }
 
   /** The age of an element set and the line saying when it was last checked both change while the page sits there:
@@ -260,7 +259,8 @@ class AppState {
     this.syncUrl();
     life.offer(entry);                            // the cached forecast, or the offer to fetch the history
     if (!o.trial) void live.check(entry);        // fire and forget; reloads if a newer set exists
-    if (this.afterLoad) { try { this.afterLoad(nd); } catch (err) { console.error(err); } }   // last, and its own failure is not the load's
+    if (this.afterLoad) { try { this.afterLoad(nd); } catch (err) { console.error(err); } }   // its own failure is not the load's
+    void doppler.ensure();                        // the downlink table: once, and asked again after a failure (L65)
     return true;
   }
 

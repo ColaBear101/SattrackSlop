@@ -1,8 +1,9 @@
 import { txFor } from '../lib/analysis/doppler';
 import { loadTransmitters, type Downlink, type TransmitterTable } from '../lib/data/transmitters';
 
-/* The downlink the Doppler is computed for. The table of published downlinks is its own chunk, fetched the first
- * time it is wanted; the frequency is the reader's to change, and the page must never throw away one that was typed.
+/* The downlink the Doppler is computed for. The table of published downlinks is a file of the page's own, fetched the
+ * first time it is wanted (app.load asks at every analysis) and asked for again at the next one after a failure (L65);
+ * the frequency is the reader's to change, and the page must never throw away one that was typed.
  *
  * From `dopHz` / `dopSat` / `dopReset` in legacy/index.html (main@4eadd7a), lines 9983-10000. */
 

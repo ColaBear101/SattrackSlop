@@ -1,7 +1,9 @@
 /* Downlink frequencies, baked from SatNOGS DB (data/transmitters.json, written by verification/tools/fetch-transmitters.js).
  *
- * The table was a 122 KB script of object literals the page always loaded; it is a JSON file now, fetched as its own
- * chunk the first time a downlink is wanted, so the first paint does not carry it. The lookups are the old
+ * The table was a 122 KB script of object literals the page always loaded; it is a JSON file now, fetched as a file of
+ * the page's own (assets/transmitters-<hash>.json, the same bytes) the first time a downlink is wanted, so the first
+ * paint does not carry it, and asked for again after a failure (../net/file.ts says why it is not imported as a chunk;
+ * CHANGES-FROM-LEGACY.md, L65). The lookups are the old
  * `Transmitters` object's (legacy/earth/transmitters.js, main@4eadd7a), with one fix: they are keyed by the NORAD
  * NUMBER. The page asked for the zero-padded text of the TLE's catalogue column ("01804") in a table keyed 1804, so
  * the twenty satellites numbered under 10000 that have a downlink never showed one (CHANGES-FROM-LEGACY.md, item 1).
@@ -9,6 +11,9 @@
  * Each record is [downlinkHz, mode, baud, description, service]. Objects absent from the table have no active
  * downlink in SatNOGS, which is the common case for the government and commercial half of the catalogue: the page
  * says so rather than guessing a frequency. */
+
+import TX_URL from '../../../data/transmitters.json?url';
+import { fetchTable, retrying } from '../net/file';
 
 export type TxRecord = [number, string, number, string, string];
 export interface TransmitterData {
@@ -47,9 +52,6 @@ export function makeTransmitters(data: TransmitterData): TransmitterTable {
   };
 }
 
-let loading: Promise<TransmitterTable> | null = null;
-/** The table, fetched on first use (its own chunk) and kept. */
-export function loadTransmitters(): Promise<TransmitterTable> {
-  loading ??= import('../../../data/transmitters.json').then(m => makeTransmitters(m.default as unknown as TransmitterData));
-  return loading;
-}
+/** The table, fetched on first use and kept; after a failure the next call asks again. */
+export const loadTransmitters: () => Promise<TransmitterTable> =
+  retrying(() => fetchTable(TX_URL, 'tx').then(d => makeTransmitters(d as TransmitterData)));

@@ -57,6 +57,22 @@ describe.skipIf(!built)('the production bundle', () => {
     expect(read('assets/' + withCredit[0])).toContain(version);
   });
 
+  /* The decay history's direct fetch and CelesTrak's page reader (CHANGES-FROM-LEGACY.md, L68) are not in the entry (the module script
+     and what index.html preloads with it): the fetch is a chunk of its own, direct-history, and the reader is in the lifetime chunk it
+     imports, which the first screen fetches anyway. The history's URL and the reader's pattern are what give each away. */
+  it('keeps the decay history\'s direct fetch and page reader out of the entry', () => {
+    const preload = [...html.matchAll(/<link rel="modulepreload"[^>]*href="\/(assets\/[^"]+\.js)"/g)].map(m => m[1]!);
+    const entryCode = [entry!, ...preload].map(read).join('\n');
+    const own = assets.filter(f => /^direct-history-[A-Za-z0-9_-]{8}\.js$/.test(f));
+    const lifetime = assets.filter(f => /^lifetime-[A-Za-z0-9_-]{8}\.js$/.test(f));
+    expect(own).toHaveLength(1);
+    expect(lifetime).toHaveLength(1);
+    expect(entryCode).not.toContain('graph-orbit-data.php');
+    expect(entryCode).not.toContain('var plotData');
+    expect(read('assets/' + own[0])).toContain('graph-orbit-data.php');
+    expect(read('assets/' + lifetime[0])).toContain('var plotData');
+  });
+
   /* The decay comparison (CHANGES-FROM-LEGACY.md, L66) is a chunk of its own, DecayCompare, asked for at the first press of "Compare
      with other spacecraft". The entry (the module script and what index.html preloads with it) holds none of its words; the report's
      chunk, counted on every visit, holds the opener's two (life-compare-open.ts) and the record's key once, as the probe, and none of

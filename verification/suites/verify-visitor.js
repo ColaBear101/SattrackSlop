@@ -256,12 +256,14 @@ const isApi = (srv, u) => u.startsWith(srv.origin + '/') && /^\/api\//.test(new 
 
 /* ---- the ceilings of group 7 ------------------------------------------------------------------------------------------------------ */
 /* Measured on the build these were written against (gzip level 9, bytes), then 5 % added: the weight must not grow. The entry is what the
-   page cannot start without: the entry chunk, the Svelte runtime it shares with the lazy chunks (index-client) and the tiny shared chunk of
-   the rich-text renderer; the 90 KB budget is for that sum (the report below the first screen, the element-set client and the planner are
-   chunks of their own). */
+   page cannot start without: the entry chunk, the Svelte runtime it shares with the lazy chunks (index-client), the tiny shared chunk of
+   the rich-text renderer and the bundler's own helper (rolldown-runtime: the object a dynamic import of a shared chunk is handed, which
+   the entry and the lifetime chunk both make; it was inside the entry chunk until the decay history's direct fetch and CelesTrak's page
+   reader left it (CHANGES-FROM-LEGACY.md, L68), and with them the lifetime chunk's last import from it); the 90 KB budget is for that
+   sum (the report below the first screen, the element-set client and the planner are chunks of their own). */
 /* total: index, scene, sky-data, transmitters, lifetime, and the Decay panel's own life and draw-life (counted whether or not the visit fetched
    them: see DECAY_OWN). */
-const ENTRY_GRAPH = ['index', 'index-client', 'rich'];
+const ENTRY_GRAPH = ['index', 'index-client', 'rich', 'rolldown-runtime'];
 /* fetched when the section is near, or at idle, or on the first ask of the API: which comes first depends on the layout and the machine, so
    each is counted whether or not the visit fetched it */
 const DECAY_OWN = ['life', 'draw-life', 'Report', 'reporter', 'treaty2', ...ENTRY_GRAPH];
@@ -382,7 +384,7 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       const total = sizes.reduce((s, x) => s + x.gz, 0);
       const entry = { gz: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).reduce((s, x) => s + x.gz, 0), n: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).length };
       note(sizes.sort((a, b) => b.gz - a.gz).map(x => x.name + ' ' + (x.gz / 1000).toFixed(1) + ' kB' + (x.unfetched ? ' (not fetched by this visit)' : '')).join(', '));
-      chk('the entry (the entry chunk, the Svelte runtime it shares and the rich-text chunk) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %), and is within the 90 kB budget', entry.n === ENTRY_GRAPH.length && entry.gz <= CEIL.entry && entry.gz <= 90000,
+      chk('the entry (the entry chunk, the Svelte runtime it shares, the rich-text chunk and the bundler\'s helper) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %), and is within the 90 kB budget', entry.n === ENTRY_GRAPH.length && entry.gz <= CEIL.entry && entry.gz <= 90000,
         'now ' + (entry.gz / 1000).toFixed(2) + ' kB gzipped in ' + entry.n + ' files; the 90 kB budget is ' + (entry.gz <= 90000 ? 'met' : 'NOT met'));
       chk('all the first screen\'s JavaScript (what the visitor fetched, and the Decay panel\'s own chunks whether or not this visit was near enough to fetch them) but the planner\'s five chunks is no heavier than ' + (CEIL.total / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.totalMeasured / 1000).toFixed(1) + ' kB, +5 %)', total <= CEIL.total,
         'now ' + (total / 1000).toFixed(2) + ' kB in ' + sizes.length + ' files');

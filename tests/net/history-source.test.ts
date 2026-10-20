@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { DIRECT_HISTORY_TIMEOUT_MS, DIRECT_TIMEOUT_MS } from '../../src/lib/net/direct';
+import { describe, expect, it, vi } from 'vitest';
+import { DIRECT_TIMEOUT_MS } from '../../src/lib/net/direct';
+import { DIRECT_HISTORY_TIMEOUT_MS } from '../../src/lib/net/direct-history';
 import { createHistorySource } from '../../src/lib/net/history-source';
 import { BREAKER_MS } from '../../src/lib/net/breaker';
 import { fetchLiveTle } from '../../src/lib/net/tle-source';
@@ -284,5 +285,31 @@ describe('every way of having no history, against the original', () => {
       seen.add(viaApi!.why ?? 'ok');
     }
     expect(seen).toEqual(new Set(['ok', 'http', 'unreachable', 'timeout', 'unreadable', 'empty', 'outside']));
+  });
+});
+
+describe('the direct fetch is a chunk of its own (CHANGES-FROM-LEGACY.md, L68)', () => {
+  it('when its code does not arrive the answer is "unreachable", nobody is asked and nothing is stored; the next request asks for the code again', async () => {
+    vi.resetModules();
+    let refuse = true;
+    vi.doMock('../../src/lib/net/direct-history', async (load: () => Promise<unknown>) => {
+      if (refuse) throw new TypeError('Failed to fetch dynamically imported module');
+      return load();
+    });
+    try {
+      const { createHistorySource: fresh } = await import('../../src/lib/net/history-source');
+      const w = makeWorld({ upstream: world(), clock: fakeClock(T0) });
+      const src = fresh(historyCtx(w, { api: null }));
+      expect(await src.history('25544')).toEqual({ P: null, why: 'unreachable' });
+      expect(w.calls).toEqual([]);
+      expect(w.store.writes).toEqual([]);
+      refuse = false;
+      const out = await src.history('25544');
+      expect(out!.P).toHaveLength(221);
+      expect(w.calls.map(c => c.url)).toEqual([HIST('25544')]);
+    } finally {
+      vi.doUnmock('../../src/lib/net/direct-history');
+      vi.resetModules();
+    }
   });
 });

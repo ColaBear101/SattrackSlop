@@ -1,10 +1,10 @@
-/* The element set and the decay history, fetched straight from the sources, as the page always did it. MOVED, not
- * rewritten, from legacy/index.html (main@4eadd7a) lines 11424-11524 (fetchTLE) and legacy/earth/lifetime.js lines
- * 355-379 (fetchHistory): the sources, their order, their URLs, the abort times (8 s a source for an element set,
- * 75 s for a history), the "No GP data found" test read before the status, the validation and the names of the
- * outcomes are the originals'. What is gone is the page: the clock, `fetch` and the abort times come in as
- * arguments, and what is cached is decided by the callers (tle-source.ts, history-source.ts), which write the
- * record these return.
+/* The element set, fetched straight from the sources, as the page always did it. MOVED, not rewritten, from
+ * legacy/index.html (main@4eadd7a) lines 11424-11524 (fetchTLE): the sources, their order, their URLs, the abort time
+ * (8 s a source), the "No GP data found" test read before the status, the validation and the names of the outcomes
+ * are the original's. What is gone is the page: the clock, `fetch` and the abort time come in as arguments, and what
+ * is cached is decided by the caller (tle-source.ts), which writes the record this returns. The decay history's own
+ * direct fetch (legacy/earth/lifetime.js lines 355-379) was here too; it is direct-history.ts now, a chunk of its own
+ * asked for at the first history request, and CelesTrak's page reader left the entry with it.
  *
  * It is the fallback when the API is absent, and the first choice when there is none at all: the page worked
  * before the API existed and must not lose that. Both sources send Access-Control-Allow-Origin: *, which is the
@@ -14,7 +14,6 @@
  * so a body that stalled hung the check for good (and the element-set check's 5 minute re-arm guard kept it from
  * ever being asked again). The deadlines now cover the body as well.
  */
-import { readPlot, type PlotRow } from '../../../shared/plot';
 import { isNoGpData, tleFromMirrorJson, tleFromText, tleOk } from '../../../shared/tle';
 import type { TleLines } from '../../../shared/tle';
 import type { FetchLike } from './types';
@@ -71,38 +70,4 @@ export async function fetchDirectTle(
     finally { clearTimeout(bail); }
   }
   return null;
-}
-
-/* ---- the decay history -------------------------------------------------------------------------------- */
-
-/* Measured: this endpoint can take over a MINUTE to answer - CelesTrak rebuilds the run of element sets from its
-   archive on every call - so the page waits 75 seconds, not 8. */
-export const DIRECT_HISTORY_TIMEOUT_MS = 75_000;
-
-/** history() answers {P, why}: P the run of element sets, or null with why saying which way there is none - 'timeout'
- *  (no answer inside 75 s), 'unreachable' (the request itself failed: offline, blocked, refused), 'http' (an error
- *  status, in status), 'unreadable' (an answer with no history in it that this can find), 'empty' (a history with no
- *  rows) or 'outside' (rows, every one outside the bounds of shared/plot.ts, counted in rows). */
-export type HistoryOutcome =
-  | { P: PlotRow[]; why: null }
-  | { P: null; why: 'timeout' | 'unreachable' | 'http' | 'unreadable' | 'empty' | 'outside'; status?: number; rows?: number };
-
-/** legacy/earth/lifetime.js fetchHistory (lines 355-379) without its storage: the request, the abort, the reading. */
-export async function fetchDirectHistory(
-  satnum: string,
-  ctx: { fetch: FetchLike; timeoutMs?: number }
-): Promise<HistoryOutcome> {
-  const ctl = new AbortController();
-  const bail = setTimeout(() => ctl.abort(), ctx.timeoutMs ?? DIRECT_HISTORY_TIMEOUT_MS);
-  try {
-    const r = await ctx.fetch('https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=' + satnum, { signal: ctl.signal });
-    if (!r.ok) return { P: null, why: 'http', status: r.status };
-    const got = readPlot(await r.text()), P = got.P;
-    if (!P) return { P: null, why: !got.found ? 'unreadable' : got.rows ? 'outside' : 'empty', rows: got.rows };
-    return { P, why: null };
-  } catch {
-    return { P: null, why: ctl.signal.aborted ? 'timeout' : 'unreachable' };
-  } finally {
-    clearTimeout(bail);
-  }
 }

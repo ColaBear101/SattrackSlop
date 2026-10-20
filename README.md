@@ -1627,7 +1627,10 @@ rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major a
 The page asks its own cache API first, `/api/history/<id>`, if one answers as itself (*Staying
 current* says how that is judged), and CelesTrak directly when none does, or when the one that does
 cannot reach CelesTrak itself. Both read the page with one function (`shared/plot.ts`), so the
-bounds and the answers below are the same either way. The cache keeps a history for twelve hours,
+bounds and the answers below are the same either way. Neither the direct request nor that function
+is in the code every visit downloads: the request is a small chunk of its own, fetched at the first
+history it has to ask CelesTrak for, and the function comes with the decay model's chunk, which the
+first screen fetches anyway (`CHANGES-FROM-LEGACY.md`, L68). The cache keeps a history for twelve hours,
 and if it reports that CelesTrak did not answer inside its own 70 seconds, that is the answer: the
 page does not wait a second time.
 

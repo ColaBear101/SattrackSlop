@@ -24,7 +24,7 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
 - **Ask when it will come down.** Where an object's history of element sets supports it, the page estimates the remaining life; for boosted, station-kept or too-little-history objects it refuses, and says why. The search marks *decayed now* the ones the orbit model already has down. *Compare with other spacecraft* sets as many as you like beside it on a chart of its own, seven of them in colour and the rest in grey, each history fetched only when you ask.
 - **See it through your phone.** On a phone or tablet (over https), the AR view draws the sky, with the satellite in it, over the camera picture, and a small radar in the corner shows all of the sky with a blue crosshair where the phone points, at the camera or, if you choose, at the phone's top edge. The *Radar* button opens that radar full screen with no camera at all, and *Snap* saves a picture of what the screen shows. The page sends none of it anywhere: the camera's picture is drawn once, into the picture you save, when you press Snap, and where that file goes (your phone's share sheet, or a download) is your choice.
-- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
+- **Radio and eyes.** Doppler shift for the satellites that have a published downlink, with the frequency to tune to, to the hertz, now or at the clock's instant (and the one to send on, for an uplink you type in), a calculator for working a linear transponder or an FM repeater (what to send on and where to listen, both legs' Doppler, the passband, the sideband, the tone, your own offset), and a naked-eye verdict for each pass. Under the countdown, the page says whether the spacecraft is in sunlight or in the Earth's shadow, how fast it is approaching or receding, its speed, and the grid square below it.
 
 <p align="center">
   <img src="docs/img/console-dark-map.jpg" alt="Dark theme, flat map: the ISS ground track over a day with Bangkok's visibility circle" width="49%">
@@ -81,7 +81,7 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 
 A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
 
-What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the spacecraft you watch, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the spacecraft you watch, the transponder offsets you set, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
@@ -91,7 +91,7 @@ The camera, motion sensors and your location are used only when you tap the butt
 |---|---|
 | `src/` | the console: `lib/` the maths and the sentences, `state/` the stores, `components/` the screens, `scene/` the 3D globe |
 | `server/`, `shared/` | the optional cache API |
-| `data/` | the catalogue, the coastlines, the radio table, the magnetic model |
+| `data/` | the catalogue, the coastlines, the radio tables, the magnetic model |
 | `public/` | the two Moon pages, as they always were |
 | `verification/`, `tests/` | the checks |
 | [`CHANGES-FROM-LEGACY.md`](CHANGES-FROM-LEGACY.md) | every difference from the original page, with its reason |
@@ -190,7 +190,9 @@ src/                the Earth console's source: Svelte 5 + TypeScript
       propagator.ts       what is a property of HOW A THING MOVES — SGP4 for Earth TLEs
       sun.ts              where the Sun is, and where it is overhead (from the old
                           page's inline script, not from public/core/)
-    analysis/           elements, ground track, passes, the optics, the Doppler shift
+    analysis/           elements, ground track, passes, the optics, the Doppler shift, the
+                        frequency to tune to (tune.ts) and what to send and where to listen
+                        through a transponder (transponder.ts)
     catalogue/          reading the catalogue; ranking what the picker offers; its other names; the
                         watchlist
     text/               the sentences the page builds from its numbers, and the glossary, as data
@@ -198,8 +200,10 @@ src/                the Earth console's source: Svelte 5 + TypeScript
                         mirror, as the old page asked them) and the decay histories (the API,
                         then CelesTrak)
     export/             the CSV and the calendar, and one pass's calendar on its own
-    data/               the downlink table's lookups (the table is data/transmitters.json), and the
-                        loader of the other names (data/aliases.json)
+    data/               the downlink table's lookups (the table is data/transmitters.json), the
+                        loader of the other names (data/aliases.json), and the uplink and
+                        transponder table's (data/transponders.json, which the transponder
+                        calculator's store fetches)
     shims/              the entries scripts/build-shims.mjs bundles for the Node suites
     planner/            the planner, the Professor and the decay model, moved from the old page's
                         files with their arithmetic untouched
@@ -233,12 +237,15 @@ src/                the Earth console's source: Svelte 5 + TypeScript
     observer.ts         where the observer is, and how that is remembered
     gt.ts               the DOM-free half of the test surface, which the gate measures
   state/              the stores (Svelte runes): app, clock, custom, live, life, prefs,
-                      report, doppler, wall; url.ts, shortcuts.ts, storage.ts; and the
-                      one engine, the network's wiring and the planner's modules
+                      report, doppler, wall, watch, the transponder calculator's (lazy);
+                      url.ts, shortcuts.ts, storage.ts; and the one engine, the network's
+                      wiring and the planner's modules
   components/         the page's parts
     shell/              the app bar, the spacecraft picker, the observer chip, the theme toggle
     stage/              the globe and its controls, and the flat map
-    rail/               the answer rail: the passes, the orbit, the element set's source
+    rail/               the answer rail: the passes, the orbit, the element set's source; the
+                        live Doppler line and, at its end, the transponder calculator (a chunk
+                        of its own, xpdr.ts and TransponderPanel.svelte)
     transport/          the clock and the window
     report/             the written report: elements, ground track, passes, decay, method,
                         terms, and the Professor's notes
@@ -270,9 +277,9 @@ server/, shared/    the cache API (Elysia): GET /api/health, /api/tle/:norad and
                     /api/history/:norad; and the code the browser and the server share
 serve.ts            runs the API on a port (3001 unless PORT says otherwise)
 data/               catalogue.txt (+ .meta.json): the 2,158 element sets; world.json: the
-                    coastlines; transmitters.json: downlink frequencies; aliases.json: the
-                    spacecraft's other names (both from SatNOGS DB); WMM.COF: NOAA's
-                    magnetic model
+                    coastlines; transmitters.json: downlink frequencies; transponders.json:
+                    uplinks, passbands and tones; aliases.json: the spacecraft's other names
+                    (all three from SatNOGS DB); WMM.COF: NOAA's magnetic model
 
 scripts/            extract-data (the data files, from what the old page carried inline),
                     build-shims (esbuild bundles of the library for the Node suites),
@@ -877,7 +884,8 @@ names no licence for the page's code: its author has not licensed it for reuse, 
 The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
 `vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
 only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
-*The frequency is the one thing that cannot be derived* and *Other names, from the same database*.
+*The frequency is the one thing that cannot be derived*, *Other names, from the same database* and
+*Uplinks and transponders, from the same table* (whose file the line's "transmitters" covers).
 The old page said none of this.
 
 Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
@@ -887,7 +895,9 @@ last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
 filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"; the
-spacecraft you compare decay with, `gt.decaycmp`, counted among the display choices); and
+transponder offsets you set, `gt.xpdr`, said among "your display choices", which is not quite what
+they are, but a word of their own would weigh on the report's chunk; the spacecraft you compare
+decay with, `gt.decaycmp`, counted among the display choices); and
 two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
 cached copy is used for three hours or twelve, and an old one stays until that object's is fetched
 again or it is forgotten here (a history past its twelve hours is also taken out when the decay
@@ -3228,13 +3238,15 @@ SatNOGS DB is a Libre Space Foundation project, and its data is published under 
 Commons Attribution-ShareAlike 4.0 licence ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 `data/transmitters.json` is an adaptation of it (cut down as above), so it carries the same
 licence: whoever shares the file, or something made from it, must credit SatNOGS DB, link the
-licence, say what was changed, and license it under CC BY-SA 4.0 too. The same goes for the
-1,437 of the 2,158 element sets in `data/catalogue.txt` that came from SatNOGS DB's TLE endpoint
-(see *Data provenance*; the other 721 are CelesTrak's), and for the picker's table of other names
-(below): the owner decided that the database's licence reaches them as well. The page gives the
-credit in the footer's last line, *Data: SatNOGS DB (element sets, transmitters, alternative
-names), CC BY-SA 4.0*, with a link to each. The share-alike reaches that data and what is made from
-it, not the project's own code, which its author has not licensed for reuse.
+licence, say what was changed, and license it under CC BY-SA 4.0 too. So does
+`data/transponders.json`, the uplink and transponder table (below), a second adaptation of the
+same transmitter list. The same goes for the 1,437 of the 2,158 element sets in
+`data/catalogue.txt` that came from SatNOGS DB's TLE endpoint (see *Data provenance*; the other 721
+are CelesTrak's), and for the picker's table of other names, `data/aliases.json` (below): the owner
+decided that the database's licence reaches them as well. The page gives the credit in the footer's last line, *Data: SatNOGS
+DB (element sets, transmitters, alternative names), CC BY-SA 4.0*, with a link to each; its
+"transmitters" covers both adaptations of the transmitter list. The share-alike reaches that data
+and what is made from it, not the project's own code, which its author has not licensed for reuse.
 
 | | |
 |---|---|
@@ -3298,6 +3310,111 @@ node verification/tools/fetch-aliases.js --save <file>      # ...and keep the an
 node verification/tools/fetch-aliases.js --from <file>      # re-bake from a kept answer, no request
 ```
 
+##### Uplinks and transponders, from the same table
+
+The downlink table above is for listening: it keeps no uplink, and at most four records an object,
+lowest first. Working a spacecraft needs what it leaves out on purpose: the frequency the spacecraft
+listens on, the edges of a linear transponder's passband, whether the passband inverts, the mode to
+send in and the CTCSS tone a repeater wants. `data/transponders.json` holds them, from the same
+SatNOGS DB transmitter records, adapted a second time. `data/transmitters.json` is not touched (the
+same bytes, still 2,037 records on 1,213 objects, four at most), so the downlink box, its options and
+the Doppler rows read from it are as they were.
+
+It was baked from SatNOGS DB's transmitter endpoint, `db.satnogs.org/api/transmitters/`, which
+answered on **17 October 2026** (05:01 UTC) with all 5,118 of its records in one unpaginated request.
+That answer was kept, and the file is baked from it with `--from`, no further request
+(`verification/tools/fetch-transponders.js`, which names the repository in its User-Agent and would
+follow a paginated answer one page at a time, writing nothing if pages are still to come after 50 or
+the pages hold other than the count they give). The two tables are a month apart (the downlink table
+is of 14 September), and each carries its own date. Of the 5,118 records:
+
+| step | records |
+|---|---|
+| of objects in the catalogue | 2,418 (2,700 are not) |
+| active | 2,228 (190 are not) |
+| with an uplink | 83 (2,145 have none) |
+| ...and a downlink | 81 (CHUBUSAT 2 and 3 are uplink-only) |
+| every edge in an amateur band | 72 (9 out) |
+| a linear passband or a single-frequency pair | 71 (KOSEN-1 is neither) |
+| exact duplicates | 0 |
+| **kept** | **71 records on 47 objects** |
+
+The bands are the amateur service's, in any ITU region (420–450 MHz, say), each leg inside one of
+them, not the narrower amateur-satellite sub-bands: AO-7's Mode B uplink at 432.125 MHz is older than
+those and would be lost. That drops what no amateur station is meant to transmit to: the S-band
+TT&C links of two cubesats, NORSAT 2's maritime VDES link at 157/161 MHz, ORSTED's Radio B, a
+laser retroreflector on LARES-2 filed at 40 GHz, and four links of two launch objects at 401 MHz
+and in S-band. A **linear passband** is a `Transponder` record with a range on both legs of equal
+width, which is what lets the transponder map one onto the other point for point; a **pair** has a
+single frequency on each leg (an FM repeater, a digipeater, a transceiver). KOSEN-1's record, an HF
+receive range of 21.125–21.150 MHz reporting on one UHF frequency, is neither, and is left out.
+There is no cap per object, and records equal in everything the page works with (the four edges,
+the invert flag, both modes, the tone) are kept once (none today).
+
+**17 linear passbands on 9 objects**: AO-7 (OSCAR 7) Mode A, 145.850–145.950 MHz up to
+29.400–29.500 MHz, filed twice for CW and SSB, and Mode B, 432.125–432.175 to 145.925–145.975 MHz,
+inverting; FO-29 (JAS 2), 145.900–146.000 to 435.800–435.900 MHz, inverting, LSB up and USB down;
+AO-73 (FUNCUBE 1), EO-79 (QB50P1), UKUBE 1, JO-97 (JY1SAT) and CAS-6 (OBJECT C), U/V and inverting;
+RS-44 (BREEZE-KM R/B), 145.935–145.995 to 435.610–435.670 MHz, inverting; and QO-100 (ES'HAIL 2), the
+geostationary narrowband transponder, in six segments from 2,400.005 to 2,400.495 MHz, each brought
+down by the same 8,089.500 MHz. **54 pairs on 39 objects**: SO-50, the ISS's voice repeater
+(145.990 to 437.800 MHz), AO-91, PO-101, IO-86, TAURUS-1, the nine TEVEL-2 cubesats, the Tiangong
+core module's eight channels, ESEO's 23 cm uplink, and 18 records on 15 objects that send on the
+frequency they hear, digipeaters most of them. The ISS's 145.800 MHz, which the downlink table's cap
+leaves out, is here as the downlink of the crew's two FM channels (144.490 MHz up in Regions 2 and
+3, 145.200 MHz in Region 1), from SatNOGS's own records. Some well-known transponders are not here:
+XW-2A to F and CAS-4A and B are not in the catalogue, and XW-3 (CAS-9) is, but its transponder
+record is inactive.
+
+Three things SatNOGS DB files are corrected, and the tool says each one it corrects:
+
+- **One invert flag a passband.** A transponder is one piece of hardware, so every record of an
+  object on the same four edges must agree on whether it inverts. JO-97's do not: its CW record is
+  filed non-inverting beside its inverting SSB record (LSB up, USB down) on the same 435.100–435.120
+  to 145.855–145.875 MHz. Through the CW record, 435.105 MHz on board would come down on 145.860 MHz
+  instead of 145.870 MHz, 10 kHz out. A record whose sidebands bear out its own flag settles it:
+  one filed inverting with LSB up and USB down (or the other way) makes every record of the passband
+  inverting (*invert reconciled*: JO-97's CW record), and one filed non-inverting with the same
+  sideband up and down makes every record non-inverting. Where the flags disagree and no record
+  settles them, or records settle them both ways, the passband is left out; and a record whose own
+  sidebands contradict its own flag is no evidence, and is left out too (none today).
+- **No FM on a linear passband.** SatNOGS files five of QO-100's six segments, the SSB-only and
+  digimode ones among them, as FM, the one mode its band plan excludes. A passband relays whatever
+  is put into it, so a linear record's FM is written as no mode, and the description (*SSB Only
+  Transpoder*, as SatNOGS spells it) says what the segment is for.
+- **Ranges in order.** A range filed high to low is sorted into ascending order before anything else
+  (*range normalised*; none today), and its invert flag is kept as filed.
+
+A tone is read from the description (*CTCSS 67.0 Hz*, *PL 88.5Hz*, *67.0 PL*) and kept only when it
+is one of the 50 tones of EIA/TIA-603: 67.0 Hz on the ISS's voice repeater, SO-50, TAURUS-1 and
+QMR-KWT 2, 88.5 Hz on IO-86's two records, none on AO-91 (*no CTCSS any longer*). SatNOGS's drift
+figures (parts per billion, on AO-27 and SO-50) are not used, as the downlink box does not use them.
+
+Each record is nine fields, `[ulLo, ulHi, dlLo, dlHi, inv, mode, upMode, tone, desc]`: the uplink and
+downlink edges in whole hertz (a pair has each leg's two equal), 1 for an inverting passband (never
+for a pair), SatNOGS's downlink mode, its uplink mode where it gives a different one, the tone (0 for
+none) and the description cut to 44 characters. Each object lists its passbands first, then its
+pairs, each by uplink. The file is 6.4 KB (6,521 bytes), 1.6 KB gzipped, keyed by the NORAD number
+without its leading zeros. It is the table of the transponder calculator (*Working a transponder*,
+below), which fetches it, as a file of the page's own (`assets/transponders-<hash>.json`, the same
+bytes), the first time the calculator is opened, so no visit that does not open it fetches it. It is
+fetched rather than imported as a chunk because a browser keeps a failed `import()` for the life of
+the page: a chunk lost on a dropped connection could not be asked for again, and the calculator's
+*Try again* would be a button that cannot work. The loader (`src/lib/data/transponders.ts`, with the
+50 tones as `CTCSS_HZ`) builds the table from what it is handed and takes anything that is not the
+table's shape as a failure. The page asks SatNOGS nothing, so the table in *Data and privacy* is
+unchanged.
+`tests/lib/transponders-data.test.ts` holds the file to these rules record by record, checks the
+birds above, feeds the tool's rules records of its own (a reversed range, JO-97's two flags, a
+passband a non-inverting record settles, one shown both ways, a linear FM, a duplicate), and checks
+that `data/transmitters.json` is the same bytes as before.
+
+```
+node verification/tools/fetch-transponders.js                  # re-bake data/transponders.json (one request)
+node verification/tools/fetch-transponders.js --save <file>    # ...and keep the answer
+node verification/tools/fetch-transponders.js --from <file>    # re-bake from a kept answer, no request
+```
+
 ##### Tuning while it is up
 
 The rows above give the shift at three instants. Under the downlink box a line of its own
@@ -3348,6 +3465,117 @@ Enter, the line says now, keeps the focus on its caption, is within a second of 
 still right and moves with the clock; and that another spacecraft has an empty uplink box. The old
 page has no such line, so with `GT_TARGET=legacy` the suite runs its range-rate checks and says
 the line is not checked.
+
+##### Working a transponder
+
+The line ends with **Uplink and transponders**, a disclosure. Opened, it lists the spacecraft's
+records from the uplink and transponder table (*Uplinks and transponders, from the same table*,
+above) and works out, for the one chosen, the frequency to send on and the one to listen on at the
+line's instant: the caption above it, *Tune now* or *Tune at sim time ...* with its *Go live*,
+speaks for these figures too. For FO-29 (JAS 2), receding at 3 km/s, sending on 145.950 000 MHz:
+*Send on 145.950 000 MHz +1.460 kHz*, *Listen on 435.847 101 MHz −4.359 kHz*, and between them what
+the spacecraft hears and sends, *On board 145.948 541 → 435.851 460 MHz*. The rows have words of
+their own, not the line's *Transmit* and *Receive*, which sit just above for another frequency (the
+downlink chosen in the box and an uplink typed there); nothing the calculator does changes either
+box or the Doppler rows.
+
+The arithmetic (`src/lib/analysis/transponder.ts`) follows the signal and uses the line's two laws
+and nothing else. The spacecraft hears the ground the way the ground hears it, so the uplink on board
+is fu = tx (1 − ṙ/c). The transponder maps what it hears onto what it sends: a linear passband point
+for point, without inverting, fu + (dlLo − ulLo), or inverting, (ulLo + dlHi) − fu, so that the
+uplink's low edge comes down on the downlink's high edge and USB comes down as LSB; a pair (an FM
+repeater, a digipeater) sends on its one downlink whatever it hears in its channel. Then the
+spacecraft's own offset is added, and the ground hears fd (1 − ṙ/c), the line's own law, so the
+figure is the line's to the hertz for the same downlink at the same instant. Backwards, with
+f / (1 − ṙ/c), it gives the frequency to send for a frequency held on the receiver, and the two
+directions agree to a millihertz, at QO-100's 10 GHz too. Through a non-inverting passband the two
+legs' shifts add, about −(fu + fd) ṙ/c; through an inverting one they partly cancel,
+about −(fd − fu) ṙ/c, which is why V/U and U/V transponders invert: FO-29's net shift is that of
+290 MHz, not 581. A QO-100 band plan filed as six records is measured as the one transponder it is
+(the records that share the map, joined over gaps of up to 25 kHz, the guard round its middle
+beacon), so a dial in its SSB segment is inside the passband whichever segment is chosen.
+
+**Hold** says which figure stays where it is: **Send** (the transmitter; the receiver follows),
+**Listen** (the receiver; the transmitter follows) or **On board** (the spot in the passband, both
+ground frequencies following, so that a contact stays put, as computer-controlled stations work).
+Choosing a record holds its lower-frequency leg, the one with the smaller shift (the 2 m side of
+FO-29 and RS-44, the 2 m downlink of AO-73), at its centre, to the hertz. Changing the hold keeps
+every figure where it is: the dial takes the newly held figure. The dial, **Held at**, is a text box
+read to the hertz: a decimal comma is taken (the decimal keypad of a phone set to German, French or
+Polish has no point), and what is not a frequency (*145.95.5*, *1e3*) leaves the figures as dashes
+rather than a frequency you did not mean; what it reads is written back as 145.952000. It moves by
+**±100 Hz** and **±1 kHz** with four buttons. Not with the arrow keys: in a text box those move the
+caret, and the page's own arrow keys, which step the clock, never act in a field.
+
+The On board row shows how far outside the passband the spacecraft hears you, when it does
+(*0.459 kHz below*), and the line under it says so: **⚠ Outside the passband: the spacecraft hears
+you below it, and relays nothing.** It is the spacecraft's view, not the dial's: a dial 1 kHz inside
+RS-44's low edge is outside on board at 3 km/s receding. A frequency nowhere near the transponder
+(FO-29's downlink typed as the frequency to send on, a common slip) gives no figure to follow and
+says where the transponder works instead: *⚠ Not in this transponder's uplink, 145.900–146.000 MHz*.
+Under it, the mode: *Send LSB, heard as USB* through an inverting passband, *Mode FM* for a
+repeater, never FM for a linear passband (see the table's corrections); and the record's CTCSS tone,
+*CTCSS tone 67.0 Hz*. The tone is a fact of the record, not a setting: the page drives no radio. The
+last line says where the record comes from, *From SatNOGS DB, 2026-10-17 · Mode V/U Linear
+Transponder*.
+
+**The offset.** A transponder's oscillator puts its downlink a little off its published place, and
+each spacecraft's own drift is what a station corrects by ear. Send, find yourself on the receiver,
+type the frequency it shows into **Heard on** and press **Set offset**: the offset moves by how far
+the downlink was from the one predicted, worked back on board, T(heard) − T(predicted). The
+prediction is the one at the moment you start typing (the first character typed into the empty box),
+not at the press seconds later: near culmination it moves by tens of hertz a second, and the stored
+offset would carry that. So a figure typed is good for one press. The box is emptied by the press
+that sets the offset, by **Reset**, and by another spacecraft, record, hold or held frequency (what
+you heard was heard against what was set before), and a press on the empty box asks for a figure
+rather than compare the old one with the prediction at the press. A figure the press refuses stays
+in the box, against the prediction its typing took, until you put it right. The press works only
+while the line says *Tune now* (you hear your own signal now, not at a scrubbed instant) and the
+spacecraft hears you inside the passband (outside, it relays nothing to hear); at other times the
+button says it cannot be pressed (it stays focusable, and the hint under it says when it can) and a
+press says why. A figure more than 50 kHz from the one predicted is refused, with the reason (*That
+is 739.860 MHz from the predicted figure: type the frequency your receiver shows for the
+spacecraft's downlink*): it is another frequency, a slip, or an LNB's intermediate frequency, and an
+LNB's own error belongs in the receiver's setting. So is one that would put the offset beyond 50
+kHz. Nothing is clamped, so what is kept is what was heard. **Reset** takes it back to nought. The
+offset is per spacecraft: AO-7's Modes A and B share one, though they are two transponders with
+oscillators of their own, so set it again after changing mode. It is kept in this browser under
+`gt.xpdr`, `{"<NORAD number>": hertz}`, written only by those two presses (a browser that refuses
+storage keeps it for the visit and the press says so); another tab follows a change at once, and
+*Forget what this page stored* removes it with the rest.
+
+The calculator is a chunk of its own (`xpdr`: the panel, its store, its words and its arithmetic),
+asked for the first time the disclosure is opened and rendered in it, and its table a file of its
+own, fetched then; the entry carries the disclosure and its one line of words. A table that did not
+come is said, with **Try again** (its line goes as the table is asked for again, and a press from
+the keyboard leaves the focus on the disclosure's summary, not on the page). A calculator chunk that
+did not come leaves the disclosure empty, and the browser keeps that failure for the life of the
+page, so a reload is what asks again. The panel works only while open, and asks the engine for
+nothing: its figures are for the line's instant and from the range rate the line has already worked
+out there, so paused, choosing and nudging are arithmetic on that one figure, and shut it does
+nothing at all. An orbit of your own has no records, even when its pasted element set carries a real
+NORAD number: it is not that spacecraft. The words are in `src/lib/text/transponder.ts`.
+
+`verify-doppler.js` checks it after the line: neither chunk nor table asked for before the first
+opening, and each once at it; the ISS's voice repeater (send T(145.990 MHz), listen R(437.800 MHz),
+FM with its 67.0 Hz tone, nothing to hold) and FO-29 at a scrubbed instant, worked out again from
+the test surface's range rate with the map written out; the record list saying the record the
+figures are for when OSCAR 7's Mode B has been picked in it, the ISS shown, and OSCAR 7 shown again
+(a picked option no longer follows its `selected` attribute, so the list is set by its index, as the
+downlink list is); the nudges (+1 kHz twice moves the receive figure down by 2 kHz (1 − ṙ/c)²), the
+three holds, *145,952*, a frequency outside the passband (the amount to the hertz) and one far from
+it; that no box or row golden reads moves; that the arrows in the dial and Space on the summary
+leave the clock alone; Set offset refused while scrubbed, set live from 300 Hz above the receive
+figure against the snapshot the panel exposes (`data-pred`, `data-pred-ms`), the box emptied by that
+press and by a nudge so that a second press asks for a figure, refused 60 kHz out and refused again
+against the same snapshot until put right, a new snapshot in the box of a disclosure shut and opened
+again, kept only on the press, still there after a reload, and reset; a table refused once and
+fetched by Try again pressed from the keyboard, which leaves the focus on the summary; no state
+asked of the engine while paused (a nudge and two changes of hold included) and one a tick, the
+line's, open or shut; no request to SatNOGS; and a calculator chunk refused, which leaves the
+summary working and no page error. `axe.js` scans it open on FO-29, with a frequency outside the
+passband and on the ISS's repeater; `verify-layout.js` lays it out open on QO-100, whose options are
+the longest, at every size.
 
 #### Staying current
 

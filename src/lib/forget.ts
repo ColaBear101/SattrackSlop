@@ -32,6 +32,8 @@ export const FORGET_KEYS = [
   'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
   'gt.passfilter',                                         // state/passfilter.svelte.ts: the pass list's filter (L56)
   'gt.watch',                                              // state/watch.svelte.ts: the spacecraft the reader starred (L60)
+  'gt.xpdr',                                               // state/transponder.svelte.ts: each spacecraft's transponder offset (L63), said as one of
+                                                           // "your display choices": a word of its own would add bytes to the report's chunk
   'gt.decaycmp'                                            // state/decay-compare.svelte.ts: the decay comparison's list and whether it is open (L66)
 ] as const;
 

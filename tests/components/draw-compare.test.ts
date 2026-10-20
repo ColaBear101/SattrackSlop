@@ -788,3 +788,76 @@ describe('drawCompare: the view (L67)', () => {
     tq.rows.forEach((r, i) => expect(r.h).toBeCloseTo(periodMin(ta.rows[i]!.h), 6));
   });
 });
+
+/* ---- L68: the inclination and the RAAN offset from the selected spacecraft --------------------------------------------------- */
+
+describe('drawCompare: the inclination and the RAAN offset (L68)', () => {
+  const mod360 = (x: number) => ((x % 360) + 360) % 360;
+  /** the node of the selected spacecraft's plane at instant t: 5 deg a day, through 0 more than once over three()'s 1,000 days */
+  const node = (t: number) => mod360(300 + 5 * (t - T) / DAY_MS);
+  /** three() with an inclination and a RAAN on every set, each line measured from the selected one's history (ISS, slot 1): ALPHA
+   *  20 deg east of it all along, BRAVO from 170 to 190 deg east, so its offset wraps from +180 to -180 half way along its record */
+  function plane(): CmpSeries[] {
+    const [iss, alpha, bravo] = three();
+    const at = (s: CmpSeries, inc: number, raan: (t: number, f: number) => number): CmpSeries =>
+      ({ ...s, P: s.P.map((r, i, a) => ({ ...r, ecc: 0.001, inc: inc + i * 1e-5, raan: mod360(raan(r.t, i / (a.length - 1))) })) });
+    const sel = at(iss!, 51.64, t => node(t));
+    const ref = sel.P;
+    return [{ ...sel, ref }, { ...at(alpha!, 97.4, t => node(t) + 20), ref }, { ...at(bravo!, 53.05, (t, f) => node(t) + 170 + 20 * f), ref }];
+  }
+  const dashedSeries = (calls: Call[]) => marks(calls).filter(m => m.op === 'stroke' && m.pts.length > 1 && m.dash.length && m.dash.join() !== '4,3');
+
+  it('draws the inclination as history only: no projection, no ring, no 120 km line, its values to four places in degrees', () => {
+    const lines = plane(), d = drawIn(lines, { p: 'inc', r: 'all' });
+    expect(d.info!.why).toBeNull();
+    expect(d.label).toBe('Inclination history of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO');
+    expect(dashedSeries(d.calls)).toEqual([]);
+    expect(floorLine(d.calls)).toEqual([]);
+    expect(reentry(d.calls)).toEqual([]);
+    expect(ringsOf(d.calls)).toEqual([]);
+    expect(compareKey(lines, col, 'inc').map(k => k.text)).toEqual(['ISS (ZARYA)', 'ALPHA', 'BRAVO', 'observed']);
+    const tip = compareTipAt(d.geom!, lines, d.geom!.X(T - 400 * DAY_MS), col)!;
+    expect(tip.rows.map(r => r.name)).toEqual(['ALPHA', 'BRAVO', 'ISS (ZARYA)']);           // 97.4 over 53.05 over 51.64
+    for (const r of tip.rows) expect(r.value).toMatch(/^\d+\.\d{4}°$/);
+  });
+
+  it('draws the RAAN offset from the selected spacecraft: its own line at 0, the others measured from it, broken where they wrap', () => {
+    const lines = plane(), d = drawIn(lines, { p: 'raan', r: 'all' }), g = d.geom!;
+    expect(d.info!.why).toBeNull();
+    expect(d.label).toBe('RAAN offset from the selected spacecraft, in the history of 3 spacecraft: ISS (ZARYA), ALPHA and BRAVO');
+    expect(g.hMin).toBeLessThan(-170); expect(g.hMax).toBeGreaterThan(170);               // the wrap puts BRAVO at both ends
+    const hist = (c: string) => paths(d.calls).filter(p => p.end.op === 'stroke' && p.end.stroke === c && !p.end.dash.length);
+    const own = marks(d.calls).filter(m => m.op === 'stroke' && m.color === '#track' && m.pts.length > 1 && !m.dash.length);
+    expect(own).toHaveLength(1);
+    for (const [, y] of own[0]!.pts) expect(y).toBeCloseTo(g.Y(0), 6);
+    const alpha = marks(d.calls).filter(m => m.op === 'stroke' && m.color === '#s2' && m.pts.length > 1 && !m.dash.length);
+    for (const [, y] of alpha[0]!.pts) expect(y).toBeCloseTo(g.Y(20), 6);
+    expect(hist('#s3')[0]!.ops.filter(o => o === 'moveTo')).toHaveLength(2);              // one break, where +180 becomes -180
+    expect(hist('#s2')[0]!.ops.filter(o => o === 'moveTo')).toHaveLength(1);
+    expect(dashedSeries(d.calls)).toEqual([]);
+    expect(floorLine(d.calls)).toEqual([]);
+    expect(ringsOf(d.calls)).toEqual([]);
+    expect(compareKey(lines, col, 'raan').map(k => k.text)).toEqual(['ISS (ZARYA)', 'ALPHA', 'BRAVO', 'observed']);
+    const tip = compareTipAt(g, lines, g.X(T - 300 * DAY_MS), col)!;
+    /* highest first; by then BRAVO is past the wrap, about 184 deg east, so 176 deg west */
+    expect(tip.rows.map(r => [r.name, r.value])).toEqual([['ALPHA', '+20.000°'], ['ISS (ZARYA)', '0.000°'], ['BRAVO', expect.stringMatching(/^-17\d\.\d{3}°$/)]]);
+  });
+
+  it('draws neither for a history kept without them (cached before L68), nor the offset with no history of the selected spacecraft', () => {
+    const old = three();                                                                   // no inclination or RAAN on any set
+    for (const p of ['inc', 'raan'] as const) {
+      const d = drawIn(old, { p });
+      expect([d.info!.why, d.geom, d.label]).toEqual(['param', null, p === 'inc' ? 'Inclination history of 0 spacecraft'
+        : 'RAAN offset from the selected spacecraft, in the history of 0 spacecraft']);
+      expect(compareKey(old, col, p)).toEqual([]);
+    }
+    expect(drawIn(old, {}).info!.why).toBeNull();                                          // and in mean altitude, as ever
+    const noRef = plane().map(s => ({ ...s, ref: null }));
+    expect(drawIn(noRef, { p: 'raan' }).info!.why).toBe('param');
+    expect(drawIn(noRef, { p: 'inc' }).info!.why).toBeNull();                              // the inclination needs none
+    /* one line kept before L68 beside two kept since: that one alone is left out */
+    const mixed = [...plane().slice(0, 2), { ...three()[2]!, ref: plane()[0]!.ref }];
+    expect(compareKey(mixed, col, 'inc').map(k => k.text)).toEqual(['ISS (ZARYA)', 'ALPHA', 'observed']);
+    expect(drawIn(mixed, { p: 'raan' }).label).toBe('RAAN offset from the selected spacecraft, in the history of 2 spacecraft: ISS (ZARYA) and ALPHA');
+  });
+});

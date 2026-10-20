@@ -3,7 +3,7 @@ import {
   addItem, COMPARE_MAX, DAY_MS, DRAW_MAX_KM, drawable, fetchPlan, frame, HIGHLIGHT_MAX, labelPlan, lightItem, lowestFree, notDrawn, readCompare,
   removeItem, rowOrder, seriesEnd, shortName, tipOrder, valueAt, writeCompare, type CompareItem, type SeriesShape,
   baseWindow, eccOf, frameView, lastOf, MEASURE, MU, niceStep, PARAMS, periodMin, points, projected, projects, RANGES, rateSeries, RE, ringOf,
-  stepDecimals, valueIn, VIEW_DEFAULT
+  stepDecimals, valueIn, VIEW_DEFAULT, angleOf, hasPlane, RAAN_GAP_DAYS, raanSeries, wrap180
 } from '../../src/lib/decay/compare';
 import { Lifetime } from '../../src/lib/planner/lifetime';
 
@@ -216,6 +216,9 @@ describe('the names on the chart, all or none', () => {
 
 /** a history with an eccentricity on each set (NaN or null where `e` gives one) */
 const withEcc = (s: SeriesShape, e: (i: number) => number | null): SeriesShape => ({ ...s, P: s.P.map((r, i) => ({ ...r, ecc: e(i) })) });
+/** the history with an inclination and a RAAN at each element set (L68) */
+const withPlane = (s: SeriesShape, inc: (i: number) => number | null, raan: (i: number) => number | null): SeriesShape =>
+  ({ ...s, P: s.P.map((r, i) => ({ ...r, inc: inc(i), raan: raan(i) })) });
 /** `n` sets `step` apart ending at `end`, the mean altitude h(i) */
 const rows = (n: number, h: (i: number) => number, step = DAY_MS, end = T) =>
   Array.from({ length: n }, (_, i) => ({ t: end - (n - 1 - i) * step, sma: h(i) }));
@@ -237,7 +240,7 @@ describe('the record of the view (L67)', () => {
     expect(readCompare('{"o":1,"l":[],"r":"all"}')).toEqual({ open: true, items: [], view: { r: 'all' } });
   });
   it('reads anything else as the default, with no view at all, and keeps the list', () => {
-    for (const kv of ['"p":"inc"', '"p":"alt"', '"r":"auto"', '"r":7', '"r":"2y"', '"p":null']) {
+    for (const kv of ['"p":"argp"', '"p":"alt"', '"r":"auto"', '"r":7', '"r":"2y"', '"p":null']) {   // "inc" was here until L68 made it a quantity
       const rec = readCompare(TODAY.slice(0, -1) + ',' + kv + '}');
       expect('view' in rec, kv).toBe(false);
       expect(rec, kv).toEqual({ open: true, items });
@@ -424,7 +427,10 @@ describe('the frame of a view (L67)', () => {
     expect(frameView([], VIEW_DEFAULT)).toBeNull();
   });
   it('the window does not depend on the quantity: switching it only refits the heights', () => {
-    const fx = [withEcc(series(400, 1, 460, 410, 300), () => 0.001), withEcc(series(200, 2, 520, 470, 150), () => 0.002)];
+    /* since L68 the lines carry an inclination and a RAAN too, and the first is the selected spacecraft, the RAAN offset's reference */
+    const e = [withEcc(series(400, 1, 460, 410, 300), () => 0.001), withEcc(series(200, 2, 520, 470, 150), () => 0.002)];
+    const pl = e.map((s, k) => withPlane(s, () => 51.6 + k, i => (300 - 5 * i + 360 * 9) % 360));
+    const fx = pl.map(s => ({ ...s, ref: pl[0]!.P }));
     for (const r of RANGES) {
       const w = PARAMS.map(p => { const v = frameView(fx, { p, r })!; return [v.t0, v.t1, v.frame!.t0, v.frame!.tEnd]; });
       for (const x of w) expect(x, r).toEqual(w[0]);
@@ -461,7 +467,7 @@ describe('the frame of a view (L67)', () => {
     const f = frameView([s], { p: 'rate', r: 'auto' })!.frame!;
     expect(f.hMin).toBeCloseTo(-0.51, 12);
     expect(f.hMax).toBeCloseTo(-0.49, 12);
-    expect(PARAMS.filter(p => !MEASURE[p].min0)).toEqual(['rate']);
+    expect(PARAMS.filter(p => !MEASURE[p].min0)).toEqual(['rate', 'raan']);      // and the RAAN offset (L68), either way of 0
     expect(frameView([withEcc(series(100, 0, 500, 490), () => 0.00001)], { p: 'ecc', r: 'auto' })!.frame!.hMin).toBe(0);
   });
   it('says why nothing is drawn: no history carries the quantity, or none has a value in the window', () => {
@@ -556,5 +562,101 @@ describe('the grid step, the dot and the ring (L67)', () => {
     expect(ringOf(ending(120.5), 'mm')).toEqual({ t: s.r.tNow! + 9 * DAY_MS, v: 1440 / periodMin(120.5) });
     expect(ringOf(ending(120.6), 'alt')).toBeNull();
     expect(ringOf({ ...s, r: { ...s.r, track: [{ t: 0, h: 120 }] } }, 'alt')).toBeNull();
+  });
+});
+
+describe('the inclination and the RAAN offset from the selected spacecraft (L68)', () => {
+  const daily = (n: number, raan: (i: number) => number | null, inc: (i: number) => number | null = () => 51.64, end = T) =>
+    rows(n, i => 420 - 0.1 * i, DAY_MS, end).map((r, i) => ({ ...r, ecc: 0.0005, inc: inc(i), raan: raan(i) }));
+  const shape = (P: SeriesShape['P'], ref?: SeriesShape['P'] | null): SeriesShape =>
+    ({ P, r: { tNow: P[P.length - 1]!.t, hNow: P[P.length - 1]!.sma, track: [{ t: 0, h: 380 }, { t: 30, h: 120 }] }, ref });
+
+  it('are history only: no forecast, no ring, no 120 km line, and the offset may go below zero', () => {
+    for (const p of ['inc', 'raan'] as const) {
+      expect(projects(p), p).toBe(false);
+      expect(MEASURE[p].floor, p).toBe(false);
+    }
+    expect([MEASURE.inc.pad, MEASURE.inc.step, stepDecimals(MEASURE.inc.step), MEASURE.inc.min0]).toEqual([0.005, 0.0001, 4, true]);
+    expect(MEASURE.raan.min0).toBe(false);
+    const own = daily(5, i => 100 + i);
+    expect(ringOf(shape(own, own), 'raan')).toBeNull();
+    expect(projected(shape(own, own), 'inc')).toBeNull();
+  });
+
+  it('the inclination is each element set\'s own, NaN where a row has none (blank: NaN; through JSON: null; kept before L68: absent)', () => {
+    const P = [...daily(3, () => 10, i => [51.6, 51.6001, 51.6002][i]!), { t: T + DAY_MS, sma: 400, ecc: 0, inc: NaN }, { t: T + 2 * DAY_MS, sma: 400, ecc: 0, inc: null },
+      { t: T + 3 * DAY_MS, sma: 400, ecc: 0 }];
+    expect(Array.from(points(P, 'inc').v)).toEqual([51.6, 51.6001, 51.6002, NaN, NaN, NaN]);
+    expect(Array.from(points(P, 'inc').t)).toEqual(P.map(r => r.t));
+    expect([angleOf(5), angleOf(null), angleOf(undefined), angleOf(NaN), angleOf(Infinity)]).toEqual([5, NaN, NaN, NaN, NaN]);
+  });
+
+  it('tells a history kept with its plane from one cached before L68, whose rows have neither key', () => {
+    expect(hasPlane(daily(3, () => 10))).toBe(true);
+    expect(hasPlane(daily(3, () => null, () => null))).toBe(true);           // kept, and blank: the line breaks, nothing is said
+    expect(hasPlane(rows(3, () => 400))).toBe(false);                         // the hist:<n> copy of an earlier visit
+    expect(hasPlane([])).toBe(false);
+  });
+
+  it('the offset is 0 against itself, and its RAAN less the selected one\'s at the same instant, wrapped to -180..180', () => {
+    const sel = daily(10, i => (350 + 4 * i) % 360);                         // 350, 354, 358, 2, 6, ...: through 0
+    expect(Array.from(points(sel, 'raan', sel).v)).toEqual(new Array(10).fill(0));
+    const other = daily(10, i => (20 + 4 * i) % 360);                         // 30 deg further east all along
+    expect(Array.from(points(other, 'raan', sel).v).map(v => +v.toFixed(9))).toEqual(new Array(10).fill(30));
+    const west = daily(10, i => (190 + 4 * i) % 360);                         // 200 deg east is 160 deg west
+    expect(Array.from(points(west, 'raan', sel).v).map(v => +v.toFixed(9))).toEqual(new Array(10).fill(-160));
+    expect([wrap180(180), wrap180(-180), wrap180(540), wrap180(-190), wrap180(359.5)]).toEqual([-180, -180, -180, 170, -0.5]);
+  });
+
+  it('reads the selected one\'s RAAN between its two nearest sets, the shorter way round, never past its record or across 10 days', () => {
+    const sel = [{ t: T, sma: 400, raan: 358 }, { t: T + DAY_MS, sma: 400, raan: 4 }, { t: T + 21 * DAY_MS, sma: 400, raan: 50 }];
+    const at = (t: number, raan: number) => ({ t, sma: 400, raan });
+    const P = [at(T - DAY_MS, 0), at(T + DAY_MS / 2, 11), at(T + DAY_MS, 14), at(T + 5 * DAY_MS, 0), at(T + 22 * DAY_MS, 0)];
+    const v = Array.from(raanSeries(P, sel).v);
+    expect(Number.isNaN(v[0]!)).toBe(true);                                  // before its record
+    expect(v[1]).toBeCloseTo(10, 9);                                           // 358 -> 4 the short way: 1 deg at half a day
+    expect(v[2]).toBe(10);                                                     // a set of its own at that instant
+    expect(Number.isNaN(v[3]!)).toBe(true);                                  // 20 days between its sets: not read
+    expect(Number.isNaN(v[4]!)).toBe(true);                                  // past its record
+    expect(RAAN_GAP_DAYS).toBe(10);
+    const ten = [at(T, 0), at(T + 10 * DAY_MS, 50)];
+    expect(raanSeries([at(T + 5 * DAY_MS, 30)], ten).v[0]).toBeCloseTo(5, 9);   // ten days apart is read
+  });
+
+  it('breaks a line where the offset wraps, instead of drawing it across the chart, and reads no value across the break', () => {
+    const sel = daily(6, () => 0);
+    const other = daily(6, i => 170 + 4 * i);                                 // 170, 174, 178, 182 (-178), ...
+    const q = points(other, 'raan', sel);
+    expect(Array.from(q.v).map(v => (Number.isNaN(v) ? 'gap' : +v.toFixed(9)))).toEqual([170, 174, 178, 'gap', -178, -174, -170]);
+    expect(q.t[3]).toBe((other[2]!.t + other[3]!.t) / 2);
+    const s = shape(other, sel);
+    expect(valueIn(s, other[2]!.t + DAY_MS / 4, 'raan')).toBeNull();
+    expect(valueIn(s, other[1]!.t + DAY_MS / 2, 'raan')!.h).toBeCloseTo(176, 9);
+    expect(lastOf(s, 'raan')).toEqual({ t: other[5]!.t, v: q.v[6] });
+  });
+
+  it('with no history of the selected spacecraft, or one cached without its RAAN, no line carries the offset (nothing is fetched for it)', () => {
+    const other = daily(30, () => 40);
+    for (const ref of [null, undefined, [], rows(30, () => 400)]) {
+      const s = shape(other, ref as SeriesShape['P'] | null | undefined);
+      expect(Array.from(points(other, 'raan', ref as SeriesShape['P']).v).every(Number.isNaN)).toBe(true);
+      expect(frameView([s], { p: 'raan', r: 'auto' })!.why).toBe('param');
+    }
+    const mine = shape(other, other);
+    const v = frameView([mine, shape(daily(30, () => 70), other)], { p: 'raan', r: 'auto' })!;
+    expect(v.why).toBeNull();
+    expect([v.frame!.hMin, v.frame!.hMax].map(x => +x.toFixed(9))).toEqual([-2.4, 32.4]);        // 0 and 70 - 40, padded by 8 % of 30
+  });
+
+  it('is memoised per history and per reference: another selected spacecraft is another line', () => {
+    const P = daily(5, () => 30), a = daily(5, () => 10), b = daily(5, () => 20);
+    expect(points(P, 'raan', a)).toBe(points(P, 'raan', a));
+    expect(points(P, 'raan', b)).not.toBe(points(P, 'raan', a));
+    expect(points(P, 'raan', b).v[0]).toBe(10);
+  });
+
+  it('fits the inclination\'s heights with its least pad of 0.005 deg', () => {
+    const f = frameView([shape(daily(60, () => 10, () => 97.4))], { p: 'inc', r: 'auto' })!.frame!;
+    expect([f.hMin, f.hMax].map(x => +x.toFixed(9))).toEqual([97.395, 97.405]);
   });
 });

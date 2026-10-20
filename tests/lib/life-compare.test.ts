@@ -176,11 +176,11 @@ describe('the chart\'s view (L67)', () => {
       all: 'Every element set held, and the forecast to the latest projected re-entry where there is one'
     });
   });
-  it('the quantity: its label and seven choices, mean altitude and the decay rate in the rows\' own words', () => {
+  it('the quantity: its label and nine choices (seven until L68), mean altitude and the decay rate in the rows\' own words', () => {
     expect(W.CMP_SHOW).toBe('Show');
     expect(W.CMP_PARAMS).toEqual({
       alt: 'Mean altitude', hp: 'Mean perigee altitude', ha: 'Mean apogee altitude', rate: 'Decay rate',
-      ecc: 'Eccentricity', per: 'Orbital period', mm: 'Mean motion'
+      ecc: 'Eccentricity', per: 'Orbital period', mm: 'Mean motion', inc: 'Inclination', raan: 'RAAN offset from the selected'
     });
     expect(Object.keys(W.CMP_PARAMS)).toEqual(PARAMS);
     expect(W.CMP_PARAMS.alt).toBe(W.CMP_ALT_NAME);
@@ -220,6 +220,17 @@ describe('the chart\'s view (L67)', () => {
     expect(W.cmpNoParam('ecc')).toBe('None of these histories carries eccentricity.');
     expect(W.cmpNoParam('hp')).toBe('None of these histories carries mean perigee altitude.');
   });
+  it('L68: the inclination and the RAAN offset in the chart\'s name, its caption, why nothing is drawn, and a row cached without them', () => {
+    expect(W.cmpChartName(2, ['A', 'B'], 'inc')).toBe('Inclination history of 2 spacecraft: A and B');
+    expect(W.cmpChartName(3, ['A', 'B', 'C'], 'raan')).toBe('RAAN offset from the selected spacecraft, in the history of 3 spacecraft: A, B and C');
+    expect(W.cmpChartName(9, null, 'raan')).toBe('RAAN offset from the selected spacecraft, in the history of 9 spacecraft');
+    expect(W.cmpAxis('inc', t0, t1)).toBe('Inclination, ° · 2026-07-19 to 2026-10-17');
+    expect(W.cmpAxis('raan', t0, t1, true)).toBe('RAAN offset from the selected, ° · 2026-07-19 to 2026-10-17 · zoomed in');
+    expect(W.cmpNoParam('inc')).toBe('None of these histories carries inclination.');
+    expect(W.cmpNoParam('raan')).toBe('None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from.');
+    expect(W.cmpNotCached('inc')).toBe('inclination not in this cached history');
+    expect(W.cmpNotCached('raan')).toBe('RAAN not in this cached history');
+  });
   it('a value: the number first, the decay rate signed, never "-0"', () => {
     expect(W.cmpValue('alt', 412.345)).toBe(W.cmpKm(412.345));
     expect(W.cmpValue('hp', 341.39)).toBe('341.4 km');
@@ -231,6 +242,13 @@ describe('the chart\'s view (L67)', () => {
     expect(W.cmpValue('mm', 15.68476422)).toBe('15.6848 rev/day');
     expect(W.cmpValue('rate', -0.0004)).toBe('0.000 km/day');
     expect(W.cmpValue('rate', 0.0004)).toBe('0.000 km/day');
+    /* L68: degrees close up, as the page writes them; the inclination to CelesTrak's four places, the offset signed to three */
+    expect(W.cmpValue('inc', 51.64123)).toBe('51.6412°');
+    expect(W.cmpValue('inc', 97.4)).toBe('97.4000°');
+    expect(W.cmpValue('raan', 12.3456)).toBe('+12.346°');
+    expect(W.cmpValue('raan', -0.5)).toBe('-0.500°');
+    expect(W.cmpValue('raan', -0.0004)).toBe('0.000°');
+    expect(W.cmpValue('raan', -180)).toBe('-180.000°');
   });
   it('a grid label: the step\'s decimals, never "-0"', () => {
     expect(W.cmpTick(-0.0000001, 3)).toBe('0.000');
@@ -259,6 +277,17 @@ describe('the chart\'s view (L67)', () => {
     expect(W.cmpNote('ecc')).toBe(noForecast);
     expect(W.cmpNote('per')).toBe(converted);
     expect(W.cmpNote('mm')).toBe(converted);
+    expect(W.cmpNote('inc')).toBe('Each element set’s mean inclination, as CelesTrak lists it. ' + noForecast);
+    expect(W.cmpNote('raan')).toBe('Each element set’s right ascension of the ascending node less the selected spacecraft’s at the same ' +
+      'instant, read between the selected spacecraft’s two nearest element sets when they are 10 days apart or less, and wrapped to ±180°: ' +
+      'its own line is at 0, and a line breaks where the offset wraps or the selected spacecraft has no record. ' + noForecast);
+    /* a history cached before L68 has neither: said after those two notes only, and only while one is listed */
+    const old = 'A history cached before the page kept inclination and RAAN has neither: it has them from its next fetch, once its 12 hours ' +
+      'in the cache are up.';
+    expect(W.CMP_OLD_CACHE).toBe(old);
+    expect(W.cmpNote('inc', true)).toBe(W.cmpNote('inc') + ' ' + old);
+    expect(W.cmpNote('raan', true)).toBe(W.cmpNote('raan') + ' ' + old);
+    for (const p of ['alt', 'hp', 'rate', 'ecc', 'per'] as const) expect(W.cmpNote(p, true)).toBe(W.cmpNote(p));
   });
   it('the words in its tables are plain text too', () => {
     for (const v of [...Object.values(W.CMP_RANGES), ...Object.values(W.CMP_RANGE_TITLES), ...Object.values(W.CMP_PARAMS)]) {

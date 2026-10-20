@@ -243,7 +243,7 @@ function statesFor(page, size, assertPlanner) {
    the selected spacecraft and four more in colour (the catalogue's longest name among them), two grey (one with a mark in its name), one
    waiting with its Fetch, one too high to draw, its reason beside it, the fold opened to show it; then its search, on a query whose rows
    carry the marks "in the comparison" and "decayed now" beside long names, with the line under the list that says what the second is;
-   then the chart's view (L67) changed and zoomed, with the reading shown. */
+   then the chart's view (L67) changed and zoomed, with the reading shown; then Show at the RAAN offset (L68), a row cached before it saying so. */
 function compareStates(page) {
   const hidden = sel => waitFor(page, s => { const e = document.querySelector(s); return !e || !e.checkVisibility() || e.hidden; }, sel, 6000);
   const shownSel = sel => waitFor(page, s => { const e = document.querySelector(s); return !!e && e.checkVisibility() && e.getBoundingClientRect().height > 0; }, sel, 8000);
@@ -271,7 +271,15 @@ function compareStates(page) {
       await page.focus('#cmpscrub');
       await page.keyboard.press('=');
       await shownSel('#cmpreset'); await shownSel('#cmptip'); await raf2(page);
-    }, exit: async () => { await page.keyboard.press('Escape'); await hidden('#cmptip'); } }
+    }, exit: async () => { await page.keyboard.press('Escape'); await hidden('#cmptip'); } },
+    /* ...and the plane (L68): Show at the RAAN offset from the selected spacecraft over Auto (the zoom gone with the press), FLOCK 4G 24's
+       row saying its cached history has no RAAN (the seed's one history cached before L68) beside its figures, and the note under the
+       key saying what the offset is and when such a history will have it */
+    { id: 'decay-compare-plane', overlay: null, enter: async () => {
+      await page.click('#cmpr-auto');
+      await page.selectOption('#cmpparam', 'raan');
+      await shownSel('#cmpold-' + CMP.OLD_CACHE); await shownSel('#cmpnote'); await raf2(page);
+    }, exit: async () => {} }
   ];
 }
 

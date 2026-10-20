@@ -1621,8 +1621,10 @@ out of altitude.
 `celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=<id>` returns an HTML page with the whole
 run of mean elements embedded in one `plotData` string — date, RAAN, inclination, argument of
 perigee, SMA, eccentricity, for every element set CelesTrak has held. For KNACKSAT-2 that is 534
-rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major axis. It sends
-`Access-Control-Allow-Origin: *`, so the browser can read it without a backend.
+rows. The "SMA" column is the mean **altitude** a − Rₑ, not the semi-major axis. The page keeps
+each row's date, mean altitude and eccentricity, and its inclination and RAAN for the comparison
+below; not the argument of perigee. It sends `Access-Control-Allow-Origin: *`, so the browser can
+read it without a backend.
 
 The page asks its own cache API first, `/api/history/<id>`, if one answers as itself (*Staying
 current* says how that is judged), and CelesTrak directly when none does, or when the one that does
@@ -1808,8 +1810,15 @@ value there (the altitude, or what **Show** below picks), highest first.
 **Range** picks what the chart spans: Auto (the fitted frame above, the default), the last 30 or 90
 days or year of history up to the newest element set, or All. **Show** picks what it plots: mean
 altitude, mean perigee or apogee altitude (from the mean elements), the decay rate (the section's
-45-day measure at each element set), eccentricity, orbital period or mean motion. Only mean
-altitude, period and mean motion have the dashed forecast. The line over the chart names the
+45-day measure at each element set), eccentricity, orbital period, mean motion, inclination, or the
+RAAN offset from the selected spacecraft: each element set's right ascension of the ascending node
+less the selected one's at the same instant (read between its two nearest element sets, when they
+are ten days apart or less), wrapped to ±180°, so the selected spacecraft is the line at 0 and two
+planes drifting apart show as lines leaving it; a line breaks where its offset wraps. Only mean
+altitude, period and mean motion have the dashed forecast. A history your browser cached before
+the page kept inclination and RAAN has neither: while Show is either, its row says it is not in
+that cached history, and nothing is fetched for it; its next fetch, once its twelve hours in the
+cache are up, has them. The line over the chart names the
 quantity, its unit and the dates shown. On a desktop, drag across the chart or double-click it to
 zoom, and Reset zoom to go back. On a phone, tap the chart (or the slider under it) to pin the
 reading, slide sideways to move it, and tap anywhere else to let it go; a scroll or a pinch that
@@ -1849,7 +1858,7 @@ has no history and its forecast has no dates) and comes back with a catalogue sp
 The list, which ones are in colour and whether the panel is open are kept in your browser under
 `gt.decaycmp`, written only when you change them; reading it back fetches nothing, and a spacecraft
 not in the cache waits for *Fetch*. Another tab of the page follows a change to the list. The panel
-is a chunk of its own (22.4 KB gzipped), asked for at the first press, or when the section comes
+is a chunk of its own (24.0 KB gzipped), asked for at the first press, or when the section comes
 near if you left the panel open; a visit that never opens it does not download it. If it does not
 arrive, a line beside the button says so and asks for a reload: the browser keeps a failed download
 for the rest of the page, so another press would not bring it.
@@ -1859,11 +1868,12 @@ counting each one's requests and how many are out at once: nothing asked for on 
 reload or for a planned orbit, one request per add, never two at once, seven at most per press (a
 double-click too), the colours on the canvas, the readout, the keyboard's focus, *Clear*, a failure,
 a listed spacecraft picked while its history is on the way, a list nearly full, a phone (a tap, a
-sideways finger and a vertical swipe on the chart) and the chart's view (each range and quantity,
-the zoom, the reading slider, and what is kept) (about a minute).
-`npm run layout` and `npm run axe` look at the panel too, open with nine rows, with its search open
-and with its chart zoomed in on another quantity, on a page of their own whose storage alone holds
-the list and its histories.
+sideways finger and a vertical swipe on the chart), the chart's view (each range and quantity,
+the zoom, the reading slider, and what is kept) and the inclination and RAAN offset (read off each
+made-up plane, and a history cached before the page kept them) (about a minute).
+`npm run layout` and `npm run axe` look at the panel too, open with nine rows, with its search open,
+with its chart zoomed in on another quantity, and at the RAAN offset with one row's history cached
+before the page kept it, on a page of their own whose storage alone holds the list and its histories.
 
 ##### KNACKSAT-2
 

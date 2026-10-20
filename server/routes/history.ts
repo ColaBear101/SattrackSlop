@@ -1,7 +1,7 @@
 /* GET /api/history/:norad - the decay history of one object (CelesTrak's graph-orbit-data page), read with the
  * page's own parser and returned as the run of element sets the decay estimate fits.
  *
- *   200 {status:'ok', norad, P:[{t,sma,ecc}], rows, src, at}     the history; `ecc` is null where a row had none
+ *   200 {status:'ok', norad, P:[{t,sma,ecc,inc,raan}], rows, src, at}   the history; `ecc`, `inc` and `raan` are null where a row had none
  *   200 {status:'none', norad, why:'empty'|'outside', rows, src, at}   it arrived and there is nothing to fit - an answer, not a retry
  *   400 bad_norad   429 rate_limited   502 upstream_unavailable {tried}   504 upstream_timeout
  *
@@ -18,7 +18,12 @@ import {
 } from '../lib/errors.js';
 import { NoradParams } from './tle.js';
 
-export const HistoryRowSchema = t.Object({ t: t.Number(), sma: t.Number(), ecc: t.Union([t.Number(), t.Null()]) });
+/* inc and raan (CHANGES-FROM-LEGACY.md, L68) are declared, or Elysia would strip them; optional, since a history cached before them
+   has neither */
+export const HistoryRowSchema = t.Object({
+  t: t.Number(), sma: t.Number(), ecc: t.Union([t.Number(), t.Null()]),
+  inc: t.Optional(t.Union([t.Number(), t.Null()])), raan: t.Optional(t.Union([t.Number(), t.Null()]))
+});
 export const HistoryOkSchema = t.Object({
   status: t.Literal('ok'), norad: t.String(), P: t.Array(HistoryRowSchema), rows: t.Number(), src: t.String(), at: t.Number()
 });

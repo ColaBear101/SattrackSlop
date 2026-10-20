@@ -3,12 +3,13 @@
  *
  * New in the rebuild. Every word the panel says is here: its toolbar, the search that adds a spacecraft, the list's rows and their
  * buttons' names, the status line, the chart's name, key and readout, the controls of its view (L67: the range, the quantity,
- * the caption, the zoom, the scrubber and the note), and the one sentence it says while a planned orbit is selected. They travel
+ * the caption, the zoom, the scrubber and the note; L68: the inclination and the RAAN offset, and what a row says when its cached
+ * history has neither), and the one sentence it says while a planned orbit is selected. They travel
  * with the comparison's own chunk (DecayCompare), asked for at the first press of "Compare with other
  * spacecraft" or when the section comes near with the panel left open; the opener's own two sentences are life-compare-open.ts,
  * in the report's chunk. A row's verdict (the re-entry date, "No measurable decay", "Not received") is the Decay section's own,
  * read from the same history by life.ts; these only add what a list of many needs. */
-import { COMPARE_MAX, HIGHLIGHT_MAX, type CmpParam, type CmpRange } from '../decay/compare';
+import { COMPARE_MAX, HIGHLIGHT_MAX, RAAN_GAP_DAYS, type CmpParam, type CmpRange } from '../decay/compare';
 
 const count = (n: number, one: string, many: string): string => n + ' ' + (n === 1 ? one : many);
 /** a, b and c */
@@ -169,6 +170,7 @@ export const CMP_PLANNED = 'The comparison is put away while a planned orbit is 
  *  rest are history only. */
 export const cmpChartName = (n: number, named: readonly string[] | null, p: CmpParam = 'alt'): string =>
   (p === 'alt' ? 'Mean altitude history and projected decay of '
+    : p === 'raan' ? 'RAAN offset from the selected spacecraft, in the history of '
     : CMP_PARAMS[p] + (p === 'per' || p === 'mm' ? ' history and projection of ' : ' history of ')) +
   count(n, 'spacecraft', 'spacecraft') + (named && named.length ? ': ' + andList(named) : '');
 /** the line where an object stops being in orbit */
@@ -200,15 +202,20 @@ export const CMP_RANGE_TITLES: Readonly<Record<CmpRange, string>> = {
   all: 'Every element set held, and the forecast to the latest projected re-entry where there is one'
 };
 /** the quantity's dropdown, its label and choices: the Decay section's own "Mean altitude" and "Decay rate", and the planner's
- *  "Mean perigee altitude" and "Mean apogee altitude" (advisor-copy.ts), which say they come from the mean elements */
+ *  "Mean perigee altitude" and "Mean apogee altitude" (advisor-copy.ts), which say they come from the mean elements; and since L68
+ *  the inclination and the RAAN offset from the selected spacecraft, which CelesTrak's history holds as well */
 export const CMP_SHOW = 'Show';
 export const CMP_PARAMS: Readonly<Record<CmpParam, string>> = {
   alt: CMP_ALT_NAME, hp: 'Mean perigee altitude', ha: 'Mean apogee altitude', rate: CMP_RATE_NAME,
-  ecc: 'Eccentricity', per: 'Orbital period', mm: 'Mean motion'
+  ecc: 'Eccentricity', per: 'Orbital period', mm: 'Mean motion', inc: 'Inclination', raan: 'RAAN offset from the selected'
 };
-const UNIT: Readonly<Record<CmpParam, string>> = { alt: 'km', hp: 'km', ha: 'km', rate: 'km/day', ecc: '', per: 'min', mm: 'rev/day' };
-const DEC: Readonly<Record<CmpParam, number>> = { alt: 1, hp: 1, ha: 1, rate: 3, ecc: 5, per: 2, mm: 4 };
+const UNIT: Readonly<Record<CmpParam, string>> = {
+  alt: 'km', hp: 'km', ha: 'km', rate: 'km/day', ecc: '', per: 'min', mm: 'rev/day', inc: '°', raan: '°'
+};
+const DEC: Readonly<Record<CmpParam, number>> = { alt: 1, hp: 1, ha: 1, rate: 3, ecc: 5, per: 2, mm: 4, inc: 4, raan: 3 };
 const lower = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
+/** a value's unit as the page writes it after a number: a degree sign close up, anything else after a space */
+const after = (p: CmpParam): string => (UNIT[p] === '°' ? '°' : UNIT[p] ? ' ' + UNIT[p] : '');
 
 /** over the chart, its y axis's title and its span: "Mean perigee altitude, km · 2026-07-19 to 2026-10-17", with "zoomed in"
  *  while a zoom is drawn and, when the span holds nothing drawn, that */
@@ -217,8 +224,14 @@ export const CMP_NOTHING_HERE = 'nothing drawn falls between these dates';
 export const cmpAxis = (p: CmpParam, t0: number, t1: number, zoomed = false, empty = false): string =>
   CMP_PARAMS[p] + (UNIT[p] ? ', ' + UNIT[p] : '') + ' · ' + cmpDay(t0) + ' to ' + cmpDay(t1) +
   (zoomed ? ' · ' + CMP_ZOOMED : '') + (empty ? ' · ' + CMP_NOTHING_HERE : '');
-/** in the caption's place when no history drawn carries the quantity */
-export const cmpNoParam = (p: CmpParam): string => 'None of these histories carries ' + lower(CMP_PARAMS[p]) + '.';
+/** in the caption's place when no history drawn carries the quantity; for the RAAN offset, when none has a RAAN at the dates of the
+ *  selected spacecraft's own (which it has not when it has no history here, or one cached without its RAAN) */
+export const cmpNoParam = (p: CmpParam): string => p === 'raan'
+  ? 'None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from.'
+  : 'None of these histories carries ' + lower(CMP_PARAMS[p]) + '.';
+/** in a row, while Show is the inclination or the RAAN offset, for a history cached (or sent by the page's API) before the page kept
+ *  them (L68): it is not fetched again for them */
+export const cmpNotCached = (p: CmpParam): string => (p === 'raan' ? 'RAAN' : lower(CMP_PARAMS[p])) + ' not in this cached history';
 
 /** the zoom: its undo, and the hint beside the caption (a mouse or pen only) */
 export const CMP_RESET = 'Reset zoom';
@@ -241,11 +254,12 @@ export const cmpScrubView = (said: string, t0: number, t1: number, zoomed: boole
 export const CMP_SCRUB_HINT = 'Arrow keys move the reading; plus and minus zoom in and out.';
 
 /** a value in the readout and the scrubber, the number first (an ASCII minus): km to 0.1 (as cmpKm), the decay rate signed to
- *  0.001 km/day (as the section's), eccentricity to five places, the period to 0.01 min, mean motion to 0.0001 rev/day */
+ *  0.001 km/day (as the section's), eccentricity to five places, the period to 0.01 min, mean motion to 0.0001 rev/day, the
+ *  inclination to 0.0001° (CelesTrak's places) and the RAAN offset signed to 0.001° */
 export function cmpValue(p: CmpParam, v: number): string {
   if (p === 'alt') return cmpKm(v);
   const r = +v.toFixed(DEC[p]) || 0;
-  return (p === 'rate' && r > 0 ? '+' : '') + r.toFixed(DEC[p]) + (UNIT[p] ? ' ' + UNIT[p] : '');
+  return ((p === 'rate' || p === 'raan') && r > 0 ? '+' : '') + r.toFixed(DEC[p]) + after(p);
 }
 /** a grid label: the step's decimals, and never "-0" */
 export const cmpTick = (v: number, dec: number): string => (+v.toFixed(dec) || 0).toFixed(dec);
@@ -261,6 +275,13 @@ const NOTES: Readonly<Partial<Record<CmpParam, string>>> = {
     'decay rate; above zero, the orbit was raised. ' + NO_FORECAST,
   ecc: NO_FORECAST,
   per: 'Worked out from the mean altitude, so the forecast is drawn in it too.',
-  mm: 'Worked out from the mean altitude, so the forecast is drawn in it too.'
+  mm: 'Worked out from the mean altitude, so the forecast is drawn in it too.',
+  inc: 'Each element set’s mean inclination, as CelesTrak lists it. ' + NO_FORECAST,
+  raan: 'Each element set’s right ascension of the ascending node less the selected spacecraft’s at the same instant, read between ' +
+    'the selected spacecraft’s two nearest element sets when they are ' + RAAN_GAP_DAYS + ' days apart or less, and wrapped to ±180°: ' +
+    'its own line is at 0, and a line breaks where the offset wraps or the selected spacecraft has no record. ' + NO_FORECAST
 };
-export const cmpNote = (p: CmpParam): string => NOTES[p] ?? '';
+/** after the inclination's or the offset's note, while a history listed (or the selected spacecraft's) was cached without them */
+export const CMP_OLD_CACHE = 'A history cached before the page kept inclination and RAAN has neither: it has them from its next fetch, ' +
+  'once its 12 hours in the cache are up.';
+export const cmpNote = (p: CmpParam, old = false): string => (NOTES[p] ?? '') + (old && (p === 'inc' || p === 'raan') ? ' ' + CMP_OLD_CACHE : '');

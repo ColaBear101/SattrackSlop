@@ -38,8 +38,9 @@ export interface TleOk { status: 'ok'; norad: string; l1: string; l2: string; sr
 export interface TleGone { status: 'gone'; norad: string; src: string; at: number }
 export type TleAnswer = TleOk | TleGone;
 
-/** One element set of the run; `ecc` is null where the row carried none (JSON has no NaN). */
-export interface HistoryRow { t: number; sma: number; ecc: number | null }
+/** One element set of the run; `ecc` is null where the row carried none (JSON has no NaN), and so are `inc` and `raan`
+ *  (CHANGES-FROM-LEGACY.md, L68), which an API that predates them does not send. */
+export interface HistoryRow { t: number; sma: number; ecc: number | null; inc?: number | null; raan?: number | null }
 export interface HistoryOk { status: 'ok'; norad: string; P: HistoryRow[]; rows: number; src: string; at: number }
 /** A history that arrived and is not usable: `empty` (no rows) or `outside` (rows, all outside the bounds). */
 export interface HistoryNone { status: 'none'; norad: string; why: 'empty' | 'outside'; rows: number; src: string; at: number }

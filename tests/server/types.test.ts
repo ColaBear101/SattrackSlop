@@ -81,14 +81,14 @@ describe('the Eden client is typed from the routes', () => {
     }
   });
 
-  it('types the history: the run of element sets with a nullable eccentricity, or a "none" with its reason', async () => {
+  it('types the history: the run of element sets with a nullable eccentricity, inclination and RAAN (the last two optional: L68), or a "none" with its reason', async () => {
     const client = treaty<Api>(app());
     const res = await client.api.history({ norad: '25544' }).get();
     expect(res.status).toBe(200);
     const d = res.data;
     if (!d) throw new Error('expected a history');
     if (d.status === 'ok') {
-      expectTypeOf(d.P).toEqualTypeOf<Array<{ t: number; sma: number; ecc: number | null }>>();
+      expectTypeOf(d.P).toEqualTypeOf<Array<{ t: number; sma: number; ecc: number | null; inc?: number | null; raan?: number | null }>>();
       expectTypeOf(d.rows).toBeNumber();
       expect(d.P).toHaveLength(221);
     } else {

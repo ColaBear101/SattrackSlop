@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { VIEW_DEFAULT } from '../../src/lib/decay/compare';
+import { hasPlane, VIEW_DEFAULT } from '../../src/lib/decay/compare';
 import { EMPTY_PLOT, plotPage } from '../server/helpers/tle';
 
 /* the console's own store and the Decay section's, stood in for by reactive fakes (decay-compare-fakes.svelte.ts) */
@@ -436,10 +436,17 @@ describe('the decay comparison, kept', () => {
     compare.highlight('25544', false);
     await until(() => expect(compare.lines).toHaveLength(4));
     expect(compare.lines.map(l => [l.n, l.slot])).toEqual([['67683', 1], ['07530', 3], ['43017', 4], ['25544', 0]]);
+    /* every line carries the selected spacecraft's history, which the RAAN offset is measured from (L68): the section's own rows */
+    expect(compare.lines.every(l => l.ref === P)).toBe(true);
+    expect(compare.lines[0]!.P).toBe(P);
     life.chart = { P, r: { tNow: P.at(-1)!.t, hNow: 300, track: [] }, custom: true };
     expect(compare.lines.map(l => l.n)).toEqual(['07530', '43017', '25544']);
+    expect(compare.lines.every(l => l.ref === null)).toBe(true);             // a planned orbit has no history to measure from
     life.chart = { P, r: { tNow: P.at(-1)!.t, hNow: 36000, track: [] } };
     expect(compare.lines.map(l => l.n)).toEqual(['07530', '43017', '25544']);
+    expect(compare.lines.every(l => l.ref === P)).toBe(true);                // not drawn, and still the reference
+    life.chart = null;
+    expect(compare.lines.every(l => l.ref === null)).toBe(true);
   });
 
   it('while the page\'s API answers, starts two requests at least seven seconds apart; answers from the cache are not held back', async () => {
@@ -845,7 +852,7 @@ describe('the decay comparison\'s view', () => {
   });
 
   it('reads what it does not know as the default, and keeps the list', async () => {
-    for (const tail of ['"p":"inc","r":"2y"', '"p":null,"r":7', '"p":"alt","r":"auto"', '"p":"hp ","r":"30D","q":1']) {
+    for (const tail of ['"p":"argp","r":"2y"', '"p":null,"r":7', '"p":"alt","r":"auto"', '"p":"hp ","r":"30D","q":1']) {   // "inc" until L68
       const w = world({ 'gt.decaycmp': '{"o":1,"l":[{"n":"25544","h":2}],' + tail + '}' });
       const { compare } = await load(w);
       expect(compare.view, tail).toEqual(VIEW_DEFAULT);
@@ -897,14 +904,15 @@ describe('the decay comparison\'s view', () => {
     const predict = vi.spyOn(Lifetime, 'predict');
     const f = compare.forecast('25544')!, rows = compare.rows, items = compare.items;
     const lines = compare.lines;
-    expect(lines).toEqual([{ n: '25544', slot: 2, P: f.P, r: f.r }]);
+    expect(lines).toEqual([{ n: '25544', slot: 2, P: f.P, r: f.r, ref: null }]);
+    expect(hasPlane(f.P)).toBe(false);                                     // a copy cached before L68: Inclination asks for nothing
     const same = (why: string) => {
       const now = compare.lines;
       expect(now, why).toEqual(lines);
       expect(now[0]!.P, why).toBe(f.P);
       expect(now[0]!.r, why).toBe(f.r);
     };
-    for (const v of [{ p: 'hp' }, { r: '90d' }, { p: 'rate', r: 'all' }, { p: 'ecc' }, VIEW_DEFAULT] as const) {
+    for (const v of [{ p: 'hp' }, { r: '90d' }, { p: 'rate', r: 'all' }, { p: 'ecc' }, { p: 'inc' }, { p: 'raan', r: '30d' }, VIEW_DEFAULT] as const) {
       compare.setView(v);
       same(JSON.stringify(v));
     }

@@ -18,6 +18,8 @@
  * orbital period or mean motion), all worked out from the history the page already holds, and the time range (Auto, today's
  * frame, or the 30 days, 90 days or year up to the newest element set, or all of it). The time window never depends on the
  * quantity, so switching it only refits the heights; the default view (Auto, mean altitude) is the frame above, unchanged.
+ * L68 adds two quantities the history holds and L67's rows did not keep: the mean inclination, and the RAAN offset from the
+ * selected spacecraft (each element set's RAAN less the selected one's at the same instant, wrapped to +-180 deg).
  *
  * Travels with the comparison's chunk (DecayCompare): the store (state/decay-compare.svelte.ts) and the chart
  * (components/report/draw-compare.ts) read it; the Decay section itself does not. */
@@ -42,10 +44,10 @@ const YEAR_MS = 365 * DAY_MS;
 const NUM = /^\d{1,5}$/;
 
 /** The chart's view: the quantity it shows and its time range. */
-export type CmpParam = 'alt' | 'hp' | 'ha' | 'rate' | 'ecc' | 'per' | 'mm';
+export type CmpParam = 'alt' | 'hp' | 'ha' | 'rate' | 'ecc' | 'per' | 'mm' | 'inc' | 'raan';
 export type CmpRange = 'auto' | '30d' | '90d' | '1y' | 'all';
 export interface CmpView { readonly p: CmpParam; readonly r: CmpRange }
-export const PARAMS: readonly CmpParam[] = ['alt', 'hp', 'ha', 'rate', 'ecc', 'per', 'mm'];
+export const PARAMS: readonly CmpParam[] = ['alt', 'hp', 'ha', 'rate', 'ecc', 'per', 'mm', 'inc', 'raan'];
 export const RANGES: readonly CmpRange[] = ['auto', '30d', '90d', '1y', 'all'];
 export const VIEW_DEFAULT: CmpView = { p: 'alt', r: 'auto' };
 /** a span of time (ms) */
@@ -152,12 +154,15 @@ export function fetchPlan(waiting: number): { k: number; more: boolean } {
 /* ---- what can be drawn, and where -------------------------------------------------------------------------------- */
 
 /** A history and its forecast, as far as the chart needs them: P the element sets (t ms, sma the mean altitude in km, ecc the
- *  mean eccentricity where the history carries it), r the prediction (tNow and hNow its last set; track the projection, t in days
- *  after tNow). */
+ *  mean eccentricity, inc and raan the mean inclination and RAAN in degrees, where the history carries them), r the prediction
+ *  (tNow and hNow its last set; track the projection, t in days after tNow), and ref the selected spacecraft's history, which the
+ *  RAAN offset is measured from (L68; null or left out when there is none). */
 export interface SeriesShape {
-  readonly P: readonly { t: number; sma: number; ecc?: number | null }[];
+  readonly P: Rows;
   readonly r: { tNow?: number; hNow?: number; track?: readonly { t: number; h: number }[] | null };
+  readonly ref?: Rows | null;
 }
+type Rows = readonly { t: number; sma: number; ecc?: number | null; inc?: number | null; raan?: number | null }[];
 export type NotDrawn = 'thin' | 'high';
 
 /** Why a forecast is not drawn: too little history for even a last altitude, or too high for drag to matter. Null: it is drawn. */
@@ -248,7 +253,8 @@ export interface Measure {
   readonly floor: boolean; readonly min0: boolean;  // the 120 km line applies; the axis never goes below 0
 }
 /** The quantities. The forecast is of mean altitude, so only those worked out from it alone (the period and the mean motion) are
- *  projected; the least pads are about 4 km of altitude at 400 km. The decay rate can go above zero (a raised orbit). */
+ *  projected; the least pads are about 4 km of altitude at 400 km. The decay rate can go above zero (a raised orbit), and so can the
+ *  RAAN offset go below it; the inclination's grid goes to 0.0001 deg (CelesTrak's four places) and the offset's to 0.001 deg. */
 export const MEASURE: Readonly<Record<CmpParam, Measure>> = {
   alt: { proj: h => h, pad: 4, step: 1, floor: true, min0: true },
   hp: { proj: null, pad: 4, step: 1, floor: true, min0: true },
@@ -256,7 +262,9 @@ export const MEASURE: Readonly<Record<CmpParam, Measure>> = {
   rate: { proj: null, pad: 0.01, step: 0.001, floor: false, min0: false },
   ecc: { proj: null, pad: 0.00005, step: 0.00001, floor: false, min0: true },
   per: { proj: periodMin, pad: 0.08, step: 0.01, floor: false, min0: true },
-  mm: { proj: meanMotion, pad: 0.014, step: 0.001, floor: false, min0: true }
+  mm: { proj: meanMotion, pad: 0.014, step: 0.001, floor: false, min0: true },
+  inc: { proj: null, pad: 0.005, step: 0.0001, floor: false, min0: true },
+  raan: { proj: null, pad: 0.05, step: 0.001, floor: false, min0: false }
 };
 /** whether the forecast is drawn in this quantity */
 export const projects = (p: CmpParam): boolean => MEASURE[p].proj !== null;
@@ -267,10 +275,16 @@ export function eccOf(row: { ecc?: number | null }): number {
   return typeof row.ecc === 'number' && Number.isFinite(row.ecc) ? row.ecc : NaN;
 }
 
+/** An element set's inclination or RAAN (deg), NaN where it has none: NaN on a fresh read of a blank column, null from the hist:<n>
+ *  cache and the API, absent from a history kept before L68 (see hasPlane). */
+export const angleOf = (v: number | null | undefined): number => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+/** Whether a history was kept with its inclination and RAAN (L68): one cached before then, or sent by an API that predates them, has
+ *  neither, and has them only from its next fetch (nothing asks for one for them). Every row of a history is kept the same way. */
+export const hasPlane = (P: Rows): boolean => P.length > 0 && P[P.length - 1]!.inc !== undefined;
+
 /** A line in one quantity: instants (ms) and values, NaN where there is none (the line breaks there). */
 export interface Pts { readonly t: Float64Array; readonly v: Float64Array }
 
-type Rows = SeriesShape['P'];
 /* keyed by the history (or the projection's track) array: a new history is a new array, so it gets a new entry */
 const ptsMemo = new WeakMap<object, Map<CmpParam, Pts>>();
 const projMemo = new WeakMap<object, Map<CmpParam, Pts>>();
@@ -282,9 +296,11 @@ function memo(m: WeakMap<object, Map<CmpParam, Pts>>, key: object, p: CmpParam, 
   return q;
 }
 
-/** A history in a quantity, one value per element set (the decay rate: one per instant, rateSeries). Memoised per history. */
-export function points(P: Rows, p: CmpParam): Pts {
+/** A history in a quantity, one value per element set (the decay rate: one per instant, rateSeries; the RAAN offset: against `ref`,
+ *  the selected spacecraft's history, raanSeries). Memoised per history. */
+export function points(P: Rows, p: CmpParam, ref?: Rows | null): Pts {
   if (p === 'rate') return rateSeries(P);
+  if (p === 'raan') return raanSeries(P, ref ?? NONE);
   return memo(ptsMemo, P, p, () => {
     const n = P.length, t = new Float64Array(n), v = new Float64Array(n);
     for (let i = 0; i < n; i++) {
@@ -293,6 +309,7 @@ export function points(P: Rows, p: CmpParam): Pts {
       if (p === 'alt') v[i] = h;
       else if (p === 'per') v[i] = periodMin(h);
       else if (p === 'mm') v[i] = meanMotion(h);
+      else if (p === 'inc') v[i] = angleOf(row.inc);
       else {
         const e = eccOf(row), a = RE + h;
         v[i] = p === 'ecc' ? e : p === 'hp' ? a * (1 - e) - RE : a * (1 + e) - RE;
@@ -300,6 +317,50 @@ export function points(P: Rows, p: CmpParam): Pts {
     }
     return { t, v };
   });
+}
+
+/** an angle (deg) brought to -180..180 */
+export const wrap180 = (d: number): number => d - 360 * Math.round(d / 360);
+/** the longest stretch (days) of the selected spacecraft's record its RAAN is read across, between two element sets: at the quickest
+ *  precession of a low orbit, about 10 deg a day, the node moves under 180 deg in that time, so the shorter way round is the way it went */
+export const RAAN_GAP_DAYS = 10;
+const NONE: Rows = [];
+const raanMemo = new WeakMap<object, WeakMap<object, Pts>>();
+
+/** The selected spacecraft's RAAN (deg, 0..360 or as given) at instant t, read along its record `ref` (sorted by t): an element set's
+ *  own where one is at t, else the straight line between the two either side, the shorter way round, when they are at most 10 days
+ *  apart; NaN outside its record, across a longer gap, or where either set has no RAAN. `j` is where to start looking. */
+function refRaan(ref: Rows, t: number, j: number): { o: number; j: number } {
+  while (j < ref.length && ref[j]!.t < t) j++;
+  if (j < ref.length && ref[j]!.t === t) return { o: angleOf(ref[j]!.raan), j };
+  if (j === 0 || j === ref.length) return { o: NaN, j };
+  const a = ref[j - 1]!, b = ref[j]!;
+  if (b.t - a.t > RAAN_GAP_DAYS * DAY_MS) return { o: NaN, j };
+  const oa = angleOf(a.raan);
+  return { o: oa + wrap180(angleOf(b.raan) - oa) * (t - a.t) / (b.t - a.t), j };
+}
+
+/** The RAAN offset of a history from the selected spacecraft's (`ref`): at each of its element sets, its RAAN less the selected one's
+ *  at that instant (refRaan), wrapped to -180..180; NaN where either has none. Where the offset wraps (two sets in a row more than 180
+ *  deg apart), a NaN is put between them, so the line breaks there instead of crossing the chart. Against itself it is 0 wherever it
+ *  has a RAAN. Memoised per history and reference. */
+export function raanSeries(P: Rows, ref: Rows): Pts {
+  let byRef = raanMemo.get(ref);
+  if (!byRef) raanMemo.set(ref, byRef = new WeakMap());
+  let q = byRef.get(P);
+  if (q) return q;
+  const t: number[] = [], v: number[] = [];
+  let j = 0, prev = NaN;
+  for (const row of P) {
+    const at = refRaan(ref, row.t, j), d = wrap180(angleOf(row.raan) - at.o);
+    j = at.j;
+    if (Math.abs(d - prev) > 180) { t.push((t[t.length - 1]! + row.t) / 2); v.push(NaN); }
+    t.push(row.t); v.push(d);
+    prev = d;
+  }
+  q = { t: Float64Array.from(t), v: Float64Array.from(v) };
+  byRef.set(P, q);
+  return q;
 }
 
 /** The projection in a quantity (t = tNow + days, v = the quantity at the projected mean altitude), or null when the quantity is
@@ -352,7 +413,7 @@ export function rateSeries(P: Rows): Pts {
 export function lastOf(s: SeriesShape, p: CmpParam): { t: number; v: number } | null {
   const f = MEASURE[p].proj, { tNow, hNow } = s.r;
   if (f) return tNow === undefined || hNow === undefined ? null : { t: tNow, v: p === 'alt' ? hNow : f(hNow) };
-  const q = points(s.P, p);
+  const q = points(s.P, p, s.ref);
   for (let i = q.t.length - 1; i >= 0; i--) if (Number.isFinite(q.v[i]!)) return { t: q.t[i]!, v: q.v[i]! };
   return null;
 }
@@ -413,12 +474,12 @@ export function frameView(fit: readonly SeriesShape[], v: CmpView, win?: Win | n
   /* the default does not move: the legacy frame, unchanged */
   if (v.p === 'alt' && v.r === 'auto' && !zoomed) return { ...at, frame: { ...frame(fit)!, base, zoomed: false, tLast }, why: null };
   const p = v.p, M = MEASURE[p];
-  const Sp = yfit.filter(s => s.P.length && drawable(s.r) && points(s.P, p).v.some(x => Number.isFinite(x)));
+  const Sp = yfit.filter(s => s.P.length && drawable(s.r) && points(s.P, p, s.ref).v.some(x => Number.isFinite(x)));
   if (!Sp.length) return { ...at, frame: null, why: 'param' };
   let hMin = Infinity, hMax = -Infinity;
   const take = (h: number) => { if (h < hMin) hMin = h; if (h > hMax) hMax = h; };
   for (const s of Sp) {
-    extent(points(s.P, p), t0, t1, take);
+    extent(points(s.P, p, s.ref), t0, t1, take);
     const q = projected(s, p);
     if (q) extent(q, t0, t1, take);
   }
@@ -435,7 +496,7 @@ export function frameView(fit: readonly SeriesShape[], v: CmpView, win?: Win | n
  *  the projection mapped into it; null before the history and past what is drawn. */
 export function valueIn(s: SeriesShape, t: number, p: CmpParam): { h: number; projected: boolean } | null {
   if (p === 'alt') return valueAt(s, t);
-  const q = points(s.P, p), n = q.t.length;
+  const q = points(s.P, p, s.ref), n = q.t.length;
   if (!n || t < q.t[0]!) return null;
   if (t <= q.t[n - 1]!) {
     let lo = 0, hi = n - 1;

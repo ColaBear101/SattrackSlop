@@ -62,8 +62,9 @@ export type CmpRow =
   | { st: 'reading' | 'wait' | 'queued' | 'fetching' }
   | { st: 'shown'; big: string; sub: string; alt: string; rate: string; not: NotDrawn | null }
   | { st: 'failed'; big: string; short: string; retry: boolean; not: Exclude<CmpNotDrawn, NotDrawn> };
-/** A line of the comparison chart: slot 1 the selected spacecraft, 2..8 one in colour, 0 a grey one. */
-export interface CmpLine { n: string; slot: number; P: readonly PlotRow[]; r: Any }
+/** A line of the comparison chart: slot 1 the selected spacecraft, 2..8 one in colour, 0 a grey one; `ref` the selected spacecraft's
+ *  history, which the RAAN offset is measured from (L68), null when it has none here. */
+export interface CmpLine { n: string; slot: number; P: readonly PlotRow[]; r: Any; ref: readonly PlotRow[] | null }
 
 type Task = { kind: 'row'; n: string; tok: number } | { kind: 'life'; n: string; asked: boolean };
 
@@ -141,18 +142,24 @@ class DecayCompare {
     void app.catalogue;
     return watch.list.filter(n => !!app.embedded(n) && n !== this.selected && !this.items.some(i => i.n === n));
   });
+  /** the selected spacecraft's history, as the Decay section holds it (drawn or not), or null: what the RAAN offset is measured from */
+  ref = $derived.by((): readonly PlotRow[] | null => {
+    const ch = life.chart;
+    /* the section's rows are the history source's PlotRows, eccentricity, inclination and RAAN with them; its own type (entry code)
+       names only t and sma */
+    return this.selected && ch && !ch.custom && ch.P.length ? ch.P as unknown as readonly PlotRow[] : null;
+  });
   /** what the chart draws: the selected spacecraft's forecast (when it can be drawn), the highlighted by slot, then the grey ones */
   lines = $derived.by((): CmpLine[] => {
     const out: CmpLine[] = [], grey: CmpLine[] = [];
-    const sel = this.selected, ch = life.chart;
-    /* the section's rows are the history source's PlotRows, eccentricity with them; its own type (entry code) names only t and sma */
-    if (sel && ch && !ch.custom && ch.P.length && drawable(ch.r)) out.push({ n: sel, slot: 1, P: ch.P as unknown as readonly PlotRow[], r: ch.r });
+    const sel = this.selected, ch = life.chart, ref = this.ref;
+    if (sel && ch && ref && drawable(ch.r)) out.push({ n: sel, slot: 1, P: ref, r: ch.r, ref });
     const rows = this.rows;
     for (const n of this.shown) {
       const row = rows[n], f = this.data.get(n);
       if (row?.st !== 'shown' || row.not || !f?.r) continue;
       const h = this.slotOf(n);
-      (h ? out : grey).push({ n, slot: h, P: f.P, r: f.r });
+      (h ? out : grey).push({ n, slot: h, P: f.P, r: f.r, ref });
     }
     return out.concat(grey);
   });

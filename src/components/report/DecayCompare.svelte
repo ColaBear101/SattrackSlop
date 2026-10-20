@@ -30,14 +30,14 @@
   import { rank, SHOWN_MAX } from '../../lib/catalogue/rank';
   import { watchedFirst } from '../../lib/catalogue/watch';
   import {
-    COMPARE_MAX, DAY_MS, fetchPlan, notDrawn, PARAMS, RANGES, ROWS_SHOWN, type CmpParam, type CmpRange, type Win
+    COMPARE_MAX, DAY_MS, fetchPlan, hasPlane, notDrawn, PARAMS, RANGES, ROWS_SHOWN, type CmpParam, type CmpRange, type Win
   } from '../../lib/decay/compare';
   import {
     CMP_ADD, CMP_ADD_DIALOG, CMP_ALT_NAME, CMP_CATALOGUE, CMP_CLEAR, CMP_DECAYED_NOTE, CMP_DRAG_HINT, CMP_FETCH, CMP_LIST_NAME, CMP_LISTED,
     CMP_NO_MATCH, CMP_NOTHING_DRAWN, CMP_PARAMS, CMP_PLANNED, CMP_RANGE, CMP_RANGE_TITLES, CMP_RANGES, CMP_RATE_NAME, CMP_READING,
     CMP_RESET, CMP_RETRY, CMP_ROWS_NAME, CMP_SCRUB_HINT, CMP_SCRUB_KEYS, CMP_SCRUB_NAME, CMP_SEARCH_NAME, CMP_SEARCH_PLACEHOLDER, CMP_SELECTED,
     CMP_SHOW, CMP_WAIT_NOTE, CMP_WATCHED, cmpAddWatched, cmpAxis, cmpChartName, cmpClearArmed, cmpDay, cmpFetching, cmpFetchMore,
-    cmpFetchName, cmpHighlightName, cmpMoreMatch, cmpNoParam, cmpNotDrawn, cmpNote, cmpQueued, cmpRemoveName, cmpRetryName, cmpScrubText,
+    cmpFetchName, cmpHighlightName, cmpMoreMatch, cmpNoParam, cmpNotCached, cmpNotDrawn, cmpNote, cmpQueued, cmpRemoveName, cmpRetryName, cmpScrubText,
     cmpScrubView, cmpShowFirst, cmpShowOthers
   } from '../../lib/text/life-compare';
   import {
@@ -256,7 +256,16 @@
   let pl = $state(46);
   const rangeOpts = RANGES.map(r => ({ value: r, label: CMP_RANGES[r], title: CMP_RANGE_TITLES[r], id: 'cmpr-' + r }));
   const caption = $derived(info ? (info.why === 'param' ? cmpNoParam(info.p) : cmpAxis(info.p, info.t0, info.t1, info.zoomed, info.why === 'range')) : '');
-  const note = $derived(info && info.p !== 'alt' ? cmpNote(info.p) : '');
+  /* L68: a history kept without its inclination and RAAN (cached, or sent by the page's API, before the page kept them) says so in its
+     row while Show is either, and the note under the key says when it will have them; nothing is fetched for them. Read where the
+     rows are (forecast() is not reactive; a row's state changes after its history does). */
+  const plane = (p: CmpParam): boolean => p === 'inc' || p === 'raan';
+  const notKept = (n: string): boolean => {
+    const P = n === sel ? compare.ref : compare.forecast(n)?.P;
+    return !!P && P.length > 0 && !hasPlane(P);
+  };
+  const oldAny = $derived.by(() => { void compare.rows; return plane(compare.view.p) && all.some(notKept); });
+  const note = $derived(info && info.p !== 'alt' ? cmpNote(info.p, oldAny) : '');
   const describedBy = $derived('cmpaxis' + (note ? ' cmpnote' : '') + ' cmprows');
   const viewKey = $derived(compare.view.p + ' ' + compare.view.r + ' ' + (win ? win.t0 + ':' + win.t1 : ''));
 
@@ -576,6 +585,8 @@
             <option value="ecc">{CMP_PARAMS.ecc}</option>
             <option value="per">{CMP_PARAMS.per}</option>
             <option value="mm">{CMP_PARAMS.mm}</option>
+            <option value="inc">{CMP_PARAMS.inc}</option>
+            <option value="raan">{CMP_PARAMS.raan}</option>
           </select>
         </div>
       </div>
@@ -660,6 +671,7 @@
                 <Button size="sm" aria-label={cmpRetryName(name)} onclick={once(() => rowAsk(n, () => compare.fetch(n)))}>{CMP_RETRY}</Button>
               {/if}
               {#if not}<span class="not" id="cmpnot-{n}">{cmpNotDrawn(not)}</span>{/if}
+              {#if plane(compare.view.p) && notKept(n)}<span class="not" id="cmpold-{n}">{cmpNotCached(compare.view.p)}</span>{/if}
             </span>
             {#if refused}<span class="ref" id="cmpref-{n}">{refused}</span>{/if}
           </span>

@@ -71,7 +71,9 @@ export function isTleAnswer(x: unknown): x is TleAnswer {
   return false;
 }
 
-const isRow = (r: unknown): r is HistoryRow => isObj(r) && isNum(r.t) && isNum(r.sma) && (r.ecc === null || isNum(r.ecc));
+/* a number or null; inc and raan (L68) may also be absent, from an API that predates them */
+const isVal = (v: unknown, opt?: 1): boolean => v === null || isNum(v) || (!!opt && v === undefined);
+const isRow = (r: unknown): r is HistoryRow => isObj(r) && isNum(r.t) && isNum(r.sma) && isVal(r.ecc) && isVal(r.inc, 1) && isVal(r.raan, 1);
 
 export function isHistoryAnswer(x: unknown): x is HistoryAnswer {
   if (!isObj(x)) return false;

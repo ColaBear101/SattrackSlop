@@ -37,6 +37,10 @@
  *    reading at the top of the plot, a sideways finger moves it, a tap elsewhere or Escape lets it go (a tap on the slider does not;
  *    a tap on the slider alone holds its own reading the same way), a double tap zooms nothing, and a vertical swipe still scrolls
  *    the page and pins nothing.
+ *  - L68: Show's last two, the inclination and the RAAN offset from the selected spacecraft, each read off its spacecraft's plane
+ *    (the made-up histories carry one: lib/decay-compare-seed.js plane()), history only, with no request; a spacecraft added keeps
+ *    its plane from CelesTrak's page into the cache; a history cached before L68 says so in its row and is not drawn in either, and
+ *    nothing is fetched for it; with the selected spacecraft's own history cached so, the offset says it has nothing to measure from.
  *  - Its markup keeps out of the selectors the golden prose reads, so the default report reads as it always did.
  *  - A phone: no sideways scroll, text 12 px and up, 44 px targets; a chunk that does not come says so, and to reload.
  *
@@ -85,7 +89,9 @@ const curve = n => CURVES[+n] || [380 + (+n % 160), 380 + (+n % 160) - 8 - (+n %
    "eccentric" mark (0.02), so no verdict and no other check moves; the selected spacecraft's starts at 0.0006 and rises to 0.0009
    (until L67 every body had a flat 0.001) */
 const ECC = n => 0.0006 + (+n % 11) * 0.0001;
-const body = n => { const c = curve(n); return S.plot(S.falling(Date.now(), u => ECC(n) * (1 + 0.5 * u), c[2], c[0], c[1], c[3])); };
+/* ...and each its own plane (L68: lib/decay-compare-seed.js plane(), an inclination and a precessing RAAN), as CelesTrak's page has */
+const rowsOf = (n, pl) => { const c = curve(n); return S.falling(Date.now(), u => ECC(n) * (1 + 0.5 * u), c[2], c[0], c[1], c[3], pl === undefined ? S.plane(n) : pl); };
+const body = n => S.plot(rowsOf(n));
 /* the light theme's colours for slots 2..8 (draw-compare.ts CMP_PALETTE.light) */
 const LIGHT = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const DELAY = 200;                                              // each answer takes this long: two at once would overlap
@@ -1315,6 +1321,121 @@ async function part(name, fn) {
     chk('the slider\'s aria-valuetext names ARCTIC WEATHER SATELLITE in full, where the reading beside it shortens the name (ARCTIC WEATHER SA…); no request',
       vt.includes(FULL + ' ') && !vt.includes(SHORT) && tipNames.includes(SHORT) && !tipNames.includes(FULL) && net.total() === 0, vt + ' / ' + tipNames.join(', ') + ' / ' + JSON.stringify(net.req));
     await ctx.close();
+  });
+
+  /* ---- 13. the inclination and the RAAN offset (L68) -------------------------------------------------------------------------- */
+  await part('13. the inclination and the RAAN offset from the selected spacecraft (1280 light): read off each plane, one cached before L68 says it has neither, and nothing is fetched for them', async () => {
+    const now = Date.now(), wrap = d => d - 360 * Math.round(d / 360);
+    /* KNACKSAT-2 (the selected one; its record runs to now, so every line's last days have it to be measured from), ISS and HST cached
+       with their plane; FLOCK 4G 24 in colour too, cached as a page before L68 kept it */
+    const hist = (n, pl, endAgo) => { const c = curve(n); return S.histEntry(now, S.falling(now, u => ECC(n) * (1 + 0.5 * u), endAgo === undefined ? c[2] : endAgo, c[0], c[1], c[3], pl)); };
+    const seed = (selKept) => ({
+      'gt.decaycmp': JSON.stringify({ o: 1, l: [{ n: '25544', h: 2 }, { n: '20580', h: 3 }, { n: '62637', h: 4 }] }),
+      ['hist:' + SEL]: hist(SEL, selKept ? S.plane(SEL) : null, 0), 'hist:25544': hist('25544', S.plane('25544')), 'hist:20580': hist('20580', S.plane('20580')),
+      'hist:62637': hist('62637', null)
+    });
+    const { ctx, page, net } = await open(browser, srv, { label: 'plane', seed: seed(true) });
+    await toSection(page);
+    await settled(page, 4);
+    const view = () => page.evaluate(() => {
+      const cv = document.getElementById('cmpcv');
+      return { param: document.getElementById('cmpparam').value, axis: document.getElementById('cmpaxis').textContent, name: cv.getAttribute('aria-label'),
+        key: [...document.querySelectorAll('#cmpkey > span')].map(s => s.textContent), rec: localStorage.getItem('gt.decaycmp'),
+        note: (document.getElementById('cmpnote') || {}).textContent || null, draws: window.__cmpDraws || 0,
+        options: [...document.querySelectorAll('#cmpparam option')].map(o => o.value + ':' + o.textContent) };
+    });
+    /* the slider moved 30 steps back from where it starts (about four days, inside every record over 30 d), its instant, and what it
+       says there: each line's name and value */
+    const scrub = async () => {
+      await page.focus('#cmpscrub');
+      for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowLeft');
+      await sleep(150);
+      const s = await page.evaluate(() => {
+        const el = document.getElementById('cmpscrub'), cv = document.getElementById('cmpcv');
+        return { t: +cv.dataset.t0 + +el.value / 240 * (+cv.dataset.t1 - +cv.dataset.t0), text: el.getAttribute('aria-valuetext') || '' };
+      });
+      const rows = {};
+      for (const m of s.text.slice(s.text.indexOf(': ') + 2).matchAll(/(.+?) ([-+]?\d+\.\d+°)(?:, |$)/g)) rows[m[1]] = m[2];
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());    // the next draw starts the slider afresh
+      return Object.assign(s, { rows });
+    };
+    const OLD = 'A history cached before the page kept inclination and RAAN has neither: it has them from its next fetch, once its 12 hours in the cache are up.';
+    const NO_FORECAST = 'The forecast is of mean altitude only, so these lines stop at each last element set.';
+    const v0 = await view();
+    chk('Show offers the nine quantities, Inclination and "RAAN offset from the selected" last', v0.options.slice(-2).join() === 'inc:Inclination,raan:RAAN offset from the selected' && v0.options.length === 9,
+      v0.options.join(', '));
+
+    await page.click('#cmpr-30d');
+    await sleep(150);
+    let n0 = (await view()).draws;
+    await page.selectOption('#cmpparam', 'inc');
+    await sleep(250);
+    const v1 = await view(), cols1 = await rowColours(page), px1 = await colourCounts(page, cols1.map(c => c.c)), s1 = await scrub();
+    const incOdd = [SEL, '25544', '20580'].filter(n => { const v = s1.rows[NAMES[n]]; return !(v && /^\d+\.\d{4}°$/.test(v) && Math.abs(parseFloat(v) - S.plane(n)(s1.t).inc) <= 0.0003); });
+    chk('Inclination: drawn once more, named "Inclination history of 3 spacecraft: ...", the caption "Inclination, ° · " over 30 d, the key "observed" and no "projected", kept as "p":"inc", no request',
+      v1.draws === n0 + 1 && /^Inclination history of 3 spacecraft: /.test(v1.name) && v1.axis.startsWith('Inclination, ° · ') && v1.key[v1.key.length - 1] === 'observed' && !v1.key.includes('projected') &&
+      JSON.parse(v1.rec).p === 'inc' && JSON.parse(v1.rec).r === '30d' && net.total() === 0, JSON.stringify(v1));
+    chk('...the slider reads each line\'s own inclination, to four places in degrees (within 0.0003 deg of the made-up plane at its instant), FLOCK 4G 24 not among them',
+      !incOdd.length && !(NAMES[62637] in s1.rows), (incOdd.length ? 'odd: ' + incOdd.join(', ') + ' / ' : '') + s1.text + ' / at ' + new Date(s1.t).toISOString());
+    chk('...the three lines with a plane on the canvas in their colours, and none in FLOCK 4G 24\'s',
+      cols1.length === 4 && cols1.every((c, i) => (c.n === '62637' ? px1[i] === 0 : px1[i] >= 20)), cols1.map((c, i) => c.n + ' ' + px1[i]).join(', '));
+    const st1 = { old: await stText(page, '62637'), others: await Promise.all([SEL, '25544', '20580'].map(n => stText(page, n))) };
+    chk('...FLOCK 4G 24\'s row says "inclination not in this cached history" and no other row does; the note says what the inclination is and when such a history will have it',
+      (st1.old || '').includes('inclination not in this cached history') && st1.others.every(t => !/cached history/.test(t || '')) &&
+      v1.note === 'Each element set’s mean inclination, as CelesTrak lists it. ' + NO_FORECAST + ' ' + OLD, JSON.stringify(st1) + ' / ' + v1.note);
+
+    n0 = (await view()).draws;
+    await page.selectOption('#cmpparam', 'raan');
+    await sleep(250);
+    const v2 = await view(), cols2 = await rowColours(page), px2 = await colourCounts(page, cols2.map(c => c.c)), s2 = await scrub();
+    const expectOff = (n, t) => (n === SEL ? 0 : wrap(S.plane(n)(t).raan - S.plane(SEL)(t).raan));
+    const offOdd = [SEL, '25544', '20580'].filter(n => { const v = s2.rows[NAMES[n]]; return !(v && /^[-+]?\d+\.\d{3}°$/.test(v) && Math.abs(parseFloat(v) - expectOff(n, s2.t)) <= 0.002); });
+    chk('RAAN offset: drawn once more, named "RAAN offset from the selected spacecraft, in the history of 3 spacecraft: ...", the caption "RAAN offset from the selected, ° · ", "observed" and no "projected", kept as "p":"raan", no request',
+      v2.draws === n0 + 1 && /^RAAN offset from the selected spacecraft, in the history of 3 spacecraft: /.test(v2.name) && v2.axis.startsWith('RAAN offset from the selected, ° · ') &&
+      v2.key[v2.key.length - 1] === 'observed' && !v2.key.includes('projected') && JSON.parse(v2.rec).p === 'raan' && net.total() === 0, JSON.stringify(v2));
+    chk('...the slider reads KNACKSAT-2 (the selected one) at 0.000° and each other line\'s RAAN less KNACKSAT-2\'s at that instant, signed to three places (within 0.002 deg)',
+      !offOdd.length && s2.rows[NAMES[SEL]] === '0.000°', (offOdd.length ? 'odd: ' + offOdd.join(', ') + ' / ' : '') + s2.text + ' / want ' +
+      [SEL, '25544', '20580'].map(n => n + ' ' + expectOff(n, s2.t).toFixed(3)).join(', '));
+    chk('...the three lines on the canvas, none in FLOCK 4G 24\'s colour, whose row says "RAAN not in this cached history"; the note says what the offset is, and when that history will have it',
+      cols2.every((c, i) => (c.n === '62637' ? px2[i] === 0 : px2[i] >= 20)) && ((await stText(page, '62637')) || '').includes('RAAN not in this cached history') &&
+      (v2.note || '').startsWith('Each element set’s right ascension of the ascending node less the selected spacecraft’s at the same instant') && (v2.note || '').endsWith(NO_FORECAST + ' ' + OLD),
+      cols2.map((c, i) => c.n + ' ' + px2[i]).join(', ') + ' / ' + v2.note);
+
+    /* a spacecraft added now: its history comes from (the fake) CelesTrak, read by the page's own reader, and keeps its plane */
+    await addBySearch(page, ['48274']);
+    await settled(page, 5);
+    const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('hist:48274') || 'null'));
+    const v3 = await view(), s3 = await scrub(), css = s3.rows[NAMES[48274]];
+    chk('CSS (TIANHE-1) added with Show at the RAAN offset: one request, its cached copy keeps every row\'s inclination and RAAN, its row says nothing of a cached history, and it is keyed and read at its own offset',
+      net.req['48274'] === 1 && net.total() === 1 && !!kept && kept.P.length > 0 && kept.P.every(r => typeof r.inc === 'number' && typeof r.raan === 'number') &&
+      !/cached history/.test((await stText(page, '48274')) || '') && v3.key.includes(NAMES[48274]) && !!css && Math.abs(parseFloat(css) - expectOff('48274', s3.t)) <= 0.002,
+      JSON.stringify({ req: net.req, rows: kept && kept.P.length, first: kept && kept.P[0], key: v3.key, css, want: expectOff('48274', s3.t).toFixed(3) }));
+
+    await page.reload({ waitUntil: 'load' });
+    await ready(page);
+    await toSection(page);
+    await settled(page, 5);
+    const v4 = await view();
+    chk('reloaded: Show still at the RAAN offset over 30 d, read back from the record, and nothing asked for',
+      v4.param === 'raan' && v4.axis.startsWith('RAAN offset from the selected, ° · ') && JSON.parse(v4.rec).p === 'raan' && net.total() === 1, JSON.stringify({ param: v4.param, axis: v4.axis, req: net.req }));
+    await ctx.close();
+
+    /* the selected spacecraft's own history cached before L68: no reference for the offset; the inclination of the others still drawn */
+    const b = await open(browser, srv, { label: 'plane-old-sel', seed: Object.assign(seed(false), { 'gt.decaycmp': JSON.stringify({ o: 1, l: [{ n: '25544', h: 2 }, { n: '20580', h: 3 }], p: 'raan' }) }) });
+    await toSection(b.page);
+    await settled(b.page, 3);
+    const w1 = await b.page.evaluate(() => ({ axis: document.getElementById('cmpaxis').textContent, scrub: !!document.getElementById('cmpscrub') && !document.getElementById('cmpscrub').hidden }));
+    const me1 = await stText(b.page, SEL);
+    await b.page.selectOption('#cmpparam', 'inc');
+    await sleep(250);
+    const w2 = await b.page.evaluate(() => ({ key: [...document.querySelectorAll('#cmpkey > span')].map(s => s.textContent) }));
+    const me2 = await stText(b.page, SEL);
+    chk('the selected spacecraft cached before L68: the RAAN offset says "None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from." with no slider, its row "RAAN not in this cached history"; Inclination draws the other two and not it, its row saying so; nothing fetched',
+      w1.axis === 'None of these histories has a RAAN at the same dates as the selected spacecraft’s, which the offset is measured from.' && !w1.scrub && (me1 || '').includes('RAAN not in this cached history') &&
+      w2.key.join() === [NAMES[25544], NAMES[20580], 'observed'].join() && (me2 || '').includes('inclination not in this cached history') && b.net.total() === 0,
+      JSON.stringify({ w1, me1, w2, me2, req: b.net.req }));
+    await b.ctx.close();
   });
 
   console.log('');

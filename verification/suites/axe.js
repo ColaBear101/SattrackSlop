@@ -7,7 +7,7 @@
  * measured on its default state alone at these ten viewport/scheme pairs it had 293 violating nodes in 7 rules (region, color-contrast,
  * heading-order, html-has-lang, landmark-no-duplicate-contentinfo, landmark-unique, scrollable-region-focusable); this page has the one
  * below, in every state, and nothing else. Colour contrast is checked in both themes, which is where a design system usually slips.
- * The decay comparison's three states are scanned on a second page, whose storage alone holds a comparison left open (lib/decay-compare-seed.js).
+ * The decay comparison's four states are scanned on a second page, whose storage alone holds a comparison left open (lib/decay-compare-seed.js).
  */
 'use strict';
 const H = require('../lib/harness');
@@ -138,7 +138,7 @@ const VIEWS = [
          that page alone: no other state has it), so it opens from the cache as the section comes near, with no request: nine rows with the fold
          opened (the selected spacecraft and four more in colour, two grey, one waiting with its Fetch, one too high to draw with its reason), the
          chart and its key; then its search, on a query whose options carry the marks "in the comparison" and "decayed now" in plain text, the
-         first one active, with the line that says what the second mark is; then the chart's view changed and zoomed (L67) */
+         first one active, with the line that says what the second mark is; then the chart's view changed and zoomed (L67); then Show at the RAAN offset (L68) */
       const two = await open(CMP.compareSeed(NOW.getTime()));
       const p2 = two.page;
       for (const [name, go] of [
@@ -171,6 +171,15 @@ const VIEWS = [
           await p2.keyboard.press('=');
           await p2.waitForSelector('#cmpreset', { state: 'visible', timeout: 5000 });
           await p2.waitForSelector('#cmptip', { state: 'visible', timeout: 5000 });
+          await p2.waitForTimeout(250);
+        }],
+        /* ...and the plane (L68): Show at the RAAN offset over Auto, FLOCK 4G 24's row saying its cached history (the seed's one from
+           before L68) has no RAAN, and the note under the key */
+        ['decay-compare-plane', async () => {
+          await p2.keyboard.press('Escape');
+          await p2.click('#cmpr-auto');
+          await p2.selectOption('#cmpparam', 'raan');
+          await p2.waitForSelector('#cmpold-' + CMP.OLD_CACHE, { state: 'visible', timeout: 5000 });
           await p2.waitForTimeout(250);
         }]
       ]) { await go(); await scan(p2, name); }

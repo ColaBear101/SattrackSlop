@@ -52,8 +52,10 @@ export interface HistorySource {
   history(norad: unknown): Promise<HistoryOutcome | null>;
 }
 
-/** JSON has no NaN: the API sends a row with no eccentricity as null, and a freshly read page has NaN there. */
-const revive = (rows: HistoryRow[]): PlotRow[] => rows.map(r => ({ t: r.t, sma: r.sma, ecc: r.ecc === null ? NaN : r.ecc }));
+/** JSON has no NaN: the API sends a row with no eccentricity as null, and a freshly read page has NaN there. The inclination and
+ *  RAAN (L68) are kept as they come, null where a row has none, as the hist:<n> copy has them (nothing here computes with them,
+ *  and the comparison reads null and NaN alike); an API that predates them leaves them out, as a history cached before them does. */
+const revive = (rows: HistoryRow[]): PlotRow[] => rows.map(r => ({ ...r, ecc: r.ecc === null ? NaN : r.ecc }));
 
 export function createHistorySource(ctx: HistoryCtx): HistorySource {
   const inflight = new Map<string, Promise<HistoryOutcome>>();

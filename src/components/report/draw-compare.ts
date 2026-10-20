@@ -34,7 +34,9 @@ import {
  * four labels, 62 with three), where months could repeat. The default view (Auto, mean altitude) draws what it drew before, call
  * for call, but for two things: those day labels, which also replace month labels that were distinct on such a span (they were
  * under a month apart while reading as a month each); and a grey line newer than every coloured one, which stops one set past
- * the right edge, outside the clip, instead of running on to its last set.
+ * the right edge, outside the clip, instead of running on to its last set. L68's two quantities are history only, like the
+ * eccentricity: the inclination, and the RAAN offset, which every line reads against the selected spacecraft's history (its
+ * `ref`), so the selected one's own line is at 0 and a line breaks where the offset wraps past 180 deg.
  *
  * The colours: slot 1 is --track as the page has it; slots 2..8 are constants for each theme (the dataviz reference palette,
  * checked against --panel #FFFFFF and #121A20: adjacent pairs at least dE 9.1 / 8.4 under colour-vision deficiency and 19.6 / 19.3
@@ -94,7 +96,7 @@ function sortLines(lines: readonly CmpSeries[]): { grey: CmpSeries[]; col: CmpSe
   return { grey: S.filter(s => !(s.slot >= 1)), col: S.filter(s => s.slot >= 1).sort((a, b) => a.slot - b.slot) };
 }
 /** those of the lines that have a value of quantity p somewhere (for mean altitude, every one) */
-const carrying = (S: readonly CmpSeries[], p: CmpParam): CmpSeries[] => S.filter(s => points(s.P, p).v.some(Number.isFinite));
+const carrying = (S: readonly CmpSeries[], p: CmpParam): CmpSeries[] => S.filter(s => points(s.P, p, s.ref).v.some(Number.isFinite));
 
 /** Draw the comparison in a view (mean altitude over Auto when none is given) and return the canvas's name, its geometry (for the
  *  hover), whether the names were written on it, and what was drawn (for the caption). With nothing to draw, a dash: `info` is
@@ -168,7 +170,7 @@ export function drawCompare(cv: HTMLCanvasElement, lines: readonly CmpSeries[], 
      after it (so it leaves through the right one; in the default view only a grey line newer than every coloured one has sets
      past it), a missing value ending the stroke's piece there; and the projection in it. */
   const history = (s: CmpSeries) => {
-    const q = points(s.P, p), n = q.t.length;
+    const q = points(s.P, p, s.ref), n = q.t.length;
     let lo = 0, hi = n - 1;
     while (lo < hi) { const m = (lo + hi) >> 1; if (q.t[m]! < t0) lo = m + 1; else hi = m; }
     const from = Math.max(0, lo - 1);

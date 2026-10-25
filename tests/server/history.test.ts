@@ -12,8 +12,9 @@ const DAY = 86_400_000;
 const histUrl = (id: string) => CELESTRAK_HISTORY + '?CATNR=' + id;
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** the page, as the wire form of what readPlot reads from it: NaN becomes null */
-const wire = (page: string) => (parsePlot(page) ?? []).map(r => ({ t: r.t, sma: r.sma, ecc: Number.isFinite(r.ecc) ? r.ecc : null }));
+/** the page, as the wire form of what readPlot reads from it: NaN becomes null (the inclination and RAAN too, since L68) */
+const num = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const wire = (page: string) => (parsePlot(page) ?? []).map(r => ({ t: r.t, sma: r.sma, ecc: num(r.ecc), inc: num(r.inc), raan: num(r.raan) }));
 
 describe('GET /api/history/:norad - a history', () => {
   const page = (clock: Clock) => plotPage(falling(clock.now(), 0.0008, 2, 420, 359));
@@ -45,6 +46,19 @@ describe('GET /api/history/:norad - a history', () => {
     expect(r.body.P).toHaveLength(6);
     expect(r.body.P.map((x: { ecc: number | null }) => x.ecc)).toEqual([null, null, null, null, null, 0.0123]);   // the 500 km row is the latest in time
     expect(r.body.P.map((x: { t: number }) => x.t)).toEqual([...r.body.P.map((x: { t: number }) => x.t)].sort((a, b) => a - b));
+  });
+
+  it('sends each row\'s inclination and RAAN, which the route declares (Elysia strips what it does not), null where a row has none (L68)', async () => {
+    const clock = fakeClock(T0);
+    const rows: PlotRowSpec[] = [
+      { t: T0 - 2 * DAY, sma: 420, ecc: 0.0005, inc: 51.6412, raan: 123.4567 },
+      { t: T0 - DAY, sma: 419, ecc: 0.0005, inc: null, raan: 118.5 },
+      { t: T0, sma: 418, ecc: null, inc: 51.6409, raan: null }
+    ];
+    const { get } = makeApp(scripted({ history: () => html(plotPage(rows)) }), {}, clock);
+    const r = await get('/api/history/25544');
+    expect(r.body.P.map((x: { inc: number | null; raan: number | null }) => [x.inc, x.raan])).toEqual([[51.6412, 123.4567], [null, 118.5], [51.6409, null]]);
+    expect(r.body.P.every((x: object) => Object.keys(x).join() === 't,sma,ecc,inc,raan')).toBe(true);
   });
 
   it('sends an eccentricity that is not a number as null, whatever made it one (blank, text, Infinity)', async () => {

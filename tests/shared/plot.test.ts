@@ -59,7 +59,7 @@ describe('shared/plot.ts - the one reader of CelesTrak\'s history page', () => {
     const page = 'var plotData = "Date,RAAN,Inclination,Arg of Perigee,SMA,Eccentricity|2026-09-01T00:00:00,0,0,0,400|2026-09-02T00:00:00,0,0,0,401,0.001|short|"';
     const got = readPlot(page);
     expect(got.rows).toBe(1);
-    expect(got.P).toEqual([{ t: Date.parse('2026-09-02T00:00:00Z'), sma: 401, ecc: 0.001 }]);
+    expect(got.P).toEqual([{ t: Date.parse('2026-09-02T00:00:00Z'), sma: 401, ecc: 0.001, inc: 0, raan: 0 }]);   // the plane's 0s: L68
   });
 
   it('counts a row with an unreadable date or altitude (six fields, nothing usable) and drops it', () => {
@@ -75,9 +75,21 @@ describe('shared/plot.ts - the one reader of CelesTrak\'s history page', () => {
     expect(got[1]!.ecc).toBe(0.002);
   });
 
+  it('keeps the inclination (the third column) and the RAAN (the second) of each row it keeps, NaN where blank or not a number (L68)', () => {
+    const page = 'var plotData = "Date,RAAN,Inclination,Arg of Perigee,SMA,Eccentricity|2026-09-01T00:00:00,123.4567,51.6412,90,420,0.0005' +
+      '|2026-09-02T00:00:00,,97.4,0,419,|2026-09-03T00:00:00,abc,,0,418,0.001|2026-09-04T00:00:00,1,2,3,40,0.1"';
+    const got = readPlot(page);
+    expect(got.rows).toBe(4);
+    expect(got.P!.map(r => [r.inc, r.raan])).toEqual([[51.6412, 123.4567], [97.4, NaN], [NaN, NaN]]);
+    /* the rows, their order, their epochs, altitudes and eccentricities are the ones it kept before: only the two keys are new */
+    expect(got.P!.map(r => [r.t, r.sma, r.ecc])).toEqual([[Date.parse('2026-09-01T00:00:00Z'), 420, 0.0005],
+      [Date.parse('2026-09-02T00:00:00Z'), 419, NaN], [Date.parse('2026-09-03T00:00:00Z'), 418, 0.001]]);
+    expect(got.P!.every(r => Object.keys(r).join() === 't,sma,ecc,inc,raan')).toBe(true);
+  });
+
   it('reads only the first plotData string, and only up to its closing quote', () => {
     const page = 'var plotData = "H|2026-09-01T00:00:00,0,0,0,400,0.001"; var other = "2026-09-02T00:00:00,0,0,0,999,0.5"; var plotData = "H|x"';
-    expect(parsePlot(page)).toEqual([{ t: Date.parse('2026-09-01T00:00:00Z'), sma: 400, ecc: 0.001 }]);
+    expect(parsePlot(page)).toEqual([{ t: Date.parse('2026-09-01T00:00:00Z'), sma: 400, ecc: 0.001, inc: 0, raan: 0 }]);
   });
 
   it('parsePlot is readPlot().P', () => {

@@ -1,7 +1,8 @@
 /* Reading CelesTrak's decay-history page. MOVED, not rewritten, from src/lib/planner/lifetime.ts (old lines 287-316;
  * ported verbatim there from legacy/earth/lifetime.js, main@4eadd7a, lines 281-310) so that the browser and the API
  * read the page with ONE implementation. Pure TypeScript: no DOM, no Node, no imports. The arithmetic, the order of
- * the checks and the comments are the originals; only the types are new.
+ * the checks and the comments are the originals; only the types are new, and one line marked CHANGED (L68), which keeps
+ * the inclination and RAAN columns in each row it already kept.
  *
  * What the page is: graph-orbit-data.php?CATNR=<id> returns an HTML page with the whole run of mean
  * elements embedded in one `plotData` string - a header, then one row per element set CelesTrak has held:
@@ -20,8 +21,12 @@
 export const SMA_MIN = 80, SMA_MAX = 400000;
 
 /** One element set of the run: epoch (ms since 1970), mean altitude (km) and eccentricity (NaN when the
- *  row carries none - a number, as in the original; it becomes `null` only on the wire). */
-export interface PlotRow { t: number; sma: number; ecc: number }
+ *  row carries none - a number, as in the original; it becomes `null` only on the wire), and since
+ *  CHANGES-FROM-LEGACY.md L68 the mean inclination and RAAN (deg): NaN where a row read here has none,
+ *  and null where one from the wire or the hist:<n> copy has none (nothing computes with them; the
+ *  comparison reads both as none). A history kept before L68 (a hist:<n> copy, or an API that predates
+ *  it) has rows without those two at all. */
+export interface PlotRow { t: number; sma: number; ecc: number; inc?: number | null; raan?: number | null }
 
 /** What readPlot found: the rows, how many rows there were before the bounds above, and whether the page
  *  had a `plotData` string at all. */
@@ -42,7 +47,7 @@ export function readPlot(txt: string): PlotReading {
     n++;
     const t = Date.parse(f[0] + 'Z'), sma = parseFloat(f[4]);
     if(isFinite(t) && isFinite(sma) && sma > SMA_MIN && sma < SMA_MAX)
-      P.push({t, sma, ecc: parseFloat(f[5])});
+      P.push({t, sma, ecc: parseFloat(f[5]), inc: parseFloat(f[2]), raan: parseFloat(f[1])});   // CHANGED (L68): the plane's two columns kept, the rows the same
   }
   P.sort((a,b)=>a.t-b.t);
   return {P: P.length ? P : null, rows:n, found:true};

@@ -335,8 +335,8 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       chk('the planner is up: the picker offers its Plan row (the idle request was answered, init ran)', up);
       /* The report's footer ends with the credits (CHANGES-FROM-LEGACY.md, L49): package.json's version as Vite wrote it in, the repository,
          and the licence of the SatNOGS DB data the page carries (the catalogue's element sets from its TLE list, the transmitter table, and
-         L61's alternative names, data/aliases.json); it names no licence for the code, which its author has not licensed for reuse (the
-         owner's decision: package.json says UNLICENSED). A paragraph of its own with no span in it, so the four spans golden reads (foot[])
+         L61's alternative names, data/aliases.json); it names no licence for the code, which is MIT (the repository's LICENSE and
+         package.json say so; the page need not). A paragraph of its own with no span in it, so the four spans golden reads (foot[])
          are the same four; the links are links only, and the host check below covers a visit with them in the page. */
       const creditShown = await until(w.page, () => { const p = document.getElementById('footcredit'); return !!p && p.getClientRects().length > 0; });
       const cr = await w.page.evaluate(() => {

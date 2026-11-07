@@ -1,6 +1,6 @@
 /* The page's own credits: which version this is and where its source is, and the licence of the data it carries from
- * someone else. It names no licence for the page's own code: its author has not licensed it for reuse (package.json
- * says "UNLICENSED", and there is no LICENSE file).
+ * someone else. It names no licence for the page's own code, which is MIT: the root LICENSE file and package.json
+ * state that, and the page need not.
  *
  * New in the rebuild (CHANGES-FROM-LEGACY.md, L49); the old page said none of it. The version is an argument, so this
  * layer stays free of globals: the component passes the one Vite writes in from package.json (`__APP_VERSION__`,

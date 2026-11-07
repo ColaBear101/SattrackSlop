@@ -9,7 +9,7 @@ import pkg from '../../package.json';
 
 /* The footer's credit line (CHANGES-FROM-LEGACY.md, L49): the version, the repository and the licence of the data the page carries
    from SatNOGS DB: the catalogue's element sets from its TLE list, the transmitter table and the alternative names (L61). It names no
-   licence for the page's own code, which its author has not licensed for reuse. */
+   licence for the page's own code, which is MIT: the LICENSE file and package.json state that, and the page need not. */
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const nodes = (x: Inline): Inline[] => typeof x === 'string' ? [x] : Array.isArray(x) ? x.flatMap(nodes) : [x];
 const links = (x: Inline) => nodes(x).flatMap(n => typeof n === 'object' && !Array.isArray(n) && 'link' in n ? [n.link] : []);
@@ -36,14 +36,18 @@ describe('the credit line', () => {
   });
 });
 
-/* The owner's decision (L49): the project states no licence for its own code. "UNLICENSED" is npm's word for a package that is not
-   licensed for others to use; the licences the lock records for the dependencies are theirs, and are not read here. */
+/* The owner's decision (L49, changed 2026-11-07): the project's own code is MIT. The repository says so, not the page: one LICENSE
+   file at the root, and the same in package.json and the lock's root entry. The licences the lock records for the dependencies are
+   theirs, and are not read here; the SatNOGS DB data keeps its own (CC BY-SA 4.0, the credit line above). */
 describe('the code\'s licence', () => {
-  it('is none: package.json and the lock\'s root entry say UNLICENSED, and there is no LICENSE file', () => {
-    expect(pkg.license).toBe('UNLICENSED');
+  it('is MIT: package.json and the lock\'s root entry say MIT, and the one licence file at the root is the MIT licence', () => {
+    expect(pkg.license).toBe('MIT');
     const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8')) as { packages: Record<string, { license?: string }> };
-    expect(lock.packages[''].license).toBe('UNLICENSED');
-    expect(fs.readdirSync(ROOT).filter(f => /^(licen[cs]e|copying)(\.|$)/i.test(f))).toEqual([]);
+    expect(lock.packages[''].license).toBe('MIT');
+    expect(fs.readdirSync(ROOT).filter(f => /^(licen[cs]e|copying)(\.|$)/i.test(f))).toEqual(['LICENSE']);
+    const text = fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8');
+    expect(text.startsWith('MIT License')).toBe(true);
+    expect(text).toContain('Copyright (c) 2026 Earth (ColaBear101)');
   });
 });
 

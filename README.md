@@ -97,6 +97,20 @@ The camera, motion sensors and your location are used only when you tap the butt
 | [`CHANGES-FROM-LEGACY.md`](CHANGES-FROM-LEGACY.md) | every difference from the original page, with its reason |
 | [`CLAUDE.md`](CLAUDE.md) | the working rules for anyone changing the code |
 
+## Licences
+
+The code is under the [MIT licence](LICENSE). The data the page carries from others keeps its own terms:
+
+| Files | From | Terms |
+|---|---|---|
+| `data/transmitters.json`, `data/aliases.json`, and the 1,437 element sets in `data/catalogue.txt` that came from SatNOGS DB | [SatNOGS DB](https://db.satnogs.org/), Libre Space Foundation | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): credit SatNOGS DB, link the licence, say what was changed, and share what is made from them under the same licence. The MIT licence does not cover them. |
+| the other 721 element sets in `data/catalogue.txt` | [CelesTrak](https://celestrak.org) | orbital data published by CelesTrak |
+| `data/world.json` (coastlines) | [Natural Earth](https://www.naturalearthdata.com), 1:110m | public domain |
+| `data/WMM.COF` (World Magnetic Model 2025) | [NOAA NCEI](https://www.ncei.noaa.gov/products/world-magnetic-model) | public domain |
+| the globe's Blue Marble and city-lights pictures | [NASA](https://visibleearth.nasa.gov) | public domain |
+
+The fonts (Archivo, IBM Plex Sans, IBM Plex Mono) are under the SIL Open Font License, and the libraries keep their own licences (`package-lock.json` records each).
+
 ## The full technical README
 
 The long account of the project (the orbit maths worked through for the assignment, the decay model, the planner and the Professor, the AR view, the Moon pages, how every check works) is below, folded away. It was written with AI assistance.
@@ -872,8 +886,8 @@ warning and the Professor's notes, link to its entry.
 Under it, the footer's last line is the page's credits: *Ground Track Console 1.0.0 ·
 github.com/ColaBear101/SattrackSlop · Data: SatNOGS DB (element sets, transmitters, alternative
 names), CC BY-SA 4.0*, with links to the repository, to SatNOGS DB and to the data's licence. It
-names no licence for the page's code: its author has not licensed it for reuse, so there is no
-`LICENSE` file and `package.json` says `"license": "UNLICENSED"`, npm's word for that.
+names no licence for the page's code: that is MIT, and the repository's `LICENSE` file and
+`package.json` say so (see *Licences*, near the top).
 The version is the one in `package.json`, which the build writes in (`__APP_VERSION__`, defined in
 `vite.config.ts`), so the line changes when that does and is never edited by hand. The links are
 only links: the page asks nothing of those hosts. Why the data has a licence of its own is under
@@ -3262,7 +3276,7 @@ licence, say what was changed, and license it under CC BY-SA 4.0 too. The same g
 (below): the owner decided that the database's licence reaches them as well. The page gives the
 credit in the footer's last line, *Data: SatNOGS DB (element sets, transmitters, alternative
 names), CC BY-SA 4.0*, with a link to each. The share-alike reaches that data and what is made from
-it, not the project's own code, which its author has not licensed for reuse.
+it, not the project's own code, which is MIT (see *Licences*, near the top).
 
 | | |
 |---|---|

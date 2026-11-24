@@ -23,3 +23,7 @@ Operations:
 - Entities (8) and concepts (39) created; see index.md.
 - Open flags (listed in index.md): KNACKSAT-2 "within a day" date mismatch; ledger row Q vs the 92 KB entry budget; --write-baseline vs --write; "10 milliarcseconds" for a time total; PA–ME 875 m vs 860 m; "about 3,600 lines" label.
 - Suggested next pages: pass-exports (CSV/iCalendar), spacecraft-picker-and-watchlist, cache-api-server, verify-visitor, mutation-testing, osculating-vs-mean-elements, maidenhead-grid-locator, saved-orbits-store.
+
+## [2026-11-24] ingest | ledger row L86: the flat map follows the Layers panel and has its own Layers and full screen
+- Sources: changes-from-legacy (row L86), readme-globe-and-views (README "More room for the globe"), claude-md-project-instructions (map-chunk, entry figure).
+- Updated: ground-track (new section), globe-scene, catalogue-colouring, lazy-chunks-and-entry-budget (map-chunk row, entry 91.74 → 89.31 kB, the import rule as measured), change-ledger (range to L86).

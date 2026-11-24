@@ -41,19 +41,20 @@ From the project instructions (CLAUDE.md#L16), with the trigger each is fetched 
 | `models.svelte` (reader's models in IndexedDB) | with the close-up, and by Forget |
 | `catcolour` (with `lib/catalogue/classify.ts`) | first choice of a colouring under Layers → Catalogue |
 | `satcat` (`data/satcat.json`) | by "By type" and "By purpose" only |
+| `map-chunk` (the flat map: `MapView`, `draw-map`, its Layers panel and full screen, the key's catalogue rows; L86) | first time the Map tab is shown |
 | test facade | only when `window.__GT_TEST__` is set; must not be in the entry (CLAUDE.md#L17) |
 
 Two notes from the same paragraph: the report's chunk holds only the comparison's button, its two sentences and the import, and imports nothing of `DecayCompare`; and CelesTrak's page reader lives in the `lifetime` chunk, which the first screen fetches anyway, because as a chunk of its own it cost the first screen more than its ceiling allowed (CLAUDE.md#L16; also CHANGES-FROM-LEGACY.md#L119).
 
 ## The import rule
 
-A lazy chunk must import nothing from the entry — not `app`, not `globe-state`, not `ui/Rich.svelte` — or the bundler splits the entry's shared modules into chunks of their own; so, for instance, the close-up is handed the globe and the app in `attach()` (CLAUDE.md#L16). A Svelte feature used only by a lazy component (the instructions cite `{#await}` and `bind:value` on a select) still lands in `index-client`, which counts toward the entry (CLAUDE.md#L16). The ledger shows the rule's consequence: when the lifetime chunk lost its last import from the entry, the bundler's dynamic-import helper moved to a new `rolldown-runtime` chunk, which `index.html` preloads and `verify-visitor` counts in the entry (CHANGES-FROM-LEGACY.md#L119). This rule is separate from, but sits alongside, the [[layer-dependency-rule]].
+A lazy chunk must import nothing from the entry — not `app`, not `globe-state`, not `ui/Rich.svelte` — or the bundler splits the entry's shared modules into chunks of their own; so, for instance, the close-up is handed the globe and the app in `attach()` (CLAUDE.md#L16). A Svelte feature used only by a lazy component (the instructions cite `{#await}` and `bind:value` on a select) still lands in `index-client`, which counts toward the entry (CLAUDE.md#L16). The ledger shows the rule's consequence: when the lifetime chunk lost its last import from the entry, the bundler's dynamic-import helper moved to a new `rolldown-runtime` chunk, which `index.html` preloads and `verify-visitor` counts in the entry (CHANGES-FROM-LEGACY.md#L119). In practice the measured build is the arbiter: `PassFilterBar`, `DecayCompare` and `map-chunk` import `app`, `globe-state` and the UI components from `index` without splitting anything (the entry stays four files), so check the built chunk graph rather than assume. This rule is separate from, but sits alongside, the [[layer-dependency-rule]].
 
 ## Current figures
 
 Per CLAUDE.md (CLAUDE.md#L16):
 
-- The entry is ~90.7 KB gzipped in four files — `index`, `index-client`, `rich` and `rolldown-runtime` — given as 90.66 with L76's choices, leaving 1.3 KB under the budget.
+- The entry is ~89.3 KB gzipped in four files — `index`, `index-client`, `rich` and `rolldown-runtime`. It had grown to 91.74 by L85 (0.26 KB under the budget); moving the flat map into `map-chunk` with L86 brought it to 89.31, 2.7 KB under.
 - The budget is **92 KB** (`ENTRY_BUDGET` in `verify-visitor.js`), 90 KB until L72; it binds.
 - The first screen's JavaScript has a ceiling 5 % over the **327.9 kB** it was re-measured at with L71–L73.
 - Anything added to the entry, the scene, the lifetime chunk or the Decay panel's chunks must be paid for there.

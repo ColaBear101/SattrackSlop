@@ -805,6 +805,16 @@ trail's length (Off, 30 m, 1 orbit, 6 h, 24 h); nothing is stored, so each visit
 dashed 5° access circle round it, when they are in the way of what you are looking at; on, they are as
 they always were.
 
+The flat map follows the same switches (L86): the trail (Off draws no track, 30 m, 1 orbit and 6 h
+draw that much behind the spacecraft and 8 minutes ahead, fading toward the tail, with the passes in
+orange; 24 h draws the whole window, as the map always did), the pin and its circle, the footprint, and
+the catalogue as dots in the colouring chosen, the one under your pointer or finger named beside it.
+Its own *Layers* under the map holds those switches, so you can set them without going to the globe,
+and *Full screen* beside it shows the map, its controls and its key over the whole screen, with the
+timeline bar along the foot and the clock over the map. Since the page opens plain, the map opens with
+just the spacecraft and the day and night. The map is a chunk of its own, fetched the first time its
+tab is shown.
+
 ##### Colouring the catalogue
 
 *Layers → Catalogue* has four choices under the switch (CHANGES-FROM-LEGACY.md, L76). *One colour*,
@@ -850,8 +860,10 @@ remembered like the other surfaces (`gt.surface`). Choosing it fetches a chunk o
   `-8192`), the month NASA's tile service serves, so the sharper tiles below match it in colour
   (the other surfaces keep the 2002 Blue Marble, so their pixels do not move);
 - a cloud shell 11.5 km up, NASA's Blue Marble cloud composite (`clouds-2048.jpg`, NASA's own file,
-  and `-4096` and `-8192`, from NASA's larger one), thinned over Thailand so the page's own country
-  shows clearly (L84; the credit says so), lit by the Sun, red at sunset, thicker toward
+  `-4096` and `-8192` from NASA's larger one, and on a desktop whose GPU takes it `-16384`, 2.4 km a
+  pixel, from NASA's full-resolution halves, L87), thinned over Thailand so the page's own country
+  shows clearly (L84; the credit says so), lit by the Sun as far as a deck that high sees it (3.4° past
+  the ground's terminator, L87), red at sunset, thicker toward
   the limb as a slanting look through it is, its edges broken by noise only where a pixel is small
   enough to show it, and casting its shadows a little way towards the Sun;
 - the air: single-scattered sunlight, Rayleigh and aerosol, in an exponential atmosphere, along

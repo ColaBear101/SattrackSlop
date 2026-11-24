@@ -531,6 +531,46 @@ async function structureChecks(page, size) {
   await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Globe').click());
   await page.waitForTimeout(250);
   chk(5, size.id + ': ...and so is the map', mapOk, (Math.round(mp.w * 10) / 10) + ' x ' + (Math.round(mp.h * 10) / 10) + (mp.shown ? '' : ' (not shown)') + (mapShot ? ' [' + mapShot + ']' : ''));
+  // ---- the map's own controls (L86): its Layers panel sets the globe's switches, and its figure goes full screen with the timeline bar
+  {
+    await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Map').click());
+    await page.waitForSelector('#maplayers', { state: 'visible', timeout: 5000 }).catch(() => {});
+    const sw = () => page.evaluate(() => ({ map: document.getElementById('mapsite')?.checked, globe: document.getElementById('o3site')?.checked }));
+    await page.click('#maplayers'); await page.waitForTimeout(150);      // the panel's switches are in the page while it is open
+    const w0 = await sw();
+    await page.click('#mapsite'); await page.waitForTimeout(100);
+    const w1 = await sw();
+    await page.click('#mapsite'); await page.waitForTimeout(100);
+    const w2 = await sw();
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    chk(5, size.id + ': the map\'s Layers panel holds the globe\'s switches: "Observer pin & circle" pressed there is pressed in the globe\'s panel, and back (L86)',
+        w0.map === w0.globe && w1.map === !w0.map && w1.globe === w1.map && w2.map === w0.map && w2.globe === w0.globe, JSON.stringify([w0, w1, w2]));
+    const ms = () => page.evaluate(() => {
+      const b = document.getElementById('mapfull'), m = document.getElementById('map').getBoundingClientRect(), f = document.fullscreenElement, t = document.querySelector('.transport');
+      const tr = t.getBoundingClientRect(), k = document.getElementById('mapclock');
+      return { enabled: document.fullscreenEnabled, btn: !!b && window.__L.shown(b), pressed: b ? b.getAttribute('aria-pressed') : null, el: f ? f.className : null,
+        mw: Math.round(m.width), mh: Math.round(m.height), mr: Math.round(m.right), mb: Math.round(m.bottom), iw: innerWidth, ih: innerHeight,
+        clock: !!k && window.__L.shown(k), bar: { inFull: !!f && f.contains(t), inZone: !!t.closest('.transport-zone'), top: Math.round(tr.top), foot: Math.round(innerHeight - tr.bottom), w: Math.round(tr.width) } };
+    });
+    const m0 = await ms();
+    if (!m0.enabled) chk(5, size.id + ': no full-screen button under the map where the browser cannot show an element full screen', !m0.btn, JSON.stringify(m0));
+    else {
+      await page.click('#mapfull');
+      await page.waitForFunction(() => !!document.fullscreenElement && document.getElementById('mapfull').getAttribute('aria-pressed') === 'true', null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const m1 = await ms();
+      await page.click('#mapfull');
+      await page.waitForFunction(() => !document.fullscreenElement, null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const m2 = await ms();
+      chk(5, size.id + ': "Full screen" under the map puts the map, its controls and its key over the whole screen, the map whole above the timeline bar along its foot and its clock over it, and brings it back at its size (L86)',
+          m0.btn && /mapfig/.test(m1.el || '') && m1.pressed === 'true' && m1.mw >= Math.min(m0.mw, m1.iw) * 0.9 && m1.mr <= m1.iw && m1.mb <= m1.bar.top && m1.clock
+          && m1.bar.inFull && m1.bar.foot === 0 && m1.bar.w === m1.iw && m2.el === null && m2.pressed === 'false' && !m2.clock && !m2.bar.inFull && m2.bar.inZone
+          && m2.mw === m0.mw && m2.mh === m0.mh, JSON.stringify([m0, m1, m2]));
+    }
+    await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Globe').click());
+    await page.waitForTimeout(250);
+  }
   // ---- the AR opener: on a touch screen only
   if (size.touch) {
     await waitFor(page, () => { const b = document.getElementById('arbtn'); return !!b && window.__L.shown(b); }, undefined, 12000).catch(() => {});

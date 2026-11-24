@@ -22,6 +22,10 @@ For the README's worked example, [[knacksat-2]] (README.md#L503-L507):
 - segments where Bangkok sees the spacecraft above 5° are overdrawn thicker and in a second colour (see [[pass-prediction]]);
 - a time scrubber moves the spacecraft along the track and redraws the day/night terminator.
 
+## On the flat map, layer by layer
+
+Since ledger row L86 the map draws what the Layers panel's switches say, the same switches as the globe's (one state for both views): the trail (Off draws no track; 30 m, 1 orbit and 6 h draw that much behind the spacecraft and 8 minutes ahead, faded toward the tail as on the globe, the passes in orange; 24 h is the whole window as before, with 6 h propagated before the window so a trail has a tail at the window's start), the observer's pin and circle, the footprint, and the catalogue's dots in the chosen colouring (see [[catalogue-colouring]]), the one under the pointer named beside it. Because the page opens plain (row L80), the map now opens with no track. Its own Layers panel and Full screen sit under the map; full screen takes the map, its controls and its key, with the timeline bar along the foot and a clock over the map (README.md#L808-L816; CHANGES-FROM-LEGACY.md#L135). The map is the `map-chunk` lazy chunk (see [[lazy-chunks-and-entry-budget]]).
+
 ## Latitude band
 
 At 51.63° inclination the track is a band between ±51.8° geodetic latitude: the orbit plane bounds *geocentric* latitude at the inclination, and geodetic latitude runs about 0.2° higher at those latitudes (README.md#L509-L510). Bangkok, at 13.75°N, sits well inside the band (README.md#L511-L512).

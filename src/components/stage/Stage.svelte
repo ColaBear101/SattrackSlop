@@ -12,12 +12,15 @@
   import { view } from '../../state/view.svelte';
   import Icon from '../ui/Icon.svelte';
   import { RAIL_HIDE, RAIL_SHOW } from '../../lib/text/view';
-  import GroundTrackMap from './GroundTrackMap.svelte';
   import Globe from './Globe.svelte';
 
   /* The stage: the 3D globe, and the flat map of the ground track beside it as a tab. Both stay in the page, the one not
      chosen hidden, so the globe keeps its place and the map's key and readouts are there to be read. The readouts under the map
      are the spacecraft's position and the look from the observer at the instant on the clock. */
+  /* The map itself, its controls and its key's rows for the catalogue are a chunk of their own (L86), fetched the first time the tab is
+     shown; a fetch that fails is tried again the next time. Until it is in, the map's box holds its place. */
+  let M = $state.raw<typeof import('./map-chunk') | null>(null);
+  $effect(() => { if (prefs.tab === 'map' && !M) import('./map-chunk').then(m => { M = m; }, () => {}); });
   const cur = $derived(app.sampleAt(clock.tick.ms));
   const nm = $derived(app.site.name);
   const pos = $derived(latStr(app.site.lat) + ' ' + lonStr(app.site.lon));
@@ -54,7 +57,9 @@
         variant="pill" keepMounted onchange={id => prefs.setTab(id as StageTab)}>
     {#snippet children(id)}
       {#if id === 'map'}
-        <GroundTrackMap />
+        <!-- the map's figure, which its full screen shows (L86) -->
+        <div class="mapfig">
+        {#if M}<M.MapView />{:else}<div class="mapwait"></div>{/if}
         <ul class="legend" aria-label="Key">
           <li><i class="k track"></i> Sub-satellite track</li>
           <li><i class="k contact"></i> <span id="lbl-inview">In view from {nm} (el ≥ {MASK}°)</span></li>
@@ -62,7 +67,9 @@
           <li><i class="k observer"></i> <span id="lbl-sitering">{nm} {MASK}° access circle</span></li>
           <li><i class="k fov"></i> Spacecraft footprint (ground above {MASK}°)</li>
           <li><i class="k night"></i> Sunlit / night side at the shown instant</li>
+          {#if M}<M.MapKey />{/if}
         </ul>
+        </div>
         <dl class="readouts">
           {#each items as [id, lid, k, v] (id)}<div><dt class="eyebrow" id={lid || undefined}>{k}</dt><dd class="mono" class:hot={id === 'r-el' && !!cur && cur.el >= MASK} {id}>{v}</dd></div>{/each}
         </dl>
@@ -91,6 +98,14 @@
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
      and readouts (about 250 px of them, the tabs and the padding) without the stage having to scroll */
   @media (min-width: 1100px) { .stage { --map-max: max(420px, calc((100dvh - var(--bar-h) - var(--transport-h) - 250px) * 2)); } }
+  .mapwait { width: 100%; max-width: var(--map-max, calc(66dvh * 2)); margin-inline: auto; aspect-ratio: 2 / 1; border-radius: var(--r-2); background: var(--ocean); }
+  /* the map's figure full screen (L86): the map as large as the screen leaves it over its controls, its key and the timeline bar (--tbar) */
+  .mapfig:fullscreen {
+    display: flex; flex-direction: column; justify-content: center; padding: var(--space-4) var(--space-4) calc(var(--space-3) + var(--tbar, 0px));
+    background: var(--surface); overflow: auto; --map-max: max(320px, calc((100dvh - var(--tbar, 0px) - 150px) * 2));
+  }
+  /* a short screen (a phone on its side): the map and its controls take the height, and the key is scrolled to under them */
+  @media (max-height: 520px) { .mapfig:fullscreen { justify-content: flex-start; --map-max: max(320px, calc((100dvh - var(--tbar, 0px) - 70px) * 2)); } }
   .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); list-style: none; margin: var(--space-3) 0; padding: 0; font-size: var(--fs-1); color: var(--ink2); }
   .k { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: var(--space-2); }
   .k.track { background: var(--track); } .k.contact { background: var(--contact); height: 4px; }

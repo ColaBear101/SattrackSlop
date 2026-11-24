@@ -63,6 +63,7 @@ Zooming in fetches the sharper rung once the view has held still for 400 ms, alo
 - On a wide screen an arrow at the stage's top right folds the answer panel away so the globe takes the width; nothing is stored (README.md#L796-L798).
 - **The globe opens plain** (ledger row L80): Earth, spacecraft and orbit only — no trail, catalogue dots, footprint or observer pin. Each is one press away in Layers, which also holds the trail length (Off, 30 m, 1 orbit, 6 h, 24 h); nothing is stored, so each visit opens plain (README.md#L800-L802).
 - **Layers → Observer pin & circle** (ledger row L79) hides the pink pin and the dashed 5° access circle round the chosen place (README.md#L804-L806).
+- **The flat map follows the same switches** (ledger row L86): trail, pin and circle, footprint and the catalogue's dots in their colouring, held in the globe's own state, with a Layers panel and a Full screen of its own under the map (README.md#L808-L816). See [[ground-track]].
 
 The Layers control itself — a button on the globe opening a scrolling popover — is described under [[page-navigation-and-accessibility]].
 

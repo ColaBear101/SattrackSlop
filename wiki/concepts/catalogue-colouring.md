@@ -52,6 +52,10 @@ What [[celestrak]]'s element-set lists say: communications, navigation, Earth ob
 - The selected spacecraft's dot stays orange (README.md#L837).
 - The choice is remembered in `gt.catcolour`, written only when a colouring is chosen and removed again by One colour (README.md#L837-L838). It is one of the keys [[forget-data]] clears (README.md#L1147-L1148).
 
+## On the flat map
+
+The map draws the same dots in the same colouring since ledger row L86, each in its class's key swatch (`CatTint.css`, the `seenAs` colour), asking the colours' chunk itself so the colours are there with no globe; the map's key gains the classes' rows while the dots are drawn (CHANGES-FROM-LEGACY.md#L135).
+
 ## Related
 
 - [[globe-scene]] — the key and the catalogue layer.

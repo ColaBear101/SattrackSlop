@@ -148,10 +148,14 @@ const chk = (name, ok, detail) => {
   console.log('    mean  |difference| : ' + res.sweep.mean.toExponential(3) + ' km/s');
   console.log('    peak  |range rate| : ' + res.sweep.maxRR.toFixed(4) + ' km/s\n');
 
-  /* 1e-4 km/s = 10 cm/s. The floor is the propagator's 0.308 m position
-     quantisation over the 8 s stencil, not the formula being checked. */
+  /* 1.2e-4 km/s = 12 cm/s. The floor is the propagator's 0.308 m position
+     quantisation over the 8 s stencil, not the formula being checked: the 5-point
+     stencil weighs its samples 1, 8, 8, 1 over 12h, so its worst case is
+     18/12 * eps / h = 1.5 * 3.08e-4 / 4 = 1.16e-4 km/s. The limit was 1e-4, under
+     that bound, and a window that happened to hit it (1.00e-4 and 1.05e-4 on
+     2026-11-24) failed by the clock, not the code. */
   chk('the analytic range rate matches a numerical derivative of the range',
-      res.sweep.worst < 1e-4, 'worst = ' + res.sweep.worst.toExponential(2) + ' km/s');
+      res.sweep.worst < 1.2e-4, 'worst = ' + res.sweep.worst.toExponential(2) + ' km/s');
   /* The two methods share only the propagator, so agreement at this level says
      the frame handling is right, not merely self-consistent. */
   chk('...to far better than the observer term it depends on',

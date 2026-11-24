@@ -23,9 +23,9 @@ Each entry is one row of a Markdown table with a **Change** column (what differs
 |---|---|---|
 | `1`–`11` | Behaviour and data | row 1, the zero-padded NORAD id bug (CHANGES-FROM-LEGACY.md#L12) |
 | `A`–`K`, `M`–`X` | Verification | row M, prose parity (CHANGES-FROM-LEGACY.md#L39) |
-| `L1`–`L85` (with gaps) | Look and interface | row L80, the globe opens plain (CHANGES-FROM-LEGACY.md#L129) |
+| `L1`–`L86` (with gaps) | Look and interface | row L80, the globe opens plain (CHANGES-FROM-LEGACY.md#L129) |
 
-Other project documents refer to rows by these ids. The project instructions name the ledger's ranges as "rows L1-L61, L66-L68 and L71-L85 … and the numbered rows", with L62–L65 and L69–L70 on other branches (CLAUDE.md#L3). Code and the instructions also cite rows directly, e.g. the Moon ephemeris copy is "L75" and the realistic globe "L71" (CLAUDE.md#L11, CLAUDE.md#L16), and ported files carry `CHANGED (Lnn)` markers naming the row that justifies the edit (CHANGES-FROM-LEGACY.md#L120-L128; see [[verbatim-ports]]).
+Other project documents refer to rows by these ids. The project instructions name the ledger's ranges as "rows L1-L61, L66-L68 and L71-L86 … and the numbered rows", with L62–L65 and L69–L70 on other branches (CLAUDE.md#L3). Code and the instructions also cite rows directly, e.g. the Moon ephemeris copy is "L75" and the realistic globe "L71" (CLAUDE.md#L11, CLAUDE.md#L16), and ported files carry `CHANGED (Lnn)` markers naming the row that justifies the edit (CHANGES-FROM-LEGACY.md#L120-L128; see [[verbatim-ports]]).
 
 ## Status vocabulary
 

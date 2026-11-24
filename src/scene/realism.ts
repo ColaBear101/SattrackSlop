@@ -251,12 +251,12 @@ float vnoise(vec3 x){
 }
 void main(){
   float a = cloudOpacity(texture2D(uClouds, vUv).r) * clearSky(vUv) * uCloudOn;
-  /* Close up, the map's 20 km texels would show: the edges are broken with noise of 15, 7 and 3 km where the cover is partial. Each
-     octave comes in only once its features span a few pixels here (the footprint of a pixel on the shell, from the derivatives),
-     so a whole-globe view draws none of it and a grazing view does not alias. */
+  /* Close up, the map's texels would show: the edges are broken with noise of 15, 7, 3, 1.5 and 0.7 km where the cover is partial (the
+     last two since L87, for the close-up and POV). Each octave comes in only once its features span a few pixels here (the footprint of
+     a pixel on the shell, from the derivatives), so a whole-globe view draws none of it and a grazing view does not alias. */
   float foot = max(length(fwidth(vWP)), 1e-7);
   float f = 420.0, amp = 0.5, n = 0.0;
-  for (int k = 0; k < 3; k++) {
+  for (int k = 0; k < 5; k++) {
     n += amp * smoothstep(2.0, 5.0, 1.0 / (f * foot)) * (vnoise(normalize(vON) * f) - 0.5);
     f *= 2.13; amp *= 0.65;
   }
@@ -267,8 +267,10 @@ void main(){
   a *= coverage(closest(vWP), 1.0 + ${CLOUD_H});   /* the clouds' own true limb */
   if (a < 0.004) discard;
   float mu = dot(N, L);
-  /* white cloud, lit by what is left of the Sun at its height, wrapped a little past the terminator for the light inside it */
-  vec3 col = 0.8 * SUN_E * sunTransmit(1.0 + ${CLOUD_H}, mu, uDensity) * max((mu + 0.3) / 1.3, 0.0) / PI;
+  /* white cloud, lit by what is left of the Sun at its height: a deck 11.5 km up sees the Sun 3.4 degrees past the ground's terminator
+     (mu -0.06), and no further. It was wrapped to 17 degrees (mu -0.3) for the light inside a cloud, which left a band of grey cloud lit
+     over ground already in the dark (L87). */
+  vec3 col = 0.8 * SUN_E * sunTransmit(1.0 + ${CLOUD_H}, mu, uDensity) * max((mu + 0.06) / 1.06, 0.0) / PI;
   vec3 T, S;
   aerial(1.0 + ${CLOUD_H}, max(dot(N, V), 0.0), mu, -dot(V, L), uDensity, T, S);
   col = col * T + SUN_E * S;
@@ -427,8 +429,10 @@ export function makeLook(h: LookHandles): Look {
   const textures: Texture[] = [];
   let small = false;
   try { small = matchMedia('(pointer: coarse)').matches; } catch { /* no media queries: a desktop */ }
-  const maxTex = Math.min(h.renderer.capabilities.maxTextureSize || 4096, small ? 4096 : 8192);
-  const best = (rs: { w: number; url: string }[]) => { const fit = rs.filter(r => r.w <= maxTex); return h.lean ? fit[0] : fit[fit.length - 1]; };
+  const gpu = h.renderer.capabilities.maxTextureSize || 4096, maxTex = Math.min(gpu, small ? 4096 : 8192);
+  /* the clouds, one channel, may go to 16384 on a desktop whose GPU takes it (scripts/bake-clouds-full.py: 2.4 km a pixel, L87) */
+  const cloudMax = Math.min(gpu, small ? 4096 : 16384);
+  const best = (rs: { w: number; url: string }[], cap = maxTex) => { const fit = rs.filter(r => r.w <= cap); return h.lean ? fit[0] : fit[fit.length - 1]; };
   const fetch = (r: { url: string } | undefined, wrapS: number, done: (t: Texture, im: HTMLImageElement) => void, grey = false) => {
     if (!r) return;
     const im = new Image();
@@ -447,7 +451,7 @@ export function makeLook(h: LookHandles): Look {
     };
     im.src = r.url;
   };
-  fetch(best(CLOUD_RUNGS), RepeatWrapping, t => { u.uClouds.value = t; u.uCloudOn.value = 1; }, true);   /* one channel: the shaders read .r */
+  fetch(best(CLOUD_RUNGS, cloudMax), RepeatWrapping, t => { u.uClouds.value = t; u.uCloudOn.value = 1; }, true);   /* one channel: the shaders read .r */
   fetch(best(NIGHT_RUNGS), ClampToEdgeWrapping, t => { eu.uNight2!.value = t; eu.uNight2On!.value = 1; });
   if (!h.lean) {
     fetch(best(RELIEF_RUNGS), RepeatWrapping, (t, im) => {

@@ -21,6 +21,8 @@ export interface CatTint {
   rgb: Float32Array;
   /** what follows each entry's name under the pointer */
   tags: string[];
+  /** each entry's dot as it rests (seenAs), the key's own swatch: what the flat map draws it in (L86) */
+  css: string[];
   /** the key's rows */
   key: KeyItem[][];
   /** the note under the choice */
@@ -66,15 +68,17 @@ function paint<K extends string>(cls: readonly K[], colour: Record<K, string>, n
   const keys = Object.keys(name) as K[];
   const rgbOf = Object.fromEntries(keys.map(k => [k, channels(colour[k])])) as Record<K, number[]>;
   const tagOf = Object.fromEntries(keys.map(k => [k, tagFor(name[k])])) as Record<K, string>;
+  const seenOf = Object.fromEntries(keys.map(k => [k, seenAs(colour[k])])) as Record<K, string>;
   const count = Object.fromEntries(keys.map(k => [k, 0])) as Record<K, number>;
-  const rgb = new Float32Array(cls.length * 3), tags: string[] = [];
+  const rgb = new Float32Array(cls.length * 3), tags: string[] = [], css: string[] = [];
   cls.forEach((k, i) => {
     const c = rgbOf[k]!;
     rgb[i * 3] = c[0]!; rgb[i * 3 + 1] = c[1]!; rgb[i * 3 + 2] = c[2]!;
     tags.push(tagOf[k]);
+    css.push(seenOf[k]);
     count[k]++;
   });
-  return { rgb, tags, key: rows.map(r => r.map(k => ({ t: name[k], c: seenAs(colour[k]) }))), note: say(count) };
+  return { rgb, tags, css, key: rows.map(r => r.map(k => ({ t: name[k], c: seenOf[k] }))), note: say(count) };
 }
 
 /** The colours of the catalogue's dots by one classing. `cat` is the catalogue the cloud was built from, in its order (app.catalogue). */

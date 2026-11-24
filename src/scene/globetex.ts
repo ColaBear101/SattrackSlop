@@ -38,9 +38,13 @@
  */
 /* ---- Moved from legacy/earth/globetex.js (main@4eadd7a), lines 39-276: the photographic surfaces: the shipped Blue Marble and the GIBS layers.
  * The wrapper is the only change: the old file was an IIFE over `global` that attached `GlobeTex`; this is a factory over the
- * same object (`global.THREE` and the few other globals it reaches for are handed in) that returns it. The shipped rungs' URLs come from `global.localDay(width)` instead of a relative path;
+ * same object (`global.THREE` and the few other globals it reaches for are handed in) that returns it. The shipped rungs' URLs come from `global.localDay(width)` instead of a relative path
+ * (`global.localDay(width, set)` since L74: the realistic surface's `local:'bmng'` names a shipped set of its own);
  * the night-lights mosaic is a shipped file too (`global.localNight()`, CHANGES-FROM-LEGACY.md L43), and is what nightImage() hands out where the old file fetched it from GIBS.
  */
+/* CHANGED (CHANGES-FROM-LEGACY.md, L71): the realistic surface's words, which are the page's (lib/text) and not this file's. */
+import { REAL_LABEL, REAL_NOTE, REAL_SOURCE } from '../lib/text/realism';
+
 export function makeGlobeTex(global) {
 
 var WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi';
@@ -95,7 +99,15 @@ var MODES = [
 
   { key:'clouds', label:'Yesterday’s clouds',
     day:TRUECOL, underLocal:true, night:LIGHTS, dated:true, steps:[[2048,1024],[4096,2048]],
-    note:'VIIRS true colour, so the weather is the weather that day.' }
+    note:'VIIRS true colour, so the weather is the weather that day.' },
+
+  /* CHANGED (CHANGES-FROM-LEGACY.md, L71): the realistic look. The shipped lights of `night`, with clouds, the air and the sea's
+     glint drawn over them by scene/realism.ts, which orbit3d asks for when a mode says `real`. Last, so the old page's four keep
+     their places. CHANGED (L74): its day map is a shipped set of its own, `local:'bmng'` (NASA's Blue Marble Next Generation,
+     August 2004, the month the 500 m tiles it streams close up are from), where the others' `local:true` is the old Blue Marble. */
+  { key:'real', label:REAL_LABEL,
+    local:'bmng', night:LIGHTS, real:true, steps:[[2048,1024],[4096,2048],[8192,4096]],
+    note:REAL_NOTE }
 ];
 
 function mode(key){
@@ -209,7 +221,8 @@ function load(key, onStage, now, cap, floor){
 
   var when = m.dated ? lastFullDay(now) : null;
   var meta = { mode:m, date:when,
-               source: (m.local && !m.night) ? 'NASA Blue Marble'
+               /* CHANGED (L71): the realistic surface names its clouds as well */
+               source: m.real ? REAL_SOURCE : (m.local && !m.night) ? 'NASA Blue Marble'
                      : (m.local ? 'NASA Blue Marble + GIBS' : 'NASA GIBS'),
                layers: m.local ? ['BlueMarble (local)'] : [m.day] };
   if(m.underLocal) meta.layers.push('BlueMarble (local)');
@@ -248,7 +261,7 @@ function load(key, onStage, now, cap, floor){
     steps.forEach(function(step, i){
       chain = chain.then(function(){
         var w = step[0], h = step[1];
-        var dayP = image(m.local ? global.localDay(w) : url(m.day, w, h, when));
+        var dayP = image(m.local ? global.localDay(w, m.local) : url(m.day, w, h, when));   // CHANGED (L74): which shipped set
         var underP = m.underLocal ? image(global.localDay(w)) : Promise.resolve(null);
         return Promise.all([dayP, underP]).then(function(r){
           var day = r[1] ? over(r[1], r[0], w, h) : r[0];
@@ -268,7 +281,8 @@ const GlobeTex = {
      needs without carrying a second copy of the list. */
   modes: function(){ return MODES.map(function(m){
     return { key:m.key, label:m.label, note:m.note, net: !!m.day,
-             sizes: (m.steps || []).map(function(st){ return st[0]; }) }; }); },
+             sizes: (m.steps || []).map(function(st){ return st[0]; }),
+             real: !!m.real }; }); },              // CHANGED (L71): which mode asks for the realistic look
   load: load,
   lastFullDay: lastFullDay,
   url: url,

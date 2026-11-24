@@ -23,8 +23,8 @@
  *      screen is only any-pointer) get nothing; two tablets (portrait 820x1180, landscape 1180x820) and a phone get its own chunk, once,
  *      after the first answer; on the phone, a child of <body>, inert, closed
  *   7  the weight of the first screen, which must not grow: its JavaScript (the entry chunk, and all of it), and everything the visit fetches
- *      from this origin (the globe's texture, the catalogue, the world map, the fonts, the stylesheet as well). The budget for the entry chunk
- *      is 90 KB gzipped and it is above that today; this asserts no growth, not the budget
+ *      from this origin (the globe's texture, the catalogue, the world map, the fonts, the stylesheet as well). The budget for the entry
+ *      is 92 KB gzipped (ENTRY_BUDGET; 90 KB until the close-up, L72), and each figure is held to 5 % over its measurement
  *   8  a slow catalogue (kept back 3 s), on a desktop and on a phone: no planner chunk, and no AR chunk, is requested before the first
  *      answer. With the catalogue at hand the answer and the browser's first idle moment are milliseconds apart and that claim is a race;
  *      here the browser is idle at once and for 3 s, so a chunk that waited only for the browser is requested at once and seen
@@ -81,7 +81,11 @@ const HOLD = 3000;                 // group 8: how long the catalogue is kept ba
 /* The planner's own chunks. `lifetime` is also the Decay panel's (the drag integrator is shared), so on a desktop it is fetched at boot, with
    the Decay panel, and not by the planner: it is counted once for the whole visit and not ordered. */
 const FAMILY = ['planner', 'plannerui', 'advisor', 'advisor-copy', 'parts'];
-const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client']);
+/* three.js is a chunk of its own since the realistic globe and the close-up (L71, L72) share it with the scene; realism, closeup and uploads
+   are theirs, fetched only when they are asked for; catcolour and satcat are the catalogue's colours by class and CelesTrak's table for
+   them (L76), fetched only when a colouring is chosen (verify-catcolour.js) */
+const EXPECTED = FAMILY.concat(['lifetime', 'chunk', 'scene', 'sky-data', 'transmitters', 'surface', 'Report', 'reporter', 'treaty2', 'index-client',
+  'three.module', 'realism', 'closeup', 'uploads', 'catcolour', 'satcat', 'flight']);
 /* ...and the six files whose refusal takes the planner away (group 5). */
 const REFUSED = FAMILY.concat(['lifetime']);
 /* The two element-set sources the page asks directly when no cache API answers as itself (CHANGES-FROM-LEGACY 7). Nothing else. */
@@ -259,8 +263,8 @@ const isApi = (srv, u) => u.startsWith(srv.origin + '/') && /^\/api\//.test(new 
    page cannot start without: the entry chunk, the Svelte runtime it shares with the lazy chunks (index-client), the tiny shared chunk of
    the rich-text renderer and the bundler's own helper (rolldown-runtime: the object a dynamic import of a shared chunk is handed, which
    the entry and the lifetime chunk both make; it was inside the entry chunk until the decay history's direct fetch and CelesTrak's page
-   reader left it (CHANGES-FROM-LEGACY.md, L68), and with them the lifetime chunk's last import from it); the 90 KB budget is for that
-   sum (the report below the first screen, the element-set client and the planner are chunks of their own). */
+   reader left it (CHANGES-FROM-LEGACY.md, L68), and with them the lifetime chunk's last import from it); the 92 KB budget (ENTRY_BUDGET) is for
+   that sum (the report below the first screen, the element-set client and the planner are chunks of their own). */
 /* total: index, scene, sky-data, transmitters, lifetime, and the Decay panel's own life and draw-life (counted whether or not the visit fetched
    them: see DECAY_OWN). */
 const ENTRY_GRAPH = ['index', 'index-client', 'rich', 'rolldown-runtime'];
@@ -270,7 +274,11 @@ const DECAY_OWN = ['life', 'draw-life', 'Report', 'reporter', 'treaty2', ...ENTR
 /* all: every file of this origin the visit fetches, of any kind (the JavaScript above; the stylesheet; the catalogue and the world map; the six
    fonts; the globe's two 2048 px textures, the Blue Marble and the city lights, the images that are most of the weight), the planner's own five chunks and its stylesheet apart. Images
    and woff2 do not shrink under gzip, so the figure is what the browser pays for them too. */
-const MEASURED = { entry: 87601, total: 309367, all: 1324275 };   // all was 1194100 before the city lights (132570 bytes) became a file of the page's own   // entry: index 68948 + index-client 18441 + rich 212; it was 83274 (index 64538 + index-client 18483 + rich 253) until the pass list's day headers (CHANGES-FROM-LEGACY.md, L55) took it 163 bytes past the ceiling 5 % above that: the 90 KB budget is the one that binds now
+/* entry and total re-measured with the owner's agreement when the realistic globe, the close-up and the reader's models came (CHANGES-FROM-LEGACY.md,
+   L71-L73): the entry 89992 (the Close-up button and what calls its chunk), the total 327910 (three.js a chunk of its own, the scene's hooks, the
+   Report's Forget for the models); the budget for the entry, which binds, raised from 90 to 92 KB at the same time (ENTRY_BUDGET) */
+const MEASURED = { entry: 89992, total: 327910, all: 1324275 };   // all was 1194100 before the city lights (132570 bytes) became a file of the page's own   // entry was 87601 (index 68948 + index-client 18441 + rich 212), and 83274 (index 64538 + index-client 18483 + rich 253) until the pass list's day headers (CHANGES-FROM-LEGACY.md, L55) took it 163 bytes past the ceiling 5 % above that; total was 309367
+const ENTRY_BUDGET = 92000;                                        // the budget that binds for the entry: 90 KB until L71-L73
 const CEIL = { entry: Math.ceil(MEASURED.entry * 1.05), total: Math.ceil(MEASURED.total * 1.05), all: Math.ceil(MEASURED.all * 1.05), entryMeasured: MEASURED.entry, totalMeasured: MEASURED.total, allMeasured: MEASURED.all };
 const kB = n => (n / 1000).toFixed(1) + ' kB';
 const kindOf = p => /\.js$/.test(p) ? 'JavaScript' : /\.css$/.test(p) ? 'stylesheet' : /\.(woff2?|ttf)$/.test(p) ? 'fonts' : /\.(jpe?g|png|webp|svg|ico|gif)$/.test(p) ? 'images' : /\.html?$/.test(p) ? 'page' : 'data';
@@ -364,6 +372,16 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
         hosts.join(', ') || 'none');
       /* the globe opens on the old page's own default, "Blue Marble & city lights", from files of the page's own: the lights were a GIBS mosaic fetched at every start */
       const lights = w.reqs.filter(u => /\/assets\/citylights-2048-[A-Za-z0-9_-]{8}\.jpg$/.test(u)), marble = w.reqs.filter(u => /\/assets\/bluemarble-2048-[A-Za-z0-9_-]{8}\.jpg$/.test(u));
+      /* L80: the globe opens plain, as a visitor gets it (the test surface puts the old page's switches back for the other suites) */
+      const plain = await w.page.evaluate(() => {
+        const on = id => { const e = document.getElementById(id); return e ? e.checked : null; };
+        const t = document.querySelector('.trailseg .trl[aria-pressed="true"]');
+        return { trail: t ? t.dataset.t : null, catalogue: on('o3cloud'), footprint: on('o3fov'), pin: on('o3site'), earth: on('o3earth2'),
+          inPanel: !!document.querySelector('#layersMenu .trailseg'), overGlobe: !!document.querySelector('.controls > .trailseg') };
+      });
+      chk("the globe opens with the trail off and the catalogue, the footprint and the observer's pin switched off, the Earth on, the trail's buttons in the Layers panel (L80)",
+        plain.trail === 'off' && plain.catalogue === false && plain.footprint === false && plain.pin === false && plain.earth === true && plain.inPanel && !plain.overGlobe,
+        JSON.stringify(plain));
       chk('the globe opens on Blue Marble & city lights from files of its own: the lights once, the 2048 Blue Marble once, and nothing from NASA', lights.length === 1 && marble.length === 1 && !w.reqs.some(u => /gibs|nasa/i.test(u)), 'lights ' + lights.length + ', marble ' + marble.length);
       const st = await storeNow(w.page);
       chk('localStorage is empty after the page has settled', Array.isArray(st.keys) && st.keys.length === 0, JSON.stringify(st.keys));
@@ -371,7 +389,7 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       noErrors('group 1', w);
     }
     if (want(7)) {
-      console.log('\n7. The weight of the first screen: its JavaScript, and everything else it fetches from this origin (a ceiling 5 % above each measurement; the budget for the entry chunk is 90 KB gzipped)');
+      console.log('\n7. The weight of the first screen: its JavaScript, and everything else it fetches from this origin (a ceiling 5 % above each measurement; the budget for the entry chunk is ' + ENTRY_BUDGET / 1000 + ' KB gzipped)');
       const files = [...new Set(w.reqs.filter(u => chunkOf(u) !== null && !FAMILY.includes(chunkOf(u)) && !['chunk', 'surface'].includes(chunkOf(u))))];
       const sizes = [];
       for (const u of files) sizes.push({ name: chunkOf(u), gz: await gzBytes(srv, u) });
@@ -384,8 +402,8 @@ if (!process.env.GT_TARGET) process.env.GT_TARGET = 'new';
       const total = sizes.reduce((s, x) => s + x.gz, 0);
       const entry = { gz: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).reduce((s, x) => s + x.gz, 0), n: sizes.filter(x => ENTRY_GRAPH.includes(x.name)).length };
       note(sizes.sort((a, b) => b.gz - a.gz).map(x => x.name + ' ' + (x.gz / 1000).toFixed(1) + ' kB' + (x.unfetched ? ' (not fetched by this visit)' : '')).join(', '));
-      chk('the entry (the entry chunk, the Svelte runtime it shares, the rich-text chunk and the bundler\'s helper) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %), and is within the 90 kB budget', entry.n === ENTRY_GRAPH.length && entry.gz <= CEIL.entry && entry.gz <= 90000,
-        'now ' + (entry.gz / 1000).toFixed(2) + ' kB gzipped in ' + entry.n + ' files; the 90 kB budget is ' + (entry.gz <= 90000 ? 'met' : 'NOT met'));
+      chk('the entry (the entry chunk, the Svelte runtime it shares, the rich-text chunk and the bundler\'s helper) is no heavier than ' + (CEIL.entry / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.entryMeasured / 1000).toFixed(1) + ' kB, +5 %), and is within the ' + ENTRY_BUDGET / 1000 + ' kB budget', entry.n === ENTRY_GRAPH.length && entry.gz <= CEIL.entry && entry.gz <= ENTRY_BUDGET,
+        'now ' + (entry.gz / 1000).toFixed(2) + ' kB gzipped in ' + entry.n + ' files; the ' + ENTRY_BUDGET / 1000 + ' kB budget is ' + (entry.gz <= ENTRY_BUDGET ? 'met' : 'NOT met'));
       chk('all the first screen\'s JavaScript (what the visitor fetched, and the Decay panel\'s own chunks whether or not this visit was near enough to fetch them) but the planner\'s five chunks is no heavier than ' + (CEIL.total / 1000).toFixed(1) + ' kB gzipped (measured ' + (CEIL.totalMeasured / 1000).toFixed(1) + ' kB, +5 %)', total <= CEIL.total,
         'now ' + (total / 1000).toFixed(2) + ' kB in ' + sizes.length + ' files');
       /* The weight of everything else the first screen fetches. The JavaScript is not the heaviest part of it: the globe's texture alone is more

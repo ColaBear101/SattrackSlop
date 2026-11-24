@@ -699,8 +699,10 @@ async function partB(browser, port){
   chk('precondition: a touch-screen context matches (pointer: coarse)', offer.coarse);
   chk('the AR button is offered on a touch screen, inside ' + (NEW ? "the row of the stage's tabs" : 'the camera row') + ', clear of every other control, and a tap at its centre reaches it',
       offer.shown && offer.inside && offer.reach && !offer.over.length, offer.over.length ? 'under or over: ' + offer.over.join(', ') : '');
-  chk("...beside the camera group rather than in it: still four camera modes, one pressed, POV the last of them and the group's end rounded",
-      offer.cams.length === 4 && offer.cams.filter(s => /=true$/.test(s)).length === 1 && offer.povLast === 'pov' && offer.povEnd && offer.apart
+  /* the old page's four camera modes; the rebuilt page's fifth is the close-up, before POV (CHANGES-FROM-LEGACY.md, L72), and the AR button
+     is still none of them */
+  chk("...beside the camera group rather than in it: the camera modes (" + (NEW ? 'five, the close-up before POV' : 'four') + "), one pressed, POV the last of them and the group's end rounded",
+      offer.cams.length === (NEW ? 5 : 4) && offer.cams.filter(s => /=true$/.test(s)).length === 1 && offer.povLast === 'pov' && offer.povEnd && offer.apart
       && offer.endR === END_R, offer.cams.join(' ') + ", the group's end radius " + offer.endR + ' (want ' + END_R + ')');
   /* The rebuilt page has the map on a tab beside the globe, and the button is in the row of the tabs, so it must be there with either showing
      (the old page shows both, and there is nothing to switch). */
@@ -720,7 +722,7 @@ async function partB(browser, port){
   const narrow = await page.evaluate(w => {
     const t0 = document.getElementById('lbl-camsite').firstChild, was = t0.nodeValue;
     t0.nodeValue = 'Wat Phra That Doi Suthep';                       // 24 characters
-    const c = document.querySelector('.camseg').getBoundingClientRect(), t = document.querySelector('.trailseg').getBoundingClientRect();
+    const c = document.querySelector('.camseg').getBoundingClientRect(), t = document.querySelector('.layerseg').getBoundingClientRect();   // the row under it (the trail is in Layers since L80)
     const b = document.getElementById('arbtn'), r = b.getBoundingClientRect();
     const out = { left: c.left, right: c.right, overlap: !(c.right <= t.left || c.left >= t.right || c.bottom <= t.top || c.top >= t.bottom),
                   arbOn: r.left >= 0 && r.right <= w && r.top >= 0 && r.bottom <= innerHeight, over: __over(b),
@@ -729,7 +731,7 @@ async function partB(browser, port){
     return out;
   }, 360);
   await page.setViewportSize({ width: 390, height: 844 });
-  chk('...at 360 px with a 24-character site name the row stays on the globe, clear of the trail row and of the AR button, and nothing scrolls sideways',
+  chk('...at 360 px with a 24-character site name the row stays on the globe, clear of the Layers row and of the AR button, and nothing scrolls sideways',
       narrow.left >= 0 && narrow.right <= narrow.w && !narrow.overlap && narrow.arbOn && !narrow.over.length && narrow.sw <= narrow.w,
       'camera row ' + narrow.left.toFixed(1) + ' to ' + narrow.right.toFixed(1) + ' px, page ' + narrow.sw + ' px wide' + (narrow.over.length ? ', button crossed by ' + narrow.over.join(', ') : ''));
 

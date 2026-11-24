@@ -16,7 +16,11 @@
  *      (`global.THREE` and the few other globals it reaches for are handed in) that returns it;
  *   2. the star catalogue and the constellation figures (two long strings) are in sky-data.ts, moved byte for byte, and given to
  *      the layers by setSkyData() once they have been fetched; a layer asked for before then is an empty group that is built for
- *      real, in the same place, as the data arrives.
+ *      real, in the same place, as the data arrives;
+ *   3. the realistic sky (CHANGES-FROM-LEGACY.md, L75): realSky(on) hides this file's Sun and Moon discs and its star points while
+ *      the realistic surface draws its own (scene/realsky.ts: the stars, the Sun's glare, the Moon at its true size, place and
+ *      phase); the planets, the constellation figures and every name stay, taken to the camera with it each frame (realSkyFrame) so
+ *      that they mark what it draws, and off it all comes back as it was.
  * Nothing else is touched.
  */
 export function makeOrbitViz(global) {
@@ -1288,6 +1292,7 @@ const BODIES = [
   { k:'Neptune', n:'NEPTUNE', c:'#8FB6E8', s:0.005 }
 ];
 let bodyNodes = null;
+let realOn = false;                               // CHANGED (L75): the realistic sky draws its own Sun, Moon and stars
 function buildPlanets(){
   const g = new THREE.Group();
   bodyNodes = [];
@@ -1296,6 +1301,7 @@ function buildPlanets(){
     const disc = new THREE.Sprite(new THREE.SpriteMaterial({
       map: discTexture(), color: new THREE.Color(b.c), transparent:true,
       depthWrite:false, sizeAttenuation: b.s === 0 }));
+    if(realOn && (b.k === 'Sun' || b.k === 'Moon')) disc.visible = false;   // CHANGED (L75)
     // the Sun and the Moon are the only two objects up there with a disc you can
     // actually resolve, so they get their true angular size and everything else
     // gets a dab sized by how bright it is
@@ -1530,6 +1536,7 @@ const OrbitViz = {
       // next setOrbit then builds it, so the checkbox never lies about its state
       if(key === 'elements' && !el) return true;
       ensure(key).visible = true;
+      if(key === 'stars' && realOn) G.stars.visible = false;                  // CHANGED (L75)
     } else if(G[key]){
       G[key].visible = false;
     }
@@ -1545,6 +1552,35 @@ const OrbitViz = {
 
   layers(){
     return LAYERS.map(function(L){ return { key:L.key, label:L.label, on:L.on }; });
+  },
+
+  /* CHANGED (L75): while the realistic surface draws its own sky, this file's Sun and Moon discs and its star points are hidden (the
+     switches keep their states, and the planets, the figures and the names stay); off, each is shown again as its switch says. */
+  realSky(on){
+    realOn = !!on;
+    if(bodyNodes) for(let i=0;i<bodyNodes.length;i++){
+      const k = bodyNodes[i].b.k;
+      if(k === 'Sun' || k === 'Moon') bodyNodes[i].disc.visible = !realOn;
+    }
+    if(G.stars) G.stars.visible = !realOn && !!find('stars').on;
+    if(!realOn && sky){                           // back where the old page keeps them: at the Earth's centre, the Moon's name geocentric
+      sky.position.set(0, 0, 0);
+      if(G.planets) G.planets.position.set(0, 0, 0);
+      updatePlanets(simTime, true);
+    }
+  },
+
+  /* CHANGED (L75): the realistic sky is drawn at the camera, with the Moon where the camera sees it (its parallax from an orbit is
+     degrees); each frame while it is on, the figures, the stars' names and the bodies' names are taken to the camera with it, and the
+     Moon's name under the Moon it draws, so that every name marks what is drawn. Off, nothing here runs. */
+  realSkyFrame(camPos, moonPos){
+    if(!realOn || !sky) return;
+    sky.position.copy(camPos);
+    if(G.planets) G.planets.position.copy(camPos);
+    if(moonPos && bodyNodes) for(let i=0;i<bodyNodes.length;i++){
+      if(bodyNodes[i].b.k !== 'Moon') continue;
+      bodyNodes[i].lab.position.copy(moonPos).sub(camPos).normalize().multiplyScalar(R_SKY*0.985).add(new THREE.Vector3(0, -7.5, 0));
+    }
   },
 
   dispose(){

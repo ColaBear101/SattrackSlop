@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { app } from '../../state/app.svelte';
   import { clock } from '../../state/clock.svelte';
+  import { view } from '../../state/view.svelte';
   import { prefs } from '../../state/prefs.svelte';
   import { MASK } from '../../state/engine';
   import { iso } from '../../lib/text/fmt';
@@ -87,7 +88,8 @@
     <span class="o3-label o3-alt" id="o3alt" bind:this={nodes.alt}>alt</span>
   </div>
   <div class="hud">
-    <div class="t1"><span id="o3clock">{utc}</span><span class="zone">UTC</span></div>
+    <!-- in full screen the bar's clocks are not shown, so this one also says when the clock is outside the window, as they did (L85) -->
+    <div class="t1" class:outwin={view.full && !app.inWindow(clock.tick.ms)}><span id="o3clock">{utc}</span><span class="zone">UTC</span></div>
     <div class="t2"><span id="o3clocklocal">{local}</span><span class="zone" id="lbl-tz1">{zone}</span></div>
     <div class="t3" id="o3fovrow" hidden>
       <span class="zone"><abbr title="field of view, the width of the lens">FOV</abbr></span><span id="o3fov3" bind:this={nodes.fov}>—</span><span class="mm" id="o3fovmm" bind:this={nodes.fovmm}>—</span>
@@ -107,7 +109,12 @@
     <li><i class="k-view"></i><span id="lbl-keyview">In view from {nm} (el ≥ {MASK}°)</span></li>
     <li><i class="k-foot"></i>Footprint (ground above {MASK}°)</li>
     <li><i class="k-site"></i><span id="lbl-keysite">{nm} {MASK}° access circle</span></li>
-    <li><i class="k-cat"></i>Rest of the catalogue</li>
+    {#if globe.catKey.length}
+      <!-- the catalogue by class (L76): the classes in a few rows, each swatch the colour its dots rest in, from the colours' own chunk -->
+      {#each globe.catKey as row}<li class="kcc">{#each row as k}<span><i style="--c:{k.c}"></i>{k.t}</span>{/each}</li>{/each}
+    {:else}
+      <li><i class="k-cat"></i>Rest of the catalogue</li>
+    {/if}
     <li class="kel kel-h" hidden={!globe.layers.elements}>Orbital elements · point at one for its value</li>
     <li class="kel" hidden={!globe.layers.elements}><b class="s-raan">Ω</b>RAAN, from ♈︎ · <b class="s-raan">☊</b>ascending node</li>
     <li class="kel" hidden={!globe.layers.elements}><b class="s-inc">i</b>inclination · <b class="s-argp">ω</b>argument of perigee</li>
@@ -141,6 +148,8 @@
   @media (max-width: 719px) { .viewport { height: clamp(280px, min(130vw, calc(100dvh - 316px)), 600px); } }
   /* a phone on its side: the globe is the screen, the page scrolls to the rest */
   @media (max-height: 520px) { .viewport { height: max(300px, calc(100dvh - 24px)); } }
+  /* full screen (L78): the browser sizes it to the screen; the corners square */
+  .viewport:fullscreen { border-radius: 0; }
   #globe { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 
   /* the scene positions these over the points they name and shows and hides them itself */
@@ -159,6 +168,7 @@
   .hud .t1 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 16px; letter-spacing: -.01em; }
   .hud .t2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-0); color: #AFC3CE; }
   .hud .zone { font-size: var(--fs-0); letter-spacing: .14em; color: #8AA0AC; margin-left: 6px; }
+  .hud .t1.outwin { color: var(--warn); }
   .hud .t3 { margin-top: 5px; display: flex; align-items: baseline; gap: 7px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-1); color: #CFE3EE; }
   .hud .t3[hidden] { display: none; }
   .hud .t3 .zone { margin-left: 0; }
@@ -167,16 +177,16 @@
 
   /* the point-of-view minimap: where the spacecraft is, the circle it can see, where the lens points */
   .o3-mini {
-    position: absolute; left: 10px; bottom: 34px; width: 240px; height: 120px; border: 1px solid rgba(180, 200, 212, .30); border-radius: 3px;
+    position: absolute; left: 10px; bottom: calc(34px + var(--tbar, 0px)); width: 240px; height: 120px; border: 1px solid rgba(180, 200, 212, .30); border-radius: 3px;
     background: rgba(10, 16, 20, .72); backdrop-filter: blur(6px); pointer-events: none;
   }
   .o3-mini[hidden] { display: none; }
-  @media (max-width: 760px), (max-height: 720px) { .o3-mini { width: 168px; height: 84px; left: 8px; bottom: 30px; } }
+  @media (max-width: 760px), (max-height: 720px) { .o3-mini { width: 168px; height: 84px; left: 8px; bottom: calc(30px + var(--tbar, 0px)); } }
   @media (max-width: 640px) { .o3-mini { display: none; } }
 
   /* the globe's key: what the colours mean, bottom left */
   .o3-key {
-    position: absolute; left: var(--space-4); bottom: 32px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+    position: absolute; left: var(--space-4); bottom: calc(32px + var(--tbar, 0px)); margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; pointer-events: none;
     font-family: var(--font-mono); font-size: var(--fs-0); letter-spacing: .05em; color: #9DB1BC; text-shadow: 0 0 5px #05090C, 0 0 5px #05090C;
   }
   .o3-key li { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
@@ -188,6 +198,9 @@
   .o3-key .k-site::before { width: 9px; height: 9px; border-radius: 50%; border: 1.5px dashed #F29CBB; }
   .o3-key .k-view::before { width: 16px; border-top: 3px solid #E8BC5A; }
   .o3-key .k-cat::before { width: 6px; height: 6px; border-radius: 50%; background: #3A93A3; }
+  .o3-key .kcc { gap: 2px 14px; flex-wrap: wrap; }
+  .o3-key .kcc span { display: flex; align-items: center; gap: 7px; }
+  .o3-key .kcc i::before { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
   .o3-key li.kel { display: block; }
   .o3-key li.kel[hidden] { display: none; }
   .o3-key .kel-h { margin-top: 5px; color: #7E94A0; }
@@ -196,12 +209,15 @@
   .o3-key .s-nu { color: #FF4FA3; } .o3-key .s-h { color: #4FC3FF; } .o3-key .s-e { color: #FF5555; } .o3-key .s-v { color: #4DF0A0; }
   @media (max-height: 560px) { .o3-key.kel-on > li:not(.kel) { display: none; } }
   .o3-mini:not([hidden]) ~ .o3-key { display: none; }
+  /* the close-up has a card of its own where the key and the hint were (L72); the card marks the box itself, so the entry carries
+     nothing for it but these rules */
+  .viewport:global(.closeup) .o3-key, .viewport:global(.closeup) .hint-drag { display: none; }
   @media (max-width: 640px) { .o3-key { display: none; } }
 
   /* one line, cut short where the picture is narrow (the orbit planner's drawer leaves the globe 530 px): a second line would grow up into the key above it */
-  .hint-drag { position: absolute; left: var(--space-4); right: var(--space-4); bottom: var(--space-3); margin: 0; pointer-events: none; font-family: var(--font-mono); font-size: var(--fs-0); color: #8AA0AC; text-shadow: 0 0 6px #05090C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hint-drag { position: absolute; left: var(--space-4); right: var(--space-4); bottom: calc(var(--space-3) + var(--tbar, 0px)); margin: 0; pointer-events: none; font-family: var(--font-mono); font-size: var(--fs-0); color: #8AA0AC; text-shadow: 0 0 6px #05090C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* a phone: above the controls' strip, and wrapping */
-  @media (max-width: 719px) { .hint-drag { right: var(--space-3); bottom: 92px; white-space: normal; } }
+  @media (max-width: 719px) { .hint-drag { right: var(--space-3); bottom: calc(92px + var(--tbar, 0px)); white-space: normal; } }
 
   /* "load this one?" by the point that was clicked: the cloud is dense, so a nudge must not swap the spacecraft unasked */
   .pickconfirm[hidden] { display: none; }

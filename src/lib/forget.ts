@@ -1,7 +1,9 @@
-/* What this page keeps in the browser, and forgetting all of it (CHANGES-FROM-LEGACY.md, L50).
+/* What this page keeps in the browser, and forgetting all of it (CHANGES-FROM-LEGACY.md, L50, L73).
  *
  * New in the rebuild; the old page had no way to take back what it had stored. Everything the page keeps is in
- * localStorage (no session storage, cookie, IndexedDB, Cache Storage or service worker), under one of four
+ * localStorage (no session storage, cookie, Cache Storage or service worker) but the 3D models a reader gives the close-up, which are
+ * files and live in IndexedDB (state/models.svelte.ts; their list is the `gt.models` key here, and the database goes with the rest when
+ * this is pressed: components/report/ForgetData.svelte). The keys are under one of four
  * namespaces: the observer's two keys from the old page (`obs-site`, `obs-recent`), the page's own choices, the
  * spacecraft the reader watches and the reader's orbits (`gt.*`), and the two caches, the element set of an object
  * (`tle:<n>`) and its history of element sets (`hist:<n>`). A cached copy is used for three hours (TLE_TTL) or twelve (HIST_TTL), and an old one
@@ -32,7 +34,10 @@ export const FORGET_KEYS = [
   'gt.arlens', 'gt.araim', 'gt.arradar',                   // lib/ar/arview.ts: the AR view's lens, aim and radar
   'gt.passfilter',                                         // state/passfilter.svelte.ts: the pass list's filter (L56)
   'gt.watch',                                              // state/watch.svelte.ts: the spacecraft the reader starred (L60)
-  'gt.decaycmp'                                            // state/decay-compare.svelte.ts: the decay comparison's list and whether it is open (L66)
+  'gt.decaycmp',                                           // state/decay-compare.svelte.ts: the decay comparison's list and whether it is open (L66)
+  'gt.models',                                             // state/models.svelte.ts: the list of the reader's own 3D models (L73)
+  'gt.catcolour',                                          // components/stage/globe-state.svelte.ts: how the catalogue's dots are coloured (L76), a display choice
+  'gt.attitude'                                            // state/attitude.svelte.ts: how the reader flies each model in the close-up (L77), a display choice
 ] as const;
 
 /** The page's namespaces: a key that starts with one of these is the page's. */
@@ -47,6 +52,7 @@ export type ForgetPart =
   | { kind: 'choices'; n: number }
   | { kind: 'watch'; n: number | null }
   | { kind: 'orbits'; n: number | null }
+  | { kind: 'models'; n: number | null }
   | { kind: 'tle'; n: number }
   | { kind: 'hist'; n: number };
 
@@ -85,7 +91,7 @@ export function survey(store: ForgetStore | null): ForgetSurvey | null {
   if (has('obs-recent')) parts.push({ kind: 'recents', n: countIn(get('obs-recent')) });
   const orbitKeys = ['gt.custom', 'gt.custom.bak'];
   /* every other key of the page's that is not a cache, nor the watchlist, is a choice: the listed ones, and a gt. key of a later version */
-  const choices = keys.filter(k => !orbitKeys.includes(k) && k !== 'gt.watch' && !k.startsWith('tle:') && !k.startsWith('hist:') && k !== 'obs-site' && k !== 'obs-recent').length;
+  const choices = keys.filter(k => !orbitKeys.includes(k) && k !== 'gt.watch' && k !== 'gt.models' && !k.startsWith('tle:') && !k.startsWith('hist:') && k !== 'obs-site' && k !== 'obs-recent').length;
   if (choices) parts.push({ kind: 'choices', n: choices });
   /* the spacecraft starred (L60): a list of numbers, counted */
   if (has('gt.watch')) parts.push({ kind: 'watch', n: countIn(get('gt.watch')) });
@@ -96,6 +102,8 @@ export function survey(store: ForgetStore | null): ForgetSurvey | null {
     if (n === 0 && has('gt.custom.bak')) n = null;
     parts.push({ kind: 'orbits', n });
   }
+  /* the reader's own 3D models (L73): their list, counted; the files are in IndexedDB and go with it */
+  if (has('gt.models')) parts.push({ kind: 'models', n: countIn(get('gt.models'), 'items') });
   const tle = keys.filter(k => k.startsWith('tle:')).length, hist = keys.filter(k => k.startsWith('hist:')).length;
   if (tle) parts.push({ kind: 'tle', n: tle });
   if (hist) parts.push({ kind: 'hist', n: hist });

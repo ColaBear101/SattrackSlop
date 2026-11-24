@@ -34,11 +34,14 @@
     if (!store) { said = FORGET_BLOCKED; return; }
     const { left } = forget(store);
     if (left.length) { said = forgetLeft(left.length); return; }
-    /* the address without what would bring some of it back (the site's position, a tab the page would save again); a fragment alone would
-       only scroll, so an address that differs in nothing else is reloaded */
-    const q = searchAfterForget(location.search);
-    if (q === location.search && !location.hash) location.reload();
-    else location.replace(location.pathname + q);
+    /* the reader's own 3D models are files in IndexedDB (L73): the database goes too, before the reload (its module is fetched only now) */
+    import('../../state/models.svelte').then(m => m.forgetModels(), () => undefined).finally(() => {
+      /* the address without what would bring some of it back (the site's position, a tab the page would save again); a fragment alone
+         would only scroll, so an address that differs in nothing else is reloaded */
+      const q = searchAfterForget(location.search);
+      if (q === location.search && !location.hash) location.reload();
+      else location.replace(location.pathname + q);
+    });
   }
 
   /* a held Enter: its first keydown presses, its repeats do not (the keypress that would click is not sent) */

@@ -8,6 +8,7 @@
   import ReportHost from './components/report/ReportHost.svelte';
   import PlannerHost from './components/planner/PlannerHost.svelte';
   import { onKey } from './state/shortcuts';
+  import { view } from './state/view.svelte';
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -18,7 +19,7 @@
 <LoadNote />
 
 <!-- class "app" is what the orbit planner's controller looks for: it sets data-planning on this element while the planner is open -->
-<main id="main" class="app" tabindex="-1">
+<main id="main" class="app" tabindex="-1" data-railhidden={view.railHidden || undefined}>
   <div class="console">
     <div class="stage-zone"><Stage /></div>
     <div class="planner-zone"><PlannerHost place="zone" /></div>
@@ -57,6 +58,9 @@
     .stage-zone { grid-area: stage; min-height: 0; overflow: auto; }
     .rail-zone { grid-area: rail; min-height: 0; overflow: hidden; }
     .transport-zone { grid-area: transport; }
+    /* the answer panel folded away (L78): the stage takes the width; the planner's drawer, below, still takes the rail's cell when open */
+    .app[data-railhidden] .console { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'stage' 'transport'; }
+    .app[data-railhidden] .rail-zone { display: none; }
   }
 
   /* The orbit planner's cell. It is nothing while the planner is shut: the controller sets data-planning on <main> when it opens
@@ -83,8 +87,17 @@
     /* below 1100 px the globe is sized for a one-column page; here it is in a cell, so it takes the wide layout's height */
     .app:global([data-planning]) .stage-zone :global(.viewport) { height: clamp(340px, calc(100dvh - var(--bar-h) - var(--transport-h) - 132px), 880px); }
     /* The stage keeps its gutters, so the narrowest drawer (901 px) leaves the globe 497 px, and the clock on its left meets the camera row on its
-       right ("UTC" ran into "CAMERA"). Up to 940 px the captions go, as they do on a phone; the buttons say what they are. */
-    @media (max-width: 940px) { .app:global([data-planning]) .stage-zone :global(.seglabel) { display: none; } }
+       right ("UTC" ran into "CAMERA"). The fifth camera (Close-up, L72) made the row 66 px longer, and the observer's button is as long as the
+       observer's name (up to 24 letters). So, in the drawer: up to 1100 px the captions go, as they do on a phone (the buttons say what they
+       are), and the observer's button is at most 6em wide, its sides included (an ellipsis ends a longer name; GlobeControls holds it to 9em from 720 px up); up to
+       1000 px the camera buttons also draw in their sides, 8 px to 4, and give up the 44 px least width a touch screen gives them (they keep
+       its height), or Free and POV stay 44 px wide whatever their sides. Then the longest row clears the clock by 6 px at 901 ("Bangkok" by 22),
+       by about 70 at 1001 and at 1101 with its caption back, touch or not. */
+    @media (max-width: 1100px) {
+      .app:global([data-planning]) .stage-zone :global(.seglabel) { display: none; }
+      .app:global([data-planning]) .stage-zone :global(#lbl-camsite) { max-width: 6em; }
+    }
+    @media (max-width: 1000px) { .app:global([data-planning]) .stage-zone :global(.camseg .cam) { padding: 0 var(--space-1); min-width: 0; } }
   }
   @media (min-width: 901px) and (max-height: 560px) {
     .app:global([data-planning]) .rail-zone { display: none; }

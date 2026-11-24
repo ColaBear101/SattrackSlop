@@ -399,6 +399,9 @@ function install() {
       }
       /* what a neighbour can crowd is the part of it that is on screen: a list row scrolled out of its box is not next to anything outside the box */
       const vb = L.visibleBox(e);
+      /* ...and the same for the control itself: one scrolled out of its own box (the Trail row at the foot of the Layers panel on a phone,
+         L80) is not there to be tapped in this state; measured at its unscrolled place it ran into whatever lay there, off screen */
+      if (!vb.w || !vb.h) continue;
       T.push({ e, b: shownBox, v: { left: vb.x0, top: vb.y0, right: vb.x1, bottom: vb.y1, w: vb.w, h: vb.h }, name: L.name(e), exempt: L.tapExempt(e) });
     }
     const gap = (A, B) => {

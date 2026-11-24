@@ -98,11 +98,11 @@ const want = n => !GROUPS || GROUPS.has(n);
      transport  the clock and its controls
      pillRow    where the Plan pill sits (the old page: the hint row beside the count; the rebuilt page: the header's own cell for it)
      fit        what is as tall as the screen under the header with the planner shut (the old .app is 900 tall at 900; the rebuilt .console ends at 900)
-     seglabels  how many captions the globe's controls show (the old page seven overlays, six captions; the rebuilt page two rows: Camera and Trail)
+     seglabels  how many captions the globe's controls show (the old page seven overlays, six captions; the rebuilt page one, Camera: the Trail row went into the Layers panel with L80)
      minText    the smallest text size, in px, that the planner and the report's Professor may use (the old page's floor was 11 px; the rebuilt type scale's is 12) */
 const SEL = NEW
-  ? { glob: '.viewport button', cell: '.stage-zone', globe: '.viewport', globeMin: 496, jump: 'nav.rnav a', transport: '.transport', pillRow: '.t-plan', fit: '.console', seglabels: 2, minText: 12,
-      overlays: [['clock', '.hud'], ['camera row', '.camseg'], ['trail row', '.trailseg'], ['Layers row', '.layerseg'], ['key', '.o3-key'], ['drag hint', '.hint-drag'], ['minimap', '.o3-mini']], liveIn: ['body', '#app'] }
+  ? { glob: '.viewport button', cell: '.stage-zone', globe: '.viewport', globeMin: 496, jump: 'nav.rnav a', transport: '.transport', pillRow: '.t-plan', fit: '.console', seglabels: 1, minText: 12,
+      overlays: [['clock', '.hud'], ['camera row', '.camseg'], ['Layers row', '.layerseg'], ['key', '.o3-key'], ['drag hint', '.hint-drag'], ['minimap', '.o3-mini']], liveIn: ['body', '#app'] }
   : { glob: '.viewport .btn', cell: '.viewport', globe: '.viewport', globeMin: 528, jump: '.bar-top .jump a', transport: '.bar-transport', pillRow: '.hintrow', fit: '.app', seglabels: 6, minText: 11, overlays: null, liveIn: ['body'] };
 /* what the header's height figures are worth: from 1100 px up the rebuilt header is one row of a fixed height (AppBar.svelte: height: var(--bar-h)), so "within 3 px of the
    pre-planner header" and "open equals closed" cannot fail there; they are true by construction. What can fail there is the content: the pill, the chip and the age lie inside
@@ -350,7 +350,8 @@ const PRISTINE_HEADER = () => {
         h.hdr <= 100 && h.hdr - pris <= 3 && h.hdr - pris >= -3 && h.boxed.length === 0 && h.app === 900 && h.seg === SEL.seglabels, JSON.stringify(h));
     const reach = await ev(page, () => [...document.querySelectorAll(__SEL.glob)].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
       if (y < 0 || y > innerHeight) return { n: e.textContent.trim(), ok: false }; const t = document.elementFromPoint(x, y); return { n: e.textContent.trim(), ok: t === e || e.contains(t) }; }));
-    chk('2 every button on the globe (' + SEL.glob + ') is reachable with the planner closed (' + reach.length + ')', reach.length >= 8 && reach.every(r => r.ok), reach.filter(r => !r.ok).map(r => r.n).join(','));
+    /* at least 7 since L80: the camera's five, Full screen and Layers (the trail's five buttons went into the Layers panel; there were 8 and more) */
+    chk('2 every button on the globe (' + SEL.glob + ') is reachable with the planner closed (' + reach.length + ')', reach.length >= 7 && reach.every(r => r.ok), reach.filter(r => !r.ok).map(r => r.n).join(','));
 
     await page.click('#planopen');
     const o = await ev(page, () => ({ act: document.activeElement.id, exp: document.getElementById('planopen').getAttribute('aria-expanded'), planning: document.querySelector('.app').hasAttribute('data-planning'),
@@ -1406,6 +1407,15 @@ const PRISTINE_HEADER = () => {
         for (const [n, s] of __SEL.overlays) { const e = q(s); if (!e || !e.getClientRects().length) continue; const b = e.getBoundingClientRect(); bx.push({ n: n, l: b.left, r: b.right, t: b.top, b: b.bottom }); }
         collide = { n: bx.length, out: bx.filter(b => b.l < gbx.left - 0.5 || b.r > gbx.right + 0.5 || b.t < gbx.top - 0.5 || b.b > gbx.bottom + 0.5).map(b => b.n), hit: [] };
         for (let i = 0; i < bx.length; i++) for (let j = i + 1; j < bx.length; j++) { const a = bx[i], c = bx[j]; if (a.l < c.r - 0.5 && c.l < a.r - 0.5 && a.t < c.b - 0.5 && c.t < a.b - 0.5) collide.hit.push(a.n + ' on ' + c.n + ' (' + Math.round(a.l) + '-' + Math.round(a.r) + ' against ' + Math.round(c.l) + '-' + Math.round(c.r) + ')'); }
+        /* the observer's name is a camera button of its own, up to 24 letters (L26): with the longest, the row must still clear the clock */
+        const site = q('#lbl-camsite'), tn = site && site.firstChild;
+        if (tn && tn.nodeType === 3) {
+          const keep = tn.data; tn.data = 'Nakhon Si Thammarat City';
+          const cam = q('.camseg').getBoundingClientRect(), clk = q('.hud').getBoundingClientRect();
+          collide.long = { cam: [Math.round(cam.left), Math.round(cam.right)], clock: [Math.round(clk.left), Math.round(clk.right)], site: Math.round(site.getBoundingClientRect().width),
+            hit: cam.left < clk.right - 0.5 && clk.left < cam.right - 0.5 && cam.top < clk.bottom - 0.5 && clk.top < cam.bottom - 0.5, out: cam.left < gbx.left - 0.5 || cam.right > gbx.right + 0.5 };
+          tn.data = keep;
+        }
       }
       return { header: q('.bar-top').getBoundingClientRect().height, pl: R(pl), vp: R(q(__SEL.cell)), gb: R(q(__SEL.globe)), boxed: __T.boxed(), collide: collide, sw: document.documentElement.scrollWidth, iw: innerWidth, ih: innerHeight,
         small: small, over: over, nctl: ctl.length, bad: bad, addTop: Math.round(add.top), addBottom: Math.round(add.bottom), railShown: __T.railShown(),
@@ -1445,13 +1455,15 @@ const PRISTINE_HEADER = () => {
         if (expect === 'drawer') {
           const hits = await ev(page, () => [...document.querySelectorAll(__SEL.glob)].filter(e => e.offsetParent).map(e => { const b = e.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
             if (y < 0 || y > innerHeight) return { name: e.textContent.trim(), ok: false }; const h = document.elementFromPoint(x, y); return { name: e.textContent.trim(), ok: h === e || e.contains(h) }; }));
-          chk('3 ' + tag + ': with the drawer open every globe button is still reachable (' + hits.length + ')', hits.length >= 8 && hits.every(h => h.ok), hits.filter(h => !h.ok).map(h => h.name).join(', '));
+          chk('3 ' + tag + ': with the drawer open every globe button is still reachable (' + hits.length + ')', hits.length >= 7 && hits.every(h => h.ok), hits.filter(h => !h.ok).map(h => h.name).join(', '));
           /* the cell is what the planner takes width from; the old page's cell is the globe itself, the rebuilt stage's cell holds the globe between two gutters, so "globe" is said only of the box that is the globe's */
           chk('3 ' + tag + ': the rail is hidden and ' + (NEW ? 'the stage\'s cell' : 'the globe') + ' + planner fill the width (' + m.vp.w + ' + ' + m.pl.w + ' of ' + m.iw + ')', !m.railShown && Math.abs(m.vp.w + m.pl.w - m.iw) <= 2);
           if (name === '901x700') chk('3 ' + tag + ': at the narrowest drawer width the globe itself is still at least ' + SEL.globeMin + ' px wide (' + m.gb.w + (NEW ? ' in a cell of ' + m.vp.w + ': the stage keeps its two 16 px gutters; the old page\'s floor is 528)' : ')'), m.gb.w >= SEL.globeMin, String(m.gb.w));
           /* the narrower globe (497 px at 901, where the clock on the left once met the camera row on the right: "UTC" ran into "CAMERA") must still carry its overlays without a collision */
-          if (NEW) chk('3 ' + tag + ': nothing collides on the globe with the drawer open: the clock, the camera, trail and Layers rows, the key and the drag hint each lie inside it and none overlaps another (' + m.collide.n + ' boxes in ' + m.gb.w + ' px)',
-            m.collide.n >= 6 && m.collide.out.length === 0 && m.collide.hit.length === 0, JSON.stringify(m.collide));
+          if (NEW) chk('3 ' + tag + ': nothing collides on the globe with the drawer open: the clock, the camera and Layers rows, the key and the drag hint each lie inside it and none overlaps another (' + m.collide.n + ' boxes in ' + m.gb.w + ' px)',
+            m.collide.n >= 5 && m.collide.out.length === 0 && m.collide.hit.length === 0, JSON.stringify(m.collide));
+          if (NEW) chk('3 ' + tag + ': with a 24-letter observer name ("Nakhon Si Thammarat City") the camera row still clears the clock and stays inside the globe (the name is held to 6em while the drawer is open up to 1100 px, 9em otherwise: L26)',
+            !!m.collide.long && !m.collide.long.hit && !m.collide.long.out, JSON.stringify(m.collide.long));
         }
         if (expect === 'flow') chk('10 ' + tag + ': narrow: the transport bar is static while planning, the rail is still displayed, the heading was brought just below the header where that is sticky (top ' + opened.headTop + ', header bottom ' + opened.barBottom + ')',
           m.transportPos === 'static' && m.railShown && opened.headTop >= opened.barBottom && opened.headTop < opened.barBottom + 40, 'transport ' + m.transportPos + ' rail ' + m.railShown + ' headTop ' + opened.headTop + ' scrollY ' + opened.scrollY);

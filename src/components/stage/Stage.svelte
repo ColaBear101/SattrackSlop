@@ -9,6 +9,9 @@
   import Tabs from '../ui/Tabs.svelte';
   import Button from '../ui/Button.svelte';
   import { ar } from '../ar/session.svelte';
+  import { view } from '../../state/view.svelte';
+  import Icon from '../ui/Icon.svelte';
+  import { RAIL_HIDE, RAIL_SHOW } from '../../lib/text/view';
   import GroundTrackMap from './GroundTrackMap.svelte';
   import Globe from './Globe.svelte';
 
@@ -36,6 +39,11 @@
   <!-- the old page's first screen said that the written analysis is below ("Below ↓ Elements ... Terms"): a link to it here, in the stage's own row -->
   <a class="below" href="#report">Report ↓</a>
   <div class="ar-slot">
+    <!-- the answer panel folded away and back (L78): only where it sits beside the stage, 1100 px and wider -->
+    <button type="button" class="railtoggle" aria-expanded={!view.railHidden} aria-controls="answer-body" aria-label={view.railHidden ? RAIL_SHOW : RAIL_HIDE}
+            title={view.railHidden ? RAIL_SHOW : RAIL_HIDE} onclick={() => (view.railHidden = !view.railHidden)}>
+      <Icon name={view.railHidden ? 'chevron-left' : 'chevron-right'} size={18} />
+    </button>
     <!-- The radar on its own: the same sensors and the same plot as the AR view, with no camera asked for and no sky drawn over a picture. -->
     <Button id="radarbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="Radar: where this phone points, with no camera"
             onclick={() => ar.openRadar()}>Radar</Button>
@@ -73,6 +81,12 @@
   /* where a finger is the pointer the Radar button is offered beside AR (src/components/ar/session.svelte.ts), and the link makes room for it */
   @media (pointer: coarse) { .below { min-height: var(--tap); right: calc(var(--space-4) + 56px + 60px); } }
   .ar-slot :global(abbr) { text-decoration: none; cursor: inherit; }
+  .railtoggle {
+    display: none; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: var(--r-2);
+    border: 1px solid var(--rule); background: var(--panel); color: var(--ink2); cursor: pointer;
+  }
+  .railtoggle:hover { background: var(--hover); color: var(--ink); }
+  @media (min-width: 1100px) { .railtoggle { display: inline-flex; } }
   .ar-slot :global(.btn[hidden]) { display: none; }
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
      and readouts (about 250 px of them, the tabs and the padding) without the stage having to scroll */

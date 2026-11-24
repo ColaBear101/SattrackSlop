@@ -61,6 +61,14 @@ const STAGES = [
      drawn exactly once, for the press. About 30 s on an idle machine (a minute and more while other browsers run), so in the fast set too;
      rebuilt page only: the old page had no Snap */
   { name: 'ar-snap',     script: 'suites/verify-ar-snap.js',      alone: true, fast: true, target: 'new' },
+  /* the realistic globe (L71), the close-up and its models (L72), and a reader's own model kept in the browser (L73): rebuilt page only; they
+     draw heavy shaders on software WebGL, so alone */
+  { name: 'realism',     script: 'suites/verify-realism.js',      alone: true, target: 'new' },
+  { name: 'closeup',     script: 'suites/verify-closeup.js',      alone: true, target: 'new' },
+  { name: 'models',      script: 'suites/verify-models.js',       alone: true, target: 'new' },
+  /* the catalogue's dots coloured by class (L76): the default's colours value for value, each colouring, the key, a reload and Forget.
+     Rebuilt page only; it hovers dots on software WebGL, so alone */
+  { name: 'catcolour',   script: 'suites/verify-catcolour.js',    alone: true, target: 'new' },
   { name: 'layout',      script: 'suites/verify-layout.js',       alone: true, target: 'new' },
   { name: 'planner-ui',  script: 'suites/verify-planner-ui.js',   alone: true },
   /* the page as a VISITOR gets it (no test flag): how the planner and the AR view arrive, which every other browser stage short-circuits

@@ -180,13 +180,16 @@ const chk = (name, ok, detail) => {
      and identical at culmination, which is not the Doppler being wrong: it is
      a pass cut in half by the clock. Asserting the approach-then-recede shape
      over it made this check fail depending on the time of day it ran.
-     A clipped pass is the one whose culmination sits on its own AOS. */
-  const whole = res.passes.filter(p => p.culRR !== p.aosRR);
+     A clipped pass is the one whose culmination sits on its own AOS. The window's
+     other end does the same to the last pass: still rising when the window closes,
+     its culmination sits on its own LOS, with the range rate negative at both, and
+     that failed this check whenever the run started a little after a pass's AOS. */
+  const whole = res.passes.filter(p => p.culRR !== p.aosRR && p.culRR !== p.losRR);
   const clipped = res.passes.length - whole.length;
   const signs = whole.every(p => p.aosRR < 0 && p.losRR > 0);
   chk('\n  every complete pass approaches then recedes', signs,
       'ṙ negative at AOS and positive at LOS on all ' + whole.length
-        + (clipped ? ' (' + clipped + ' clipped by the window edge, skipped)' : ''));
+        + (clipped ? ' (' + clipped + ' clipped by an edge of the window, skipped)' : ''));
   const culm = whole.every(p => Math.abs(p.culRR) < Math.abs(p.aosRR));
   chk('  range rate is smallest at culmination', culm,
       'the closing speed passes through zero near closest approach');

@@ -49,15 +49,17 @@
 <div class="rail">
   {#if a}
     <p class="notice bad" id="reentry" role="status" hidden={!reentry}><Icon name="alert" size={16} /> <span>{#if reentry}<Rich value={reentry} />{/if}</span></p>
-    <!-- Said beside the answer it qualifies, for an orbit the reader designed: the minutes below are the first thing read, and they are a
-         prediction for an orbit that may not exist. -->
+    <!-- Said above the answer it qualifies, for an orbit the reader designed: the countdown and the minutes below are a prediction for an
+         orbit that may not exist. -->
     <p class="notice" id="customnote" hidden={!mine}><Icon name="info" size={16} /> <span><b>Your orbit.</b> Designed here from elements you typed, not tracked by anyone. These passes are a prediction for an orbit that may not exist.</span></p>
 
-    <section class="answer" aria-labelledby="lbl-vis">
-      <p class="eyebrow" id="lbl-vis">Visible from {app.site.name} · {MASK}° mask</p>
-      <p class="big" id="totalbig">{(a.totalS / 60).toFixed(1)}<span class="unit">{' min'}</span></p>
-      <p class="sub" id="totalsub">{totalSub(a, app.site, PINNED)}</p>
-      <p class="exact mono" id="totalexact">{a.totalS.toFixed(1)} s over {a.passes.length} {a.passes.length === 1 ? 'pass' : 'passes'}</p>
+    <!-- the countdown to the next pass (AOS) or to the end of this one (LOS), at the top of the panel since L81 and its headline since L82: the
+         first thing read; only a
+         warning that qualifies it (re-entered, an orbit of the reader's own) is above it. The old page's ids. -->
+    <section class="next" aria-labelledby="cdlabel">
+      <p class="eyebrow" id="cdlabel">{cd?.label ?? 'Next pass'}</p>
+      <p class="mono cd" class:hot={!!cd?.live} id="cdvalue">{cd?.value ?? '—'}</p>
+      <p class="mono when" id="cdwhen">{#if cd}<Rich value={cd.when} />{/if}</p>
     </section>
 
     <section class="now" aria-label="Now">
@@ -65,12 +67,15 @@
         <p class="eyebrow" id="lbl-elnow">Elevation at {app.site.name} now</p>
         <p class="mono val" class:hot={!!cur && cur.el >= MASK} id="o3el">{cur ? cur.el.toFixed(1) + '°' : '—'}</p>
       </div>
-      <div>
-        <p class="eyebrow" id="cdlabel">{cd?.label ?? 'Next pass'}</p>
-        <p class="mono val" class:hot={!!cd?.live} id="cdvalue">{cd?.value ?? '—'}</p>
-        <p class="mono when" id="cdwhen">{#if cd}<Rich value={cd.when} />{/if}</p>
-      </div>
       <div class="st" bind:this={slot}>{#if NowState}<NowState />{/if}</div>
+    </section>
+
+    <!-- the visible minutes over the window, secondary since L82: under the countdown and the state now -->
+    <section class="answer" aria-labelledby="lbl-vis">
+      <p class="eyebrow" id="lbl-vis">Visible from {app.site.name} · {MASK}° mask</p>
+      <p class="big" id="totalbig">{(a.totalS / 60).toFixed(1)}<span class="unit">{' min'}</span></p>
+      <p class="sub" id="totalsub">{totalSub(a, app.site, PINNED)}</p>
+      <p class="exact mono" id="totalexact">{a.totalS.toFixed(1)} s over {a.passes.length} {a.passes.length === 1 ? 'pass' : 'passes'}</p>
     </section>
 
     <Tabs tabs={[{ id: 'passes', label: 'Passes' }, { id: 'orbit', label: 'Orbit' }, { id: 'source', label: 'Source' }]}
@@ -106,15 +111,22 @@
   .notice.bad { border-left-color: var(--bad); }
   .notice.bad :global(svg) { color: var(--bad); }
   .answer { display: grid; gap: var(--space-1); }
-  /* the one big number: Archivo with tabular figures, as the old page set it, so the digits do not jitter as it changes */
-  .big {
-    margin: 0; font-family: var(--font-head); font-variant-numeric: tabular-nums; font-size: clamp(34px, 4.4vw, var(--fs-6));
-    font-weight: 700; line-height: 1; letter-spacing: -0.035em; color: var(--contact);
+  .next { display: grid; gap: 2px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--rule); }
+  /* the headline (L82): the countdown in the big figure's face and size, orange while the pass is up */
+  .cd {
+    margin: 2px 0 0; font-family: var(--font-head); font-variant-numeric: tabular-nums; font-size: clamp(30px, 3.6vw, 40px);
+    font-weight: 700; line-height: 1.05; letter-spacing: -0.02em;
   }
-  .unit { font-size: var(--fs-4); font-weight: 600; letter-spacing: -0.01em; }
+  .cd.hot { color: var(--contact); }
+  /* the visible minutes, secondary since L82: Archivo with tabular figures as before, the size of the state's figures */
+  .big {
+    margin: 0; font-family: var(--font-head); font-variant-numeric: tabular-nums; font-size: var(--fs-5);
+    font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; color: var(--ink);
+  }
+  .unit { font-size: var(--fs-2); font-weight: 600; letter-spacing: 0; }
   .sub { color: var(--muted); font-size: var(--fs-1); }
   .exact { color: var(--ink2); font-size: var(--fs-0); }
-  .now { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); padding: var(--space-4) 0; border-block: 1px solid var(--rule); }
+  .now { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); padding-bottom: var(--space-4); border-bottom: 1px solid var(--rule); }
   .st { grid-column: 1 / -1; }
   /* the block's own height, kept while its chunk is on the way, so that what is under it does not jump when it comes */
   .st:empty { min-height: 130px; }

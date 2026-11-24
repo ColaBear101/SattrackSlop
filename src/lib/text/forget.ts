@@ -21,6 +21,7 @@ export function partWords(p: ForgetPart): string {
     case 'choices': return 'your display choices';
     case 'watch': return p.n ? count(p.n, 'watched spacecraft', 'watched spacecraft') : 'your watchlist';
     case 'orbits': return p.n ? count(p.n, 'orbit of your own', 'orbits of your own') : 'the record of your own orbits';
+    case 'models': return p.n ? count(p.n, '3D model you added', '3D models you added') : 'the 3D models you added';
     case 'tle': return count(p.n, 'cached element set', 'cached element sets');
     case 'hist': return count(p.n, 'cached decay history', 'cached decay histories');
   }
@@ -31,9 +32,10 @@ const andList = (xs: string[]): string => xs.length < 2 ? xs.join('') : xs.slice
 
 /** After the first press: what the second will forget. `parts` is not empty (with nothing stored there is no second press). */
 export function forgetArmed(parts: ForgetPart[]): string {
-  const orbits = parts.find(p => p.kind === 'orbits');
+  const orbits = parts.find(p => p.kind === 'orbits'), models = parts.find(p => p.kind === 'models');
   return 'Press again to forget these and reload the page: ' + andList(parts.map(partWords)) + '.'
-    + (orbits && orbits.n !== 0 ? ' Your own orbits cannot be brought back.' : '');
+    + (orbits && orbits.n !== 0 ? ' Your own orbits cannot be brought back.' : '')
+    + (models && models.n !== 0 ? ' The models you added cannot be brought back.' : '');
 }
 
 /** The browser kept some of it: the page is not reloaded over a half-forgotten store. */

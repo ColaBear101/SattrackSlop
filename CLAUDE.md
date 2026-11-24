@@ -27,3 +27,7 @@ An Earth satellite ground-track console (Svelte 5 + TypeScript + Vite 8) and two
 - Verbatim ports (`plannerui.ts`, `arview.ts`, `globetex.ts`, `orbit3d.ts`, ...) keep the old arithmetic order and comments; edit them only at marked `CHANGED` lines.
 - Do not push, deploy, merge, or install system software without being asked. Stage specific paths, never `git add -A`.
 - Scripts and files with backslashes written through a shell heredoc lose them: write such files with the editor tools.
+
+## Project wiki
+
+`wiki/` is an LLM-maintained knowledge base about this project (the `llm-wiki` skill; pattern in `raw/llm-wiki-idea-file.md`). Before answering a question about how something works or why, read `wiki/index.md`, then only the pages it points to; conventions are in `wiki/SCHEMA.md`. The wiki cites `README.md`, `CHANGES-FROM-LEGACY.md` and this file by line, and those files win when they disagree. When a change adds a README section or ledger row, update the matching wiki pages and append to `wiki/log.md` in the same commit.

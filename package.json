@@ -69,6 +69,10 @@
     "ab3d": "node verification/gate/ab3d.js --target new --fit",
     "ab3d:write": "node verification/gate/ab3d.js --write",
     "frames": "node verification/suites/verify-frames.js",
+    "realism": "node verification/suites/verify-realism.js",
+    "closeup": "node verification/suites/verify-closeup.js",
+    "models": "node verification/suites/verify-models.js",
+    "catcolour": "node verification/suites/verify-catcolour.js",
     "test:fast": "npm run check:deps && npm run check && npm run check:server && npm run build && npm run check:csp && npm run build:shims && npm run test:unit && node verification/run.js --fast --target new",
     "test:all": "npm run build && npm run check:csp && npm run build:shims && node verification/run.js",
     "gate:legacy": "node verification/gate/regress.js --target legacy"

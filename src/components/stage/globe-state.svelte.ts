@@ -7,6 +7,8 @@ import { app } from '../../state/app.svelte';
 import { clock } from '../../state/clock.svelte';
 import { BODY, MASK, getObs, satellite } from '../../state/engine';
 import { live } from '../../state/live.svelte';
+import { CATCOL_CHOICES, CATCOL_FAILED } from '../../lib/text/catcolour';
+import type { KeyItem } from './catcolour';
 
 /* The 3D globe's controller: when the scene is built, what it is told, and what the controls on it say.
  *
@@ -17,7 +19,7 @@ import { live } from '../../state/live.svelte';
  * going, the camera modes, the trail, the layers, the pick-and-confirm, and giving the scene the analysis, the observer and
  * the clock. The stores are read here and pushed into the scene; the scene never reads a store. */
 
-export type CamMode = 'free' | 'sat' | 'site' | 'pov';
+export type CamMode = 'free' | 'sat' | 'site' | 'close' | 'pov';
 export type TrailKey = 'off' | '1800000' | 'orbit' | '21600000' | 'all';
 export interface SurfaceMode { key: string; label: string; note?: string }
 export interface LayerInfo { key: string; label: string }
@@ -41,13 +43,24 @@ function savedSurface(): string {
   try { return localStorage.getItem(SURFACE_KEY) || DEFAULT_SURFACE; } catch { return DEFAULT_SURFACE; }
 }
 
+/* How the catalogue's dots are coloured (CHANGES-FROM-LEGACY.md, L76): the old page's one colour unless the reader chose otherwise. Read
+   here, and written only when a reader chooses (the one colour takes the key away again), so a first visit stores nothing. */
+export type CatColour = (typeof CATCOL_CHOICES)[number][0];
+const CATCOLOUR_KEY = 'gt.catcolour';
+function savedCatColour(): CatColour {
+  try { const v = localStorage.getItem(CATCOLOUR_KEY); return CATCOL_CHOICES.find(c => c[0] === v)?.[0] ?? 'one'; } catch { return 'one'; }
+}
+
 class GlobeState {
   /** idle: not asked for yet; loading: the chunk is on its way; ready: a scene is drawing; unavailable: no WebGL (or it failed) */
   status = $state<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   mode = $state<CamMode>('sat');
-  trail = $state<TrailKey>('21600000');
-  /** the switches in the Layers panel (the sky layers, the footprint, the Earth, the catalogue's dots) */
-  layers = $state({ frame: false, elements: false, constellations: false, footprint: true, earth: true, catalogue: true });
+  /* The globe opens plain (CHANGES-FROM-LEGACY.md, L80): no trail, no catalogue, no observer's pin and no footprint, the spacecraft
+     and its orbit on the Earth; each is one press away in the Layers panel. The old page opened with a 6 h trail and the other three on,
+     which is what the test surface (src/testing/surface.ts) sets for the suites that compare with it. */
+  trail = $state<TrailKey>('off');
+  /** the switches in the Layers panel (the sky layers, the footprint, the Earth, the catalogue's dots, the observer's pin) */
+  layers = $state({ frame: false, elements: false, constellations: false, footprint: false, earth: true, catalogue: false, site: false });
   surface = $state(savedSurface());
   surfaceNote = $state.raw<SurfaceNote>({ text: '', warn: false });
   surfaces = $state.raw<SurfaceMode[]>([]);
@@ -55,6 +68,10 @@ class GlobeState {
   pick = $state.raw<Pick | null>(null);
   /** is the globe showing and on screen (the scene stops drawing when it is not) */
   showing = $state(false);
+  /** how the catalogue's dots are coloured (L76), and while it is by class, the key's rows and the note under the choice */
+  catColour = $state<CatColour>(savedCatColour());
+  catKey = $state.raw<KeyItem[][]>([]);
+  catNote = $state('');
 
   /** Resolves true when the scene is built, false when it cannot be. For the test surface. */
   ready: Promise<boolean>;
@@ -115,7 +132,7 @@ class GlobeState {
         const c = app.catalogue[index];
         if (c) this.pick = { index, name: c.name, satnum: c.satnum, x, y };
       },
-      onFollow: () => this.syncMode(), onSite: () => this.syncMode(), onPov: () => this.syncMode(),
+      onFollow: () => this.syncMode(), onSite: () => this.syncMode(), onPov: () => this.syncMode(), onClose: () => this.syncMode(),
       onActivity: () => this.wake()
     });
     if (!g) { this.status = 'unavailable'; this.settle(false); return; }
@@ -132,6 +149,7 @@ class GlobeState {
     o.setSurface(want, (st: Any) => this.surfaceStatus(st));
     this.syncMode();
     this.applyLayers();
+    if (this.catColour !== 'one') this.applyCatColour();
     this.wake();
     /* a test that asks for the globe wants the sky as well: ready is when the stars can be drawn */
     void g.skyReady.then(() => { this.settle(true); this.wake(); });
@@ -204,14 +222,22 @@ class GlobeState {
     if (m === 'sat') o.setFollow(true);
     else if (m === 'site') o.setSite(true);
     else if (m === 'pov') o.setPov(true);
+    else if (m === 'close') { o.setClose(true); this.closeup(); }
     else o.freeCam();
     this.syncMode();
   }
 
-  /** The camera has one mode with three flags; the scene keeps them exclusive, and the control says which. */
+  /** The camera has one mode with four flags; the scene keeps them exclusive, and the control says which. */
   syncMode(): void {
     const o = this.g?.orbit3d;
-    if (o) this.mode = o.pov ? 'pov' : o.site ? 'site' : o.follow ? 'sat' : 'free';
+    if (o) this.mode = o.close ? 'close' : o.pov ? 'pov' : o.site ? 'site' : o.follow ? 'sat' : 'free';
+  }
+
+  /* The close-up's chunk (L72): the craft, its pass and its card, fetched at the first press and kept; a failed fetch is tried again
+     at the next press (the browser keeps a failed import, so the promise is let go). */
+  private closeupLoad: Promise<void> | null = null;
+  private closeup(): void {
+    this.closeupLoad ??= import('../closeup/closeup').then(m => m.attach(this, app), () => { this.closeupLoad = null; });
   }
 
   setTrail(t: TrailKey): void { this.trail = t; this.applyTrail(); }
@@ -238,6 +264,7 @@ class GlobeState {
     const all = !only;
     if (all || only === 'footprint') o.showFov(L.footprint);
     if (all || only === 'earth') o.showEarth(L.earth);
+    if (all || only === 'site') o.showSite(L.site);
     if (all || only === 'catalogue') o.showCloud(L.catalogue);
     if (g.viz) {
       for (const k of ['frame', 'elements', 'constellations'] as const) if (all || only === k) g.viz.show(k, L[k]);
@@ -250,6 +277,26 @@ class GlobeState {
     this.surface = key;
     try { localStorage.setItem(SURFACE_KEY, key); } catch { /* private window: the choice holds for this visit */ }
     this.g?.orbit3d.setSurface(key, (st: Any) => this.surfaceStatus(st));
+  }
+
+  setCatColour(m: CatColour): void {
+    this.catColour = m;
+    try { if (m === 'one') localStorage.removeItem(CATCOLOUR_KEY); else localStorage.setItem(CATCOLOUR_KEY, m); } catch { /* private window: for this visit */ }
+    this.applyCatColour();
+  }
+
+  /* The colours are the lazy chunk's (catcolour.ts), which is handed the catalogue (L76). The latest choice wins over a slower earlier
+     one; a chunk or table that cannot be fetched leaves the one colour and says so, and the next choice asks again. */
+  private catSeq = 0;
+  private applyCatColour(): void {
+    const o = this.g?.orbit3d, m = this.catColour, seq = ++this.catSeq;
+    if (!o) return;
+    if (m === 'one') { o.setCloudTint(null); this.catKey = []; this.catNote = ''; return; }
+    import('./catcolour').then(c => c.tintFor(app.catalogue, m)).then(t => {
+      if (seq === this.catSeq) { o.setCloudTint(t.rgb, t.tags); this.catKey = t.key; this.catNote = t.note; }
+    }, () => {
+      if (seq === this.catSeq) { o.setCloudTint(null); this.catKey = []; this.catNote = CATCOL_FAILED; }
+    });
   }
 
   /* The page owns the wording; the scene owns the sequence (see Orbit3D.setSurface): loading, ready per rung, or failed. */

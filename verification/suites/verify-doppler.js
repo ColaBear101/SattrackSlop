@@ -148,10 +148,14 @@ const chk = (name, ok, detail) => {
   console.log('    mean  |difference| : ' + res.sweep.mean.toExponential(3) + ' km/s');
   console.log('    peak  |range rate| : ' + res.sweep.maxRR.toFixed(4) + ' km/s\n');
 
-  /* 1e-4 km/s = 10 cm/s. The floor is the propagator's 0.308 m position
-     quantisation over the 8 s stencil, not the formula being checked. */
+  /* 1.2e-4 km/s = 12 cm/s. The floor is the propagator's 0.308 m position
+     quantisation over the 8 s stencil, not the formula being checked: the 5-point
+     stencil weighs its samples 1, 8, 8, 1 over 12h, so its worst case is
+     18/12 * eps / h = 1.5 * 3.08e-4 / 4 = 1.16e-4 km/s. The limit was 1e-4, under
+     that bound, and a window that happened to hit it (1.00e-4 and 1.05e-4 on
+     2026-11-24) failed by the clock, not the code. */
   chk('the analytic range rate matches a numerical derivative of the range',
-      res.sweep.worst < 1e-4, 'worst = ' + res.sweep.worst.toExponential(2) + ' km/s');
+      res.sweep.worst < 1.2e-4, 'worst = ' + res.sweep.worst.toExponential(2) + ' km/s');
   /* The two methods share only the propagator, so agreement at this level says
      the frame handling is right, not merely self-consistent. */
   chk('...to far better than the observer term it depends on',
@@ -180,13 +184,16 @@ const chk = (name, ok, detail) => {
      and identical at culmination, which is not the Doppler being wrong: it is
      a pass cut in half by the clock. Asserting the approach-then-recede shape
      over it made this check fail depending on the time of day it ran.
-     A clipped pass is the one whose culmination sits on its own AOS. */
-  const whole = res.passes.filter(p => p.culRR !== p.aosRR);
+     A clipped pass is the one whose culmination sits on its own AOS. The window's
+     other end does the same to the last pass: still rising when the window closes,
+     its culmination sits on its own LOS, with the range rate negative at both, and
+     that failed this check whenever the run started a little after a pass's AOS. */
+  const whole = res.passes.filter(p => p.culRR !== p.aosRR && p.culRR !== p.losRR);
   const clipped = res.passes.length - whole.length;
   const signs = whole.every(p => p.aosRR < 0 && p.losRR > 0);
   chk('\n  every complete pass approaches then recedes', signs,
       'ṙ negative at AOS and positive at LOS on all ' + whole.length
-        + (clipped ? ' (' + clipped + ' clipped by the window edge, skipped)' : ''));
+        + (clipped ? ' (' + clipped + ' clipped by an edge of the window, skipped)' : ''));
   const culm = whole.every(p => Math.abs(p.culRR) < Math.abs(p.aosRR));
   chk('  range rate is smallest at culmination', culm,
       'the closing speed passes through zero near closest approach');

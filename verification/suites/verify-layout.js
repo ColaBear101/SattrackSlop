@@ -456,7 +456,24 @@ async function structureChecks(page, size) {
       m.rail.mode + ' ' + Math.round(m.rail.r.w) + ' x ' + Math.round(m.rail.r.h) + ' at ' + Math.round(m.rail.r.l) + ',' + Math.round(m.rail.r.t) + ', position ' + m.rail.pos + '; stage ' + Math.round(m.stage.l) + '..' + Math.round(m.stage.r) + ' x ' + Math.round(m.stage.t) + '..' + Math.round(m.stage.b));
   if (rm === 'side') {
     chk(5, size.id + ': ...a column has no peek (nothing to fold)', !m.peek, m.peek ? 'a peek is drawn' : 'none');
+    /* L78: the column folds away from the stage's row and back, the globe taking the width; the button says which */
+    const fold = () => page.evaluate(() => {
+      const b = document.querySelector('.railtoggle'), g = document.getElementById('globe').getBoundingClientRect(), r = b.getBoundingClientRect();
+      const z = document.querySelector('.rail-zone'), h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { shown: window.__L.shown(b), reach: !!h && (h === b || b.contains(h)), ex: b.getAttribute('aria-expanded'), label: b.getAttribute('aria-label'),
+        rail: window.__L.shown(z), gw: Math.round(g.width), sw: document.documentElement.scrollWidth };
+    });
+    const f0 = await fold();
+    await page.click('.railtoggle'); await page.waitForTimeout(300);
+    const f1 = await fold();
+    await page.click('.railtoggle'); await page.waitForTimeout(300);
+    const f2 = await fold();
+    chk(5, size.id + ': the answer column folds away from a button in the stage\'s row, the globe taking the width, and comes back (L78)',
+        f0.shown && f0.reach && f0.ex === 'true' && f0.rail && !f1.rail && f1.ex === 'false' && /Show/.test(f1.label) && f1.gw >= f0.gw + 300
+        && f1.sw <= size.w && f2.rail && f2.ex === 'true' && f2.gw === f0.gw, JSON.stringify([f0, f1, f2]));
   } else {
+    const t0 = await page.evaluate(() => { const b = document.querySelector('.railtoggle'); return !!b && window.__L.shown(b); });
+    chk(5, size.id + ': ...and there is no button to fold it away here, where it is not beside the stage (L78)', !t0, t0 ? 'shown' : 'none');
     // the peek: visible, its aria-expanded says whether the body is showing, and pressing it flips both, and again
     const t = [];
     const read = () => page.evaluate(() => { const p = document.querySelector('.rail .peek'), b = document.getElementById('answer-body'); return { ex: p.getAttribute('aria-expanded'), shown: b.checkVisibility(), peekShown: window.__L.shown(p) }; });
@@ -470,6 +487,39 @@ async function structureChecks(page, size) {
         t.map(x => 'expanded=' + x.ex + ' body ' + (x.shown ? 'shown' : 'hidden')).join(' -> ') + ', peek ' + (m.peek ? Math.round(m.peek.h) + ' px tall' : 'missing'));
     await page.evaluate(() => scrollTo(0, 0));
   }
+  // ---- the globe's view full screen (L78), where the browser can show an element so, and back
+  {
+    const fs = () => page.evaluate(() => {
+      const b = document.getElementById('fullscreen'), c = document.getElementById('globe').getBoundingClientRect();
+      return { enabled: document.fullscreenEnabled, btn: !!b && window.__L.shown(b), label: b ? b.textContent.trim() : null,
+        el: document.fullscreenElement ? document.fullscreenElement.className : null, cw: Math.round(c.width), ch: Math.round(c.height), iw: innerWidth, ih: innerHeight,
+        /* L85: the timeline bar goes with the view, along its foot, and comes back to its place after */
+        bar: (() => { const t = document.querySelector('.transport'), r = t.getBoundingClientRect(), f = document.fullscreenElement;
+          return { inFull: !!f && f.contains(t), inZone: !!t.closest('.transport-zone'), foot: Math.round(innerHeight - r.bottom), w: Math.round(r.width), folded: t.classList.contains('folded') }; })() };
+    });
+    const s0 = await fs();
+    if (!s0.enabled) chk(5, size.id + ': no full-screen button where the browser cannot show an element full screen', !s0.btn, JSON.stringify(s0));
+    else {
+      /* each press waited for: the browser takes its own time to enter and to leave (600 ms was not always enough) */
+      await page.click('#fullscreen');
+      await page.waitForFunction(() => !!document.fullscreenElement && /Exit/.test(document.getElementById('fullscreen').textContent), null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      const s1 = await fs();
+      await page.click('.transport .fold'); await page.waitForTimeout(300);
+      const sf = await fs();
+      await page.click('.transport .fold'); await page.waitForTimeout(300);
+      await page.click('#fullscreen');
+      await page.waitForFunction(() => !document.fullscreenElement && !/Exit/.test(document.getElementById('fullscreen').textContent), null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      const s2 = await fs();
+      chk(5, size.id + ': "Full screen" puts the globe\'s view over the whole screen and "Exit full screen" brings it back',
+          s0.btn && s0.label === 'Full screen' && /viewport/.test(s1.el || '') && s1.label === 'Exit full screen' && s1.cw === s1.iw && s1.ch === s1.ih
+          && s2.el === null && s2.label === 'Full screen' && s2.cw === s0.cw && s2.ch === s0.ch, JSON.stringify([s0, s1, s2]));
+      chk(5, size.id + ': in full screen the timeline bar is along the foot of the view, the width of the screen; its button folds it to that button and back; after, it is in its place again (L85)',
+          s1.bar.inFull && s1.bar.foot === 0 && s1.bar.w === s1.iw && !s1.bar.folded && sf.bar.inFull && sf.bar.folded && sf.bar.w < 60
+          && !s2.bar.inFull && s2.bar.inZone && !s2.bar.folded, JSON.stringify([s1.bar, sf.bar, s2.bar]));
+    }
+  }
   // ---- the stage's pictures
   const globeOk = m.globe && m.globe.w >= MIN_STAGE.w && m.globe.h >= MIN_STAGE.h;
   chk(5, size.id + ': the globe is at least ' + MIN_STAGE.w + ' x ' + MIN_STAGE.h + ' px where shown', !!globeOk, m.globe ? Math.round(m.globe.w) + ' x ' + Math.round(m.globe.h) : 'the canvas is not shown');
@@ -481,6 +531,46 @@ async function structureChecks(page, size) {
   await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Globe').click());
   await page.waitForTimeout(250);
   chk(5, size.id + ': ...and so is the map', mapOk, (Math.round(mp.w * 10) / 10) + ' x ' + (Math.round(mp.h * 10) / 10) + (mp.shown ? '' : ' (not shown)') + (mapShot ? ' [' + mapShot + ']' : ''));
+  // ---- the map's own controls (L86): its Layers panel sets the globe's switches, and its figure goes full screen with the timeline bar
+  {
+    await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Map').click());
+    await page.waitForSelector('#maplayers', { state: 'visible', timeout: 5000 }).catch(() => {});
+    const sw = () => page.evaluate(() => ({ map: document.getElementById('mapsite')?.checked, globe: document.getElementById('o3site')?.checked }));
+    await page.click('#maplayers'); await page.waitForTimeout(150);      // the panel's switches are in the page while it is open
+    const w0 = await sw();
+    await page.click('#mapsite'); await page.waitForTimeout(100);
+    const w1 = await sw();
+    await page.click('#mapsite'); await page.waitForTimeout(100);
+    const w2 = await sw();
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    chk(5, size.id + ': the map\'s Layers panel holds the globe\'s switches: "Observer pin & circle" pressed there is pressed in the globe\'s panel, and back (L86)',
+        w0.map === w0.globe && w1.map === !w0.map && w1.globe === w1.map && w2.map === w0.map && w2.globe === w0.globe, JSON.stringify([w0, w1, w2]));
+    const ms = () => page.evaluate(() => {
+      const b = document.getElementById('mapfull'), m = document.getElementById('map').getBoundingClientRect(), f = document.fullscreenElement, t = document.querySelector('.transport');
+      const tr = t.getBoundingClientRect(), k = document.getElementById('mapclock');
+      return { enabled: document.fullscreenEnabled, btn: !!b && window.__L.shown(b), pressed: b ? b.getAttribute('aria-pressed') : null, el: f ? f.className : null,
+        mw: Math.round(m.width), mh: Math.round(m.height), mr: Math.round(m.right), mb: Math.round(m.bottom), iw: innerWidth, ih: innerHeight,
+        clock: !!k && window.__L.shown(k), bar: { inFull: !!f && f.contains(t), inZone: !!t.closest('.transport-zone'), top: Math.round(tr.top), foot: Math.round(innerHeight - tr.bottom), w: Math.round(tr.width) } };
+    });
+    const m0 = await ms();
+    if (!m0.enabled) chk(5, size.id + ': no full-screen button under the map where the browser cannot show an element full screen', !m0.btn, JSON.stringify(m0));
+    else {
+      await page.click('#mapfull');
+      await page.waitForFunction(() => !!document.fullscreenElement && document.getElementById('mapfull').getAttribute('aria-pressed') === 'true', null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const m1 = await ms();
+      await page.click('#mapfull');
+      await page.waitForFunction(() => !document.fullscreenElement, null, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const m2 = await ms();
+      chk(5, size.id + ': "Full screen" under the map puts the map, its controls and its key over the whole screen, the map whole above the timeline bar along its foot and its clock over it, and brings it back at its size (L86)',
+          m0.btn && /mapfig/.test(m1.el || '') && m1.pressed === 'true' && m1.mw >= Math.min(m0.mw, m1.iw) * 0.9 && m1.mr <= m1.iw && m1.mb <= m1.bar.top && m1.clock
+          && m1.bar.inFull && m1.bar.foot === 0 && m1.bar.w === m1.iw && m2.el === null && m2.pressed === 'false' && !m2.clock && !m2.bar.inFull && m2.bar.inZone
+          && m2.mw === m0.mw && m2.mh === m0.mh, JSON.stringify([m0, m1, m2]));
+    }
+    await page.evaluate(() => [...document.querySelectorAll('[role=tab]')].find(x => x.textContent.trim() === 'Globe').click());
+    await page.waitForTimeout(250);
+  }
   // ---- the AR opener: on a touch screen only
   if (size.touch) {
     await waitFor(page, () => { const b = document.getElementById('arbtn'); return !!b && window.__L.shown(b); }, undefined, 12000).catch(() => {});

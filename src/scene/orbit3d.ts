@@ -16,8 +16,19 @@
  *   2. updateCloud(): the 2,158 SGP4 propagations are made when the clock has moved a second from where the dots were last
  *      placed, not on every pass (the cull and the colours, which follow the camera, still run each pass);
  *   3. tick(): a `pace` (setPace) the host sets, the least time between drawn frames. 0, the default, draws every animation
- *      frame as before.
- * Nothing else is touched: the geometry, the shaders, the palette and every figure are the old file's, which is what the pixel and
+ *      frame as before;
+ *   4. the realistic look (CHANGES-FROM-LEGACY.md, L71): `look`, the lazy module scene/realism.ts, put on by setSurface for the
+ *      surface that says `real`, handed each rung's maps by applyPhoto and told the camera by tick; null otherwise;
+ *   5. the close-up (L72): a fifth camera mode, `close`, which is POV's camera with its yaw and pitch made an orbit round the
+ *      craft (aimPov takes the angles; the drag, the wheel and the pinch branch for it), hides what POV hides plus the two lines
+ *      that would start at the lens, and has `craft` (scene/closeup-pass.ts) draw the spacecraft after the globe;
+ *   6. the catalogue's colours by class (L76): `cloudTint`, one linear RGB per GT.CAT entry, and `cloudTags`, what follows each
+ *      one's name under the pointer, handed in by setCloudTint (components/stage/catcolour.ts makes them). updateCloud writes the
+ *      tint over the one colour of every dot but the selected one's, dimmed and lit as before, and the hover label adds the tag.
+ *      Both are null by default, and then nothing is written that the old file did not write.
+ *   7. the observer's pin and its access circle switched off (L79): `siteOn`, true by default, set by showSite; the pin's group and
+ *      the dashed circle are hidden while it is false, and setSat no longer shows the circle again over the switch.
+ * While none of them is on, nothing else is touched: the geometry, the shaders, the palette and every figure are the old file's, which is what the pixel and
  * scene-inventory comparison against the old page (verification/gate/ab3d.js) holds to.
  */
 export function makeOrbit3D(global) {
@@ -43,6 +54,7 @@ let recs = [], cloudPos, cloudColor, cloudValid = [];
 /* The dots' last propagated positions, and the instant they are for. See updateCloud. */
 let cloudRaw = null, cloudMs = NaN;
 const CLOUD_STALE_MS = 1000;
+let cloudTint = null, cloudTags = null;          // CHANGED (L76): the colours by class (setCloudTint); null, the one colour
 let trackPts = [], trackMs = [], trailSpan = null, trailLead = 8*60000;
 let curPeriodS = 5400, ringMs = null, ringWall = 0;
 let curEntry = null, curRec = null, follow = true, siteLock = false, pov = false;
@@ -59,10 +71,18 @@ let cam0 = { lon: 100, lat: 18, dist: 4.2 };     // spherical camera about the o
    mode restores the free camera exactly where it was. */
 let pov0 = { yaw: 0, pitch: 0, fov: 42 };
 const BASE_FOV = 42;                             // what the other three modes use
+/* CHANGED (CHANGES-FROM-LEGACY.md, L72): the close-up, a fifth mode. It is POV's camera - the globe is drawn from the spacecraft,
+   which tens of metres away is the same picture - with its yaw and pitch turned into an orbit round the craft, and the craft itself
+   drawn after the globe by the lazy module scene/closeup-pass.ts (`craft`), `dist` metres in front of the lens. dist, min and max are
+   that module's to set from the model's size; 0 is "not yet". */
+let close = false;
+const close0 = { yaw: 35, pitch: -18, dist: 0, min: 0.5, max: 5000 };
+let onClose = null, craft = null;
 let dragging = false, lastPt = null, pinch0 = 0, travel = 0, downPt = null;
 let nearCull = [];                               // points too close to the camera to be useful
 let onPick = null, onFollow = null, onSite = null, onPov = null, started = false, fovOn = true;
 let earthOn = true;
+let siteOn = true;                               // CHANGED (L79): the observer's pin and access circle, switched
 /* Covered by the page's AR view: nothing here is seen, so nothing is drawn.
    This stops the drawing, not the clock - the clock is the page's, so the
    first frame back is built from GT.now() like any other. */
@@ -221,6 +241,9 @@ const DAYNIGHT_FRAG = [
 
 let vectorMat = null, photoMat = null, surfaceKey = 'vector';
 let dayTex = null, nightTex = null, surfaceSeq = 0;
+/* CHANGED (CHANGES-FROM-LEGACY.md, L71): the realistic look, the lazy module scene/realism.ts, asked for by a surface that says
+   `real` (globetex.ts) and null under every other one; while it is null nothing below differs from the old file. */
+let look = null;
 
 function photoMaterial(){
   if(photoMat) return photoMat;
@@ -266,7 +289,7 @@ function applyPhoto(stage){
     mat.uniforms.nightMap.value = d;
     mat.uniforms.useNight.value = 0;
   }
-  if(earth) earth.material = mat;
+  if(earth) earth.material = look ? look.surface(mat) : mat;   // CHANGED (L71): the realistic look takes every rung's maps
 }
 
 /* setSurface(key, onStatus)
@@ -286,6 +309,16 @@ function setSurface(key, onStatus){
   };
   surfaceKey = key;
   texW = texH = 0; texBusy = false; texNeedWas = -1; texDead = 0; texMeta = null; texSay = say;
+  /* CHANGED (L71): the realistic look comes and goes with the surface that asks for it. Its chunk is fetched the first time; until
+     it lands the surface is the plain Blue Marble and city lights, and if it never does the note says so. */
+  const real = global.GlobeTex ? global.GlobeTex.modes().filter(x => x.key === key && x.real)[0] : null;
+  if(look && !real){ look.remove(); look = null; }
+  if(real && !look && global.loadLook) global.loadLook().then(mod => {
+    if(seq !== surfaceSeq || look) return;
+    look = mod.makeLook({ renderer, earth, earthGroup, atmo, photoMat: photoMaterial(), world: GT.WORLD, lean: lean(), wake: global.wake });
+    if(earth && earth.material === photoMat) earth.material = look.surface(photoMat);
+    if(global.wake) global.wake();
+  }).catch(() => { if(seq === surfaceSeq) say('ready', texDetail('') + ' — ' + global.lookFailed + '.', texMeta); });
   if(key === 'vector' || !global.GlobeTex){
     texSizes = [];
     if(earth && vectorMat) earth.material = vectorMat;
@@ -362,7 +395,7 @@ function lean(){
   return !!c && (c.saveData === true || /2g|3g/.test(c.effectiveType || ''));
 }
 function texNeed(){
-  if(pov) return Infinity;
+  if(pov || close) return Infinity;               // CHANGED (L72): the close-up's lens is the POV camera's place
   const cv = renderer && renderer.domElement;
   /* The layout's height times the pixel ratio rather than canvas.height: the
      buffer is sized in tick(), and the page asks for its surface before the
@@ -655,6 +688,7 @@ function updateCloud(date){
     }
     nearCull[i] = culled;
     cloudColor[i*3] = c.r*dim; cloudColor[i*3+1] = c.g*dim; cloudColor[i*3+2] = c.b*dim;
+    if(cloudTint && c === base){ cloudColor[i*3] = cloudTint[i*3]*dim; cloudColor[i*3+1] = cloudTint[i*3+1]*dim; cloudColor[i*3+2] = cloudTint[i*3+2]*dim; }   // CHANGED (L76)
   }
   cloudPts.geometry.attributes.position.needsUpdate = true;
   cloudPts.geometry.attributes.color.needsUpdate = true;
@@ -674,7 +708,7 @@ function setSat(entry, elements, win){
     return;
   }
   if(orbitLine) orbitLine.visible = true;
-  if(footRing) footRing.visible = true;
+  if(footRing) footRing.visible = siteOn;       // CHANGED (L79): the circle keeps its switch, as the trail does
   if(trackLine) trackLine.visible = trackOn;   // ...but the trail keeps its switch
   /* periodShown when the page supplies one: for a near-equatorial GEO object
      the node-to-node period can be 9 % short, which left a gap of a tenth of
@@ -758,6 +792,7 @@ function setFollowState(v){
   follow = v;
   if(v && siteLock){ siteLock = false; if(onSite) onSite(false); }
   if(v && pov){ pov = false; if(onPov) onPov(false); }
+  if(v && close) setCloseState(false);           // CHANGED (L72)
   if(onFollow) onFollow(v);                      // the button must track the camera
 }
 // Holding a ground site needs a mode, not a one-shot aim: the scene is inertial,
@@ -769,6 +804,7 @@ function setSiteState(v){
   if(v){
     if(follow){ follow = false; if(onFollow) onFollow(false); }
     if(pov){ pov = false; if(onPov) onPov(false); }
+    if(close) setCloseState(false);              // CHANGED (L72)
     cam0.lat = GT.OBS.lat + 6;
     cam0.dist = Math.min(cam0.dist, 4.2);
   }
@@ -786,9 +822,24 @@ function setPovState(v){
   if(v){
     if(follow){ follow = false; if(onFollow) onFollow(false); }
     if(siteLock){ siteLock = false; if(onSite) onSite(false); }
+    if(close) setCloseState(false);              // CHANGED (L72)
     pov0.yaw = 0; pov0.pitch = 0;                // re-entering re-centres on the track ahead
   }
   if(onPov) onPov(v);
+}
+/* CHANGED (L72): the close-up's switch, exclusive with the other three like POV's, and like it hiding the access ring, which from the
+   spacecraft is only a line under the camera. Entering puts the camera behind and above the craft, a little to one side. */
+function setCloseState(v){
+  if(close === v) return;
+  close = v;
+  if(fovRing) fovRing.visible = fovOn && !pov && !close;
+  if(v){
+    if(follow){ follow = false; if(onFollow) onFollow(false); }
+    if(siteLock){ siteLock = false; if(onSite) onSite(false); }
+    if(pov){ pov = false; if(onPov) onPov(false); }
+    close0.yaw = 35; close0.pitch = -18;
+  }
+  if(onClose) onClose(v);
 }
 
 /* Ground sample distance at the boresight: how much ground one rendered pixel
@@ -1048,7 +1099,8 @@ function drawMini(gd, gsd){
    Rebuilt from the same basis every frame rather than accumulated onto the
    previous orientation: a long drag would otherwise walk the roll off true, and
    the error would never come back. */
-function aimPov(satPos, satVel){
+function aimPov(satPos, satVel, o){
+  o = o || pov0;                                 // CHANGED (L72): the close-up aims with its own yaw and pitch, at the base lens
   const zenith = satPos.clone().normalize();
   let ahead = (satVel && satVel.lengthSq() > 1e-12)
     ? satVel.clone() : new THREE.Vector3(0, 1, 0);
@@ -1065,9 +1117,10 @@ function aimPov(satPos, satVel){
   cam.position.copy(satPos);
   cam.quaternion.setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(right, zenith, back));
-  cam.rotateY(pov0.yaw*RAD);
-  cam.rotateX(pov0.pitch*RAD);
-  if(cam.fov !== pov0.fov){ cam.fov = pov0.fov; cam.updateProjectionMatrix(); }
+  cam.rotateY(o.yaw*RAD);                        // CHANGED (L72): o, which is pov0 but in the close-up
+  cam.rotateX(o.pitch*RAD);
+  const lens = o === pov0 ? pov0.fov : BASE_FOV; // CHANGED (L72)
+  if(cam.fov !== lens){ cam.fov = lens; cam.updateProjectionMatrix(); }
 }
 
 // One revolution centred on the given instant, in inertial space.
@@ -1148,7 +1201,7 @@ function updateFov(pv, gmst){
   }
   fovRing.geometry.attributes.position.needsUpdate = true;
   fovRing.geometry.computeBoundingSphere();
-  fovRing.visible = fovOn && !pov;     // from the spacecraft the ring is just a line under the camera
+  fovRing.visible = fovOn && !pov && !close;     // from the spacecraft the ring is just a line under the camera (CHANGED, L72: and beside it)
 }
 
 /* ---- input ---------------------------------------------------------------- */
@@ -1168,7 +1221,9 @@ function bindInput(canvas){
     if(e.touches && e.touches.length === 2 && pinch0){
       const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                            e.touches[0].clientY-e.touches[1].clientY);
-      if(pov){
+      if(close){                                 // CHANGED (L72): the close-up's pinch is its range
+        close0.dist = Math.max(close0.min, Math.min(close0.max, close0.dist * pinch0/d));
+      } else if(pov){
         pov0.fov = Math.max(8, Math.min(90, pov0.fov * pinch0/d));
       } else {
         setFollowState(false); setSiteState(false);
@@ -1181,13 +1236,14 @@ function bindInput(canvas){
       /* A drag drops the other camera modes, because moving the camera IS
          leaving them. In POV it is not: looking around is what the mode is for,
          so the drag turns the head and stays aboard. */
-      if(pov){
+      if(pov || close){
         /* Pitch stops just short of +-90: straight down and straight up are
            gimbal poles, where yaw and roll collapse onto each other and the
            view tumbles. 89 reaches nadir for all practical purposes without
            ever standing on the singularity. */
-        pov0.yaw -= (p.x-lastPt.x)*0.30;
-        pov0.pitch = Math.max(-89, Math.min(89, pov0.pitch - (p.y-lastPt.y)*0.30));
+        const o = close ? close0 : pov0;          // CHANGED (L72): in the close-up the same drag orbits the craft
+        o.yaw -= (p.x-lastPt.x)*0.30;
+        o.pitch = Math.max(-89, Math.min(89, o.pitch - (p.y-lastPt.y)*0.30));
       } else {
         setFollowState(false); setSiteState(false);
         cam0.lon -= (p.x-lastPt.x)*0.32;
@@ -1213,7 +1269,8 @@ function bindInput(canvas){
     /* There is no range to change from inside the spacecraft, so in POV the
        wheel is a lens instead: 8 deg is a long telephoto on the limb, 90 deg
        takes in the whole horizon. */
-    if(pov) pov0.fov = Math.max(8, Math.min(90, pov0.fov * (1 + Math.sign(e.deltaY)*0.09)));
+    if(close) close0.dist = Math.max(close0.min, Math.min(close0.max, close0.dist * (1 + Math.sign(e.deltaY)*0.12)));   // CHANGED (L72)
+    else if(pov) pov0.fov = Math.max(8, Math.min(90, pov0.fov * (1 + Math.sign(e.deltaY)*0.09)));
     else    cam0.dist = Math.max(1.25, Math.min(28, cam0.dist * (1 + Math.sign(e.deltaY)*0.12)));
     e.preventDefault();
   }, {passive:false});
@@ -1308,14 +1365,14 @@ function tick(ts){
       satDot.position.copy(satPos);
       satHalo.position.copy(satPos);
       // in POV the camera IS the spacecraft, so the halo has nothing to turn to
-      if(!pov) satHalo.lookAt(cam.position);
+      if(!pov && !close) satHalo.lookAt(cam.position);   // CHANGED (L72): nor in the close-up
       const look = BODY.lookAngles(GT.OBS, BODY.toFixed(pv.position, gmst));
       el = look.elevation*DEG;
     }
   }
   /* The marker sits exactly where the POV camera does, so drawing it fills the
      frame with the inside of a sprite. */
-  satDot.visible = satHalo.visible = !!satPos && !pov;
+  satDot.visible = satHalo.visible = !!satPos && !pov && !close;   // CHANGED (L72): the close-up draws the craft itself
 
   /* Altitude is the number people actually want, so it is drawn whenever there
      is a spacecraft - not only when the planet is hidden. R(+) still is, because
@@ -1374,7 +1431,8 @@ function tick(ts){
 
   // line of sight, drawn only while the pass is actually up
   const seen = satPos && el >= GT.MASK;
-  contactLine.visible = !!seen;
+  contactLine.visible = !!seen && !close;         // CHANGED (L72): from beside the craft both lines start at the lens
+  if(orbitLine && curRec) orbitLine.visible = !close;
   /* ...and the marker turns orange with it, the flat map's rule exactly: cyan
      is the spacecraft, orange is the spacecraft in view from the site. */
   const mc = seen ? markHot : markCold;
@@ -1390,8 +1448,8 @@ function tick(ts){
   }
 
   // camera
-  if(pov && satPos){
-    aimPov(satPos, satVel);
+  if((pov || close) && satPos){                   // CHANGED (L72)
+    aimPov(satPos, satVel, close ? close0 : pov0);
   } else {
     if(siteLock){
       cam0.lon = GT.OBS.lon + gmst*DEG;           // ride the Earth's rotation
@@ -1410,7 +1468,7 @@ function tick(ts){
   /* The atmosphere is a back-faced additive shell at 1.022: from outside it
      draws a rim, from inside it washes the whole frame. A POV camera on
      anything below about 140 km altitude is inside it. */
-  if(atmo) atmo.visible = earthOn && !(pov && cam.position.length() < 1.03);
+  if(atmo) atmo.visible = earthOn && !((pov || close) && cam.position.length() < 1.03);   // CHANGED (L72)
 
   // world-sized markers balloon as you zoom in; scale them with distance so they
   // stay roughly constant on screen
@@ -1418,7 +1476,7 @@ function tick(ts){
      POV, where the camera is at the spacecraft. Left as it was, the site pin and
      the 2158-point cloud would render at whatever size the free camera happened
      to be the last time it was used. */
-  const camR = pov ? cam.position.length() : cam0.dist;
+  const camR = (pov || close) ? cam.position.length() : cam0.dist;   // CHANGED (L72)
   const mk = Math.max(0.30, Math.min(2.4, camR/4.2));
   satDot.scale.setScalar(mk); satHalo.scale.setScalar(mk);
   if(bkkDot) bkkDot.scale.setScalar(mk);
@@ -1467,7 +1525,10 @@ function tick(ts){
   paintLabels(satPos, el);
   fadeHeads();
   sharpen(ts);                                    // after the camera has moved for this frame
+  if(look) look.frame(cam);                       // CHANGED (L71): the realistic look's Sun and camera, before the frame is drawn
   renderer.render(scene, cam);
+  /* CHANGED (L72): the close-up's craft, drawn over the globe in a pass of its own, in metres (scene/closeup-pass.ts) */
+  if(close && craft) craft.render(renderer, cam, satPos, satVel, sunVec(simTime), simTime, close0);
 }
 
 /* An arrowhead the camera has closed on stops being a pointer and becomes a
@@ -1536,7 +1597,7 @@ function paintLabels(satPos, el){
      degenerate - it lands on the near plane and skitters around the frame with
      every sub-pixel of camera motion. There is also nothing to label: you are
      inside the thing. Hide it. */
-  place(labels.name, pov ? null : satPos, true);
+  place(labels.name, (pov || close) ? null : satPos, true);   // CHANGED (L72)
   place(labels.earth, labels.earth ? labels.earth.__vec : null, false);
   place(labels.alt, labels.alt ? labels.alt.__vec : null, true);
   /* R(+) and the altitude both lie ALONG the radius vector, and the default
@@ -1556,6 +1617,7 @@ function paintLabels(satPos, el){
   if(labels.hover){
     if(hoverIdx >= 0){
       labels.hover.textContent = GT.CAT[hoverIdx].name;
+      if(cloudTags) labels.hover.textContent += cloudTags[hoverIdx];   // CHANGED (L76): and its class, while the dots are coloured by one
       place(labels.hover, new THREE.Vector3(cloudPos[hoverIdx*3], cloudPos[hoverIdx*3+1], cloudPos[hoverIdx*3+2]), true);
     } else labels.hover.style.display = 'none';
   }
@@ -1656,6 +1718,7 @@ const Orbit3D = {
     labels = opts.labels || {};
     onPick = opts.onPick; onFollow = opts.onFollow; onSite = opts.onSite;
     onPov = opts.onPov;
+    onClose = opts.onClose;                       // CHANGED (L72)
     started = true;
     requestAnimationFrame(tick);
     return true;
@@ -1672,7 +1735,7 @@ const Orbit3D = {
   setPlaying(p){ playing = p; },
   setFollow(f){ setFollowState(!!f); },
   get follow(){ return follow; },
-  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn && !pov; },
+  showFov(v){ fovOn = !!v; if(fovRing) fovRing.visible = fovOn && !pov && !close; },   // CHANGED (L72)
   /* Hiding the planet is how you actually look at an orbit: the geometry stops
      being occluded by the thing it goes around. */
   /* Exposed alongside scene and camera so a check can force a frame and read
@@ -1700,12 +1763,22 @@ const Orbit3D = {
 
   },
   get earth(){ return earthOn; },
+  /* CHANGED (L79): the observer's pin and its 5-degree access circle, shown or hidden together */
+  showSite(v){ siteOn = !!v; if(bkkPin) bkkPin.visible = siteOn; if(footRing && curRec) footRing.visible = siteOn; },
+  get siteShown(){ return siteOn; },           // CHANGED (L79): `site` is the site camera's, below
   get fov(){ return fovOn; },
   showCloud(v){
     if(!cloudPts) return;
     cloudPts.visible = v;
     if(!v){ hoverIdx = -1; if(labels.hover) labels.hover.style.display = 'none'; }
   },
+  /* CHANGED (L76): the catalogue's colours by class: one linear RGB per GT.CAT entry and the words that follow each one's name under
+     the pointer, or null for the one colour. updateCloud takes them within three frames; anything not the cloud's length is null. */
+  setCloudTint(rgb, tags){
+    cloudTint = rgb && rgb.length === recs.length*3 ? rgb : null;
+    cloudTags = cloudTint && tags && tags.length === recs.length ? tags : null;
+  },
+  get cloudTint(){ return cloudTint; },        // CHANGED (L76)
   showTrack(v){ trackOn = !!v; if(trackLine) trackLine.visible = trackOn; },
   get track(){ return trackOn; },
   // the scene is inertial, so a fixed camera longitude is a right ascension and
@@ -1727,7 +1800,11 @@ const Orbit3D = {
   // the view FROM the spacecraft, rather than of it
   setPov(v){ setPovState(!!v); },
   get pov(){ return pov; },
-  freeCam(){ setFollowState(false); setSiteState(false); setPovState(false); },
+  /* CHANGED (L72): the close-up - the spacecraft itself, from beside it - and the module that draws the craft */
+  setClose(v){ setCloseState(!!v); },
+  get close(){ return close; },
+  setCraft(c){ craft = c || null; },
+  freeCam(){ setFollowState(false); setSiteState(false); setPovState(false); setCloseState(false); },   // CHANGED (L72): and the close-up
   // stop drawing while something covers the globe; the camera mode is kept
   suspend(v){ suspended = !!v; },
   get suspended(){ return suspended; },

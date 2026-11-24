@@ -18,7 +18,8 @@ It started as a coursework assignment: read a Two-Line Element set, report the o
 
 - **Search 2,158 spacecraft** by name (its words in any order), NORAD number, or another name it goes by (AO-7, SO-50, RS-44), and see the answer straight away: how many minutes it is above 5° from your place in the next 24 hours, when the next pass starts, and the passes one by one, the selected one with its sky plot. Star the ones you follow, and they head the list when you open the search.
 - **Read the passes by your own day.** They come under each date at your place, with that day's sunrise, sunset and hours of darkness; the passes already flown turn grey, and while the selected pass is flown, its sky plot shows where the spacecraft is on it. *Filter* can keep only the passes that peak high enough, that the naked eye can see, or that rise in the hours you choose.
-- **Watch it move.** A 3D globe and a flat map, a clock you can run up to 3,600× or scrub, trails, the footprint on the ground, and a camera that can ride on the satellite or look from your site.
+- **Watch it move.** A 3D globe and a flat map, a clock you can run up to 3,600× or scrub, trails, the footprint on the ground, and a camera that can ride on the satellite or look from your site. *Layers → Catalogue* colours the catalogue's dots by orbit, by type or by purpose. *Full screen*, beside Layers, puts the globe over the whole screen, and on a wide screen the arrow at the stage's top right folds the answer panel away so the globe takes the width.
+- **See the real Earth, and the spacecraft itself.** *Layers → Realistic: clouds & atmosphere* draws the globe the way a camera in orbit would see it: NASA's Blue Marble, down to half a kilometre when you come close, NASA's clouds and their shadows, a blue scattering sky, red sunsets along the terminator, the Sun's glint off the sea, mountains in relief and the Black Marble's city lights at night, and behind it the Milky Way, the stars in their colours, the Sun's glare and the Moon in its phase. The *Close-up* camera puts you a few metres from the spacecraft, lit by the real Sun (it goes red, then dark, as the spacecraft enters the Earth's shadow), with a 3D model of KNACKSAT-2 or the ISS, flying as it does or as you set it (where it points, and how fast it spins); for any other spacecraft you can give it a model of your own (.glb), which stays in your browser.
 - **Set your own place.** Bangkok is the default; search for a town, use your location, type coordinates, or type a Maidenhead grid square such as OK03gs, which the page reads itself and sends nowhere. The form names your site's own square too. Times are shown in UTC and in the observer's local time (exact for a town or your device's location; for typed coordinates or a grid square, the nearest hour of solar time unless you enter an offset).
 - **Take it with you.** Download the passes as a spreadsheet (CSV) or add them to your calendar, every pass at once or the selected one alone (on a phone, offered to the share sheet); the address carries the spacecraft, the window length, the place and the tab, so a link opens what you were looking at.
 - **Design your own orbit.** *Plan an orbit* lets you type altitude, inclination and the rest, and *the Professor* explains in plain words what that orbit does (sun-synchronous or not, how long it survives, when it sees the Sun). Your orbits stay in your browser.
@@ -66,7 +67,7 @@ The page takes a satellite's Two-Line Element set, works out its orbit, and runs
 
 ## Can you trust the numbers?
 
-This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 29 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
+This is a rebuild of the project's original single-file page, and the numbers did not change. A regression gate (`npm run gate`) rebuilds the production bundle and compares **67,488 computed values** (38 spacecraft, from Bangkok, over 24 and 72 hours) with a baseline taken from the original page, exactly, with `===`; it must print `BIT-IDENTICAL`. Around it sit 33 more stages of checks (`npm run test:all`): an independent second implementation of the orbit maths, comparisons of the 3D scene with the original (identical in all 16 test views), the planner and Professor, accessibility rules, and layout at twelve screen sizes. The checks drive a real browser, so run `npx playwright install chromium` once first. The old page is kept in git at the tag [`legacy-earth-console`](https://github.com/ColaBear101/SattrackSlop/tree/legacy-earth-console).
 
 ## Data and privacy
 
@@ -78,10 +79,11 @@ The console loads nothing from anyone else: its fonts, its maths library, the Bl
 | you ask for a remaining-life estimate | the cache API if there is one, otherwise CelesTrak | the object's history of element sets |
 | you type a place name | [Open-Meteo](https://open-meteo.com) | finding its coordinates |
 | you pick *Yesterday's clouds* | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | yesterday's satellite picture |
+| you come close to the Earth on the *Realistic* surface | [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | the Blue Marble at 500 m for the ground in view (never on a slow connection or with Save-Data) |
 
 A Maidenhead grid square (such as OK03gs) typed where a place name goes is resolved on the page, and nobody is asked. Text with a grid square's shape is never sent to the place search unasked, even when the page does not read it (a half-typed OK03g, a ten-character OK03gs01ab) or cannot load the code that reads one.
 
-What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab and globe surface, the AR view's settings, the pass list's filter, the spacecraft you watch, the orbits you designed, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
+What the page keeps, it keeps in your browser and nowhere else: the site you saved and your last few places, your theme, tab, globe surface and the catalogue's colouring, the AR view's settings, the pass list's filter, the spacecraft you watch, the orbits you designed, the 3D models you gave the close-up and how you set its models to fly, and the element sets and decay histories it fetched (each is used for a few hours, and kept until it is fetched again or forgotten). A model you add is never uploaded: it is a file in your browser's IndexedDB, the one thing the page keeps outside `localStorage`, because a model is too big for it. *Forget what this page stored*, at the foot of the page, removes all of it: the first press says what will go, the second removes it and reloads the page.
 
 The camera, motion sensors and your location are used only when you tap the button that needs them, and the page sends none of them anywhere. The camera's picture has one way out, and it is yours to use: *Snap*, in the AR and radar views, draws what the screen shows (the camera's picture, where there is one, with the sky and the radar) into one image, with a caption that carries the place's name and coordinates and the time, and hands it to your phone's share sheet or downloads it. The page sends that image nowhere; where it goes from the share sheet is your choice.
 
@@ -91,7 +93,7 @@ The camera, motion sensors and your location are used only when you tap the butt
 |---|---|
 | `src/` | the console: `lib/` the maths and the sentences, `state/` the stores, `components/` the screens, `scene/` the 3D globe |
 | `server/`, `shared/` | the optional cache API |
-| `data/` | the catalogue, the coastlines, the radio table, the magnetic model |
+| `data/` | the catalogue, what CelesTrak says each of its objects is, the coastlines, the radio table, the magnetic model |
 | `public/` | the two Moon pages, as they always were |
 | `verification/`, `tests/` | the checks |
 | [`CHANGES-FROM-LEGACY.md`](CHANGES-FROM-LEGACY.md) | every difference from the original page, with its reason |
@@ -164,7 +166,9 @@ pages. What they fetch, and what happens without it:
   otherwise from CelesTrak's `graph-orbit-data.php`; a place-name search from Open-Meteo's
   geocoder (a Maidenhead grid square typed into the same box is read on the page and asks
   nobody); and yesterday's VIIRS true colour from NASA GIBS, if *Yesterday's clouds* is picked
-  (the drawn coastlines otherwise). The default globe asks nobody for anything: the Blue Marble
+  (the drawn coastlines otherwise), and its Blue Marble at 500 m for the ground in view when you
+  come close on the *Realistic* surface (never on a slow connection or with Save-Data). The
+  default globe asks nobody for anything: the Blue Marble
   and the city lights (`citylights-2048.jpg`, the VIIRS 2012 night-lights mosaic, saved once from
   GIBS on 2026-10-08) ship with the page. On a phone or tablet, the AR view asks the device, not a
   server, for its rear camera, its motion sensors and — if *Use my location* is pressed — its
@@ -704,13 +708,14 @@ Run it yourself, on the rebuilt page: `npm run build:shims` once, then
 
 #### The view from the spacecraft
 
-The camera control has four positions — Free, Satellite, Bangkok, POV — but only two kinds of
-camera. The first three are the *same* camera: a point at a fixed distance from the Earth's centre,
+The camera control has five positions — Free, Satellite, Bangkok, Close-up, POV — but only two
+kinds of camera. The first three are the *same* camera: a point at a fixed distance from the Earth's centre,
 looking at the Earth's centre, differing only in how the bearing is chosen. "Satellite" therefore
 shows the Earth from the spacecraft's **direction**, which is not the same thing as showing it from
 the spacecraft. At 4.2 Earth radii out, the spacecraft is a dot in the middle of the frame.
-*AR*, which a touch screen has in the stage's row of tabs and not among these, is not a fifth: it
-leaves the globe for the phone's own camera (see **The sky through the phone**).
+Close-up is POV's camera with its aim made an orbit round the craft (see **The close-up**). *AR*, which
+a touch screen has in the stage's row of tabs and not among these, is not a sixth: it leaves the
+globe for the phone's own camera (see **The sky through the phone**).
 
 **POV** sits on the spacecraft, facing **along-track** by default: forward along the horizontal part
 of the velocity, with the zenith as screen-up, so the horizon runs level across the frame. Nadir is
@@ -794,6 +799,266 @@ ground. Save-Data, or a connection the browser rates 3G or slower, keeps the coa
 and the note under the surface choices in the Layers panel says so. `npm run globe` checks each of
 those against a rung it works out itself from the canvas and the camera.
 
+##### More room for the globe
+
+*Full screen*, beside *Layers* in the globe's controls (CHANGES-FROM-LEGACY.md, L78), shows the globe's
+view over the whole screen, with its controls, its clock and the close-up's card, and the timeline bar
+along its foot (L85), which the chevron at its end folds away and brings back; Escape or *Exit full
+screen* brings it back. It is offered where the browser can show part of a page full screen (an
+iPhone's Safari cannot), as its icon alone on a phone, and not on the smallest phones, under 375 px,
+whose strip of controls along the globe's foot has no room for it (the globe is the screen's width
+there already). On a wide screen, where the answer panel is a column beside the stage, the arrow at
+the stage's top right folds the panel away so the globe takes the width, and brings it back; nothing
+is stored, so the panel is there again on the next visit.
+
+The globe opens plain (L80): the Earth, the spacecraft and its orbit, with no trail, no catalogue
+dots, no footprint and no pin on your place. Each is one press away in *Layers*, which also holds the
+trail's length (Off, 30 m, 1 orbit, 6 h, 24 h); nothing is stored, so each visit opens plain again.
+
+*Layers → Observer pin & circle* (L79) switches off the pink pin standing on your chosen place and the
+dashed 5° access circle round it, when they are in the way of what you are looking at; on, they are as
+they always were.
+
+The flat map follows the same switches (L86): the trail (Off draws no track, 30 m, 1 orbit and 6 h
+draw that much behind the spacecraft and 8 minutes ahead, fading toward the tail, with the passes in
+orange; 24 h draws the whole window, as the map always did), the pin and its circle, the footprint, and
+the catalogue as dots in the colouring chosen, the one under your pointer or finger named beside it.
+Its own *Layers* under the map holds those switches, so you can set them without going to the globe,
+and *Full screen* beside it shows the map, its controls and its key over the whole screen, with the
+timeline bar along the foot and the clock over the map. Since the page opens plain, the map opens with
+just the spacecraft and the day and night. The map is a chunk of its own, fetched the first time its
+tab is shown.
+
+##### Colouring the catalogue
+
+*Layers → Catalogue* has four choices under the switch (CHANGES-FROM-LEGACY.md, L76). *One colour*,
+the default, is the old page's: every dot in the track's cyan, dimmed. The other three give each
+dot the colour of its class, the key's "Rest of the catalogue" becomes the classes, each in the
+colour its dots rest in, and under the pointer a dot's name is followed by its class, so no dot is
+known by its colour alone.
+
+- *By orbit* is read from each object's own elements, the first rule that fits: HEO, an
+  eccentricity of 0.25 or more; GEO, a period within 1.5 % of a sidereal day and under 15° of
+  inclination, or IGSO if inclined more; LEO, an apogee under 2,000 km, or SSO, a low orbit whose
+  plane J2 turns with the mean Sun (0.9856° a day, give or take 0.1°); MEO, higher with a shorter
+  period than GEO's; beyond GEO, a longer one. Of the 2,158: 17 HEO, 547 GEO, 23 IGSO, 367 LEO,
+  1,183 SSO, 18 MEO and 3 beyond GEO.
+- *By type* is SATCAT's object type: 2,132 payloads, 6 rocket bodies, 6 pieces of debris and one
+  unknown. The 13 objects SatNOGS numbers itself, of which SATCAT has no record, are unknown too.
+- *By purpose* is what CelesTrak's element-set lists say: communications, navigation, Earth
+  observation and weather, science, crewed stations, military, amateur and education. CelesTrak
+  files objects by list, not by purpose, and an object on several lists takes the first of them in
+  a fixed order, which the note under the choice gives. Half the catalogue, 1,091 objects, is on no
+  list (most of them working, and launched since 2020); they are "other or unknown", a dark grey the
+  classes stand out against.
+
+Choosing a colouring fetches a chunk of its own (`catcolour`, `src/components/stage/catcolour.ts`,
+with `src/lib/catalogue/classify.ts`); *By type* and *By purpose* also fetch CelesTrak's table
+(`satcat`; see *Data provenance*). Each class keeps the old dims. The colours are picked so that
+the dots, as they rest, are well apart in OKLab to normal sight and under simulated protanopia and
+deuteranopia (`tests/lib/classify.test.ts` holds the figures), and the old cyan is kept for the
+classes most dots are in (SSO, payloads, Earth observation), so a colouring changes as few dots as
+it can. The selected spacecraft's dot stays orange. The choice is remembered in `gt.catcolour`,
+written only when a colouring is chosen and removed again by *One colour*. *One colour* puts every
+dot back to the value the old page drew it in; `verify-catcolour` holds that to the bit, and the
+ab3d gate, which never chooses a colouring, sees none of it.
+
+##### The realistic globe
+
+*Layers → Globe surface → Realistic: clouds & atmosphere* (CHANGES-FROM-LEGACY.md, L71, L74 and
+L75) draws the Earth the way the owner's Blender renders draw it. It is off unless chosen, and
+remembered like the other surfaces (`gt.surface`). Choosing it fetches a chunk of its own
+(`realism`, `src/scene/realism.ts`) and its maps, which no other view asks for:
+
+- the ground: NASA's Blue Marble Next Generation for August 2004 (`bmng-2048.jpg`, `-4096` and
+  `-8192`), the month NASA's tile service serves, so the sharper tiles below match it in colour
+  (the other surfaces keep the 2002 Blue Marble, so their pixels do not move);
+- a cloud shell 11.5 km up, NASA's Blue Marble cloud composite (`clouds-2048.jpg`, NASA's own file,
+  `-4096` and `-8192` from NASA's larger one, and on a desktop whose GPU takes it `-16384`, 2.4 km a
+  pixel, from NASA's full-resolution halves, L87), thinned over Thailand so the page's own country
+  shows clearly (L84; the credit says so), lit by the Sun as far as a deck that high sees it (3.4° past
+  the ground's terminator, L87), red at sunset, thicker toward
+  the limb as a slanting look through it is, its edges broken by noise only where a pixel is small
+  enough to show it, and casting its shadows a little way towards the Sun;
+- the air: single-scattered sunlight, Rayleigh and aerosol, in an exponential atmosphere, along
+  each ray that misses the planet, with the Earth's shadow falling on the air, and the soft blue
+  glow the owner's compositor laid outside the limb; over the ground, the haze between it and the
+  eye;
+- the Sun's glint off open water, from NASA's map of the open sea (`ocean-8192.png`);
+- the relief of the land, GEBCO's heights (`relief-8192.jpg`), tilting the normal the sunlight sees;
+- the Black Marble 2016's city lights (`blackmarble-8192.jpg`), fading in through twilight;
+- the sky beyond, below, on black, and AgX, the owner's view transform, over all of it.
+
+The ground comes at the size the view needs, as the other surfaces' maps do. The look's own maps
+come at the widest size the GPU allows, but no wider than 4096 on a phone or a tablet, whose memory
+the full set would crowd, and at the narrowest on a slow connection or with Save-Data; the relief
+and the sharp sea, which come only at 8192, are left out on both, and the coastlines stand in for
+the sea. Optical depth is never marched: it is Chapman's grazing-incidence
+function in Schüler's form (`src/scene/look-glsl.ts`), which the close-up's lighting shares
+(`src/lib/models/sunlight.ts`).
+
+**Closer than the map (L74).** The sharpest map is 4.9 km a texel, and the closest views want half
+a kilometre. One larger map cannot give it: 16384 is the most most GPUs take, and that would still
+be 2.4 km. So close up, whenever a pixel at the middle of the view covers less than four fifths of a
+texel of the map (about 3.9 km), the page asks NASA GIBS for the same Blue Marble at 500 m (`BlueMarble_NextGeneration`,
+tile levels 5 to 7, about 2, 1 and 0.5 km a pixel) for the ground under the middle of the view, and
+only there (`src/scene/realism-detail.ts`): a window of 8 × 8 tiles (4 × 4 with a coarse pointer)
+in one texture, addressed round, so a window that moves fetches only the tiles it gains, six at a
+time, nearest the middle first. The Earth's shader takes a tile where one has arrived and feathers
+it into the map toward the window's edge. Nothing is asked at the opening range, nor on a slow
+connection or with Save-Data (*Data and privacy* lists the request).
+
+**The horizon (L74).** The Earth is a polygon of 160 × 96 facets whose middles lie up to 2 km
+inside the true sphere, and the air's shader left every ray that meets the true sphere to the
+Earth's, so close up a dashed dark line ran along the limb where neither drew. The Earth and the
+cloud shell are now drawn a little inflated (0.04 %) and cut to the true sphere in their shaders,
+from each ray's closest approach to the centre and its change across a pixel, which the multisample
+buffer turns into a smooth edge (`alphaToCoverage`; a hard one without multisampling), and the air
+clamps its ray to the limb instead of dropping it. Both limbs are the true circle, with nothing
+missing between them. The compositor's glow fades out once the air's own height spans a few pixels,
+where it was a stripe beside the air the page draws itself.
+
+**The sky (L75).** While the realistic surface is on, the sky behind the Earth is drawn too
+(`src/scene/realsky.ts`), and the sky layers' own flat Sun and Moon discs and star points step
+aside. The planets, the constellation figures and every name stay, and go with the sky to the
+camera, the Moon's name under the Moon drawn, which from an orbit stands degrees from where the
+Earth's centre sees it:
+
+- the Milky Way: NASA's Scientific Visualization Studio's starless map of the sky (Deep Star Maps
+  2020: the light of the Gaia DR2 stars too faint to draw one by one), baked by
+  `scripts/bake-milkyway.py` to `src/assets/sky/milkyway-4096.jpg` (2048 on a phone or a slow
+  connection), in linear light;
+- the stars: the page's own catalogue (HYG, to magnitude 5.5, 2,865 stars), each a soft point whose
+  brightness and size follow its magnitude and whose colour follows its B−V as a black body's;
+- the Sun: its disc and its glare (a wide bloom, six diffraction spikes with six fainter between, a
+  faint ghost ring), in the colour and the share of the Sun that reach the camera, so the Earth's
+  limb puts it out and the air reddens it on the way;
+- the Moon: NASA's Lunar Reconnaissance Orbiter's colour map (the CGI Moon Kit, baked by
+  `scripts/bake-moon.py` to `moon-2048.jpg`, 1024 on a phone) on a sphere lit by the Sun with the
+  regolith's Lommel–Seeliger law, in its true direction, size and phase as seen from the camera,
+  with its face turned and librating as the ephemeris says, and dark in the Earth's shadow.
+
+The stars and the Milky Way are in J2000, turned to the date by the precession the sky layers use;
+the sky is placed at the camera, so it has no parallax. They fade when something bright is in the
+view (L83), as they do for a camera or an eye in orbit: with the Sun in the view only the brightest
+few are left, faintly; over the sunlit Earth they dim as far as it fills the view; in sunlight they
+are never more than half there, and in the close-up, with the sunlit spacecraft in the middle of the
+view, a sixth; in the Earth's shadow they are all there. The change eases in over about a second. The Moon is the Moon pages' own
+(`src/lib/core/moon.ts`): its place comes from `public/moon/lunar.js`'s truncated ELP-2000/82B, good
+to about 11 arcseconds and 30 km against JPL's DE441, and which way it faces from
+`public/core/body.js`'s IAU/NAIF rotation, with its 13-term libration series. Those two files are
+frozen for the Moon pages, so the console carries a verbatim copy, and
+`tests/lib/moon-equivalence.test.ts` runs the classic files beside it at 485 instants from 1990 to
+2050 and demands the same bits. The IAU axes are given in J2000 and are precessed to the date,
+without which the libration would be wrong by the precession itself, 0.36° in 2026.
+`tests/lib/moon.test.ts` holds it to Meeus's worked examples (the place, 47.a; the lit share and the
+bright limb, 48.a; the librations and the axis, 53.a and 53.b), to published instants of new and
+full Moon, and to four total eclipses.
+
+Leaving the surface puts back everything it changed; `verify-realism` holds that, and the ab3d gate
+never sees any of it. The maps are made by `scripts/bake-bmng.py`, `bake-clouds.py`,
+`bake-realism.py`, `bake-milkyway.py` and `bake-moon.py` from NASA's own files, which stay outside
+the repository (see *Data provenance*).
+
+##### The close-up
+
+*Close-up*, before POV in the camera row (L72), puts the camera a few metres from the spacecraft and
+draws its 3D model, the way it flies: along its track, its top away from the Earth (the
+local-vertical, local-horizontal frame). Drag to orbit round it, scroll or pinch to come closer or
+go further, *Reset view* to start again. The globe behind it is the globe from where the spacecraft
+is (POV's camera); the model is a second pass of its own, in metres, with the real Sun (red, then
+gone, as the spacecraft passes into the Earth's shadow, when the card says so), the Earth's light
+from below, and soft shadows. *Realistic Earth* on the card is the realistic surface above, one tick
+away. The card names the model's source with the credit it asks for. The models:
+
+| Spacecraft | Model | Size |
+|---|---|---|
+| KNACKSAT-2 (67683) | built for this page from the team's photographs and specifications: 3U, large cells in a column on each side (six on three sides, four on the marked side), all the same way round as the close-up photographs show them: black under their cover glass, with faint fingers along the length, a thin light edge and the two corners of the forward end cut off; at each cell's after end three silver tabs joined by a zigzag wire over a matte gold interconnect bar, and one tab at its forward end; silver screws in gold rims in the cut corners; on the marked side the camera (a lens down a round opening), two windows, the name and the marks of the team and its partners, taken from a photograph of the flight model (NBSPACE's from its own artwork) and every mark white as it is on the satellite; at each end a flat black plate between the rails, which run black to the end, with silver screws beside them, over NBSPACE's deployable antenna module, whose flat tape-measure elements are coiled inside it and deploy from slots in its edge, under gold Kapton: the VHF dipole up and down and the UHF dipole left and right at the forward end, the LoRa dipole at the after end; it turns slowly about its long axis, as it does | 6,486 triangles, 0.6 MB |
+| ISS (25544, 49044, 36086) | NASA/JSC IGOAL, NASA 3D Resources, simplified for this page (NASA does not endorse this page) | 75,000 triangles, 6.8 MB |
+| Tiangong (48274, 53239, 54216) | "tianGong" by w29572227, CC BY 4.0, once its file is baked (`scripts/models/tiangong.py`) | |
+
+Each is a file of its own, fetched only for its close-up. They are made by the Blender scripts in
+`scripts/models/` (run headless; each writes a preview to look at). KNACKSAT-2's marked plate wears
+an image of the real one, `scripts/models/knacksat2-plate.png`, which `scripts/models/plate-from-photo.py`
+took from the owner's photograph of the flight model (the photograph is not in the repository). It
+maps the plate's four corners in the photograph back to a rectangle, sets the levels, paints out what
+the model draws for itself (the camera's gold cover, which is off in flight, the screw pads, and the
+edges of the tabs), draws NBSPACE's mark from its own artwork where the photograph shows it soft
+(`--logo`, with `logo-nb-white.webp` from nbspace.co.th, not in the repository either), and with
+`--white` makes every mark white, as it is on the satellite, whatever colour the photograph's light
+gave it. The flight model was photographed a little from one side, so
+the plate's top and bottom edges slope in the photograph (4° and 5°, the slope of the gold tabs above
+it and of its lettering): the corners follow them, or the print comes out turned on the plate. The
+commands, with the corners read off the photograph:
+
+```
+blender --background --factory-startup --python scripts/models/plate-from-photo.py -- <flight-model photo> scripts/models/knacksat2-plate.png --corners 331,511,593,530,594,934,332,911 --size 81.4,120 --white --blank -41,58.5,41,61 --blank -41,-61,41,-55.6 --blank -41,61,-39.9,-61 --blank 39.9,61,41,-61 --blank -34.9,32.4,6.1,26.5 --blank -34.9,26.5,2.5,18.5 --blank -34.9,18.5,6.1,10 --blank -34.9,10,2.3,1.5 --blank -34.9,1.5,6.1,-5.2 --ungold 2.0,26.5,6.2,18.5 --ungold 1.8,10,6.2,1.5 --dot -37.2,41.0,4.4 --dot -36.9,4.9,4.4 --dot 37.3,40.5,4.4 --dot 37.3,4.6,4.4 --logo <NBSPACE logo> -12.3,-49.0,14.4,-53.3
+blender --background --factory-startup --python scripts/models/knacksat2.py -- src/assets/models/knacksat2.glb preview.png --plaque scripts/models/knacksat2-plate.png
+```
+
+Both come out the same each time, the image to the pixel and the model to the byte (the lens's faces,
+which Blender's sphere hands back in an order of its own, are sorted). Each end is as deployed
+CubeSats are photographed: a flat black plate between the four rails, notched round them and 1.5 mm
+inside their ends, which run black right to the end, with a silver screw beside each rail; over it
+NBSPACE's deployable antenna module, which its products page shows, whose elements are flat
+tape-measure strips, 6 mm wide, coiled inside it. Each deploys out of the satellite through a slot
+in the module's edge near a corner, in the band of frame between the side panels and the end plate,
+under a strip of gold Kapton where it was tied down for launch, and runs straight out past the
+rails, turning the same way round; nothing of the antennas is on the plate.
+At the forward end, the end the marked plate's camera is nearer, the VHF tapes go up and down and the
+UHF tapes left and right (seen from ahead, the side away from the Earth up); at the after end the
+LoRa tapes go left and right the same way.
+
+##### How it flies
+
+*How it flies…* on the close-up's card (L77) opens a small panel that changes how the model flies,
+for that model only, in this browser:
+
+- **Where it points:** *Along the track*, with the face you choose leading; *Toward the Sun*, which
+  holds that face on the Sun and turns the model smoothly round an orbit; or *Fixed among the
+  stars*, which holds the model as it was among the stars when you chose it (or, after a reload or
+  another model, when it is next put up: the hold itself is not kept), the way a spacecraft
+  left to itself stays while the Earth turns past it.
+- **Yaw, pitch and roll from there:** yaw + turns the front to the right, pitch + raises it, roll +
+  lowers the right side.
+
+The spin is on the card itself, under **Spin rates**, which shows and hides it (it stays as you left
+it while the page is open): a slider and a number for each of the model's own three axes, X side to
+side, Y top to bottom, Z front to back, up to 90 degrees a second either way, + anticlockwise seen
+from the axis's tip. Rates about more than one axis turn the model about their direction at their
+length (3 about X and 4 about Y is 5 degrees a second about (0.6, 0.8, 0)), as rates held steady
+about a body's own axes do; the card says how long a turn takes and which way. *Its own spin* puts
+back the model's own (KNACKSAT-2's 2 degrees a second about Z, none for the others), and *Stop* holds
+it still. *Reset orientation*, beside it, puts the model straight again at that instant (along the
+track, its front leading, no yaw, pitch or roll), with the turns it had made let go and its spin
+rates as they are, so it turns on from straight. *Hide*, at the top of the card, folds the card to
+its title bar (the spacecraft's name and *Show*) so the view behind it is clear, and *Show* opens it again; both stay as you left them
+while the page is open.
+
+The spin keeps time with the page's clock: it stands still while the clock is paused and runs fast
+when the clock does. A new rate, about any axis, leaves the model where it is at that instant and turns it
+on from there; a new pointing or face moves it at once to where it was sent. Until you change anything,
+the close-up draws what it always drew: KNACKSAT-2 turning slowly about its long axis, the stations
+along their track, and your own models the way you turned them. The card says when a model flies as
+you set it rather than as the page does, and *Reset to its own* puts it back exactly. A setting is
+kept per model in `gt.attitude`, and only once you change something; a model of your own takes its
+setting with it when it is removed or replaced. A private window, or the snapshot under
+`?tle=embedded`, keeps the setting for the visit only, and says so.
+
+##### Your own model
+
+For any spacecraft, *Your model…* on the close-up's card takes a .glb, or a .gltf that carries its
+data inside it (L73). The file is checked before anything is built from it
+(`src/lib/models/validate.ts`): its size (50 MB at most), its header, its description, any
+extension it needs that the page cannot read without a decoder (Draco, meshopt, Basis), every
+buffer and image (all must be inside the file: a model that points at the web is refused, and
+nothing it names is ever fetched), and its size in triangles. It is shown at once with its size, so a
+file in millimetres shows itself up, and the units and the two axes turn it until it looks right.
+*Keep this model* files it in this browser only, in IndexedDB; it is never sent anywhere. It wins over
+the page's model for that spacecraft, *Remove my model* gives that back, and *Forget what this page
+stored* takes it with everything else. A private window, or the snapshot under `?tle=embedded`, keeps
+it for the visit only, and says so.
+
 ##### Finding your way round the page
 
 The console fills the first screen. From 1100 px wide the header is one row, 76 px high, and the
@@ -862,11 +1127,12 @@ headline and the countdown, for which the page leaves 72 px at its end. On the o
   which. The old page kept them from then on, and on a phone put the camera and trail captions above
   their rows. In the rebuilt page the window's start, its steps and its length are in the Window
   popover, under the headings "Window opens" and "Span". The camera and trail captions are drawn
-  from 720 px up (but not from 901 to 940 px wide with the planner's drawer open, where there is no
-  room for them) and left out on a screen 520 px tall or less. On a phone they are left out too,
+  from 720 px up (but not from 901 to 1100 px wide with the planner's drawer open, where there is no
+  room for them; there the observer's button holds at most 6em of its name, and up to 1000 px the
+  camera buttons draw in their sides; elsewhere it holds at most 9em, and on a phone 7em) and left out on a screen 520 px tall or less. On a phone they are left out too,
   and the controls are a strip along the foot of the globe, the camera row across its width and the
   trail row beside the Layers button. Without a caption the buttons name themselves: Free,
-  Satellite, Bangkok, POV; Off, 30 m, 1 orbit, 6 h, 24 h.
+  Satellite, Bangkok, Close-up, POV; Off, 30 m, 1 orbit, 6 h, 24 h.
 
 No text on the page is smaller than 11 px. What is set in HTML comes from a type scale whose floor
 is 12 px; the labels drawn into the sky plot, the map and the decay chart, and the AR view's
@@ -895,13 +1161,17 @@ only links: the page asks nothing of those hosts. Why the data has a licence of 
 The old page said none of this.
 
 Under the credits is a button, **Forget what this page stored**. Everything the page keeps is in
-the browser's `localStorage` (nothing is in session storage, a cookie, IndexedDB or a service
-worker), under four namespaces: the old page's `obs-site` and `obs-recent` (the saved site and the
+the browser's `localStorage` (nothing is in session storage, a cookie or a service worker) but the
+3D models a reader gives the close-up, which are files and live in IndexedDB, in the database
+`gt-models`, written by `src/state/models.svelte.ts` alone (their list, `gt.models`, is in
+`localStorage` with the rest, said as "2 3D models you added", and the second press deletes the
+database too, CHANGES-FROM-LEGACY.md L73). The keys are under four namespaces: the old page's `obs-site` and `obs-recent` (the saved site and the
 last six places); `gt.*`, the page's own (the theme and the tab, `gt.prefs`; the globe's surface,
 `gt.surface`; your own orbits, `gt.custom`, and `gt.custom.bak`, a record this version could not
 read; the AR view's lens, aim and radar, `gt.arlens`, `gt.araim` and `gt.arradar`; the pass list's
 filter, `gt.passfilter`; the spacecraft you watch, `gt.watch`, said as "3 watched spacecraft"; the
-spacecraft you compare decay with, `gt.decaycmp`, counted among the display choices); and
+spacecraft you compare decay with, `gt.decaycmp`, how you colour the catalogue, `gt.catcolour`,
+and how you fly the close-up's models, `gt.attitude`, each counted among the display choices); and
 two caches, an object's element set (`tle:<n>`) and its history of element sets (`hist:<n>`). A
 cached copy is used for three hours or twelve, and an old one stays until that object's is fetched
 again or it is forgotten here (a history past its twelve hours is also taken out when the decay
@@ -2820,6 +3090,18 @@ keeping the most recent epoch; 211 stale objects were dropped. Epochs span 2026-
 it is not queried at build time. SatNOGS is the practical substitute and republishes Space-Track
 data for exactly this reason.
 
+**What each object is**, for the globe's *By type* and *By purpose*, is `data/satcat.json`, which
+`verification/tools/fetch-satcat.js` makes from CelesTrak (Dr T.S. Kelso): from its SATCAT
+(`https://celestrak.org/pub/satcat.csv`, the OBJECT_TYPE column) and from 34 of its element-set
+lists (`gp.php?GROUP=<list>&FORMAT=csv`, of which only the numbers are read), as they were on
+2026-11-20. It holds one letter of type and one of purpose for each of the 2,158, in the
+catalogue's order (4,479 bytes), and the sum of the numbers of the catalogue it was made for: a
+table made for another catalogue is not read, and the note under the choice says so. An object is
+matched to SATCAT by its number only where its designator names the same launch.
+`node verification/tools/fetch-satcat.js` re-bakes it, one request per file with a pause between
+(`--save <folder>` keeps the answers, `--from <folder>` bakes from kept answers with no request);
+since it describes the catalogue it was made with, it is re-baked whenever the catalogue is.
+
 **The magnetic model** the AR view corrects a compass with is WMM2025, from NOAA's National
 Centers for Environmental Information and the British Geological Survey: epoch 2025.0, degree and
 order 12, valid to 2030.0, and in the public domain. Its coefficient file, `WMM.COF`, is
@@ -2829,6 +3111,19 @@ page it was a literal in `earth/wmm.js`, copied in by script from `WMM2025COF.zi
 bytes are the same now. `verification/fixtures/WMM.COF` is the same file committed as a second copy. The
 same zip's `WMM2025_TestValues.txt` is `verification/fixtures/WMM2025_TestValues.txt`, and is what the model
 is checked against. The zip's README offers test values of its own; they are the previous model's.
+
+**The realistic surface's maps** (*The realistic globe*) are NASA's, baked by the scripts named
+there from files kept outside the repository, each script's header giving its source's address:
+the Blue Marble Next Generation for August 2004 (NASA Earth Observatory, Reto Stöckli; the 21600 ×
+10800 base map) for the ground, and NASA GIBS's `BlueMarble_NextGeneration` tiles of it close up;
+the Blue Marble cloud composite (Reto Stöckli, NASA GSFC: `clouds-2048.jpg` is NASA's own 2048 ×
+1024 file, and the sharper two come from `cloud_combined_8192.tif`, read from the Internet Archive's
+copy of NASA's file, whose size and ETag match NASA's, since NASA's own host no longer answers for
+it); the Black Marble 2016 (NASA Earth Observatory, VIIRS); Visible Earth's GEBCO_08 topography;
+the Blue Marble Next Generation for April 2004, for where the open sea is; the Deep Star Maps 2020
+starless Milky Way (NASA/Goddard Space Flight Center Scientific Visualization Studio, from Gaia DR2:
+ESA/Gaia/DPAC); and the CGI Moon Kit's colour map (NASA's Scientific Visualization Studio; LRO LROC
+WAC, NASA/GSFC/Arizona State University). The page names them under the surface's choice.
 
 **Orbits you design are not in this catalogue.** One made in the planner is built in the page from
 the elements typed and is never added to the 2,158: the catalogue, its count in the regression gate
@@ -3725,6 +4020,16 @@ npm run ar           # the AR view: WMM2025 against NOAA's test values, the sens
 npm run ar-snap      # Snap, the rebuilt page only: the file, its pixels, its caption, the share
                      # sheet, and that the camera's picture is drawn once, for the press; 79
                      # checks, about a minute; the stage `ar-snap` of run.js, in test:fast
+npm run realism      # the realistic surface, the rebuilt page only: nothing of it fetched by
+                     # default, what choosing it fetches and adds, its limb, sea, clouds and night
+                     # against their ranges, and leaving it puts the old scene back exactly
+npm run closeup      # the close-up camera and its models, the rebuilt page only: the camera row,
+                     # the pass, the renderer put back after each frame, the ISS and the Chinese
+                     # station, and how a model flies (read from the drawn frame)
+npm run models       # a reader's own model, the rebuilt page only: every refusal, a kept model
+                     # across a reload, Remove, and Forget taking the database
+npm run catcolour    # the catalogue's colours, the rebuilt page only: the default's colours value
+                     # for value, each colouring, its key and hover, a reload and Forget
 npm run layout       # the rebuilt console at twelve sizes, light and dark: nothing scrolls
                      # sideways, nothing covers a control or hangs off the screen, no text under
                      # 12 px, targets big enough to tap, and what the design promises

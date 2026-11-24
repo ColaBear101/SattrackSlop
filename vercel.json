@@ -22,13 +22,13 @@
     {
       "source": "/",
       "headers": [
-        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-Ff5dyKoV0uJn2XWoibK++OR3zA/Heq5zAeZ01J5UJUI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gibs.earthdata.nasa.gov; font-src 'self'; connect-src 'self' https://celestrak.org https://tle.ivanstanojevic.me https://geocoding-api.open-meteo.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'" }
+        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-Ff5dyKoV0uJn2XWoibK++OR3zA/Heq5zAeZ01J5UJUI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gibs.earthdata.nasa.gov; font-src 'self'; connect-src 'self' blob: data: https://celestrak.org https://tle.ivanstanojevic.me https://geocoding-api.open-meteo.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'" }
       ]
     },
     {
       "source": "/index.html",
       "headers": [
-        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-Ff5dyKoV0uJn2XWoibK++OR3zA/Heq5zAeZ01J5UJUI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gibs.earthdata.nasa.gov; font-src 'self'; connect-src 'self' https://celestrak.org https://tle.ivanstanojevic.me https://geocoding-api.open-meteo.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'" }
+        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-Ff5dyKoV0uJn2XWoibK++OR3zA/Heq5zAeZ01J5UJUI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gibs.earthdata.nasa.gov; font-src 'self'; connect-src 'self' blob: data: https://celestrak.org https://tle.ivanstanojevic.me https://geocoding-api.open-meteo.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'" }
       ]
     }
   ]

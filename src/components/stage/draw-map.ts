@@ -3,7 +3,8 @@ import type { WorldData } from '../../state/app.svelte';
 import { hms } from '../../lib/text/fmt';
 
 /* The flat ground-track map: the old page's drawMap, with the same pictures in the same order, split so the
-   expensive, unchanging parts are painted once and kept.
+   expensive, unchanging parts are painted once and kept. In the map's chunk since L86 (the Map tab is not the first screen), where the
+   observer, the track and the catalogue follow the Layers panel's switches, which the old map did not have.
  *
  *   ocean + land           painted once per size, theme and world           (cached)
  *   day/night              moves with the clock                              (every frame)
@@ -29,9 +30,19 @@ export function readColors(): MapColors {
   };
 }
 
+/** The catalogue's other spacecraft at the instant shown (L86): where each is, whether it could be propagated, the colour it rests in
+ *  (one colour, or one per entry by class), the one not drawn (the selected spacecraft, whose marker is there), and the one under the
+ *  pointer, with the words drawn beside it. */
+export interface MapDots {
+  lat: Float32Array; lon: Float32Array; ok: Uint8Array; css: readonly string[] | null; one: string; skip: number; hover: number; label: string;
+}
+
 export interface MapInput {
   analysis: Analysis; site: Site; mask: number; world: WorldData | null;
   cur: Sample | null; subsolar: { lat: number; lon: number }; footprint: boolean; colors: MapColors;
+  /** the Layers panel's switches, which the map follows since L86: the observer's pin and access circle, the track (the whole window as
+   *  the old map drew it, none, or a trail: the samples from its tail to its head) and the catalogue's dots */
+  siteOn: boolean; trail: 'all' | readonly Sample[] | null; dots: MapDots | null;
 }
 
 const RAD = Math.PI / 180, DEG = 180 / Math.PI;
@@ -43,6 +54,8 @@ export class MapPainter {
   private w = 0; private h = 0; private dpr = 1;
   private base: HTMLCanvasElement | null = null; private baseKey = '';
   private trackLayer: HTMLCanvasElement | null = null; private trackKey: unknown = null; private trackColors = '';
+  /** where each dot was last drawn, in CSS pixels (NaN: not drawn), for the pointer */
+  private dx = new Float32Array(0); private dy = new Float32Array(0);
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -191,10 +204,12 @@ export class MapPainter {
     if (cur) this.terminator(cur.t, inp.subsolar, col);
     this.graticule(col);
 
-    // the ground the observer holds the spacecraft above the mask can reach, at the mean altitude
-    g.save(); g.setLineDash([5, 4]);
-    this.stroke(g, this.circle(site.lat, site.lon, a.lambda), col.observer, 1.6);
-    g.restore();
+    // the ground the observer holds the spacecraft above the mask can reach, at the mean altitude (while the pin is on, L86)
+    if (inp.siteOn) {
+      g.save(); g.setLineDash([5, 4]);
+      this.stroke(g, this.circle(site.lat, site.lon, a.lambda), col.observer, 1.6);
+      g.restore();
+    }
 
     // the ground the spacecraft currently holds above the mask: same geometry, centred under it, sized by its altitude
     if (inp.footprint && cur) {
@@ -206,30 +221,105 @@ export class MapPainter {
       }
     }
 
-    const tk = [this.w, this.h, this.dpr, col.track, col.contact].join('|');
-    if (!this.trackLayer || this.trackKey !== a || this.trackColors !== tk) {
-      this.trackLayer = this.paintTrack(a, mask, col); this.trackKey = a; this.trackColors = tk;
-    }
-    g.drawImage(this.trackLayer, 0, 0, this.w, this.h);
+    if (inp.dots) this.dots(inp.dots);
 
-    this.markers(site, cur, mask, col);
+    if (inp.trail === 'all') {
+      const tk = [this.w, this.h, this.dpr, col.track, col.contact].join('|');
+      if (!this.trackLayer || this.trackKey !== a || this.trackColors !== tk) {
+        this.trackLayer = this.paintTrack(a, mask, col); this.trackKey = a; this.trackColors = tk;
+      }
+      g.drawImage(this.trackLayer, 0, 0, this.w, this.h);
+    } else if (inp.trail) this.trailPart(inp.trail, mask, col);
+
+    this.markers(site, cur, mask, col, inp.siteOn);
+    if (inp.dots && inp.dots.hover >= 0) this.hovered(inp.dots, col);
 
     g.strokeStyle = col.rule; g.lineWidth = 1;
     g.strokeRect(0.5, 0.5, this.w - 1, this.h - 1);
   }
 
-  private markers(site: Site, cur: Sample | null, mask: number, col: MapColors) {
+  /* A trail (L86): the slice of track from its tail to its head, faded toward the tail as the globe fades its own (0.10 + 0.90 f², f
+     from 0 at the tail to 1 at the head), in twelve bands; the passes in it are the in-view arcs, as on the whole track. */
+  private trailPart(pts: readonly Sample[], mask: number, col: MapColors) {
+    const g = this.ctx, B = 12, n = pts.length;
+    for (let b = 0; b < B && n > 1; b++) {
+      const i0 = Math.floor(b * (n - 1) / B), i1 = Math.floor((b + 1) * (n - 1) / B);
+      if (i1 <= i0) continue;
+      const f = (b + .5) / B, seg = pts.slice(i0, i1 + 1);
+      g.globalAlpha = .10 + .90 * f * f;
+      this.stroke(g, seg, col.track, 1.5);
+      let run: Sample[] = [];
+      for (const p of seg) {
+        if (p.el >= mask) run.push(p);
+        else if (run.length) { this.stroke(g, run, col.contact, 4); run = []; }
+      }
+      if (run.length) this.stroke(g, run, col.contact, 4);
+    }
+    g.globalAlpha = 1;
+  }
+
+  /* The catalogue's dots (L86), one fill per colour, under the track and the markers. */
+  private dots(d: MapDots) {
+    const g = this.ctx, n = d.lat.length;
+    if (this.dx.length !== n) { this.dx = new Float32Array(n); this.dy = new Float32Array(n); }
+    const by = new Map<string, number[]>();
+    for (let i = 0; i < n; i++) {
+      if (!d.ok[i] || i === d.skip) { this.dx[i] = NaN; continue; }
+      this.dx[i] = this.px(d.lon[i]!); this.dy[i] = this.py(d.lat[i]!);
+      const c = d.css ? d.css[i]! : d.one;
+      let l = by.get(c);
+      if (!l) by.set(c, l = []);
+      l.push(i);
+    }
+    g.globalAlpha = .9;
+    for (const [c, l] of by) {
+      g.beginPath();
+      for (const i of l) { const x = this.dx[i]!, y = this.dy[i]!; g.moveTo(x + 1.8, y); g.arc(x, y, 1.8, 0, 7); }
+      g.fillStyle = c; g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  /* the dot under the pointer, larger, with its name (and its class while the dots are coloured by one) beside it */
+  private hovered(d: MapDots, col: MapColors) {
+    const g = this.ctx, x = this.dx[d.hover], y = this.dy[d.hover];
+    if (x === undefined || y === undefined || !isFinite(x)) return;
+    g.beginPath(); g.arc(x, y, 3.6, 0, 7); g.fillStyle = d.css ? d.css[d.hover]! : d.one; g.fill();
+    g.lineWidth = 1.5; g.strokeStyle = col.panel; g.stroke();
+    g.font = '500 11px "IBM Plex Mono", monospace'; g.textBaseline = 'middle';
+    const left = x + 9 + g.measureText(d.label).width > this.w - 4;
+    g.textAlign = left ? 'right' : 'left';
+    this.haloText(d.label, left ? x - 9 : x + 9, Math.max(8, y - 9), col.ink, col.ocean);
+  }
+
+  /** The drawn dot nearest a point in CSS pixels, within 6 px of it, or -1. */
+  pick(x: number, y: number): number {
+    let best = -1, bd = 36;
+    for (let i = 0; i < this.dx.length; i++) {
+      const ddx = this.dx[i]! - x, ddy = this.dy[i]! - y, q = ddx * ddx + ddy * ddy;
+      if (q < bd) { bd = q; best = i; }
+    }
+    return best;
+  }
+
+  /** Forget where the dots were drawn (they are switched off): nothing is under the pointer. */
+  clearDots(): void { this.dx = new Float32Array(0); this.dy = new Float32Array(0); }
+
+  private markers(site: Site, cur: Sample | null, mask: number, col: MapColors, siteOn: boolean) {
     const g = this.ctx, W = this.w;
-    // the observer, under its own name; a name that would run off the right edge is set to the left of the ring
-    const bx = this.px(site.lon), by = this.py(site.lat);
-    g.beginPath(); g.arc(bx, by, 5.5, 0, 7); g.fillStyle = col.panel; g.fill();
-    g.lineWidth = 2.5; g.strokeStyle = col.observer; g.stroke();
-    g.font = '600 11px "IBM Plex Mono", monospace'; g.textBaseline = 'middle';
-    const txt = site.name.toUpperCase();
-    const flip = bx + 10 + g.measureText(txt).width > W - 4;
-    g.textAlign = flip ? 'right' : 'left';
-    this.haloText(txt, flip ? bx - 10 : bx + 10, by + 0.5, col.observer, col.ocean);
+    // the observer, under its own name; a name that would run off the right edge is set to the left of the ring (while the pin is on, L86)
+    if (siteOn) {
+      const bx = this.px(site.lon), by = this.py(site.lat);
+      g.beginPath(); g.arc(bx, by, 5.5, 0, 7); g.fillStyle = col.panel; g.fill();
+      g.lineWidth = 2.5; g.strokeStyle = col.observer; g.stroke();
+      g.font = '600 11px "IBM Plex Mono", monospace'; g.textBaseline = 'middle';
+      const txt = site.name.toUpperCase();
+      const flip = bx + 10 + g.measureText(txt).width > W - 4;
+      g.textAlign = flip ? 'right' : 'left';
+      this.haloText(txt, flip ? bx - 10 : bx + 10, by + 0.5, col.observer, col.ocean);
+    }
     if (!cur) return;
+    g.textBaseline = 'middle';
     const sx = this.px(cur.lon), sy = this.py(cur.lat), hot = cur.el >= mask, c = hot ? col.contact : col.track;
     g.beginPath(); g.arc(sx, sy, 10, 0, 7);
     g.strokeStyle = c; g.lineWidth = 1.2; g.globalAlpha = .55; g.stroke(); g.globalAlpha = 1;

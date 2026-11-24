@@ -3,11 +3,12 @@
      holds it carries the label); pass `label` when an icon stands alone. */
   type Name = 'chevron-down' | 'chevron-left' | 'chevron-right' | 'search' | 'pin' | 'sun' | 'moon' | 'auto'
     | 'play' | 'pause' | 'step-back' | 'step-fwd' | 'x' | 'orbit' | 'info' | 'check' | 'alert' | 'globe' | 'map'
-    | 'clock' | 'plus' | 'external' | 'target' | 'star';
+    | 'clock' | 'plus' | 'external' | 'target' | 'star' | 'expand' | 'shrink' | 'chevron-up';
   let { name, size = 18, label = '' }: { name: Name; size?: number; label?: string } = $props();
 
   const paths: Record<Name, string> = {
     'chevron-down': 'M6 9l6 6 6-6',
+    'chevron-up': 'M6 15l6-6 6 6',
     'chevron-left': 'M15 6l-6 6 6 6',
     'chevron-right': 'M9 6l6 6-6 6',
     search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
@@ -28,6 +29,8 @@
     map: 'M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14',
     clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
     plus: 'M12 5v14M5 12h14',
+    expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+    shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
     external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
     target: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1',
     star: 'M12 3l3 6 7 1-5 4 1 7-6-3-6 3 1-7-5-4 7-1z'

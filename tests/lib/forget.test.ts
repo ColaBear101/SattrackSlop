@@ -72,6 +72,23 @@ describe('survey', () => {
     expect(forget(st)).toEqual({ removed: ['gt.watch'], left: [] });
     expect(st.keys()).toEqual(['someone-else']);
   });
+  it('says the 3D models a reader added apart from the display choices, counted from their list, and that they cannot be brought back (L73)', () => {
+    const s = survey(new FakeStore({ 'gt.models': '{"v":1,"items":[{"key":"25544"},{"key":"67683"}]}', 'gt.prefs': '{}' }))!;
+    expect(s.parts).toEqual([{ kind: 'choices', n: 1 }, { kind: 'models', n: 2 }]);
+    expect(survey(new FakeStore({ 'gt.models': 'not json' }))!.parts).toEqual([{ kind: 'models', n: null }]);
+    expect(forgetArmed(s.parts)).toBe('Press again to forget these and reload the page: your display choices and 2 3D models you added. The models you added cannot be brought back.');
+    expect(partWords({ kind: 'models', n: 1 })).toBe('1 3D model you added');
+  });
+  it('counts how the reader flies the close-up\'s models among the display choices, and forgets it with them (L77)', () => {
+    const st = new FakeStore({ 'gt.attitude': '{"v":1,"items":{"iss":{"pointing":"sun","face":"+Y","ypr":[0,0,0],"spin":null}}}', 'gt.prefs': '{}' });
+    expect(survey(st)!.parts).toEqual([{ kind: 'choices', n: 2 }]);
+    expect(forget(st)).toEqual({ removed: ['gt.attitude', 'gt.prefs'], left: [] });
+  });
+  it('counts how the catalogue\'s dots are coloured among the display choices, and forgets it with them (L76)', () => {
+    const st = new FakeStore({ 'gt.catcolour': 'purpose', 'gt.surface': 'vector' });
+    expect(survey(st)!.parts).toEqual([{ kind: 'choices', n: 2 }]);
+    expect(forget(st)).toEqual({ removed: ['gt.catcolour', 'gt.surface'], left: [] });
+  });
   it('does not call an empty list of orbits nothing to lose while a record this version could not read is kept beside it', () => {
     /* restore() moves an unreadable record to .bak; an orbit made and deleted afterwards leaves {v, next:2, items:[]} (an empty list keeps
        the counter). The second press removes the .bak, the only copy of those orbits, so the warning stays. */
@@ -275,9 +292,12 @@ describe('every key the code keeps is one forget knows', () => {
     expect(names.filter(n => !(FORGET_KEYS as readonly string[]).includes(n.split(' ')[1]!))).toEqual([]);
     expect(ids.length).toBeGreaterThanOrEqual(12);         // gt.count ... gt.sso.clock: the Professor's ground-track rules, not storage
   });
-  it('keeps nothing anywhere but localStorage (no session storage, IndexedDB, Cache Storage, cookie or service worker)', () => {
+  it('keeps nothing anywhere but localStorage (no session storage, Cache Storage, cookie or service worker), but the reader\'s 3D models in IndexedDB, from one module', () => {
+    /* L73: a model is a file of up to 50 MB, too large for localStorage, so the reader's own models are the one thing kept in IndexedDB,
+       by state/models.svelte.ts alone; "Forget" deletes that database too (components/report/ForgetData.svelte, forgetModels) */
     const found = SOURCES.flatMap(s => [...s.code.matchAll(/\b(sessionStorage|indexedDB|caches\.open|document\.cookie|serviceWorker)\b/g)].map(m => s.rel + ' ' + m[1]));
-    expect(found).toEqual([]);
+    expect(found.filter(f => f !== 'src/state/models.svelte.ts indexedDB')).toEqual([]);
+    expect(found.some(f => f === 'src/state/models.svelte.ts indexedDB')).toBe(true);
   });
   it('would fail on a key it does not know (the scan, shown violators)', () => {
     /* the unknown gt. key planted was gt.watch until the watchlist (L60) made it one FORGET_KEYS lists */

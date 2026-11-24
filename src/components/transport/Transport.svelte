@@ -6,6 +6,8 @@
   import { tzAt, tzLabelAt } from '../../lib/places';
   import Icon from '../ui/Icon.svelte';
   import WindowPopover from './WindowPopover.svelte';
+  import { view } from '../../state/view.svelte';
+  import { TIME_HIDE, TIME_SHOW } from '../../lib/text/view';
 
   /* The transport: play and pause, the rate (1x to 3600x, so a second becomes an hour), a scrubber over the
      analysis window with the passes marked on it, and the clock in UTC and at the site. The scrubber counts samples
@@ -38,11 +40,33 @@
     return [0, .25, .5, .75, 1].map(tick);
   });
 
+  /* In full screen (L78) the bar goes with the globe (L85): the browser shows the full-screen element alone, so the bar is moved into it,
+     along its foot, and back to its place in the page when full screen ends. While it is there it tells the view how tall it is (--tbar),
+     so the globe's key, hint, minimap, the close-up's card and a phone's strip of controls stand above it; folded, only its button is left. */
+  let root: HTMLElement | undefined = $state();
+  let home: { parent: Node; next: Node | null } | null = null;
+  $effect(() => {
+    const el = root, full = view.full;
+    if (!el) return;
+    const host = full ? document.fullscreenElement : null;
+    if (host && el.parentNode !== host) { home = { parent: el.parentNode!, next: el.nextSibling }; host.appendChild(el); }
+    else if (!host && home) { home.parent.insertBefore(el, home.next && home.next.parentNode === home.parent ? home.next : null); home = null; }
+  });
+  $effect(() => {
+    const el = root, shown = view.timeShown, host = view.full ? (document.fullscreenElement as HTMLElement | null) : null;
+    if (!el || !host) return;
+    const set = (): void => host.style.setProperty('--tbar', shown ? el.offsetHeight + 'px' : '0px');
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => { ro.disconnect(); host.style.removeProperty('--tbar'); };
+  });
+
   const utc = $derived(iso(new Date(ms)).replace('Z', ''));
   const local = $derived(iso(new Date(ms + tzAt(app.site, ms) * 3_600_000)).replace('Z', ''));
 </script>
 
-<div class="transport" role="group" aria-label="Time">
+<div class="transport" class:infull={view.full} class:folded={view.full && !view.timeShown} role="group" aria-label="Time" bind:this={root}>
   <button type="button" class="play" id="tpplay" onclick={() => clock.toggle()} aria-label={clock.playing ? 'Pause' : 'Play'}>
     <Icon name={clock.playing ? 'pause' : 'play'} size={18} />
   </button>
@@ -73,6 +97,10 @@
   </div>
 
   <div class="win"><WindowPopover /></div>
+  {#if view.full}
+    <button type="button" class="fold" aria-expanded={view.timeShown} aria-label={view.timeShown ? TIME_HIDE : TIME_SHOW} title={view.timeShown ? TIME_HIDE : TIME_SHOW}
+            onclick={() => (view.timeShown = !view.timeShown)}><Icon name={view.timeShown ? 'chevron-down' : 'chevron-up'} size={18} /></button>
+  {/if}
 </div>
 
 <style>
@@ -86,6 +114,21 @@
     background: var(--chrome2); color: var(--chromeink);
   }
   .play:hover { background: var(--hover); }
+  /* in full screen (L85): along the foot of the globe's view, over it, with a button at its end that folds it to that button */
+  .transport.infull {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; grid-template-columns: auto minmax(120px, 190px) minmax(160px, 1fr) auto auto;
+    background: color-mix(in srgb, var(--chrome) 90%, transparent); backdrop-filter: blur(6px);
+  }
+  .fold {
+    display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-2); border: 1px solid var(--chromerule);
+    background: var(--chrome2); color: var(--chromeink); cursor: pointer;
+  }
+  .fold:hover { background: var(--hover); }
+  @media (pointer: coarse) { .fold { width: var(--tap); height: var(--tap); } }
+  .transport.folded { left: 50%; right: auto; bottom: var(--space-3); transform: translateX(-50%); display: block; min-height: 0; padding: 0; background: none; border: 0; backdrop-filter: none; }
+  .transport.folded > :not(.fold) { display: none; }
+  /* the clock on the globe, top left, says the time in full screen; the bar's two would say it again (L85) */
+  .transport.infull .clock { display: none; }
   @media (pointer: coarse) { .play { width: var(--tap); height: var(--tap); } }
   .rate { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); }
   .x { min-width: 4ch; text-align: right; font-size: var(--fs-1); }
@@ -110,6 +153,8 @@
     }
     .play { grid-area: play; } .rate { grid-area: rate; } .win { grid-area: win; }
     .scrub { grid-area: scrub; } .clock { grid-area: clock; }
+    .transport.infull { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'play rate win fold' 'scrub scrub scrub scrub'; }
+    .fold { grid-area: fold; }
     .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* still the slider's name */
     .rate { grid-template-columns: 1fr auto; }
     .ticks { display: none; }

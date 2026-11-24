@@ -5,9 +5,15 @@ import { makeOrbitViz } from './orbitviz';
 import day2048 from '../assets/globe/bluemarble-2048.jpg?url';
 import day4096 from '../assets/globe/bluemarble-4096.jpg?url';
 import day8192 from '../assets/globe/bluemarble-8192.jpg?url';
+/* The realistic surface's own day map (L74): NASA's Blue Marble Next Generation, August 2004 (scripts/bake-bmng.py), the month whose
+   500 m tiles it streams close up, so the detail and the map agree in colour. The old surfaces keep the 2002 Blue Marble above. */
+import bmng2048 from '../assets/globe/bmng-2048.jpg?url';
+import bmng4096 from '../assets/globe/bmng-4096.jpg?url';
+import bmng8192 from '../assets/globe/bmng-8192.jpg?url';
 /* The VIIRS 2012 night-lights mosaic, the 2048 x 1024 JPEG the old page asked GIBS for on every start (the same GetMap, saved once: it has no date
    and one size). Shipped with the page like the Blue Marble, so the default globe asks nobody for anything. */
 import night2048 from '../assets/globe/citylights-2048.jpg?url';
+import { REAL_FAILED } from '../lib/text/realism';
 
 /* The 3D globe: the scene (orbit3d), the sky layers it carries (orbitviz) and the photographic surfaces (globetex), wired
  * together the way the old page's boot3D() wired them. The three modules are the old files, moved with a wrapper and nothing
@@ -46,6 +52,8 @@ export interface GlobeInit {
   onFollow?: (on: boolean) => void;
   onSite?: (on: boolean) => void;
   onPov?: (on: boolean) => void;
+  /** the close-up (L72) turned on or off */
+  onClose?: (on: boolean) => void;
   /** called whenever something calls into the scene's API: whatever it changed is worth a frame (see Globe.orbit3d) */
   onActivity?: () => void;
 }
@@ -70,6 +78,7 @@ export interface Globe {
 const skyData = import('./sky-data');
 
 const LOCAL_DAY: Record<number, string> = { 2048: day2048, 4096: day4096, 8192: day8192 };
+const LOCAL_BMNG: Record<number, string> = { 2048: bmng2048, 4096: bmng4096, 8192: bmng8192 };
 
 /** Build the globe on a canvas. Null when WebGL is not there: the page then says so and leans on the flat map. */
 export function createGlobe(init: GlobeInit): Globe | null {
@@ -78,10 +87,20 @@ export function createGlobe(init: GlobeInit): Globe | null {
     THREE, satellite: init.satellite, navigator, performance,
     get devicePixelRatio() { return window.devicePixelRatio; }
   };
-  const globeTex = makeGlobeTex({ localDay: (w: number) => LOCAL_DAY[w], localNight: () => night2048 });
+  const globeTex = makeGlobeTex({ localDay: (w: number, set?: unknown) => (set === 'bmng' ? LOCAL_BMNG : LOCAL_DAY)[w], localNight: () => night2048 });
   g.GlobeTex = globeTex;
   const orbit3d = makeOrbit3D(g);
   const wake = init.onActivity ?? (() => {});
+  /* The realistic look (L71) is a chunk of its own, fetched by the scene the first time its surface is chosen; what it says when it
+     cannot be had is the page's words; and a map it receives later wakes the frame policy like any other change to the picture. */
+  /* The realistic look also draws the sky beyond the Earth (L75): it is handed the scene, the sky layers (whose own Sun, Moon and stars
+     it hides while it is on), the page's clock and the star catalogue's chunk, which the sky layers have fetched already. */
+  g.loadLook = () => import('./realism').then(m => ({
+    ...m,
+    makeLook: (h: Any) => m.makeLook({ ...h, scene: orbit3d.scene, viz, now: () => init.gt.now(), stars: () => skyData.then(d => d.STAR_DATA), closeUp: () => !!orbit3d.close })
+  }));
+  g.lookFailed = REAL_FAILED;
+  g.wake = wake;
   /* Calls into the scene's API wake the host's frame policy (an idle globe draws nothing, so a call that changes the picture has
      to ask for a frame), without the scene knowing anything about it. suspend and setPace are the policy's own tools. */
   const woken = <T extends object>(o: T, own: string[] = []): T => new Proxy(o, {
@@ -90,7 +109,7 @@ export function createGlobe(init: GlobeInit): Globe | null {
   });
   const ok = orbit3d.init({
     canvas: init.canvas, gt: init.gt, satellite: init.satellite, body: init.body, mkTrack: init.mkTrack,
-    labels: init.labels, onPick: init.onPick, onFollow: init.onFollow, onSite: init.onSite, onPov: init.onPov
+    labels: init.labels, onPick: init.onPick, onFollow: init.onFollow, onSite: init.onSite, onPov: init.onPov, onClose: init.onClose
   });
   if (!ok) return null;
 

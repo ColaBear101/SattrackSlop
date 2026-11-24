@@ -125,6 +125,14 @@ export async function install(): Promise<void> {
     if (globe.scene!.viz) w.OrbitViz = globe.scene!.viz;
     w.THREE = { Vector3: THREE.Vector3, REVISION: THREE.REVISION };
   }
+  /* The suites compare with the old page, which opened with a 6 h trail, the catalogue, the observer's pin and the footprint on; the
+     page opens with none of them since L80. They are put back here, through the Layers panel's own state, before __gt says the page is
+     ready, unless a suite asks for the page's own defaults (window.__GT_DEFAULTS__); verify-visitor, which runs without this surface,
+     holds the page's. */
+  if (!w.__GT_DEFAULTS__) {
+    globe.setTrail('21600000');
+    for (const k of ['catalogue', 'footprint', 'site'] as const) globe.setLayer(k, true);
+  }
   /* The orbit planner, under the names the old page's scripts had. The suites look at the controller and at the host it was given, and spy
      on the controller's `init`, so both are put on the window BEFORE init is called (session.onBuilt), and the four modules are the same
      objects the page itself runs: a suite that patches one is patching the page's own. The planner is brought up in the snapshot too, where

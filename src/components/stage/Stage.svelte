@@ -9,12 +9,18 @@
   import Tabs from '../ui/Tabs.svelte';
   import Button from '../ui/Button.svelte';
   import { ar } from '../ar/session.svelte';
-  import GroundTrackMap from './GroundTrackMap.svelte';
+  import { view } from '../../state/view.svelte';
+  import Icon from '../ui/Icon.svelte';
+  import { RAIL_HIDE, RAIL_SHOW } from '../../lib/text/view';
   import Globe from './Globe.svelte';
 
   /* The stage: the 3D globe, and the flat map of the ground track beside it as a tab. Both stay in the page, the one not
      chosen hidden, so the globe keeps its place and the map's key and readouts are there to be read. The readouts under the map
      are the spacecraft's position and the look from the observer at the instant on the clock. */
+  /* The map itself, its controls and its key's rows for the catalogue are a chunk of their own (L86), fetched the first time the tab is
+     shown; a fetch that fails is tried again the next time. Until it is in, the map's box holds its place. */
+  let M = $state.raw<typeof import('./map-chunk') | null>(null);
+  $effect(() => { if (prefs.tab === 'map' && !M) import('./map-chunk').then(m => { M = m; }, () => {}); });
   const cur = $derived(app.sampleAt(clock.tick.ms));
   const nm = $derived(app.site.name);
   const pos = $derived(latStr(app.site.lat) + ' ' + lonStr(app.site.lon));
@@ -36,6 +42,11 @@
   <!-- the old page's first screen said that the written analysis is below ("Below ↓ Elements ... Terms"): a link to it here, in the stage's own row -->
   <a class="below" href="#report">Report ↓</a>
   <div class="ar-slot">
+    <!-- the answer panel folded away and back (L78): only where it sits beside the stage, 1100 px and wider -->
+    <button type="button" class="railtoggle" aria-expanded={!view.railHidden} aria-controls="answer-body" aria-label={view.railHidden ? RAIL_SHOW : RAIL_HIDE}
+            title={view.railHidden ? RAIL_SHOW : RAIL_HIDE} onclick={() => (view.railHidden = !view.railHidden)}>
+      <Icon name={view.railHidden ? 'chevron-left' : 'chevron-right'} size={18} />
+    </button>
     <!-- The radar on its own: the same sensors and the same plot as the AR view, with no camera asked for and no sky drawn over a picture. -->
     <Button id="radarbtn" size="sm" hidden={!ar.offered} aria-haspopup="dialog" aria-controls="arview" aria-label="Radar: where this phone points, with no camera"
             onclick={() => ar.openRadar()}>Radar</Button>
@@ -46,7 +57,9 @@
         variant="pill" keepMounted onchange={id => prefs.setTab(id as StageTab)}>
     {#snippet children(id)}
       {#if id === 'map'}
-        <GroundTrackMap />
+        <!-- the map's figure, which its full screen shows (L86) -->
+        <div class="mapfig">
+        {#if M}<M.MapView />{:else}<div class="mapwait"></div>{/if}
         <ul class="legend" aria-label="Key">
           <li><i class="k track"></i> Sub-satellite track</li>
           <li><i class="k contact"></i> <span id="lbl-inview">In view from {nm} (el ≥ {MASK}°)</span></li>
@@ -54,7 +67,9 @@
           <li><i class="k observer"></i> <span id="lbl-sitering">{nm} {MASK}° access circle</span></li>
           <li><i class="k fov"></i> Spacecraft footprint (ground above {MASK}°)</li>
           <li><i class="k night"></i> Sunlit / night side at the shown instant</li>
+          {#if M}<M.MapKey />{/if}
         </ul>
+        </div>
         <dl class="readouts">
           {#each items as [id, lid, k, v] (id)}<div><dt class="eyebrow" id={lid || undefined}>{k}</dt><dd class="mono" class:hot={id === 'r-el' && !!cur && cur.el >= MASK} {id}>{v}</dd></div>{/each}
         </dl>
@@ -73,10 +88,24 @@
   /* where a finger is the pointer the Radar button is offered beside AR (src/components/ar/session.svelte.ts), and the link makes room for it */
   @media (pointer: coarse) { .below { min-height: var(--tap); right: calc(var(--space-4) + 56px + 60px); } }
   .ar-slot :global(abbr) { text-decoration: none; cursor: inherit; }
+  .railtoggle {
+    display: none; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: var(--r-2);
+    border: 1px solid var(--rule); background: var(--panel); color: var(--ink2); cursor: pointer;
+  }
+  .railtoggle:hover { background: var(--hover); color: var(--ink); }
+  @media (min-width: 1100px) { .railtoggle { display: inline-flex; } }
   .ar-slot :global(.btn[hidden]) { display: none; }
   /* wide: the stage sits between the bar and the transport, so the map is as large as leaves room for its legend
      and readouts (about 250 px of them, the tabs and the padding) without the stage having to scroll */
   @media (min-width: 1100px) { .stage { --map-max: max(420px, calc((100dvh - var(--bar-h) - var(--transport-h) - 250px) * 2)); } }
+  .mapwait { width: 100%; max-width: var(--map-max, calc(66dvh * 2)); margin-inline: auto; aspect-ratio: 2 / 1; border-radius: var(--r-2); background: var(--ocean); }
+  /* the map's figure full screen (L86): the map as large as the screen leaves it over its controls, its key and the timeline bar (--tbar) */
+  .mapfig:fullscreen {
+    display: flex; flex-direction: column; justify-content: center; padding: var(--space-4) var(--space-4) calc(var(--space-3) + var(--tbar, 0px));
+    background: var(--surface); overflow: auto; --map-max: max(320px, calc((100dvh - var(--tbar, 0px) - 150px) * 2));
+  }
+  /* a short screen (a phone on its side): the map and its controls take the height, and the key is scrolled to under them */
+  @media (max-height: 520px) { .mapfig:fullscreen { justify-content: flex-start; --map-max: max(320px, calc((100dvh - var(--tbar, 0px) - 70px) * 2)); } }
   .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); list-style: none; margin: var(--space-3) 0; padding: 0; font-size: var(--fs-1); color: var(--ink2); }
   .k { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: var(--space-2); }
   .k.track { background: var(--track); } .k.contact { background: var(--contact); height: 4px; }

@@ -877,7 +877,8 @@ remembered like the other surfaces (`gt.surface`). Choosing it fetches a chunk o
   `-4096` and `-8192` from NASA's larger one, and on a desktop whose GPU takes it `-16384`, 2.4 km a
   pixel, from NASA's full-resolution halves, L87), thinned over Thailand so the page's own country
   shows clearly (L84; the credit says so), lit by the Sun as far as a deck that high sees it (3.4° past
-  the ground's terminator, L87), red at sunset, thicker toward
+  the ground's terminator, L87) and fading out past that, so no dark cloud stands on the night
+  limb, red at sunset, thicker toward
   the limb as a slanting look through it is, its edges broken by noise only where a pixel is small
   enough to show it, and casting its shadows a little way towards the Sun;
 - the air: single-scattered sunlight, Rayleigh and aerosol, in an exponential atmosphere, along

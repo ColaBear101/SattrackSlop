@@ -267,6 +267,11 @@ void main(){
   a *= coverage(closest(vWP), 1.0 + ${CLOUD_H});   /* the clouds' own true limb */
   if (a < 0.004) discard;
   float mu = dot(N, L);
+  /* Past the light, a cloud deck is black over black ground, and adds nothing to see but its edge: 11.5 km up, it stands above the night
+     limb as a ragged dark band against the stars (L87). So it fades out as its light goes, gone by 7 degrees past the ground's terminator;
+     the Earth's own shading still dims the city lights under it, from the map itself (cloudHere). */
+  a *= smoothstep(-0.12, -0.04, mu);
+  if (a < 0.004) discard;
   /* white cloud, lit by what is left of the Sun at its height: a deck 11.5 km up sees the Sun 3.4 degrees past the ground's terminator
      (mu -0.06), and no further. It was wrapped to 17 degrees (mu -0.3) for the light inside a cloud, which left a band of grey cloud lit
      over ground already in the dark (L87). */

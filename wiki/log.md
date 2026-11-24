@@ -27,3 +27,7 @@ Operations:
 ## [2026-11-24] ingest | ledger row L86: the flat map follows the Layers panel and has its own Layers and full screen
 - Sources: changes-from-legacy (row L86), readme-globe-and-views (README "More room for the globe"), claude-md-project-instructions (map-chunk, entry figure).
 - Updated: ground-track (new section), globe-scene, catalogue-colouring, lazy-chunks-and-entry-budget (map-chunk row, entry 91.74 → 89.31 kB, the import rule as measured), change-ledger (range to L86).
+
+## [2026-11-24] ingest | ledger row L87: the realistic clouds go dark where the night is, and come sharper
+- Sources: changes-from-legacy (row L87), readme-globe-and-views (README "The realistic globe", the cloud bullet).
+- Updated: realistic-globe (the Clouds bullet: lit to 3.4° past the terminator and fading out past it, so no dark band on the night limb; the 16384 map from NASA's full-resolution halves on a capable desktop), change-ledger (range to L87).
